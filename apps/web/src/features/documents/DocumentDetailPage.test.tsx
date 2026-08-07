@@ -23,8 +23,8 @@ const files = [
     id: 'scan-1',
     documentId: 'document-1',
     role: 'signed-scan',
-    fileName: 'podpisany-skan.pdf',
-    contentType: 'application/pdf',
+    fileName: 'podpisany-skan.jpg',
+    contentType: 'image/jpeg',
     sizeBytes: 2048,
     storageKey: 'scan-key',
     createdAt: '2026-07-19T10:00:00.000Z',
@@ -69,8 +69,12 @@ describe('DocumentDetailPage', () => {
     await renderPage();
 
     expect(await screen.findByText('oryginal.pdf')).toBeInTheDocument();
-    expect(screen.getByText('podpisany-skan.pdf')).toBeInTheDocument();
+    expect(screen.getByText('podpisany-skan.jpg')).toBeInTheDocument();
     expect(screen.getAllByText(/Podpisany skan/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('img', { name: 'Podgląd: podpisany-skan.jpg' })).toHaveAttribute(
+      'src',
+      '/api/documents/document-1/files/scan-1/content',
+    );
 
     const deleteButton = screen.getAllByRole('button', { name: 'Usuń' }).at(0);
     if (!deleteButton) throw new Error('Missing delete file button');

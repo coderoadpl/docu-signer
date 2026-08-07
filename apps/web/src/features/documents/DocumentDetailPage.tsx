@@ -119,13 +119,22 @@ const Preview = ({ documentId, files }: { documentId: string; files: DocumentFil
         {previewFiles.map((file) => (
           <Box key={file.id} sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="overline">{FILE_ROLE_LABELS[file.role]}</Typography>
-            <PdfPreview
-              data={actions.fileContentUrl(documentId, file.id)}
-              type="application/pdf"
-              aria-label={`Podgląd: ${file.fileName}`}
-            >
-              <Link href={actions.fileContentUrl(documentId, file.id)}>Otwórz {file.fileName}</Link>
-            </PdfPreview>
+            {file.contentType.toLowerCase().startsWith('image/') ? (
+              <Box
+                component="img"
+                src={actions.fileContentUrl(documentId, file.id)}
+                alt={`Podgląd: ${file.fileName}`}
+                sx={{ display: 'block', width: '100%', maxHeight: '32rem', objectFit: 'contain' }}
+              />
+            ) : (
+              <PdfPreview
+                data={actions.fileContentUrl(documentId, file.id)}
+                type={file.contentType}
+                aria-label={`Podgląd: ${file.fileName}`}
+              >
+                <Link href={actions.fileContentUrl(documentId, file.id)}>Otwórz {file.fileName}</Link>
+              </PdfPreview>
+            )}
           </Box>
         ))}
       </Stack>

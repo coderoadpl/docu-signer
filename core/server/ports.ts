@@ -29,6 +29,10 @@ export interface DocumentRepository {
   ): Promise<Result<Document[], AppError>>;
   findById(tenantId: string, documentId: string): Promise<Result<Document | null, AppError>>;
   listFiles(tenantId: string, documentId: string): Promise<Result<DocumentFile[], AppError>>;
+  listFilesForDocuments(
+    tenantId: string,
+    documentIds: string[],
+  ): Promise<Result<DocumentFile[], AppError>>;
   create(
     input: Omit<Document, 'createdAt' | 'updatedAt'>,
   ): Promise<Result<Document, AppError>>;

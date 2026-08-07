@@ -78,13 +78,17 @@ export const listDocuments = async (
   if (!parsed.success) return err(validation('Invalid document filters', parsed.error.flatten()));
   const documents = await deps.documents.listByTenant(tenantId.value, parsed.data);
   if (!documents.ok) return documents;
-  const withFiles: DocumentWithFiles[] = [];
-  for (const document of documents.value) {
-    const files = await deps.documents.listFiles(tenantId.value, document.id);
-    if (!files.ok) return files;
-    withFiles.push({ ...document, files: files.value });
-  }
-  return ok(withFiles);
+  const files = await deps.documents.listFilesForDocuments(
+    tenantId.value,
+    documents.value.map((document) => document.id),
+  );
+  if (!files.ok) return files;
+  return ok(
+    documents.value.map((document) => ({
+      ...document,
+      files: files.value.filter((file) => file.documentId === document.id),
+    })),
+  );
 };
 
 export const getDocument = async (

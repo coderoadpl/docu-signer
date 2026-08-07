@@ -41,6 +41,7 @@ const baseDeps = (): AppDeps => ({
     listByTenant: async () => ok([]),
     findById: async () => ok(null),
     listFiles: async () => ok([]),
+    listFilesForDocuments: async () => ok([]),
     create: async () => ok({
       id: 'document-1',
       tenantId: 'tenant-default',
@@ -130,6 +131,7 @@ const authenticatedDeps = (): AppDeps => {
     listByTenant: async () => ok([document]),
     findById: async (_tenantId, documentId) => ok(documentId === document.id ? document : null),
     listFiles: async () => ok([file]),
+    listFilesForDocuments: async () => ok([file]),
     create: async () => ok(document),
     update: async () => ok(document),
     delete: async () => ok(true),
@@ -157,7 +159,7 @@ describe('buildApp routes', () => {
     const oversized = JSON.stringify({ slug: 'a', name: 'x'.repeat(200 * 1024) });
     const res = await buildApp(baseDeps()).request(API_PATHS.tenants, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'text/plain' },
       body: oversized,
     });
 
@@ -334,6 +336,62 @@ describe('buildApp routes', () => {
       },
     );
     expect(response.status).toBe(200);
+  });
+
+  it('rejects server uploads above 25MB with a validation envelope', async () => {
+    const path = API_ROUTES.documentFileServerUpload.path.replace(':documentId', document.id);
+    const response = await buildApp(authenticatedDeps()).request(
+      `${path}?fileName=scan.jpg&role=signed-scan`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'image/jpeg' },
+        body: new Uint8Array(25 * 1024 * 1024 + 1),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    const body = looseEnvelopeSchema.parse(await response.json());
+    expect(body.ok).toBe(false);
+    if (!body.ok) expect(body.error.code).toBe('validation');
+  });
+
+  it('rejects unsupported upload content types on request and finalize routes', async () => {
+    const app = buildApp(authenticatedDeps());
+    const uploadRequestPath = API_ROUTES.documentFileUploadRequest.path.replace(':documentId', document.id);
+    const finalizePath = API_ROUTES.documentFileFinalize.path.replace(':documentId', document.id);
+    const responses = await Promise.all([
+      app.request(uploadRequestPath, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ fileName: 'notes.txt', contentType: 'text/plain', role: 'other' }),
+      }),
+      app.request(finalizePath, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          key: 'documents/tenant-default/document-1/storage-id',
+          fileName: 'page.html',
+          contentType: 'text/html',
+          sizeBytes: 3,
+          role: 'source',
+        }),
+      }),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([400, 400]);
+  });
+
+  it('serves unsupported stored content types as attachments', async () => {
+    const deps = authenticatedDeps();
+    deps.documents.findFile = async () =>
+      ok({ ...file, fileName: 'legacy.html', contentType: 'text/html' });
+    const path = API_ROUTES.documentFileContent.path
+      .replace(':documentId', document.id)
+      .replace(':fileId', file.id);
+    const response = await buildApp(deps).request(path);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toMatch(/^attachment;/);
   });
 
   it('exposes the constant default tenant in me', async () => {

@@ -306,7 +306,7 @@ export default tseslint.config(
             },
             {
               from: ['web-test'],
-              allow: ['web-test'],
+              allow: ['web-test', 'web-theme'],
             },
             {
               from: ['web-ui'],

@@ -20,6 +20,7 @@ import {
 import {
   err,
   internal,
+  isAllowedDocumentContentType,
   ok,
   unauthorized,
   validation,
@@ -51,6 +52,8 @@ import type { AppDeps } from './composition.js';
 import { recordAppError, recordException, telemetryMiddleware } from './telemetry.js';
 
 type Vars = { Variables: { identity: Identity } };
+
+const SERVER_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 
 const respond = <T>(result: Result<T, AppError>): Response => {
   const envelope = toEnvelope(result);
@@ -90,7 +93,7 @@ export const buildApp = (deps: AppDeps) => {
         styleSrc: ["'self'", "'unsafe-inline'"],
         connectSrc: ["'self'"],
         imgSrc: ["'self'", 'data:'],
-        objectSrc: ["'self'"],
+        objectSrc: ["'self'"], // WHY: same-origin PDF previews are embedded with <object>.
         baseUri: ["'self'"],
         frameAncestors: ["'none'"],
       },
@@ -104,11 +107,18 @@ export const buildApp = (deps: AppDeps) => {
     maxSize: 100 * 1024,
     onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
   });
-  app.use('/api/*', async (c, next) =>
-    c.req.header('content-type')?.startsWith('application/json')
-      ? jsonBodyLimit(c, next)
-      : next(),
-  );
+  app.use(API_PATHS.tenants, jsonBodyLimit);
+  app.use(API_PATHS.todos, jsonBodyLimit);
+  app.use(API_PATHS.documents, jsonBodyLimit);
+  app.use(API_ROUTES.documentUpdate.path, jsonBodyLimit);
+  app.use(API_ROUTES.documentFileUploadRequest.path, jsonBodyLimit);
+  app.use(API_ROUTES.documentFileFinalize.path, jsonBodyLimit);
+
+  const serverUploadBodyLimit = bodyLimit({
+    maxSize: SERVER_UPLOAD_MAX_BYTES,
+    onError: () => respond(err(validation('Uploaded file exceeds the 25MB limit'))),
+  });
+  app.use(API_ROUTES.documentFileServerUpload.path, serverUploadBodyLimit);
 
   app.use('*', telemetryMiddleware);
 
@@ -323,12 +333,13 @@ export const buildApp = (deps: AppDeps) => {
     if (!result.ok) return respond(result);
     const encodedName = encodeURIComponent(result.value.fileName);
     const fallbackName = result.value.fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+    const disposition = isAllowedDocumentContentType(result.value.contentType) ? 'inline' : 'attachment';
     const body = new ArrayBuffer(result.value.bytes.byteLength);
     new Uint8Array(body).set(result.value.bytes);
     return new Response(body, {
       headers: {
         'content-type': result.value.contentType,
-        'content-disposition': `inline; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+        'content-disposition': `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
         'cache-control': 'private, no-store',
       },
     });

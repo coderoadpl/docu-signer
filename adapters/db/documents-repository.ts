@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, lte, sql, type SQL } from 'drizzle-orm';
 
 import {
   documentFileSchema,
@@ -73,6 +73,17 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
         .from(documentFiles)
         .innerJoin(documents, eq(documentFiles.documentId, documents.id))
         .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
+        .orderBy(documentFiles.createdAt);
+      return rows.map((row) => toDocumentFile(row.file));
+    }),
+  listFilesForDocuments: async (tenantId, documentIds) =>
+    databaseResult(async () => {
+      if (documentIds.length === 0) return [];
+      const rows = await db
+        .select({ file: documentFiles })
+        .from(documentFiles)
+        .innerJoin(documents, eq(documentFiles.documentId, documents.id))
+        .where(and(eq(documents.tenantId, tenantId), inArray(documents.id, documentIds)))
         .orderBy(documentFiles.createdAt);
       return rows.map((row) => toDocumentFile(row.file));
     }),

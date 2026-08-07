@@ -5,6 +5,8 @@ import {
   documentFileSchema,
   documentListFilterSchema,
   documentSchema,
+  fileUploadRequestSchema,
+  finalizeFileUploadSchema,
 } from './document.js';
 
 describe('document schemas', () => {
@@ -45,5 +47,31 @@ describe('document schemas', () => {
     ).toEqual({ title: 'Agreement', docType: 'inny', documentDate: '2026-07-18', tags: [] });
     expect(createDocumentSchema.safeParse({ title: '', docType: 'other', documentDate: '2026-02-30' }).success).toBe(false);
     expect(documentListFilterSchema.safeParse({ dateFrom: '2026-07-19', dateTo: '2026-07-18' }).success).toBe(false);
+  });
+
+  it('accepts only PDF and image upload content types', () => {
+    expect(
+      fileUploadRequestSchema.safeParse({
+        fileName: 'scan.png',
+        contentType: 'image/png',
+        role: 'signed-scan',
+      }).success,
+    ).toBe(true);
+    expect(
+      fileUploadRequestSchema.safeParse({
+        fileName: 'notes.txt',
+        contentType: 'text/plain',
+        role: 'other',
+      }).success,
+    ).toBe(false);
+    expect(
+      finalizeFileUploadSchema.safeParse({
+        key: 'key',
+        fileName: 'page.html',
+        contentType: 'text/html',
+        sizeBytes: 10,
+        role: 'source',
+      }).success,
+    ).toBe(false);
   });
 });

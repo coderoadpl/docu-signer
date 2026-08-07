@@ -81,9 +81,23 @@ export const documentListFilterSchema = z
 
 export type DocumentListFilter = z.input<typeof documentListFilterSchema>;
 
+export const isAllowedDocumentContentType = (contentType: string): boolean => {
+  const normalized = contentType.trim().toLowerCase();
+  return (
+    normalized === 'application/pdf' ||
+    (normalized.startsWith('image/') && normalized.length > 'image/'.length)
+  );
+};
+
+export const documentUploadContentTypeSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine(isAllowedDocumentContentType, 'Only PDF and image files are allowed');
+
 export const fileUploadRequestSchema = z.object({
   fileName: z.string().trim().min(1),
-  contentType: z.string().trim().min(1),
+  contentType: documentUploadContentTypeSchema,
   role: documentFileRoleSchema,
 });
 
@@ -92,7 +106,7 @@ export type FileUploadRequest = z.infer<typeof fileUploadRequestSchema>;
 export const finalizeFileUploadSchema = z.object({
   key: z.string().min(1),
   fileName: z.string().trim().min(1),
-  contentType: z.string().trim().min(1),
+  contentType: documentUploadContentTypeSchema,
   sizeBytes: z.number().int().nonnegative(),
   role: documentFileRoleSchema,
 });

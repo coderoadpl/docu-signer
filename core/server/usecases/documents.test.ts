@@ -69,6 +69,16 @@ const fakeRepository = (initial: Document[] = []) => {
           ? files.filter((file) => file.documentId === documentId)
           : [],
       ),
+    listFilesForDocuments: async (tenantId, documentIds) =>
+      ok(
+        files.filter(
+          (file) =>
+            documentIds.includes(file.documentId) &&
+            documents.some(
+              (row) => row.tenantId === tenantId && row.id === file.documentId,
+            ),
+        ),
+      ),
     create: async (input) => {
       const created = {
         ...input,
@@ -193,6 +203,12 @@ describe('documents use-cases', () => {
     const first = { ...document('one'), title: 'Board resolution', documentDate: '2026-01-02', person: 'Ada' };
     const second = { ...document('two'), title: 'Older resolution', documentDate: '2026-01-01', person: 'Ada' };
     const repository = fakeRepository([second, document('other', 't-other'), first]);
+    const listFilesForDocuments = repository.repo.listFilesForDocuments;
+    let listedDocumentIds: string[] = [];
+    repository.repo.listFilesForDocuments = async (tenantId, documentIds) => {
+      listedDocumentIds = documentIds;
+      return listFilesForDocuments(tenantId, documentIds);
+    };
     const storage = fakeStorage();
     const filter: DocumentListFilter = { docType: 'uchwala', person: 'Ada', text: 'resolution' };
     const result = await listDocuments(
@@ -201,6 +217,7 @@ describe('documents use-cases', () => {
       deps(repository.repo, storage.storage),
     );
     expect(result.ok && result.value.map((row) => row.id)).toEqual(['one', 'two']);
+    expect(listedDocumentIds).toEqual(['one', 'two']);
   });
 
   it('reads files, updates, deletes, and maps missing rows to not_found', async () => {
@@ -338,7 +355,7 @@ describe('documents use-cases', () => {
     const invalidKey = await finalizeFileUpload(
       { identity: identity('t-default') },
       'doc-1',
-      { key: 'documents/t-other/doc-1/x', fileName: 'a', contentType: 'x', sizeBytes: 1, role: 'other' },
+      { key: 'documents/t-other/doc-1/x', fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 1, role: 'other' },
       deps(repository.repo, localStorage.storage),
     );
     expect(invalidKey).toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -385,14 +402,14 @@ describe('documents use-cases', () => {
     expect(await finalizeFileUpload(ctx, 'doc-1', { key: 'x', fileName: 'x', contentType: 'x', sizeBytes: -1, role: 'other' }, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await updateDocument(ctx, 'missing', createInput, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await deleteDocument(ctx, 'missing', usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(await requestFileUpload(ctx, 'missing', { fileName: 'x', contentType: 'x', role: 'other' }, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await requestFileUpload(ctx, 'missing', { fileName: 'x.pdf', contentType: 'application/pdf', role: 'other' }, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await removeFile(ctx, 'doc-1', 'missing', usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
 
     storage.storage.createUploadUrl = async () => err(internal('target failed'));
-    expect(await requestFileUpload(ctx, 'doc-1', { fileName: 'x', contentType: 'x', role: 'other' }, usecaseDeps)).toEqual(err(internal('target failed')));
+    expect(await requestFileUpload(ctx, 'doc-1', { fileName: 'x.pdf', contentType: 'application/pdf', role: 'other' }, usecaseDeps)).toEqual(err(internal('target failed')));
     storage.storage.createUploadUrl = async () => ok(null);
     storage.storage.put = async () => err(internal('put failed'));
-    expect(await serverUpload(ctx, 'doc-1', { fileName: 'x', contentType: 'x', role: 'other', bytes: new Uint8Array([1]) }, usecaseDeps)).toEqual(err(internal('put failed')));
+    expect(await serverUpload(ctx, 'doc-1', { fileName: 'x.pdf', contentType: 'application/pdf', role: 'other', bytes: new Uint8Array([1]) }, usecaseDeps)).toEqual(err(internal('put failed')));
   });
 
   it('cleans up a server upload when finalization fails and propagates removal failures', async () => {
@@ -401,7 +418,7 @@ describe('documents use-cases', () => {
     const storage = fakeStorage();
     repository.repo.createFile = async () => err(internal('insert failed'));
     const uploadDeps = deps(repository.repo, storage.storage, ['storage-id']);
-    expect(await serverUpload(ctx, 'doc-1', { fileName: 'x', contentType: 'x', role: 'other', bytes: new Uint8Array([1]) }, uploadDeps)).toEqual(err(internal('insert failed')));
+    expect(await serverUpload(ctx, 'doc-1', { fileName: 'x.pdf', contentType: 'application/pdf', role: 'other', bytes: new Uint8Array([1]) }, uploadDeps)).toEqual(err(internal('insert failed')));
     expect(storage.objects.size).toBe(0);
 
     repository.files.push({
