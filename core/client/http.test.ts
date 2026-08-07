@@ -127,6 +127,50 @@ describe('createApiClient', () => {
     expect(contentType).toBeNull();
   });
 
+  it('builds file-content URLs and maps direct upload status to a Result', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://blob.example/upload');
+      expect(init).toMatchObject({ method: 'PUT', headers: { authorization: 'token' } });
+      expect(new Uint8Array(await new Response(init?.body).arrayBuffer())).toEqual(
+        new Uint8Array([1, 2, 3]),
+      );
+      return new Response(null, { status: 201 });
+    };
+    const client = createApiClient({ baseUrl: '/base', fetchImpl });
+
+    expect(client.fileContentUrl('document/id', 'file/id')).toBe(
+      '/base/api/documents/document%2Fid/files/file%2Fid/content',
+    );
+    await expect(
+      client.directFileUpload({
+        url: 'https://blob.example/upload',
+        method: 'PUT',
+        headers: { authorization: 'token' },
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
+    ).resolves.toEqual({ ok: true, value: undefined });
+  });
+
+  it('maps failed direct uploads to internal errors', async () => {
+    const failed = createApiClient({
+      baseUrl: '',
+      fetchImpl: async () => new Response(null, { status: 503 }),
+    });
+    await expect(
+      failed.directFileUpload({ url: 'https://blob.example', method: 'PUT', headers: {}, bytes: new Uint8Array() }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'internal' } });
+
+    const offline = createApiClient({
+      baseUrl: '',
+      fetchImpl: async () => {
+        throw new Error('offline');
+      },
+    });
+    await expect(
+      offline.directFileUpload({ url: 'https://blob.example', method: 'PUT', headers: {}, bytes: new Uint8Array() }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+
   it('resolves listTodos and addTodo through their route schemas', async () => {
     const todo = {
       id: 'todo-1',
@@ -167,7 +211,7 @@ describe('createApiClient', () => {
       createdAt: '2026-07-18T00:00:00.000Z',
     };
     const responses: unknown[] = [
-      { documents: [document] },
+      { documents: [{ ...document, files: [file] }] },
       { document },
       { document: { ...document, files: [file] } },
       { document },

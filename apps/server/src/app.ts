@@ -33,6 +33,7 @@ import {
   createTenant,
   deleteDocument,
   finalizeFileUpload,
+  getFileContent,
   getDocument,
   listMyTenants,
   listTodos,
@@ -89,7 +90,7 @@ export const buildApp = (deps: AppDeps) => {
         styleSrc: ["'self'", "'unsafe-inline'"],
         connectSrc: ["'self'"],
         imgSrc: ["'self'", 'data:'],
-        objectSrc: ["'none'"],
+        objectSrc: ["'self'"],
         baseUri: ["'self'"],
         frameAncestors: ["'none'"],
       },
@@ -99,12 +100,14 @@ export const buildApp = (deps: AppDeps) => {
   // JSON payloads are small; a 100KB cap is a cheap DoS floor under Vercel's
   // 4.5MB platform backstop. The over-limit response stays an envelope so
   // clients never see a non-JSON body from the API.
-  app.use(
-    '/api/*',
-    bodyLimit({
-      maxSize: 100 * 1024,
-      onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
-    }),
+  const jsonBodyLimit = bodyLimit({
+    maxSize: 100 * 1024,
+    onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
+  });
+  app.use('/api/*', async (c, next) =>
+    c.req.header('content-type')?.startsWith('application/json')
+      ? jsonBodyLimit(c, next)
+      : next(),
   );
 
   app.use('*', telemetryMiddleware);
@@ -308,6 +311,27 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ deleted: true as const }) : result);
+  });
+
+  app.get(API_ROUTES.documentFileContent.path, async (c) => {
+    const result = await getFileContent(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    if (!result.ok) return respond(result);
+    const encodedName = encodeURIComponent(result.value.fileName);
+    const fallbackName = result.value.fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+    const body = new ArrayBuffer(result.value.bytes.byteLength);
+    new Uint8Array(body).set(result.value.bytes);
+    return new Response(body, {
+      headers: {
+        'content-type': result.value.contentType,
+        'content-disposition': `inline; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+        'cache-control': 'private, no-store',
+      },
+    });
   });
 
   return app;

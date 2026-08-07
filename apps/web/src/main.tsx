@@ -17,6 +17,8 @@ import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { LoginRoute } from './routes/login.js';
+import { DocumentDetailRoute } from './routes/document-detail.js';
+import { DocumentsRoute } from './routes/documents.js';
 import { TodosRoute } from './routes/todos.js';
 import { ThemeModeProvider } from './theme-mode.js';
 
@@ -46,8 +48,20 @@ const loginRoute = createRoute({
   path: '/login',
   component: LoginRoute,
 });
+const documentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/documents',
+  component: DocumentsRoute,
+});
+const documentDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/documents/$id',
+  component: DocumentDetailRoute,
+});
 
-const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, loginRoute]) });
+const router = createRouter({
+  routeTree: rootRoute.addChildren([indexRoute, loginRoute, documentsRoute, documentDetailRoute]),
+});
 
 declare module '@tanstack/react-router' {
   interface Register {

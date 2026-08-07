@@ -70,7 +70,7 @@ const happyApi: ApiClient = {
   createTenant: async (input) => ok({ tenant: { id: 't-new', slug: input.slug, name: input.name } }),
   listTodos: async () => ok({ todos: [todo] }),
   addTodo: async (input) => ok({ todo: { ...todo, title: input.title } }),
-  listDocuments: async () => ok({ documents: [document] }),
+  listDocuments: async () => ok({ documents: [{ ...document, files: [file] }] }),
   createDocument: async (input) => ok({ document: { ...document, ...input, tags: input.tags ?? [] } }),
   getDocument: async () => ok({ document: { ...document, files: [file] } }),
   updateDocument: async (_documentId, input) => ok({ document: { ...document, ...input, tags: input.tags ?? [] } }),
@@ -79,6 +79,8 @@ const happyApi: ApiClient = {
   finalizeFileUpload: async () => ok({ file }),
   serverUpload: async () => ok({ file }),
   removeFile: async () => ok({ deleted: true }),
+  fileContentUrl: () => '/content',
+  directFileUpload: async () => ok(undefined),
 };
 
 const sadApi: ApiClient = {
@@ -97,6 +99,8 @@ const sadApi: ApiClient = {
   finalizeFileUpload: async () => err(internal('boom')),
   serverUpload: async () => err(internal('boom')),
   removeFile: async () => err(internal('boom')),
+  fileContentUrl: () => '/content',
+  directFileUpload: async () => err(internal('boom')),
 };
 
 const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -127,7 +131,9 @@ describe('query descriptors', () => {
       tenants: [{ tenant, staffRole: 'owner' }],
     });
     await expect(client.fetchQuery(todosQuery(happyApi))).resolves.toEqual({ todos: [todo] });
-    await expect(client.fetchQuery(documentsQuery(happyApi))).resolves.toEqual({ documents: [document] });
+    await expect(client.fetchQuery(documentsQuery(happyApi))).resolves.toEqual({
+      documents: [{ ...document, files: [file] }],
+    });
     await expect(client.fetchQuery(documentQuery(happyApi, document.id))).resolves.toEqual({
       document: { ...document, files: [file] },
     });

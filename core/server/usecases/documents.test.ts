@@ -15,6 +15,7 @@ import {
   createDocument,
   deleteDocument,
   finalizeFileUpload,
+  getFileContent,
   getDocument,
   listDocuments,
   removeFile,
@@ -182,6 +183,7 @@ describe('documents use-cases', () => {
       deleteDocument(ctx, 'doc-1', usecaseDeps),
       requestFileUpload(ctx, 'doc-1', { fileName: 'a.pdf', contentType: 'application/pdf', role: 'source' }, usecaseDeps),
       finalizeFileUpload(ctx, 'doc-1', { key: 'x', fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 1, role: 'source' }, usecaseDeps),
+      getFileContent(ctx, 'doc-1', 'file-1', usecaseDeps),
       removeFile(ctx, 'doc-1', 'file-1', usecaseDeps),
     ]);
     expect(results.every((result) => !result.ok && result.error.code === 'tenant_not_found')).toBe(true);
@@ -229,6 +231,39 @@ describe('documents use-cases', () => {
       ok: false,
       error: { code: 'not_found' },
     });
+  });
+
+  it('reads tenant-owned file content with its metadata', async () => {
+    const repository = fakeRepository([document('doc-1')]);
+    repository.files.push({
+      id: 'file-1',
+      documentId: 'doc-1',
+      role: 'source',
+      fileName: 'źródło.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'content-key',
+      createdAt: '2026-07-18T10:00:00.000Z',
+    });
+    const storage = fakeStorage();
+    storage.objects.set('content-key', new Uint8Array([1, 2, 3]));
+    const result = await getFileContent(
+      { identity: identity('t-default') },
+      'doc-1',
+      'file-1',
+      deps(repository.repo, storage.storage),
+    );
+    expect(result).toEqual(
+      ok({ bytes: new Uint8Array([1, 2, 3]), contentType: 'application/pdf', fileName: 'źródło.pdf' }),
+    );
+    expect(
+      await getFileContent(
+        { identity: identity('t-default') },
+        'doc-1',
+        'missing',
+        deps(repository.repo, storage.storage),
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
   it('returns direct and server upload targets and finalizes tenant-owned keys', async () => {

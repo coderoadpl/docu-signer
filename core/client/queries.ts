@@ -20,7 +20,13 @@ import type {
 } from '#core/domain/index.js';
 
 import type { AuthClientPort } from './auth-port.js';
-import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
+import {
+  unwrap,
+  type ApiClient,
+  type DirectFileUploadInput,
+  type ReadResult,
+  type WriteResult,
+} from './http.js';
 
 /**
  * Identity helpers that type descriptors against `@tanstack/query-core` option
@@ -187,6 +193,12 @@ export const serverUploadMutation = (api: ApiClient) =>
     mutationKey: [...documentsScopes.all(), 'files', 'server-upload'],
     call: ({ documentId, input }: { documentId: string; input: FileUploadRequest & { bytes: Uint8Array } }) =>
       api.serverUpload(documentId, input),
+  });
+
+export const directFileUploadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'direct-upload'],
+    call: (input: DirectFileUploadInput) => api.directFileUpload(input),
   });
 
 export const removeFileMutation = (api: ApiClient) =>

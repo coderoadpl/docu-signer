@@ -34,6 +34,12 @@ export type FileUploadTarget =
   | { kind: 'direct'; key: string; target: UploadTarget }
   | { kind: 'server'; key: string };
 
+export interface FileContent {
+  bytes: Uint8Array;
+  contentType: string;
+  fileName: string;
+}
+
 const tenantIdFrom = (ctx: Ctx, action: string): Result<string, AppError> =>
   ctx.identity.tenantId
     ? ok(ctx.identity.tenantId)
@@ -65,12 +71,20 @@ export const listDocuments = async (
   ctx: Ctx,
   filter: DocumentListFilter,
   deps: DocumentDeps,
-): Promise<Result<Document[], AppError>> => {
+): Promise<Result<DocumentWithFiles[], AppError>> => {
   const tenantId = tenantIdFrom(ctx, 'list documents');
   if (!tenantId.ok) return tenantId;
   const parsed = documentListFilterSchema.safeParse(filter);
   if (!parsed.success) return err(validation('Invalid document filters', parsed.error.flatten()));
-  return deps.documents.listByTenant(tenantId.value, parsed.data);
+  const documents = await deps.documents.listByTenant(tenantId.value, parsed.data);
+  if (!documents.ok) return documents;
+  const withFiles: DocumentWithFiles[] = [];
+  for (const document of documents.value) {
+    const files = await deps.documents.listFiles(tenantId.value, document.id);
+    if (!files.ok) return files;
+    withFiles.push({ ...document, files: files.value });
+  }
+  return ok(withFiles);
 };
 
 export const getDocument = async (
@@ -215,4 +229,25 @@ export const removeFile = async (
   const deleted = await deps.documents.deleteFile(tenantId.value, documentId, fileId);
   if (!deleted.ok) return deleted;
   return deleted.value ? ok(undefined) : err(notFound('Document file not found'));
+};
+
+export const getFileContent = async (
+  ctx: Ctx,
+  documentId: string,
+  fileId: string,
+  deps: DocumentDeps,
+): Promise<Result<FileContent, AppError>> => {
+  const tenantId = tenantIdFrom(ctx, 'read files');
+  if (!tenantId.ok) return tenantId;
+  const file = await deps.documents.findFile(tenantId.value, documentId, fileId);
+  if (!file.ok) return file;
+  if (!file.value) return err(notFound('Document file not found'));
+  const bytes = await deps.storage.get(file.value.storageKey);
+  if (!bytes.ok) return bytes;
+  if (!bytes.value) return err(notFound('Document file content not found'));
+  return ok({
+    bytes: bytes.value,
+    contentType: file.value.contentType,
+    fileName: file.value.fileName,
+  });
 };

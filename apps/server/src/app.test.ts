@@ -137,6 +137,7 @@ const authenticatedDeps = (): AppDeps => {
     findFile: async () => ok(file),
     deleteFile: async () => ok(true),
   };
+  deps.storage.get = async () => ok(new Uint8Array([1, 2, 3]));
   return deps;
 };
 
@@ -217,7 +218,7 @@ describe('buildApp routes', () => {
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     const csp = res.headers.get('content-security-policy');
     expect(csp).toContain("script-src 'self'");
-    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("object-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
   });
 
@@ -310,8 +311,29 @@ describe('buildApp routes', () => {
     const removePath = API_ROUTES.documentFileDelete.path
       .replace(':documentId', document.id)
       .replace(':fileId', file.id);
+    const contentPath = API_ROUTES.documentFileContent.path
+      .replace(':documentId', document.id)
+      .replace(':fileId', file.id);
+    const contentResponse = await app.request(contentPath);
+    expect(contentResponse.status).toBe(200);
+    expect(contentResponse.headers.get('content-type')).toBe('application/pdf');
+    expect(contentResponse.headers.get('content-disposition')).toContain("filename*=UTF-8''source.pdf");
+    expect(new Uint8Array(await contentResponse.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
     expect((await app.request(removePath, { method: 'DELETE' })).status).toBe(200);
     expect((await app.request(detailPath, { method: 'DELETE' })).status).toBe(200);
+  });
+
+  it('allows scan bytes above the JSON body limit on the server upload route', async () => {
+    const path = API_ROUTES.documentFileServerUpload.path.replace(':documentId', document.id);
+    const response = await buildApp(authenticatedDeps()).request(
+      `${path}?fileName=scan.jpg&role=signed-scan`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'image/jpeg' },
+        body: new Uint8Array(120 * 1024),
+      },
+    );
+    expect(response.status).toBe(200);
   });
 
   it('exposes the constant default tenant in me', async () => {

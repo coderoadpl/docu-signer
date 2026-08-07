@@ -196,6 +196,9 @@ const TenantLedger = ({
             animation: 'settle 0.5s 0.08s ease-out both',
           }}
         >
+          <Link href="/documents" variant="body2">
+            Dokumenty
+          </Link>
           <Typography variant="overline">your tenants →</Typography>
           {tenants.data?.tenants.map((m) => {
             const active = m.tenant.id === tenant.id;

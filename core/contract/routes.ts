@@ -72,7 +72,7 @@ export const todoCreateOutputSchema = z.object({
 export const documentListInputSchema = documentListFilterSchema;
 
 export const documentListOutputSchema = z.object({
-  documents: z.array(documentSchema),
+  documents: z.array(documentWithFilesSchema),
 });
 
 export const documentCreateInputSchema = createDocumentSchema;
@@ -154,6 +154,10 @@ export const API_ROUTES = {
   documentFileDelete: {
     method: 'DELETE',
     path: '/api/documents/:documentId/files/:fileId',
+  },
+  documentFileContent: {
+    method: 'GET',
+    path: '/api/documents/:documentId/files/:fileId/content',
   },
 } as const;
 

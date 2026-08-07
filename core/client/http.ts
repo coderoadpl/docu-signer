@@ -101,6 +101,34 @@ const binaryBody = (bytes: Uint8Array): ArrayBuffer => {
   return body;
 };
 
+export interface DirectFileUploadInput {
+  url: string;
+  method: 'PUT';
+  headers: Record<string, string>;
+  bytes: Uint8Array;
+}
+
+const directFileUpload = async (
+  options: ApiClientOptions,
+  input: DirectFileUploadInput,
+  signal?: AbortSignal,
+): Promise<WriteResult<void>> => {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  try {
+    const response = await fetchImpl(input.url, {
+      method: input.method,
+      headers: input.headers,
+      body: binaryBody(input.bytes),
+      signal: signal ?? null,
+    });
+    return response.ok
+      ? ok(undefined)
+      : err(internal(`Direct upload failed (HTTP ${response.status})`));
+  } catch (cause) {
+    return err(internal(`Network error uploading file: ${String(cause)}`));
+  }
+};
+
 const pathWith = (path: string, values: Record<string, string>): string => {
   let resolved = path;
   for (const [name, value] of Object.entries(values)) {
@@ -108,6 +136,9 @@ const pathWith = (path: string, values: Record<string, string>): string => {
   }
   return resolved;
 };
+
+export const documentFileContentPath = (documentId: string, fileId: string): string =>
+  pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId });
 
 const listPath = (filter: DocumentListFilter): string => {
   const query = new URLSearchParams();
@@ -153,6 +184,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
   },
   removeFile: (documentId: string, fileId: string, signal?: AbortSignal) =>
     request(options, API_ROUTES.documentFileDelete.method, pathWith(API_ROUTES.documentFileDelete.path, { documentId, fileId }), documentFileDeleteOutputSchema, undefined, undefined, signal),
+  fileContentUrl: (documentId: string, fileId: string) =>
+    `${options.baseUrl}${documentFileContentPath(documentId, fileId)}`,
+  directFileUpload: (input: DirectFileUploadInput, signal?: AbortSignal) =>
+    directFileUpload(options, input, signal),
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;
