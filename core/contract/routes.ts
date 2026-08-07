@@ -6,6 +6,7 @@ import {
   documentListFilterSchema,
   documentSchema,
   documentWithFilesSchema,
+  exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
   membershipSchema,
@@ -122,6 +123,8 @@ export const documentFileDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
+export const exportDocumentsInputSchema = exportDocumentsSchema;
+
 /**
  * Every route carries its HTTP method so clients can discriminate reads from
  * writes at the type level (CQRS partition). Safe GETs are queries; unsafe
@@ -158,6 +161,14 @@ export const API_ROUTES = {
   documentFileContent: {
     method: 'GET',
     path: '/api/documents/:documentId/files/:fileId/content',
+  },
+  documentFileExport: {
+    method: 'GET',
+    path: '/api/documents/:documentId/files/:fileId/export',
+  },
+  documentsExport: {
+    method: 'POST',
+    path: '/api/export',
   },
 } as const;
 

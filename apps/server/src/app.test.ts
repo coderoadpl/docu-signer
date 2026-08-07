@@ -1,3 +1,5 @@
+import { unzipSync } from 'fflate';
+import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
 import { BETTER_AUTH_SIGN_UP_PATH, createAuth } from '#adapters/auth/create-auth.js';
@@ -116,6 +118,15 @@ const file = {
   sizeBytes: 3,
   storageKey: 'documents/tenant-default/document-1/storage-id',
   createdAt: '2026-07-18T00:00:00.000Z',
+};
+
+const metadataPdf = async (): Promise<Uint8Array> => {
+  const pdf = await PDFDocument.create();
+  pdf.addPage();
+  pdf.setTitle('Private title');
+  pdf.setCreator('Private creator');
+  pdf.setCreationDate(new Date('2024-01-02T03:04:05.000Z'));
+  return pdf.save();
 };
 
 const authenticatedDeps = (): AppDeps => {
@@ -323,6 +334,70 @@ describe('buildApp routes', () => {
     expect(new Uint8Array(await contentResponse.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
     expect((await app.request(removePath, { method: 'DELETE' })).status).toBe(200);
     expect((await app.request(detailPath, { method: 'DELETE' })).status).toBe(200);
+  });
+
+  it('authenticates and tenant-scopes a clean single-file export', async () => {
+    const exportPath = API_ROUTES.documentFileExport.path
+      .replace(':documentId', document.id)
+      .replace(':fileId', file.id);
+    const unauthenticated = await buildApp(baseDeps()).request(exportPath);
+    expect(unauthenticated.status).toBe(401);
+
+    const deps = authenticatedDeps();
+    deps.storage.get = async () => ok(await metadataPdf());
+    const response = await buildApp(deps).request(exportPath);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/pdf');
+    expect(response.headers.get('content-disposition')).toContain(
+      "filename*=UTF-8''2026-07-18--agreement--source.pdf",
+    );
+    const exported = await PDFDocument.load(await response.arrayBuffer(), { updateMetadata: false });
+    expect(exported.context.trailerInfo.Info).toBeUndefined();
+    expect(exported.getTitle()).toBeUndefined();
+    expect(exported.getCreator()).toBeUndefined();
+    expect(exported.getCreationDate()).toBeUndefined();
+
+    const foreignPath = API_ROUTES.documentFileExport.path
+      .replace(':documentId', 'foreign-document')
+      .replace(':fileId', file.id);
+    expect((await buildApp(deps).request(foreignPath)).status).toBe(404);
+  });
+
+  it('returns a tenant-scoped bulk ZIP and validates the 100-id limit', async () => {
+    const deps = authenticatedDeps();
+    deps.storage.get = async () => ok(await metadataPdf());
+    const response = await buildApp(deps).request(API_ROUTES.documentsExport.path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentIds: [document.id, 'foreign-document'] }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/zip');
+    expect(response.headers.get('content-disposition')).toContain(
+      "filename*=UTF-8''eksport-dokumentow.zip",
+    );
+    const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
+    expect(Object.keys(archive)).toEqual(['2026-07-18--agreement/source--source.pdf']);
+    const archivedPdf = archive['2026-07-18--agreement/source--source.pdf'];
+    if (!archivedPdf) throw new Error('Missing exported PDF');
+    const exported = await PDFDocument.load(archivedPdf, {
+      updateMetadata: false,
+    });
+    expect(exported.context.trailerInfo.Info).toBeUndefined();
+
+    const tooMany = await buildApp(deps).request(API_ROUTES.documentsExport.path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentIds: Array.from({ length: 101 }, (_, index) => `id-${index}`) }),
+    });
+    expect(tooMany.status).toBe(400);
+
+    const noneOwned = await buildApp(deps).request(API_ROUTES.documentsExport.path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentIds: ['foreign-document'] }),
+    });
+    expect(noneOwned.status).toBe(404);
   });
 
   it('allows scan bytes above the JSON body limit on the server upload route', async () => {

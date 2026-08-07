@@ -127,7 +127,7 @@ describe('createApiClient', () => {
     expect(contentType).toBeNull();
   });
 
-  it('builds file-content URLs and maps direct upload status to a Result', async () => {
+  it('builds file-content and export URLs and maps direct upload status to a Result', async () => {
     const fetchImpl: typeof fetch = async (input, init) => {
       expect(input).toBe('https://blob.example/upload');
       expect(init).toMatchObject({ method: 'PUT', headers: { authorization: 'token' } });
@@ -141,6 +141,9 @@ describe('createApiClient', () => {
     expect(client.fileContentUrl('document/id', 'file/id')).toBe(
       '/base/api/documents/document%2Fid/files/file%2Fid/content',
     );
+    expect(client.fileExportUrl('document/id', 'file/id')).toBe(
+      '/base/api/documents/document%2Fid/files/file%2Fid/export',
+    );
     await expect(
       client.directFileUpload({
         url: 'https://blob.example/upload',
@@ -149,6 +152,46 @@ describe('createApiClient', () => {
         bytes: new Uint8Array([1, 2, 3]),
       }),
     ).resolves.toEqual({ ok: true, value: undefined });
+  });
+
+  it('downloads a bulk export through the write transport', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('/api/export');
+      expect(init).toMatchObject({
+        method: 'POST',
+        credentials: 'include',
+        body: JSON.stringify({ documentIds: ['document-1'] }),
+      });
+      return new Response(new Uint8Array([1, 2, 3]), {
+        headers: {
+          'content-type': 'application/zip',
+          'content-disposition': "attachment; filename*=UTF-8''eksport-dokumentow.zip",
+        },
+      });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(client.exportDocuments({ documentIds: ['document-1'] })).resolves.toEqual({
+      ok: true,
+      value: {
+        bytes: new Uint8Array([1, 2, 3]),
+        contentType: 'application/zip',
+        fileName: 'eksport-dokumentow.zip',
+      },
+    });
+  });
+
+  it('parses bulk export error envelopes', async () => {
+    const client = createApiClient({
+      baseUrl: '',
+      fetchImpl: async () =>
+        jsonResponse({ ok: false, error: { code: 'not_found', message: 'Documents not found' } }, 404),
+    });
+
+    await expect(client.exportDocuments({ documentIds: ['missing'] })).resolves.toEqual({
+      ok: false,
+      error: { code: 'not_found', message: 'Documents not found' },
+    });
   });
 
   it('maps failed direct uploads to internal errors', async () => {

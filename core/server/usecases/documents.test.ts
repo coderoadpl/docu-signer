@@ -14,8 +14,10 @@ import type { DocumentRepository, StoragePort } from '../ports.js';
 import {
   createDocument,
   deleteDocument,
+  exportDocuments,
   finalizeFileUpload,
   getFileContent,
+  getFileExport,
   getDocument,
   listDocuments,
   removeFile,
@@ -194,6 +196,8 @@ describe('documents use-cases', () => {
       requestFileUpload(ctx, 'doc-1', { fileName: 'a.pdf', contentType: 'application/pdf', role: 'source' }, usecaseDeps),
       finalizeFileUpload(ctx, 'doc-1', { key: 'x', fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 1, role: 'source' }, usecaseDeps),
       getFileContent(ctx, 'doc-1', 'file-1', usecaseDeps),
+      getFileExport(ctx, 'doc-1', 'file-1', usecaseDeps),
+      exportDocuments(ctx, { documentIds: ['doc-1'] }, usecaseDeps),
       removeFile(ctx, 'doc-1', 'file-1', usecaseDeps),
     ]);
     expect(results.every((result) => !result.ok && result.error.code === 'tenant_not_found')).toBe(true);
@@ -281,6 +285,147 @@ describe('documents use-cases', () => {
         deps(repository.repo, storage.storage),
       ),
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('collects tenant-owned exports and skips foreign or missing ids', async () => {
+    const repository = fakeRepository([document('doc-1'), document('foreign', 't-other')]);
+    repository.files.push({
+      id: 'file-1',
+      documentId: 'doc-1',
+      role: 'source',
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'content-key',
+      createdAt: '2026-07-18T10:00:00.000Z',
+    });
+    const storage = fakeStorage();
+    storage.objects.set('content-key', new Uint8Array([1, 2, 3]));
+    const usecaseDeps = deps(repository.repo, storage.storage);
+
+    const single = await getFileExport(
+      { identity: identity('t-default') },
+      'doc-1',
+      'file-1',
+      usecaseDeps,
+    );
+    expect(single).toMatchObject({
+      ok: true,
+      value: { document: { id: 'doc-1' }, file: { id: 'file-1' }, bytes: new Uint8Array([1, 2, 3]) },
+    });
+
+    const bulk = await exportDocuments(
+      { identity: identity('t-default') },
+      { documentIds: ['doc-1', 'foreign', 'missing'] },
+      usecaseDeps,
+    );
+    expect(bulk).toMatchObject({
+      ok: true,
+      value: [{ document: { id: 'doc-1' }, files: [{ file: { id: 'file-1' } }] }],
+    });
+    expect(
+      await exportDocuments(
+        { identity: identity('t-default') },
+        { documentIds: ['foreign', 'missing'] },
+        usecaseDeps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('validates bulk export size and reports missing export content', async () => {
+    const repository = fakeRepository([document('doc-1')]);
+    repository.files.push({
+      id: 'file-1',
+      documentId: 'doc-1',
+      role: 'source',
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'missing-key',
+      createdAt: '2026-07-18T10:00:00.000Z',
+    });
+    const storage = fakeStorage();
+    const usecaseDeps = deps(repository.repo, storage.storage);
+
+    expect(
+      await exportDocuments(
+        { identity: identity('t-default') },
+        { documentIds: Array.from({ length: 101 }, (_, index) => `doc-${index}`) },
+        usecaseDeps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(
+      await exportDocuments(
+        { identity: identity('t-default') },
+        { documentIds: ['doc-1'] },
+        usecaseDeps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('propagates repository and storage failures through exports', async () => {
+    const repository = fakeRepository([document('doc-1')]);
+    repository.files.push({
+      id: 'file-1',
+      documentId: 'doc-1',
+      role: 'source',
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'content-key',
+      createdAt: '2026-07-18T10:00:00.000Z',
+    });
+    const storage = fakeStorage();
+    const ctx = { identity: identity('t-default') };
+
+    expect(
+      await getFileExport(ctx, 'doc-1', 'file-1', deps(repository.repo, storage.storage)),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    expect(
+      await getFileExport(ctx, 'doc-1', 'absent-file', deps(repository.repo, storage.storage)),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(
+      await getFileContent(ctx, 'doc-1', 'file-1', deps(repository.repo, storage.storage)),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    const failingStorage: StoragePort = {
+      ...storage.storage,
+      get: async () => err(internal('storage down')),
+    };
+    expect(
+      await getFileContent(ctx, 'doc-1', 'file-1', deps(repository.repo, failingStorage)),
+    ).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(
+      await getFileExport(ctx, 'doc-1', 'file-1', deps(repository.repo, failingStorage)),
+    ).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(
+      await exportDocuments(ctx, { documentIds: ['doc-1'] }, deps(repository.repo, failingStorage)),
+    ).toMatchObject({ ok: false, error: { code: 'internal' } });
+
+    const findFileFails: DocumentRepository = {
+      ...repository.repo,
+      findFile: async () => err(internal('db down')),
+    };
+    expect(
+      await getFileExport(ctx, 'doc-1', 'file-1', deps(findFileFails, storage.storage)),
+    ).toMatchObject({ ok: false, error: { code: 'internal' } });
+
+    const findByIdFails: DocumentRepository = {
+      ...repository.repo,
+      findById: async () => err(internal('db down')),
+    };
+    expect(
+      await exportDocuments(ctx, { documentIds: ['doc-1'] }, deps(findByIdFails, storage.storage)),
+    ).toMatchObject({ ok: false, error: { code: 'internal' } });
+
+    const listFilesFails: DocumentRepository = {
+      ...repository.repo,
+      listFiles: async () => err(internal('db down')),
+    };
+    expect(
+      await exportDocuments(ctx, { documentIds: ['doc-1'] }, deps(listFilesFails, storage.storage)),
+    ).toMatchObject({ ok: false, error: { code: 'internal' } });
   });
 
   it('returns direct and server upload targets and finalizes tenant-owned keys', async () => {

@@ -29,6 +29,7 @@ import {
   type AppError,
   type CreateDocument,
   type DocumentListFilter,
+  type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
   type NewTodo,
@@ -108,6 +109,12 @@ export interface DirectFileUploadInput {
   bytes: Uint8Array;
 }
 
+export interface ExportDownload {
+  bytes: Uint8Array;
+  contentType: string;
+  fileName: string;
+}
+
 const directFileUpload = async (
   options: ApiClientOptions,
   input: DirectFileUploadInput,
@@ -137,8 +144,51 @@ const pathWith = (path: string, values: Record<string, string>): string => {
   return resolved;
 };
 
+const downloadRequest = async (
+  options: ApiClientOptions,
+  path: string,
+  input: ExportDocuments,
+  signal?: AbortSignal,
+): Promise<WriteResult<ExportDownload>> => {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const traceparent = options.traceparent?.();
+  let response: Response;
+  try {
+    response = await fetchImpl(`${options.baseUrl}${path}`, {
+      method: API_ROUTES.documentsExport.method,
+      headers: {
+        'content-type': 'application/json',
+        ...(traceparent === undefined ? {} : { traceparent }),
+        ...options.headers?.(),
+      },
+      body: jsonBody(input),
+      credentials: 'include',
+      signal: signal ?? null,
+    });
+  } catch (cause) {
+    return err(internal(`Network error calling ${path}: ${String(cause)}`));
+  }
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    const envelope = looseEnvelopeSchema.safeParse(payload);
+    return envelope.success && !envelope.data.ok
+      ? err(envelope.data.error)
+      : err(internal(`Non-contract response from ${path} (HTTP ${response.status})`));
+  }
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  return ok({
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type') ?? 'application/octet-stream',
+    fileName: encodedName ? decodeURIComponent(encodedName) : 'eksport-dokumentow.zip',
+  });
+};
+
 export const documentFileContentPath = (documentId: string, fileId: string): string =>
   pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId });
+
+export const documentFileExportPath = (documentId: string, fileId: string): string =>
+  pathWith(API_ROUTES.documentFileExport.path, { documentId, fileId });
 
 const listPath = (filter: DocumentListFilter): string => {
   const query = new URLSearchParams();
@@ -186,6 +236,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.documentFileDelete.method, pathWith(API_ROUTES.documentFileDelete.path, { documentId, fileId }), documentFileDeleteOutputSchema, undefined, undefined, signal),
   fileContentUrl: (documentId: string, fileId: string) =>
     `${options.baseUrl}${documentFileContentPath(documentId, fileId)}`,
+  fileExportUrl: (documentId: string, fileId: string) =>
+    `${options.baseUrl}${documentFileExportPath(documentId, fileId)}`,
+  exportDocuments: (input: ExportDocuments, signal?: AbortSignal) =>
+    downloadRequest(options, API_ROUTES.documentsExport.path, input, signal),
   directFileUpload: (input: DirectFileUploadInput, signal?: AbortSignal) =>
     directFileUpload(options, input, signal),
 });

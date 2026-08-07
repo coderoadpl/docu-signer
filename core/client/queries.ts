@@ -13,6 +13,7 @@ import type { TenantCreateInput } from '#core/contract/index.js';
 import type {
   CreateDocument,
   DocumentListFilter,
+  ExportDocuments,
   FileUploadRequest,
   FinalizeFileUpload,
   NewTodo,
@@ -206,6 +207,12 @@ export const removeFileMutation = (api: ApiClient) =>
     mutationKey: [...documentsScopes.all(), 'files', 'remove'],
     call: ({ documentId, fileId }: { documentId: string; fileId: string }) =>
       api.removeFile(documentId, fileId),
+  });
+
+export const exportDocumentsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'export'],
+    call: (input: ExportDocuments) => api.exportDocuments(input),
   });
 
 export const documentsInvalidates = () => ({ queryKey: documentsScopes.all() });

@@ -112,3 +112,9 @@ export const finalizeFileUploadSchema = z.object({
 });
 
 export type FinalizeFileUpload = z.infer<typeof finalizeFileUploadSchema>;
+
+export const exportDocumentsSchema = z.object({
+  documentIds: z.array(z.string().min(1)).min(1).max(100),
+});
+
+export type ExportDocuments = z.infer<typeof exportDocumentsSchema>;

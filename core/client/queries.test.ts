@@ -15,6 +15,7 @@ import {
   documentsInvalidates,
   documentsQuery,
   documentsScopes,
+  exportDocumentsMutation,
   finalizeFileUploadMutation,
   meQuery,
   meScopes,
@@ -80,6 +81,12 @@ const happyApi: ApiClient = {
   serverUpload: async () => ok({ file }),
   removeFile: async () => ok({ deleted: true }),
   fileContentUrl: () => '/content',
+  fileExportUrl: () => '/export',
+  exportDocuments: async () => ok({
+    bytes: new Uint8Array([1]),
+    contentType: 'application/zip',
+    fileName: 'eksport-dokumentow.zip',
+  }),
   directFileUpload: async () => ok(undefined),
 };
 
@@ -100,6 +107,8 @@ const sadApi: ApiClient = {
   serverUpload: async () => err(internal('boom')),
   removeFile: async () => err(internal('boom')),
   fileContentUrl: () => '/content',
+  fileExportUrl: () => '/export',
+  exportDocuments: async () => err(internal('boom')),
   directFileUpload: async () => err(internal('boom')),
 };
 
@@ -188,6 +197,9 @@ describe('mutation descriptors', () => {
     await new MutationObserver(client, removeFileMutation(happyApi)).mutate({
       documentId: document.id,
       fileId: file.id,
+    });
+    await new MutationObserver(client, exportDocumentsMutation(happyApi)).mutate({
+      documentIds: [document.id],
     });
   });
 

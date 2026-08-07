@@ -2,6 +2,7 @@ import {
   createDocumentSchema,
   documentListFilterSchema,
   err,
+  exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
   notFound,
@@ -15,6 +16,7 @@ import {
   type DocumentFile,
   type DocumentListFilter,
   type DocumentWithFiles,
+  type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
   type Result,
@@ -38,6 +40,16 @@ export interface FileContent {
   bytes: Uint8Array;
   contentType: string;
   fileName: string;
+}
+
+export interface ExportFileContent extends FileContent {
+  document: Document;
+  file: DocumentFile;
+}
+
+export interface ExportDocumentContent {
+  document: Document;
+  files: Array<{ file: DocumentFile; bytes: Uint8Array }>;
 }
 
 const tenantIdFrom = (ctx: Ctx, action: string): Result<string, AppError> =>
@@ -254,4 +266,57 @@ export const getFileContent = async (
     contentType: file.value.contentType,
     fileName: file.value.fileName,
   });
+};
+
+export const getFileExport = async (
+  ctx: Ctx,
+  documentId: string,
+  fileId: string,
+  deps: DocumentDeps,
+): Promise<Result<ExportFileContent, AppError>> => {
+  const tenantId = tenantIdFrom(ctx, 'export files');
+  if (!tenantId.ok) return tenantId;
+  const document = await findDocument(tenantId.value, documentId, deps);
+  if (!document.ok) return document;
+  const file = await deps.documents.findFile(tenantId.value, documentId, fileId);
+  if (!file.ok) return file;
+  if (!file.value) return err(notFound('Document file not found'));
+  const bytes = await deps.storage.get(file.value.storageKey);
+  if (!bytes.ok) return bytes;
+  if (!bytes.value) return err(notFound('Document file content not found'));
+  return ok({
+    document: document.value,
+    file: file.value,
+    bytes: bytes.value,
+    contentType: file.value.contentType,
+    fileName: file.value.fileName,
+  });
+};
+
+export const exportDocuments = async (
+  ctx: Ctx,
+  input: ExportDocuments,
+  deps: DocumentDeps,
+): Promise<Result<ExportDocumentContent[], AppError>> => {
+  const tenantId = tenantIdFrom(ctx, 'export documents');
+  if (!tenantId.ok) return tenantId;
+  const parsed = exportDocumentsSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid export request', parsed.error.flatten()));
+  const exported: ExportDocumentContent[] = [];
+  for (const documentId of parsed.data.documentIds) {
+    const document = await deps.documents.findById(tenantId.value, documentId);
+    if (!document.ok) return document;
+    if (!document.value) continue;
+    const files = await deps.documents.listFiles(tenantId.value, documentId);
+    if (!files.ok) return files;
+    const exportedFiles: Array<{ file: DocumentFile; bytes: Uint8Array }> = [];
+    for (const file of files.value) {
+      const bytes = await deps.storage.get(file.storageKey);
+      if (!bytes.ok) return bytes;
+      if (!bytes.value) return err(notFound('Document file content not found'));
+      exportedFiles.push({ file, bytes: bytes.value });
+    }
+    exported.push({ document: document.value, files: exportedFiles });
+  }
+  return exported.length ? ok(exported) : err(notFound('Documents not found'));
 };

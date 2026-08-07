@@ -98,6 +98,31 @@ describe('DocumentsPage', () => {
     expect(await screen.findByText('Nie udało się pobrać')).toBeInTheDocument();
   });
 
+  it('enables bulk export as documents are selected', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              document,
+              { ...document, id: 'document-2', title: 'Uchwała zarządu' },
+            ],
+          },
+        }),
+      ),
+    );
+    await renderPage();
+
+    await screen.findByText('Uchwała zarządu');
+    const emptyExport = screen.getByRole('button', { name: 'Eksportuj zaznaczone (0)' });
+    expect(emptyExport).toBeDisabled();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz dokument: Umowa z Anną' }));
+    expect(screen.getByRole('button', { name: 'Eksportuj zaznaczone (1)' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
+    expect(screen.getByRole('button', { name: 'Eksportuj zaznaczone (2)' })).toBeEnabled();
+  });
+
   it('creates a document from the dialog and navigates to detail', async () => {
     server.use(
       http.get('/api/documents', () =>

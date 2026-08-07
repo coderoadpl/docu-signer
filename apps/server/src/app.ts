@@ -10,6 +10,7 @@ import {
   documentCreateInputSchema,
   documentListInputSchema,
   documentUpdateInputSchema,
+  exportDocumentsInputSchema,
   fileUploadRequestInputSchema,
   finalizeFileUploadInputSchema,
   serverUploadMetadataSchema,
@@ -33,8 +34,10 @@ import {
   createDocument,
   createTenant,
   deleteDocument,
+  exportDocuments,
   finalizeFileUpload,
   getFileContent,
+  getFileExport,
   getDocument,
   listMyTenants,
   listTodos,
@@ -49,6 +52,8 @@ import {
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
 
 import type { AppDeps } from './composition.js';
+import { cleanExportBytes } from './clean-export.js';
+import { archiveEntries, singleExportFileName, zipResponseStream } from './export-files.js';
 import { recordAppError, recordException, telemetryMiddleware } from './telemetry.js';
 
 type Vars = { Variables: { identity: Identity } };
@@ -65,6 +70,22 @@ const respond = <T>(result: Result<T, AppError>): Response => {
     // JSON must never be stored by any cache (see architecture §HTTP caching).
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
+};
+
+const attachmentHeaders = (fileName: string, contentType: string): HeadersInit => {
+  const encodedName = encodeURIComponent(fileName);
+  const fallbackName = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return {
+    'content-type': contentType,
+    'content-disposition': `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+    'cache-control': 'private, no-store',
+  };
+};
+
+const bytesResponse = (bytes: Uint8Array, fileName: string, contentType: string): Response => {
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+  return new Response(body, { headers: attachmentHeaders(fileName, contentType) });
 };
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
@@ -113,6 +134,7 @@ export const buildApp = (deps: AppDeps) => {
   app.use(API_ROUTES.documentUpdate.path, jsonBodyLimit);
   app.use(API_ROUTES.documentFileUploadRequest.path, jsonBodyLimit);
   app.use(API_ROUTES.documentFileFinalize.path, jsonBodyLimit);
+  app.use(API_ROUTES.documentsExport.path, jsonBodyLimit);
 
   const serverUploadBodyLimit = bodyLimit({
     maxSize: SERVER_UPLOAD_MAX_BYTES,
@@ -342,6 +364,36 @@ export const buildApp = (deps: AppDeps) => {
         'content-disposition': `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
         'cache-control': 'private, no-store',
       },
+    });
+  });
+
+  app.get(API_ROUTES.documentFileExport.path, async (c) => {
+    const result = await getFileExport(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    if (!result.ok) return respond(result);
+    const bytes = await cleanExportBytes(result.value.bytes, result.value.contentType);
+    return bytesResponse(
+      bytes,
+      singleExportFileName(result.value.document, result.value.file),
+      result.value.contentType,
+    );
+  });
+
+  app.post(API_ROUTES.documentsExport.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = exportDocumentsInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid export request', parsed.error.flatten())));
+    }
+    const result = await exportDocuments({ identity: c.get('identity') }, parsed.data, deps);
+    if (!result.ok) return respond(result);
+    const entries = await archiveEntries(result.value);
+    return new Response(zipResponseStream(entries), {
+      headers: attachmentHeaders('eksport-dokumentow.zip', 'application/zip'),
     });
   });
 

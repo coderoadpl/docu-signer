@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   Container,
   FormControl,
@@ -65,6 +66,7 @@ export const DocumentsPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [filters, setFilters] = useState<DocumentFilters>({
     text: '',
     docType: '',
@@ -79,6 +81,19 @@ export const DocumentsPage = () => {
       setCreateOpen(false);
       await queryClient.invalidateQueries(actions.documentsInvalidates());
       await navigate({ to: '/documents/$id', params: { id: document.id } });
+    },
+  });
+  const exportDocuments = useMutation({
+    ...actions.exportDocuments,
+    onSuccess: (download) => {
+      const body = new ArrayBuffer(download.bytes.byteLength);
+      new Uint8Array(body).set(download.bytes);
+      const url = URL.createObjectURL(new Blob([body], { type: download.contentType }));
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = download.fileName;
+      link.click();
+      URL.revokeObjectURL(url);
     },
   });
 
@@ -144,6 +159,17 @@ export const DocumentsPage = () => {
         </Stack>
       </Paper>
 
+      <Stack direction="row" sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end' }}>
+        <Button
+          variant="contained"
+          disabled={selectedIds.length === 0 || exportDocuments.isPending}
+          onClick={() => exportDocuments.mutate({ documentIds: selectedIds })}
+        >
+          Eksportuj zaznaczone ({selectedIds.length})
+        </Button>
+      </Stack>
+      {exportDocuments.isError ? <Alert sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert> : null}
+
       {documents.isPending ? <Typography sx={{ mt: 4 }}>Ładowanie dokumentów…</Typography> : null}
       {documents.isError ? <Alert sx={{ mt: 4 }}>{documents.error.message}</Alert> : null}
       {documents.data?.documents.length === 0 ? (
@@ -162,6 +188,19 @@ export const DocumentsPage = () => {
           <Table>
             <TableHead>
               <TableRow>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    slotProps={{ input: { 'aria-label': 'Zaznacz wszystkie dokumenty' } }}
+                    checked={documents.data.documents.every((document) => selectedIds.includes(document.id))}
+                    indeterminate={
+                      selectedIds.length > 0 &&
+                      !documents.data.documents.every((document) => selectedIds.includes(document.id))
+                    }
+                    onChange={(event) =>
+                      setSelectedIds(event.target.checked ? documents.data.documents.map((document) => document.id) : [])
+                    }
+                  />
+                </TableCell>
                 <TableCell>Data dokumentu</TableCell>
                 <TableCell>Tytuł</TableCell>
                 <TableCell>Typ</TableCell>
@@ -177,6 +216,19 @@ export const DocumentsPage = () => {
                   onClick={() => void navigate({ to: '/documents/$id', params: { id: document.id } })}
                   sx={{ cursor: 'pointer' }}
                 >
+                  <TableCell padding="checkbox" onClick={(event) => event.stopPropagation()}>
+                    <Checkbox
+                      slotProps={{ input: { 'aria-label': `Zaznacz dokument: ${document.title}` } }}
+                      checked={selectedIds.includes(document.id)}
+                      onChange={(event) =>
+                        setSelectedIds((current) =>
+                          event.target.checked
+                            ? [...current, document.id]
+                            : current.filter((id) => id !== document.id),
+                        )
+                      }
+                    />
+                  </TableCell>
                   <TableCell>{document.documentDate}</TableCell>
                   <TableCell>{document.title}</TableCell>
                   <TableCell>

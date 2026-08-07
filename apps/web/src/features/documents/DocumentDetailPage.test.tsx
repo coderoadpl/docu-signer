@@ -75,6 +75,10 @@ describe('DocumentDetailPage', () => {
       'src',
       '/api/documents/document-1/files/scan-1/content',
     );
+    expect(screen.getAllByRole('link', { name: 'Eksportuj' }).at(0)).toHaveAttribute(
+      'href',
+      '/api/documents/document-1/files/source-1/export',
+    );
 
     const deleteButton = screen.getAllByRole('button', { name: 'Usuń' }).at(0);
     if (!deleteButton) throw new Error('Missing delete file button');

@@ -81,6 +81,7 @@ const FileRow = ({
   onDelete: (file: DocumentFile) => void;
 }) => {
   const contentUrl = actions.fileContentUrl(documentId, file.id);
+  const exportUrl = actions.fileExportUrl(documentId, file.id);
   return (
     <ListItem>
       <ListItemText
@@ -94,6 +95,7 @@ const FileRow = ({
         <Link href={contentUrl} download={file.fileName}>
           Pobierz
         </Link>
+        <Link href={exportUrl}>Eksportuj</Link>
         <Button color="error" onClick={() => onDelete(file)}>
           Usuń
         </Button>
