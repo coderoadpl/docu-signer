@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createAuth } from '#adapters/auth/create-auth.js';
+import { BETTER_AUTH_SIGN_UP_PATH, createAuth } from '#adapters/auth/create-auth.js';
 import { createDb } from '#adapters/db/client.js';
 import {
   API_PATHS,
@@ -26,6 +26,7 @@ const auth = createAuth(
     baseDomain: 'localhost',
     trustedOrigins: [],
     secureCookies: false,
+    rateLimitEnabled: false,
   },
 );
 
@@ -59,6 +60,7 @@ const baseDeps = (): AppDeps => ({
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),
+    exists: async () => ok(true),
     delete: async () => ok(undefined),
     createUploadUrl: async () => ok(null),
   },
@@ -120,6 +122,10 @@ const authenticatedDeps = (): AppDeps => {
   deps.authPort = { getAuthenticatedUser: async () => user };
   deps.tenants.findBySlug = async (slug) =>
     slug === 'default' ? { id: 'tenant-default', slug: 'default', name: 'Default' } : null;
+  deps.tenantAccess.findStaffGrant = async () => ({
+    tenant: { id: 'tenant-default', slug: 'default', name: 'Default' },
+    staffRole: 'owner',
+  });
   deps.documents = {
     listByTenant: async () => ok([document]),
     findById: async (_tenantId, documentId) => ok(documentId === document.id ? document : null),
@@ -135,6 +141,17 @@ const authenticatedDeps = (): AppDeps => {
 };
 
 describe('buildApp routes', () => {
+  it('rejects email and password sign-up', async () => {
+    const response = await buildApp(baseDeps()).request(BETTER_AUTH_SIGN_UP_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'New User', email: 'new@example.com', password: 'password123' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'EMAIL_PASSWORD_SIGN_UP_DISABLED' });
+  });
+
   it('answers an over-100KB POST with a validation envelope, never a bare 413', async () => {
     const oversized = JSON.stringify({ slug: 'a', name: 'x'.repeat(200 * 1024) });
     const res = await buildApp(baseDeps()).request(API_PATHS.tenants, {

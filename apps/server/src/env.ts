@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { isAbsolute, resolve } from 'node:path';
 
 import { z } from 'zod';
@@ -18,6 +19,10 @@ const envSchema = z.object({
   VERCEL_URL: z.string().optional(),
   VERCEL_BRANCH_URL: z.string().optional(),
   BETTER_AUTH_SECRET: z.string().min(16).default('dev-only-secret-do-not-use-in-prod'),
+  SEED_ADMIN1_EMAIL: z.string().email().default('admin1@dev.local'),
+  SEED_ADMIN1_PASSWORD: z.string().min(8).default(() => `dev-${randomUUID()}`),
+  SEED_ADMIN2_EMAIL: z.string().email().default('admin2@dev.local'),
+  SEED_ADMIN2_PASSWORD: z.string().min(8).default(() => `dev-${randomUUID()}`),
   SECURE_COOKIES: z
     .enum(['true', 'false'])
     .default('false')

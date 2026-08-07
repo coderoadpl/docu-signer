@@ -1,4 +1,4 @@
-import { del, get, put } from '@vercel/blob';
+import { BlobNotFoundError, del, get, head, put } from '@vercel/blob';
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 
 import { err, internal, ok, type AppError, type Result } from '#core/domain/index.js';
@@ -23,6 +23,15 @@ export const createVercelBlobStorage = (token: string): StoragePort => ({
       if (!result || result.statusCode !== 200) return null;
       return new Uint8Array(await new Response(result.stream).arrayBuffer());
     }),
+  exists: async (key) => {
+    try {
+      await head(key, { token });
+      return ok(true);
+    } catch (cause) {
+      if (cause instanceof BlobNotFoundError) return ok(false);
+      return err(internal(`Blob storage operation failed: ${String(cause)}`));
+    }
+  },
   delete: async (key) =>
     storageResult(async () => {
       await del(key, { token });
@@ -36,8 +45,9 @@ export const createVercelBlobStorage = (token: string): StoragePort => ({
         addRandomSuffix: false,
         allowOverwrite: false,
       });
-      const storeId = clientToken.split('_')[3];
-      if (!storeId) throw new Error('Client upload token has no store id');
+      const tokenMatch = /^vercel_blob_client_([^_]+)_.+$/.exec(clientToken);
+      if (!tokenMatch?.[1]) throw new Error('Invalid client upload token');
+      const storeId = tokenMatch[1];
       return {
         url: `https://vercel.com/api/blob/?pathname=${encodeURIComponent(key)}`,
         method: 'PUT' as const,

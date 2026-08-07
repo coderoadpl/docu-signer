@@ -37,11 +37,28 @@ describe('resolveIdentity', () => {
     expect(second).toEqual(first);
   });
 
-  it('resolves the tenant even when the user has no membership row', async () => {
+  it('rejects an authenticated user who is not provisioned on the default tenant', async () => {
     const result = await resolveIdentity(user, { host: 'localhost', tenantHeader: null }, deps(defaultTenant));
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('resolves a member without a staff grant', async () => {
+    const member: Member = {
+      id: 'member-1',
+      tenantId: defaultTenant.id,
+      userId: user.userId,
+      email: user.email,
+      displayName: user.name,
+      createdAt: '2026-07-18T00:00:00.000Z',
+    };
+    const result = await resolveIdentity(
+      user,
+      { host: 'localhost', tenantHeader: null },
+      deps(defaultTenant, null, member),
+    );
     expect(result).toMatchObject({
       ok: true,
-      value: { tenantId: 'tenant-default', staffRole: null, memberId: null },
+      value: { tenantId: 'tenant-default', staffRole: null, memberId: 'member-1' },
     });
   });
 

@@ -1,5 +1,6 @@
 import {
   err,
+  forbidden,
   ok,
   tenantNotFound,
   unauthorized,
@@ -30,6 +31,7 @@ export const resolveIdentity = async (
   if (!tenant) return err(tenantNotFound('Default tenant is not configured'));
   const staffGrant = await deps.tenantAccess.findStaffGrant(user.userId, { tenantId: tenant.id });
   const member = await deps.tenantAccess.findMember(user.userId, tenant.id);
+  if (!staffGrant && !member) return err(forbidden('You do not have access to this tenant'));
   return ok({
     userId: user.userId,
     email: user.email,

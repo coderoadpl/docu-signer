@@ -24,6 +24,8 @@ const baseDatabaseUrl =
 const smokeUrlObject = new URL(baseDatabaseUrl);
 smokeUrlObject.pathname = `/${SMOKE_DB}`;
 const smokeDatabaseUrl = smokeUrlObject.toString();
+const smokeEmail = 'admin1@dev.local';
+const smokePassword = 'smoke-admin-1-password';
 
 interface LockPackage {
   version?: string;
@@ -107,7 +109,13 @@ const setupDatabase = async (adminUrl: string): Promise<void> => {
 const migrateAndSeed = async (databaseUrl: string): Promise<void> => {
   const migrate = await run(tsxBin, ['adapters/db/migrate.ts'], { DATABASE_URL: databaseUrl });
   assert(migrate.code === 0, `Migration failed:\n${migrate.stdout}${migrate.stderr}`);
-  const seed = await run(tsxBin, ['adapters/db/seed.ts'], { DATABASE_URL: databaseUrl });
+  const seed = await run(tsxBin, ['adapters/db/seed.ts'], {
+    DATABASE_URL: databaseUrl,
+    SEED_ADMIN1_EMAIL: smokeEmail,
+    SEED_ADMIN1_PASSWORD: smokePassword,
+    SEED_ADMIN2_EMAIL: 'admin2@dev.local',
+    SEED_ADMIN2_PASSWORD: 'smoke-admin-2-password',
+  });
   assert(seed.code === 0, `Seed failed:\n${seed.stdout}${seed.stderr}`);
 };
 
@@ -191,7 +199,7 @@ try {
   server = await bootServer(port, smokeDatabaseUrl, webDistDir);
   console.log('smoke: driving the CLI...');
   await driveCli(
-    { baseUrl: `http://localhost:${port}`, email: 'demo@agentproofarch.dev', password: 'demo1234', tenant: 'acme' },
+    { baseUrl: `http://localhost:${port}`, email: smokeEmail, password: smokePassword, tenant: 'default' },
     homes,
   );
   console.log(`\nsmoke: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);

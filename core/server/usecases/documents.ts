@@ -156,6 +156,9 @@ export const finalizeFileUpload = async (
   if (!parsed.data.key.startsWith(expectedPrefix)) return err(validation('Invalid storage key'));
   const document = await findDocument(tenantId.value, documentId, deps);
   if (!document.ok) return document;
+  const exists = await deps.storage.exists(parsed.data.key);
+  if (!exists.ok) return exists;
+  if (!exists.value) return err(notFound('Uploaded file not found'));
   const created = await deps.documents.createFile(tenantId.value, {
     id: deps.ids.nextId(),
     documentId,

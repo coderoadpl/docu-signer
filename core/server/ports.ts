@@ -59,6 +59,7 @@ export interface UploadTarget {
 export interface StoragePort {
   put(key: string, bytes: Uint8Array, contentType: string): Promise<Result<void, AppError>>;
   get(key: string): Promise<Result<Uint8Array | null, AppError>>;
+  exists(key: string): Promise<Result<boolean, AppError>>;
   delete(key: string): Promise<Result<void, AppError>>;
   createUploadUrl(key: string, contentType: string): Promise<Result<UploadTarget | null, AppError>>;
 }

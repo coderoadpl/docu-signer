@@ -124,6 +124,7 @@ const fakeStorage = (direct = false) => {
       return ok(undefined);
     },
     get: async (key) => ok(objects.get(key) ?? null),
+    exists: async (key) => ok(objects.has(key)),
     delete: async (key) => {
       objects.delete(key);
       return ok(undefined);
@@ -250,6 +251,11 @@ describe('documents use-cases', () => {
     );
     expect(local).toMatchObject({ ok: true, value: { kind: 'server' } });
 
+    localStorage.objects.set(
+      'documents/t-default/doc-1/direct-key',
+      new Uint8Array([1, 2, 3]),
+    );
+
     const finalized = await finalizeFileUpload(
       { identity: identity('t-default') },
       'doc-1',
@@ -263,6 +269,37 @@ describe('documents use-cases', () => {
       deps(repository.repo, localStorage.storage, ['file-1']),
     );
     expect(finalized).toMatchObject({ ok: true, value: { id: 'file-1', sizeBytes: 3 } });
+
+    const missingObject = await finalizeFileUpload(
+      { identity: identity('t-default') },
+      'doc-1',
+      {
+        key: 'documents/t-default/doc-1/missing',
+        fileName: 'missing.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 3,
+        role: 'source',
+      },
+      deps(repository.repo, localStorage.storage, ['file-2']),
+    );
+    expect(missingObject).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(repository.files).toHaveLength(1);
+
+    localStorage.storage.exists = async () => err(internal('stat failed'));
+    expect(
+      await finalizeFileUpload(
+        { identity: identity('t-default') },
+        'doc-1',
+        {
+          key: 'documents/t-default/doc-1/unavailable',
+          fileName: 'unavailable.pdf',
+          contentType: 'application/pdf',
+          sizeBytes: 3,
+          role: 'source',
+        },
+        deps(repository.repo, localStorage.storage),
+      ),
+    ).toEqual(err(internal('stat failed')));
     const invalidKey = await finalizeFileUpload(
       { identity: identity('t-default') },
       'doc-1',
