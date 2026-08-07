@@ -41,6 +41,7 @@ if (!demoUser) throw new Error('Seeded user not found');
 const nowIso = new Date().toISOString();
 
 const tenantRows = [
+  { id: 'tenant-default', slug: 'default', name: 'Default' },
   { id: 'tenant-acme', slug: 'acme', name: 'Acme Sp. z o.o.' },
   { id: 'tenant-globex', slug: 'globex', name: 'Globex Corp' },
 ];

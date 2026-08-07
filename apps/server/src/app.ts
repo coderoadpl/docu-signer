@@ -4,8 +4,15 @@ import { secureHeaders } from 'hono/secure-headers';
 
 import {
   API_PATHS,
+  API_ROUTES,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
+  documentCreateInputSchema,
+  documentListInputSchema,
+  documentUpdateInputSchema,
+  fileUploadRequestInputSchema,
+  finalizeFileUploadInputSchema,
+  serverUploadMetadataSchema,
   tenantCreateInputSchema,
   toEnvelope,
   todoCreateInputSchema,
@@ -22,10 +29,19 @@ import {
 } from '#core/domain/index.js';
 import {
   addTodo,
+  createDocument,
   createTenant,
+  deleteDocument,
+  finalizeFileUpload,
+  getDocument,
   listMyTenants,
   listTodos,
+  listDocuments,
+  removeFile,
+  requestFileUpload,
   resolveIdentity,
+  serverUpload,
+  updateDocument,
   type AuthenticatedUser,
 } from '#core/server/index.js';
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
@@ -148,8 +164,7 @@ export const buildApp = (deps: AppDeps) => {
         tenant:
           identity.tenantId &&
           identity.tenantSlug &&
-          identity.tenantName &&
-          (identity.staffRole || identity.memberId)
+          identity.tenantName
             ? {
                 id: identity.tenantId,
                 slug: identity.tenantSlug,
@@ -180,6 +195,119 @@ export const buildApp = (deps: AppDeps) => {
     }
     const result = await addTodo({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ todo: result.value }) : result);
+  });
+
+  app.get(API_PATHS.documents, async (c) => {
+    const parsed = documentListInputSchema.safeParse({
+      docType: c.req.query('docType'),
+      person: c.req.query('person'),
+      text: c.req.query('text'),
+      dateFrom: c.req.query('dateFrom'),
+      dateTo: c.req.query('dateTo'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document filters', parsed.error.flatten())));
+    }
+    const result = await listDocuments({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ documents: result.value }) : result);
+  });
+
+  app.post(API_PATHS.documents, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document payload', parsed.error.flatten())));
+    }
+    const result = await createDocument({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.document.path, async (c) => {
+    const result = await getDocument({ identity: c.get('identity') }, c.req.param('documentId'), deps);
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.patch(API_ROUTES.documentUpdate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentUpdateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document payload', parsed.error.flatten())));
+    }
+    const result = await updateDocument(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentDelete.path, async (c) => {
+    const result = await deleteDocument(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileUploadRequest.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = fileUploadRequestInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid file upload request', parsed.error.flatten())));
+    }
+    const result = await requestFileUpload(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ upload: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileFinalize.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = finalizeFileUploadInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid uploaded file', parsed.error.flatten())));
+    }
+    const result = await finalizeFileUpload(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ file: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileServerUpload.path, async (c) => {
+    const parsed = serverUploadMetadataSchema.safeParse({
+      fileName: c.req.query('fileName'),
+      contentType: c.req.header('content-type'),
+      role: c.req.query('role'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid server upload metadata', parsed.error.flatten())));
+    }
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    const result = await serverUpload(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      { ...parsed.data, bytes },
+      deps,
+    );
+    return respond(result.ok ? ok({ file: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentFileDelete.path, async (c) => {
+    const result = await removeFile(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
   });
 
   return app;

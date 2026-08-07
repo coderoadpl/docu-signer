@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const tenants = pgTable(
   'tenants',
@@ -60,6 +60,48 @@ export const todos = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [index('todos_tenantId_idx').on(table.tenantId)],
+);
+
+export const documents = pgTable(
+  'documents',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    docType: text('doc_type', {
+      enum: ['umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny'],
+    }).notNull(),
+    documentDate: text('document_date').notNull(),
+    person: text('person'),
+    tags: jsonb('tags').$type<string[]>().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('documents_tenantId_idx').on(table.tenantId),
+    index('documents_tenant_documentDate_idx').on(table.tenantId, table.documentDate),
+  ],
+);
+
+export const documentFiles = pgTable(
+  'document_files',
+  {
+    id: text('id').primaryKey(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    role: text('role', {
+      enum: ['source', 'signed-scan', 'signed-digital', 'other'],
+    }).notNull(),
+    fileName: text('file_name').notNull(),
+    contentType: text('content_type').notNull(),
+    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+    storageKey: text('storage_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('document_files_documentId_idx').on(table.documentId)],
 );
 
 export const tenantDomains = pgTable(

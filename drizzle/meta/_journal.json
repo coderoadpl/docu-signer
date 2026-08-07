@@ -15,6 +15,13 @@
       "when": 1784282623022,
       "tag": "0001_sleepy_rogue",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784375924779,
+      "tag": "0002_cool_speed",
+      "breakpoints": true
     }
   ]
 }

@@ -10,7 +10,14 @@ import type {
 } from '@tanstack/query-core';
 
 import type { TenantCreateInput } from '#core/contract/index.js';
-import type { NewTodo } from '#core/domain/index.js';
+import type {
+  CreateDocument,
+  DocumentListFilter,
+  FileUploadRequest,
+  FinalizeFileUpload,
+  NewTodo,
+  UpdateDocument,
+} from '#core/domain/index.js';
 
 import type { AuthClientPort } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
@@ -85,6 +92,14 @@ export const todosScopes = {
   lists: () => ['todos', 'list'] as const,
 };
 
+export const documentsScopes = {
+  all: () => ['documents'] as const,
+  lists: () => ['documents', 'list'] as const,
+  list: (filter: DocumentListFilter) => ['documents', 'list', filter] as const,
+  details: () => ['documents', 'detail'] as const,
+  detail: (documentId: string) => ['documents', 'detail', documentId] as const,
+};
+
 export const authScopes = {
   all: () => ['auth'] as const,
 };
@@ -121,6 +136,67 @@ export const addTodoMutation = (api: ApiClient) =>
 
 /** The invalidation filter `addTodoMutation` applies after it settles. */
 export const addTodoInvalidates = () => ({ queryKey: todosScopes.lists() });
+
+export const documentsQuery = (api: ApiClient, filter: DocumentListFilter = {}) =>
+  defineQuery({
+    queryKey: documentsScopes.list(filter),
+    call: ({ signal }) => api.listDocuments(filter, signal),
+  });
+
+export const documentQuery = (api: ApiClient, documentId: string) =>
+  defineQuery({
+    queryKey: documentsScopes.detail(documentId),
+    call: ({ signal }) => api.getDocument(documentId, signal),
+  });
+
+export const createDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'create'],
+    call: (input: CreateDocument) => api.createDocument(input),
+  });
+
+export const updateDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'update'],
+    call: ({ documentId, input }: { documentId: string; input: UpdateDocument }) =>
+      api.updateDocument(documentId, input),
+  });
+
+export const deleteDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'delete'],
+    call: (documentId: string) => api.deleteDocument(documentId),
+  });
+
+export const requestFileUploadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'request-upload'],
+    call: ({ documentId, input }: { documentId: string; input: FileUploadRequest }) =>
+      api.requestFileUpload(documentId, input),
+  });
+
+export const finalizeFileUploadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'finalize'],
+    call: ({ documentId, input }: { documentId: string; input: FinalizeFileUpload }) =>
+      api.finalizeFileUpload(documentId, input),
+  });
+
+export const serverUploadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'server-upload'],
+    call: ({ documentId, input }: { documentId: string; input: FileUploadRequest & { bytes: Uint8Array } }) =>
+      api.serverUpload(documentId, input),
+  });
+
+export const removeFileMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'remove'],
+    call: ({ documentId, fileId }: { documentId: string; fileId: string }) =>
+      api.removeFile(documentId, fileId),
+  });
+
+export const documentsInvalidates = () => ({ queryKey: documentsScopes.all() });
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any

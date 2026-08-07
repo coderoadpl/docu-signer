@@ -4,11 +4,13 @@ import { createAuth } from '#adapters/auth/create-auth.js';
 import { createDb } from '#adapters/db/client.js';
 import {
   API_PATHS,
+  API_ROUTES,
   healthOutputSchema,
   looseEnvelopeSchema,
   TENANT_HEADER,
 } from '#core/contract/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
+import { ok } from '#core/domain/index.js';
 
 import { buildApp } from './app.js';
 import type { AppDeps } from './composition.js';
@@ -33,6 +35,32 @@ const baseDeps = (): AppDeps => ({
   todos: {
     listByTenant: async () => [],
     create: async () => {},
+  },
+  documents: {
+    listByTenant: async () => ok([]),
+    findById: async () => ok(null),
+    listFiles: async () => ok([]),
+    create: async () => ok({
+      id: 'document-1',
+      tenantId: 'tenant-default',
+      title: 'Document',
+      docType: 'inny',
+      documentDate: '2026-07-18',
+      tags: [],
+      createdAt: '2026-07-18T00:00:00.000Z',
+      updatedAt: '2026-07-18T00:00:00.000Z',
+    }),
+    update: async () => ok(null),
+    delete: async () => ok(false),
+    createFile: async () => ok(null),
+    findFile: async () => ok(null),
+    deleteFile: async () => ok(false),
+  },
+  storage: {
+    put: async () => ok(undefined),
+    get: async () => ok(null),
+    delete: async () => ok(undefined),
+    createUploadUrl: async () => ok(null),
   },
   tenantDomains: {
     findByDomain: async () => null,
@@ -63,6 +91,47 @@ const user: AuthenticatedUser = {
   userId: 'user-1',
   email: 'demo@agentproofarch.dev',
   name: 'Demo',
+};
+
+const document = {
+  id: 'document-1',
+  tenantId: 'tenant-default',
+  title: 'Agreement',
+  docType: 'umowa-uod' as const,
+  documentDate: '2026-07-18',
+  tags: [],
+  createdAt: '2026-07-18T00:00:00.000Z',
+  updatedAt: '2026-07-18T00:00:00.000Z',
+};
+
+const file = {
+  id: 'file-1',
+  documentId: document.id,
+  role: 'source' as const,
+  fileName: 'source.pdf',
+  contentType: 'application/pdf',
+  sizeBytes: 3,
+  storageKey: 'documents/tenant-default/document-1/storage-id',
+  createdAt: '2026-07-18T00:00:00.000Z',
+};
+
+const authenticatedDeps = (): AppDeps => {
+  const deps = baseDeps();
+  deps.authPort = { getAuthenticatedUser: async () => user };
+  deps.tenants.findBySlug = async (slug) =>
+    slug === 'default' ? { id: 'tenant-default', slug: 'default', name: 'Default' } : null;
+  deps.documents = {
+    listByTenant: async () => ok([document]),
+    findById: async (_tenantId, documentId) => ok(documentId === document.id ? document : null),
+    listFiles: async () => ok([file]),
+    create: async () => ok(document),
+    update: async () => ok(document),
+    delete: async () => ok(true),
+    createFile: async () => ok(file),
+    findFile: async () => ok(file),
+    deleteFile: async () => ok(true),
+  };
+  return deps;
 };
 
 describe('buildApp routes', () => {
@@ -157,5 +226,116 @@ describe('buildApp routes', () => {
       const health = healthOutputSchema.parse(body.data);
       expect(health.database).toBe('down');
     }
+  });
+
+  it('serves document CRUD and file command routes', async () => {
+    const app = buildApp(authenticatedDeps());
+    const createResponse = await app.request(API_PATHS.documents, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Agreement', docType: 'umowa-uod', documentDate: '2026-07-18' }),
+    });
+    expect(createResponse.status).toBe(200);
+    expect((await createResponse.json())).toMatchObject({ ok: true, data: { document: { id: 'document-1' } } });
+
+    expect((await app.request(`${API_PATHS.documents}?docType=umowa-uod`)).status).toBe(200);
+    const detailPath = API_ROUTES.document.path.replace(':documentId', document.id);
+    expect((await app.request(detailPath)).status).toBe(200);
+    expect(
+      (
+        await app.request(detailPath, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title: 'Agreement', docType: 'umowa-uod', documentDate: '2026-07-18' }),
+        })
+      ).status,
+    ).toBe(200);
+
+    const uploadRequestPath = API_ROUTES.documentFileUploadRequest.path.replace(':documentId', document.id);
+    expect(
+      (
+        await app.request(uploadRequestPath, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ fileName: 'source.pdf', contentType: 'application/pdf', role: 'source' }),
+        })
+      ).status,
+    ).toBe(200);
+
+    const finalizePath = API_ROUTES.documentFileFinalize.path.replace(':documentId', document.id);
+    expect(
+      (
+        await app.request(finalizePath, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            key: 'documents/tenant-default/document-1/storage-id',
+            fileName: 'source.pdf',
+            contentType: 'application/pdf',
+            sizeBytes: 3,
+            role: 'source',
+          }),
+        })
+      ).status,
+    ).toBe(200);
+
+    const serverUploadPath = API_ROUTES.documentFileServerUpload.path.replace(':documentId', document.id);
+    expect(
+      (
+        await app.request(`${serverUploadPath}?fileName=source.pdf&role=source`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/pdf' },
+          body: new Uint8Array([1, 2, 3]),
+        })
+      ).status,
+    ).toBe(200);
+
+    const removePath = API_ROUTES.documentFileDelete.path
+      .replace(':documentId', document.id)
+      .replace(':fileId', file.id);
+    expect((await app.request(removePath, { method: 'DELETE' })).status).toBe(200);
+    expect((await app.request(detailPath, { method: 'DELETE' })).status).toBe(200);
+  });
+
+  it('exposes the constant default tenant in me', async () => {
+    const response = await buildApp(authenticatedDeps()).request(API_PATHS.me);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { tenant: { id: 'tenant-default', slug: 'default' } },
+    });
+  });
+
+  it('returns validation envelopes for malformed document commands', async () => {
+    const app = buildApp(authenticatedDeps());
+    const invalidRequests = [
+      app.request(`${API_PATHS.documents}?dateFrom=2026-07-19&dateTo=2026-07-18`),
+      app.request(API_PATHS.documents, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+      app.request(API_ROUTES.documentUpdate.path.replace(':documentId', document.id), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+      app.request(API_ROUTES.documentFileUploadRequest.path.replace(':documentId', document.id), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+      app.request(API_ROUTES.documentFileFinalize.path.replace(':documentId', document.id), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+      app.request(`${API_ROUTES.documentFileServerUpload.path.replace(':documentId', document.id)}?role=source`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/pdf' },
+        body: new Uint8Array([1]),
+      }),
+    ];
+    const responses = await Promise.all(invalidRequests);
+    expect(responses.every((response) => response.status === 400)).toBe(true);
   });
 });

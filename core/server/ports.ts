@@ -1,4 +1,16 @@
-import type { Member, Membership, StaffRole, Tenant, TenantDomain, Todo } from '#core/domain/index.js';
+import type {
+  AppError,
+  Document,
+  DocumentFile,
+  DocumentListFilter,
+  Member,
+  Membership,
+  Result,
+  StaffRole,
+  Tenant,
+  TenantDomain,
+  Todo,
+} from '#core/domain/index.js';
 
 /**
  * Ports: interfaces the core depends on, implemented in `adapters/`.
@@ -8,6 +20,47 @@ import type { Member, Membership, StaffRole, Tenant, TenantDomain, Todo } from '
 export interface TodoRepository {
   listByTenant(tenantId: string): Promise<Todo[]>;
   create(todo: Todo): Promise<void>;
+}
+
+export interface DocumentRepository {
+  listByTenant(
+    tenantId: string,
+    filter: DocumentListFilter,
+  ): Promise<Result<Document[], AppError>>;
+  findById(tenantId: string, documentId: string): Promise<Result<Document | null, AppError>>;
+  listFiles(tenantId: string, documentId: string): Promise<Result<DocumentFile[], AppError>>;
+  create(
+    input: Omit<Document, 'createdAt' | 'updatedAt'>,
+  ): Promise<Result<Document, AppError>>;
+  update(
+    tenantId: string,
+    documentId: string,
+    input: Pick<Document, 'title' | 'docType' | 'documentDate' | 'person' | 'tags'>,
+  ): Promise<Result<Document | null, AppError>>;
+  delete(tenantId: string, documentId: string): Promise<Result<boolean, AppError>>;
+  createFile(
+    tenantId: string,
+    input: Omit<DocumentFile, 'createdAt'>,
+  ): Promise<Result<DocumentFile | null, AppError>>;
+  findFile(
+    tenantId: string,
+    documentId: string,
+    fileId: string,
+  ): Promise<Result<DocumentFile | null, AppError>>;
+  deleteFile(tenantId: string, documentId: string, fileId: string): Promise<Result<boolean, AppError>>;
+}
+
+export interface UploadTarget {
+  url: string;
+  method: 'PUT';
+  headers: Record<string, string>;
+}
+
+export interface StoragePort {
+  put(key: string, bytes: Uint8Array, contentType: string): Promise<Result<void, AppError>>;
+  get(key: string): Promise<Result<Uint8Array | null, AppError>>;
+  delete(key: string): Promise<Result<void, AppError>>;
+  createUploadUrl(key: string, contentType: string): Promise<Result<UploadTarget | null, AppError>>;
 }
 
 export interface TenantDomainRepository {

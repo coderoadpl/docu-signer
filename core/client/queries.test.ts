@@ -8,9 +8,19 @@ import { ApiError, type ApiClient } from './http.js';
 import {
   addTodoInvalidates,
   addTodoMutation,
+  createDocumentMutation,
   createTenantMutation,
+  deleteDocumentMutation,
+  documentQuery,
+  documentsInvalidates,
+  documentsQuery,
+  documentsScopes,
+  finalizeFileUploadMutation,
   meQuery,
   meScopes,
+  removeFileMutation,
+  requestFileUploadMutation,
+  serverUploadMutation,
   signInMutation,
   signOutMutation,
   signUpMutation,
@@ -18,6 +28,7 @@ import {
   tenantsScopes,
   todosQuery,
   todosScopes,
+  updateDocumentMutation,
 } from './queries.js';
 
 const todo = {
@@ -30,6 +41,28 @@ const todo = {
 
 const tenant = { id: 't-acme', slug: 'acme', name: 'Acme Inc' };
 
+const document = {
+  id: 'document-1',
+  tenantId: 't-acme',
+  title: 'Agreement',
+  docType: 'umowa-uod' as const,
+  documentDate: '2026-07-18',
+  tags: [],
+  createdAt: '2026-07-18T00:00:00.000Z',
+  updatedAt: '2026-07-18T00:00:00.000Z',
+};
+
+const file = {
+  id: 'file-1',
+  documentId: document.id,
+  role: 'source' as const,
+  fileName: 'source.pdf',
+  contentType: 'application/pdf',
+  sizeBytes: 1,
+  storageKey: 'key',
+  createdAt: '2026-07-18T00:00:00.000Z',
+};
+
 const happyApi: ApiClient = {
   health: async () => ok({ status: 'ok', version: '0.1.0', database: 'up' }),
   me: async () => ok({ userId: 'u1', email: 'demo@example.com', name: 'Demo', tenant: null }),
@@ -37,6 +70,15 @@ const happyApi: ApiClient = {
   createTenant: async (input) => ok({ tenant: { id: 't-new', slug: input.slug, name: input.name } }),
   listTodos: async () => ok({ todos: [todo] }),
   addTodo: async (input) => ok({ todo: { ...todo, title: input.title } }),
+  listDocuments: async () => ok({ documents: [document] }),
+  createDocument: async (input) => ok({ document: { ...document, ...input, tags: input.tags ?? [] } }),
+  getDocument: async () => ok({ document: { ...document, files: [file] } }),
+  updateDocument: async (_documentId, input) => ok({ document: { ...document, ...input, tags: input.tags ?? [] } }),
+  deleteDocument: async () => ok({ deleted: true }),
+  requestFileUpload: async () => ok({ upload: { kind: 'server', key: 'key' } }),
+  finalizeFileUpload: async () => ok({ file }),
+  serverUpload: async () => ok({ file }),
+  removeFile: async () => ok({ deleted: true }),
 };
 
 const sadApi: ApiClient = {
@@ -46,6 +88,15 @@ const sadApi: ApiClient = {
   createTenant: async () => err({ code: 'conflict', message: 'Already exists' }),
   listTodos: async () => err(internal('boom')),
   addTodo: async () => err(internal('boom')),
+  listDocuments: async () => err(internal('boom')),
+  createDocument: async () => err(internal('boom')),
+  getDocument: async () => err(internal('boom')),
+  updateDocument: async () => err(internal('boom')),
+  deleteDocument: async () => err(internal('boom')),
+  requestFileUpload: async () => err(internal('boom')),
+  finalizeFileUpload: async () => err(internal('boom')),
+  serverUpload: async () => err(internal('boom')),
+  removeFile: async () => err(internal('boom')),
 };
 
 const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -55,6 +106,12 @@ describe('query descriptors', () => {
     expect(meQuery(happyApi).queryKey).toEqual(meScopes.all());
     expect(tenantsQuery(happyApi).queryKey).toEqual(tenantsScopes.all());
     expect(todosQuery(happyApi).queryKey).toEqual(todosScopes.lists());
+    expect(documentsQuery(happyApi, { docType: 'umowa-uod' }).queryKey).toEqual(
+      documentsScopes.list({ docType: 'umowa-uod' }),
+    );
+    expect(documentQuery(happyApi, document.id).queryKey).toEqual(documentsScopes.detail(document.id));
+    expect(documentsScopes.lists()).toEqual(['documents', 'list']);
+    expect(documentsScopes.details()).toEqual(['documents', 'detail']);
   });
 
   it('unwrap the Result value through the queryFn on success', async () => {
@@ -70,6 +127,10 @@ describe('query descriptors', () => {
       tenants: [{ tenant, staffRole: 'owner' }],
     });
     await expect(client.fetchQuery(todosQuery(happyApi))).resolves.toEqual({ todos: [todo] });
+    await expect(client.fetchQuery(documentsQuery(happyApi))).resolves.toEqual({ documents: [document] });
+    await expect(client.fetchQuery(documentQuery(happyApi, document.id))).resolves.toEqual({
+      document: { ...document, files: [file] },
+    });
   });
 
   it('throw an ApiError carrying the AppError when the call fails', async () => {
@@ -100,6 +161,30 @@ describe('mutation descriptors', () => {
     ).resolves.toEqual({ todo: { ...todo, title: 'Ship it' } });
   });
 
+  it('executes every document mutation descriptor', async () => {
+    const client = newClient();
+    const input = { title: 'Agreement', docType: 'umowa-uod' as const, documentDate: '2026-07-18' };
+    await new MutationObserver(client, createDocumentMutation(happyApi)).mutate(input);
+    await new MutationObserver(client, updateDocumentMutation(happyApi)).mutate({ documentId: document.id, input });
+    await new MutationObserver(client, deleteDocumentMutation(happyApi)).mutate(document.id);
+    await new MutationObserver(client, requestFileUploadMutation(happyApi)).mutate({
+      documentId: document.id,
+      input: { fileName: 'source.pdf', contentType: 'application/pdf', role: 'source' },
+    });
+    await new MutationObserver(client, finalizeFileUploadMutation(happyApi)).mutate({
+      documentId: document.id,
+      input: { key: 'key', fileName: 'source.pdf', contentType: 'application/pdf', sizeBytes: 1, role: 'source' },
+    });
+    await new MutationObserver(client, serverUploadMutation(happyApi)).mutate({
+      documentId: document.id,
+      input: { fileName: 'source.pdf', contentType: 'application/pdf', role: 'source', bytes: new Uint8Array([1]) },
+    });
+    await new MutationObserver(client, removeFileMutation(happyApi)).mutate({
+      documentId: document.id,
+      fileId: file.id,
+    });
+  });
+
   it('throw an ApiError from the mutationFn when the call fails', async () => {
     const client = newClient();
 
@@ -110,6 +195,7 @@ describe('mutation descriptors', () => {
 
   it('invalidates the todo lists after a successful add', () => {
     expect(addTodoInvalidates()).toEqual({ queryKey: todosScopes.lists() });
+    expect(documentsInvalidates()).toEqual({ queryKey: documentsScopes.all() });
   });
 });
 

@@ -1,9 +1,13 @@
 import { drizzle as drizzleNodePg } from 'drizzle-orm/node-postgres';
 import { migrate as migrateNodePg } from 'drizzle-orm/node-postgres/migrator';
+import { eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { ok } from '#core/domain/index.js';
+
 import type { Db } from './client.js';
+import { createDocumentRepository } from './documents-repository.js';
 import {
   createHealthPort,
   createTenantAccessReader,
@@ -11,7 +15,7 @@ import {
   createTenantRepository,
   createTodoRepository,
 } from './repositories.js';
-import { members, tenantAdmins, tenantDomains } from './schema.js';
+import { documentFiles, documents, members, tenantAdmins, tenantDomains, tenants } from './schema.js';
 import * as schema from './schema.js';
 
 const ITEST_DB = 'agentproofarch_itest';
@@ -63,6 +67,7 @@ const todoRepo = () => createTodoRepository(db);
 const domainRepo = () => createTenantDomainRepository(db);
 const tenantRepo = () => createTenantRepository(db);
 const accessReader = () => createTenantAccessReader(db);
+const documentRepo = () => createDocumentRepository(db);
 
 const createIsolatedDatabase = async (): Promise<void> => {
   const admin = new pg.Client({ connectionString: baseDatabaseUrl });
@@ -152,6 +157,42 @@ const seed = async (): Promise<void> => {
   await todoRepo().create(todoA1);
   await todoRepo().create(todoA2);
   await todoRepo().create(todoB1);
+
+  await documentRepo().create({
+    id: 'itest-document-a1',
+    tenantId: tenantA.id,
+    title: 'Alpha agreement',
+    docType: 'umowa-uod',
+    documentDate: '2026-03-01',
+    person: 'Ada Example',
+    tags: ['alpha'],
+  });
+  await documentRepo().create({
+    id: 'itest-document-a2',
+    tenantId: tenantA.id,
+    title: 'Alpha minutes',
+    docType: 'protokol',
+    documentDate: '2026-03-02',
+    tags: [],
+  });
+  await documentRepo().create({
+    id: 'itest-document-b1',
+    tenantId: tenantB.id,
+    title: 'Beta agreement',
+    docType: 'umowa-uod',
+    documentDate: '2026-03-03',
+    person: 'Beta Person',
+    tags: [],
+  });
+  await documentRepo().createFile(tenantA.id, {
+    id: 'itest-file-a1',
+    documentId: 'itest-document-a1',
+    role: 'source',
+    fileName: 'agreement.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 10,
+    storageKey: 'documents/a/one',
+  });
 };
 
 beforeAll(async () => {
@@ -254,6 +295,50 @@ describe('TodoRepository', () => {
   });
 });
 
+describe('DocumentRepository', () => {
+  it('filters a tenant list and sorts by documentDate descending', async () => {
+    const result = await documentRepo().listByTenant(tenantA.id, {
+      docType: 'umowa-uod',
+      person: 'ada',
+      text: 'agreement',
+      dateFrom: '2026-03-01',
+      dateTo: '2026-03-01',
+    });
+    expect(result.ok && result.value.map((row) => row.id)).toEqual(['itest-document-a1']);
+
+    const all = await documentRepo().listByTenant(tenantA.id, {});
+    expect(all.ok && all.value.map((row) => row.id)).toEqual([
+      'itest-document-a2',
+      'itest-document-a1',
+    ]);
+  });
+
+  it('reads, updates, and deletes only within the tenant', async () => {
+    const found = await documentRepo().findById(tenantA.id, 'itest-document-a1');
+    expect(found).toMatchObject({ ok: true, value: { title: 'Alpha agreement' } });
+    expect(await documentRepo().findById(tenantB.id, 'itest-document-a1')).toEqual(ok(null));
+
+    const updated = await documentRepo().update(tenantA.id, 'itest-document-a1', {
+      title: 'Updated agreement',
+      docType: 'umowa-uod',
+      documentDate: '2026-03-01',
+      person: 'Ada Example',
+      tags: ['updated'],
+    });
+    expect(updated).toMatchObject({ ok: true, value: { title: 'Updated agreement', tags: ['updated'] } });
+    expect(await documentRepo().delete(tenantB.id, 'itest-document-a1')).toEqual(ok(false));
+  });
+
+  it('scopes file operations and cascades files when a document is deleted', async () => {
+    const listed = await documentRepo().listFiles(tenantA.id, 'itest-document-a1');
+    expect(listed).toMatchObject({ ok: true, value: [{ id: 'itest-file-a1' }] });
+    expect(await documentRepo().findFile(tenantB.id, 'itest-document-a1', 'itest-file-a1')).toEqual(ok(null));
+    expect(await documentRepo().delete(tenantB.id, 'itest-document-a1')).toEqual(ok(false));
+    expect(await documentRepo().delete(tenantA.id, 'itest-document-a1')).toEqual(ok(true));
+    expect(await db.select().from(documentFiles).where(eq(documentFiles.id, 'itest-file-a1'))).toEqual([]);
+  });
+});
+
 describe('TenantDomainRepository', () => {
   it('findByDomain returns only verified domains', async () => {
     expect(await domainRepo().findByDomain('alpha.localhost')).toMatchObject({
@@ -333,5 +418,35 @@ describe('tenant isolation invariant', () => {
     expect(await accessReader().findStaffGrant(staffA, { tenantId: tenantB.id })).toBeNull();
     expect(await accessReader().findStaffGrant(staffA, { tenantSlug: tenantB.slug })).toBeNull();
     expect(await accessReader().findStaffGrant(staffB, { tenantId: tenantA.id })).toBeNull();
+  });
+
+  it('tenant deletion cascades documents and document files', async () => {
+    const cascadeTenant = {
+      id: 'itest-tenant-cascade',
+      slug: 'cascade',
+      name: 'Cascade',
+      createdAt: '2026-07-18T00:00:00.000Z',
+    };
+    await tenantRepo().createTenant(cascadeTenant);
+    await documentRepo().create({
+      id: 'itest-document-cascade',
+      tenantId: cascadeTenant.id,
+      title: 'Cascade document',
+      docType: 'inny',
+      documentDate: '2026-07-18',
+      tags: [],
+    });
+    await documentRepo().createFile(cascadeTenant.id, {
+      id: 'itest-file-cascade',
+      documentId: 'itest-document-cascade',
+      role: 'other',
+      fileName: 'file.bin',
+      contentType: 'application/octet-stream',
+      sizeBytes: 1,
+      storageKey: 'documents/cascade/file',
+    });
+    await db.delete(tenants).where(eq(tenants.id, cascadeTenant.id));
+    expect(await db.select().from(documents).where(eq(documents.tenantId, cascadeTenant.id))).toEqual([]);
+    expect(await db.select().from(documentFiles).where(eq(documentFiles.id, 'itest-file-cascade'))).toEqual([]);
   });
 });

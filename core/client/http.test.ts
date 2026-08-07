@@ -145,6 +145,98 @@ describe('createApiClient', () => {
     await expect(client.addTodo({ title: 'Ship it' })).resolves.toEqual({ ok: true, value: { todo } });
   });
 
+  it('routes every document action through its contract schema', async () => {
+    const document = {
+      id: 'document-1',
+      tenantId: 'tenant-default',
+      title: 'Agreement',
+      docType: 'umowa-uod',
+      documentDate: '2026-07-18',
+      tags: [],
+      createdAt: '2026-07-18T00:00:00.000Z',
+      updatedAt: '2026-07-18T00:00:00.000Z',
+    };
+    const file = {
+      id: 'file-1',
+      documentId: document.id,
+      role: 'source',
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'key',
+      createdAt: '2026-07-18T00:00:00.000Z',
+    };
+    const responses: unknown[] = [
+      { documents: [document] },
+      { document },
+      { document: { ...document, files: [file] } },
+      { document },
+      { deleted: true },
+      { upload: { kind: 'server', key: 'key' } },
+      { file },
+      { file },
+      { deleted: true },
+    ];
+    const requests: { input: string; method: string | undefined; contentType: string | null }[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      requests.push({
+        input: String(input),
+        method: init?.method,
+        contentType: new Headers(init?.headers).get('content-type'),
+      });
+      return jsonResponse({ ok: true, data: responses.shift() });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+    const input = { title: 'Agreement', docType: 'umowa-uod' as const, documentDate: '2026-07-18' };
+
+    await client.listDocuments({
+      docType: 'umowa-uod',
+      person: 'Ada',
+      text: 'agree',
+      dateFrom: '2026-01-01',
+      dateTo: '2026-12-31',
+    });
+    await client.createDocument(input);
+    await client.getDocument(document.id);
+    await client.updateDocument(document.id, input);
+    await client.deleteDocument(document.id);
+    await client.requestFileUpload(document.id, {
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      role: 'source',
+    });
+    await client.finalizeFileUpload(document.id, {
+      key: 'key',
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      role: 'source',
+    });
+    await client.serverUpload(document.id, {
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      role: 'source',
+      bytes: new Uint8Array([1, 2, 3]),
+    });
+    await client.removeFile(document.id, file.id);
+
+    expect(requests[0]?.input).toContain(
+      '/api/documents?docType=umowa-uod&person=Ada&text=agree&dateFrom=2026-01-01&dateTo=2026-12-31',
+    );
+    expect(requests.map((request) => request.method)).toEqual([
+      'GET',
+      'POST',
+      'GET',
+      'PATCH',
+      'DELETE',
+      'POST',
+      'POST',
+      'POST',
+      'DELETE',
+    ]);
+    expect(requests[7]).toMatchObject({ contentType: 'application/pdf' });
+  });
+
   it('injects the W3C traceparent header when a trace is active', async () => {
     const traceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
     let seen: Headers | undefined;

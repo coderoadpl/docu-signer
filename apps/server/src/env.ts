@@ -1,3 +1,5 @@
+import { isAbsolute, resolve } from 'node:path';
+
 import { z } from 'zod';
 
 /** Parse, don't cast: the process refuses to boot on invalid configuration. */
@@ -21,6 +23,20 @@ const envSchema = z.object({
     .default('false')
     .transform((value) => value === 'true'),
   WEB_DIST_DIR: z.string().default('dist/web'),
+  STORAGE_DRIVER: z.enum(['local-fs', 'vercel-blob']).default('local-fs'),
+  STORAGE_LOCAL_PATH: z
+    .string()
+    .default(resolve(process.cwd(), '.storage'))
+    .refine(isAbsolute, 'STORAGE_LOCAL_PATH must be absolute'),
+  BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.STORAGE_DRIVER === 'vercel-blob' && !value.BLOB_READ_WRITE_TOKEN) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['BLOB_READ_WRITE_TOKEN'],
+      message: 'BLOB_READ_WRITE_TOKEN is required for vercel-blob storage',
+    });
+  }
 });
 
 export type Env = z.output<typeof envSchema> & { APP_BASE_URL: string };
