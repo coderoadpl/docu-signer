@@ -61,6 +61,43 @@ describe('DocumentsPage', () => {
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
   });
 
+  it('filters by type and person and opens the create dialog from the empty state', async () => {
+    const seen = vi.fn();
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen({ docType: params.get('docType'), person: params.get('person') });
+        return HttpResponse.json({ ok: true, data: { documents: [] } });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'Brak dokumentów' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Typ' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Uchwała' }));
+    await userEvent.type(screen.getByLabelText('Osoba'), 'Anna');
+    await waitFor(() => expect(seen).toHaveBeenCalledWith({ docType: 'uchwala', person: 'Anna' }));
+
+    const emptyStateCta = screen.getAllByRole('button', { name: 'Dodaj dokument' }).at(-1);
+    if (!emptyStateCta) throw new Error('Missing empty-state CTA');
+    await userEvent.click(emptyStateCta);
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Anuluj' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('surfaces a failed documents query as an alert', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Nie udało się pobrać' } }, { status: 500 }),
+      ),
+    );
+    await renderPage();
+
+    expect(await screen.findByText('Nie udało się pobrać')).toBeInTheDocument();
+  });
+
   it('creates a document from the dialog and navigates to detail', async () => {
     server.use(
       http.get('/api/documents', () =>

@@ -1,3 +1,4 @@
+import { createTheme, ThemeProvider } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, type RenderOptions } from '@testing-library/react';
 
@@ -11,13 +12,35 @@ export const createTestQueryClient = () =>
     },
   });
 
+// jsdom fires no CSS transitionend, so MUI falls back to timer-driven exits;
+// zeroing every duration makes dialog open/close settle on the next tick and
+// keeps assertions off animation timing.
+const testTheme = createTheme({
+  transitions: {
+    create: () => 'none',
+    duration: {
+      shortest: 0,
+      shorter: 0,
+      short: 0,
+      standard: 0,
+      complex: 0,
+      enteringScreen: 0,
+      leavingScreen: 0,
+    },
+  },
+});
+
 const TestProviders = ({
   children,
   queryClient,
 }: {
   children: ReactNode;
   queryClient: QueryClient;
-}) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+}) => (
+  <QueryClientProvider client={queryClient}>
+    <ThemeProvider theme={testTheme}>{children}</ThemeProvider>
+  </QueryClientProvider>
+);
 
 export const renderWithProviders = (ui: ReactElement, options?: RenderOptions) => {
   const queryClient = createTestQueryClient();
