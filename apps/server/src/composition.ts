@@ -53,6 +53,9 @@ export const createDeps = (env: Env): AppDeps => {
 
   const baseTrustedOrigins = [
     env.APP_BASE_URL,
+    // Vite dev server serves the SPA from its own port, so local auth POSTs
+    // carry this Origin; Vercel deployments never do (SPA shares the API origin).
+    ...(env.VERCEL_URL ? [] : [`http://${env.APP_BASE_DOMAIN}:47180`]),
     // The deployment's own origin: previews and staging serve the SPA from
     // their generated Vercel URL, so auth POSTs arrive with that Origin.
     ...(env.VERCEL_URL ? [`https://${env.VERCEL_URL}`] : []),

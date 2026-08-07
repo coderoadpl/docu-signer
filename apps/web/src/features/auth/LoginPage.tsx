@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Divider,
   FormControl,
   FormLabel,
   OutlinedInput,
@@ -16,7 +15,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
-import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
+import { Eyebrow, Wordmark } from '../../theme.js';
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -53,10 +52,10 @@ export const LoginPage = () => {
         }}
       >
         <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          agentproofarch
+          podpisy
         </Wordmark>
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          sign in · tenant {window.location.hostname}
+          logowanie
         </Eyebrow>
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
@@ -96,11 +95,6 @@ export const LoginPage = () => {
             {signIn.error instanceof ApiError ? signIn.error.appError.message : signIn.error.message}
           </Alert>
         ) : null}
-        <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
-        <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
-          demo account: <DemoValue>demo@agentproofarch.dev</DemoValue> /{' '}
-          <DemoValue>demo1234</DemoValue>
-        </FinePrint>
       </Paper>
     </Box>
   );
