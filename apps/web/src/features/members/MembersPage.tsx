@@ -107,7 +107,7 @@ export const MembersPage = () => {
       {ensure.isError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{ensure.error.message}</Alert> : null}
 
       <Box sx={{ mt: '2rem' }}>
-        <Button component="a" href="/app" variant="text">
+        <Button component="a" href="/app/ledger" variant="text">
           ← Wróć do rejestru
         </Button>
       </Box>
