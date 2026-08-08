@@ -2,8 +2,16 @@ import { type z } from 'zod';
 
 import {
   API_ROUTES,
-  looseEnvelopeSchema,
+  documentCreateOutputSchema,
+  documentDeleteOutputSchema,
+  documentFileDeleteOutputSchema,
+  documentFileOutputSchema,
+  documentGetOutputSchema,
+  documentListOutputSchema,
+  documentUpdateOutputSchema,
+  fileUploadRequestOutputSchema,
   healthOutputSchema,
+  looseEnvelopeSchema,
   meOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
@@ -14,32 +22,31 @@ import {
   type TenantCreateInput,
   type WriteMethod,
 } from '#core/contract/index.js';
-import { err, internal, ok, type AppError, type NewTodo, type Result } from '#core/domain/index.js';
+import {
+  err,
+  internal,
+  ok,
+  type AppError,
+  type CreateDocument,
+  type DocumentListFilter,
+  type ExportDocuments,
+  type FileUploadRequest,
+  type FinalizeFileUpload,
+  type NewTodo,
+  type Result,
+  type UpdateDocument,
+} from '#core/domain/index.js';
 
 declare const HTTP_METHOD_BRAND: unique symbol;
 
-/**
- * Phantom read/write tag on a call's result, driven by the contract's HTTP
- * method. Optional and never assigned at runtime (zero cost, no `as`): a plain
- * `Result` is assignable, yet a `'GET'`-tagged result is not assignable to a
- * `'POST'`-tagged one, so `defineQuery`/`defineMutation` can reject mismatches.
- */
 type Branded<T, M extends HttpMethod> = T & { readonly [HTTP_METHOD_BRAND]?: M };
 export type ReadResult<T> = Branded<Result<T, AppError>, ReadMethod>;
 export type WriteResult<T> = Branded<Result<T, AppError>, WriteMethod>;
 
 export interface ApiClientOptions {
-  /** '' for same-origin (web); absolute URL for CLI and other clients. */
   baseUrl: string;
   fetchImpl?: typeof fetch;
-  /** Extra headers per request: Authorization bearer token, X-Tenant, ... */
   headers?: () => Record<string, string>;
-  /**
-   * W3C `traceparent` for the currently active span, or `undefined` when no
-   * trace is active. Injected header-provider (bound in the composition root)
-   * rather than an in-core OTel dependency: keeps `core/client` framework- and
-   * SDK-free and makes propagation trivially testable by passing a stub.
-   */
   traceparent?: () => string | undefined;
 }
 
@@ -48,7 +55,8 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   method: M,
   path: string,
   outputSchema: S,
-  body?: unknown,
+  body?: BodyInit,
+  contentType?: string,
   signal?: AbortSignal,
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -58,11 +66,11 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     response = await fetchImpl(`${options.baseUrl}${path}`, {
       method,
       headers: {
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(contentType === undefined ? {} : { 'content-type': contentType }),
         ...(traceparent === undefined ? {} : { traceparent }),
         ...options.headers?.(),
       },
-      body: body === undefined ? null : JSON.stringify(body),
+      body: body ?? null,
       credentials: 'include',
       signal: signal ?? null,
     });
@@ -78,44 +86,166 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   }
 
   const envelope = looseEnvelopeSchema.safeParse(payload);
-  if (!envelope.success) {
-    return err(internal(`Response from ${path} does not match the contract envelope`));
-  }
+  if (!envelope.success) return err(internal(`Response from ${path} does not match the contract envelope`));
   if (!envelope.data.ok) return err(envelope.data.error);
-
   const data = outputSchema.safeParse(envelope.data.data);
-  if (!data.success) {
-    return err(internal(`Response data from ${path} does not match the contract`));
-  }
-  return ok(data.data);
+  return data.success
+    ? ok(data.data)
+    : err(internal(`Response data from ${path} does not match the contract`));
 };
 
-/** The single typed gateway to the API. No client ever hand-writes HTTP. */
+const jsonBody = (input: unknown): string => JSON.stringify(input);
+
+const binaryBody = (bytes: Uint8Array): ArrayBuffer => {
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+  return body;
+};
+
+export interface DirectFileUploadInput {
+  url: string;
+  method: 'PUT';
+  headers: Record<string, string>;
+  bytes: Uint8Array;
+}
+
+export interface ExportDownload {
+  bytes: Uint8Array;
+  contentType: string;
+  fileName: string;
+}
+
+const directFileUpload = async (
+  options: ApiClientOptions,
+  input: DirectFileUploadInput,
+  signal?: AbortSignal,
+): Promise<WriteResult<void>> => {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  try {
+    const response = await fetchImpl(input.url, {
+      method: input.method,
+      headers: input.headers,
+      body: binaryBody(input.bytes),
+      signal: signal ?? null,
+    });
+    return response.ok
+      ? ok(undefined)
+      : err(internal(`Direct upload failed (HTTP ${response.status})`));
+  } catch (cause) {
+    return err(internal(`Network error uploading file: ${String(cause)}`));
+  }
+};
+
+const pathWith = (path: string, values: Record<string, string>): string => {
+  let resolved = path;
+  for (const [name, value] of Object.entries(values)) {
+    resolved = resolved.replace(`:${name}`, encodeURIComponent(value));
+  }
+  return resolved;
+};
+
+const downloadRequest = async (
+  options: ApiClientOptions,
+  path: string,
+  input: ExportDocuments,
+  signal?: AbortSignal,
+): Promise<WriteResult<ExportDownload>> => {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const traceparent = options.traceparent?.();
+  let response: Response;
+  try {
+    response = await fetchImpl(`${options.baseUrl}${path}`, {
+      method: API_ROUTES.documentsExport.method,
+      headers: {
+        'content-type': 'application/json',
+        ...(traceparent === undefined ? {} : { traceparent }),
+        ...options.headers?.(),
+      },
+      body: jsonBody(input),
+      credentials: 'include',
+      signal: signal ?? null,
+    });
+  } catch (cause) {
+    return err(internal(`Network error calling ${path}: ${String(cause)}`));
+  }
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    const envelope = looseEnvelopeSchema.safeParse(payload);
+    return envelope.success && !envelope.data.ok
+      ? err(envelope.data.error)
+      : err(internal(`Non-contract response from ${path} (HTTP ${response.status})`));
+  }
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  return ok({
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type') ?? 'application/octet-stream',
+    fileName: encodedName ? decodeURIComponent(encodedName) : 'eksport-dokumentow.zip',
+  });
+};
+
+export const documentFileContentPath = (documentId: string, fileId: string): string =>
+  pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId });
+
+export const documentFileExportPath = (documentId: string, fileId: string): string =>
+  pathWith(API_ROUTES.documentFileExport.path, { documentId, fileId });
+
+const listPath = (filter: DocumentListFilter): string => {
+  const query = new URLSearchParams();
+  if (filter.docType) query.set('docType', filter.docType);
+  if (filter.person) query.set('person', filter.person);
+  if (filter.text) query.set('text', filter.text);
+  if (filter.dateFrom) query.set('dateFrom', filter.dateFrom);
+  if (filter.dateTo) query.set('dateTo', filter.dateTo);
+  const suffix = query.toString();
+  return suffix ? `${API_ROUTES.documents.path}?${suffix}` : API_ROUTES.documents.path;
+};
+
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, signal),
+    request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, undefined, signal),
   me: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.me.method, API_ROUTES.me.path, meOutputSchema, undefined, signal),
+    request(options, API_ROUTES.me.method, API_ROUTES.me.path, meOutputSchema, undefined, undefined, signal),
   listTenants: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.tenants.method, API_ROUTES.tenants.path, tenantListOutputSchema, undefined, signal),
+    request(options, API_ROUTES.tenants.method, API_ROUTES.tenants.path, tenantListOutputSchema, undefined, undefined, signal),
   createTenant: (input: TenantCreateInput, signal?: AbortSignal) =>
-    request(
-      options,
-      API_ROUTES.tenantsCreate.method,
-      API_ROUTES.tenantsCreate.path,
-      tenantCreateOutputSchema,
-      input,
-      signal,
-    ),
+    request(options, API_ROUTES.tenantsCreate.method, API_ROUTES.tenantsCreate.path, tenantCreateOutputSchema, jsonBody(input), 'application/json', signal),
   listTodos: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.todos.method, API_ROUTES.todos.path, todoListOutputSchema, undefined, signal),
+    request(options, API_ROUTES.todos.method, API_ROUTES.todos.path, todoListOutputSchema, undefined, undefined, signal),
   addTodo: (input: NewTodo, signal?: AbortSignal) =>
-    request(options, API_ROUTES.todosCreate.method, API_ROUTES.todosCreate.path, todoCreateOutputSchema, input, signal),
+    request(options, API_ROUTES.todosCreate.method, API_ROUTES.todosCreate.path, todoCreateOutputSchema, jsonBody(input), 'application/json', signal),
+  listDocuments: (filter: DocumentListFilter = {}, signal?: AbortSignal) =>
+    request(options, API_ROUTES.documents.method, listPath(filter), documentListOutputSchema, undefined, undefined, signal),
+  createDocument: (input: CreateDocument, signal?: AbortSignal) =>
+    request(options, API_ROUTES.documentsCreate.method, API_ROUTES.documentsCreate.path, documentCreateOutputSchema, jsonBody(input), 'application/json', signal),
+  getDocument: (documentId: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.document.method, pathWith(API_ROUTES.document.path, { documentId }), documentGetOutputSchema, undefined, undefined, signal),
+  updateDocument: (documentId: string, input: UpdateDocument, signal?: AbortSignal) =>
+    request(options, API_ROUTES.documentUpdate.method, pathWith(API_ROUTES.documentUpdate.path, { documentId }), documentUpdateOutputSchema, jsonBody(input), 'application/json', signal),
+  deleteDocument: (documentId: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.documentDelete.method, pathWith(API_ROUTES.documentDelete.path, { documentId }), documentDeleteOutputSchema, undefined, undefined, signal),
+  requestFileUpload: (documentId: string, input: FileUploadRequest, signal?: AbortSignal) =>
+    request(options, API_ROUTES.documentFileUploadRequest.method, pathWith(API_ROUTES.documentFileUploadRequest.path, { documentId }), fileUploadRequestOutputSchema, jsonBody(input), 'application/json', signal),
+  finalizeFileUpload: (documentId: string, input: FinalizeFileUpload, signal?: AbortSignal) =>
+    request(options, API_ROUTES.documentFileFinalize.method, pathWith(API_ROUTES.documentFileFinalize.path, { documentId }), documentFileOutputSchema, jsonBody(input), 'application/json', signal),
+  serverUpload: (documentId: string, input: FileUploadRequest & { bytes: Uint8Array }, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ fileName: input.fileName, role: input.role });
+    return request(options, API_ROUTES.documentFileServerUpload.method, `${pathWith(API_ROUTES.documentFileServerUpload.path, { documentId })}?${query.toString()}`, documentFileOutputSchema, binaryBody(input.bytes), input.contentType, signal);
+  },
+  removeFile: (documentId: string, fileId: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.documentFileDelete.method, pathWith(API_ROUTES.documentFileDelete.path, { documentId, fileId }), documentFileDeleteOutputSchema, undefined, undefined, signal),
+  fileContentUrl: (documentId: string, fileId: string) =>
+    `${options.baseUrl}${documentFileContentPath(documentId, fileId)}`,
+  fileExportUrl: (documentId: string, fileId: string) =>
+    `${options.baseUrl}${documentFileExportPath(documentId, fileId)}`,
+  exportDocuments: (input: ExportDocuments, signal?: AbortSignal) =>
+    downloadRequest(options, API_ROUTES.documentsExport.path, input, signal),
+  directFileUpload: (input: DirectFileUploadInput, signal?: AbortSignal) =>
+    directFileUpload(options, input, signal),
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;
 
-/** For TanStack Query: converts a Result into value-or-throw at the query boundary. */
 export const unwrap = <T>(result: Result<T, AppError>): T => {
   if (!result.ok) throw new ApiError(result.error);
   return result.value;

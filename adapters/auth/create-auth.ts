@@ -13,9 +13,11 @@ export interface AuthSettings {
   baseDomain: string;
   trustedOrigins: string[] | ((request?: Request) => string[] | Promise<string[]>);
   secureCookies: boolean;
+  rateLimitEnabled?: boolean;
 }
 
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
+export const BETTER_AUTH_SIGN_UP_PATH = '/api/auth/sign-up/email';
 
 export const createAuth = (db: Db, settings: AuthSettings) =>
   betterAuth({
@@ -23,10 +25,10 @@ export const createAuth = (db: Db, settings: AuthSettings) =>
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
-    emailAndPassword: { enabled: true },
+    emailAndPassword: { enabled: true, disableSignUp: true },
     // In-memory counters reset with every serverless isolate, so the limiter
     // stores its windows in the database we already have (no Redis needed).
-    rateLimit: { enabled: true, storage: 'database' },
+    rateLimit: { enabled: settings.rateLimitEnabled ?? true, storage: 'database' },
     plugins: [bearer()],
     advanced: {
       useSecureCookies: settings.secureCookies,

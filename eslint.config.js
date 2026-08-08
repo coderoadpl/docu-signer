@@ -187,6 +187,7 @@ export default tseslint.config(
         { type: 'adapter-db', pattern: 'adapters/db/**', mode: 'full' },
         { type: 'adapter-auth', pattern: 'adapters/auth/**', mode: 'full' },
         { type: 'adapter-domains', pattern: 'adapters/domain-provisioning/**', mode: 'full' },
+        { type: 'adapter-storage', pattern: 'adapters/storage/**', mode: 'full' },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'platform-entry', pattern: 'api/**', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
@@ -232,7 +233,7 @@ export default tseslint.config(
             { from: ['core-server'], allow: ['core-domain', 'core-server'] },
             { from: ['core-client'], allow: ['core-domain', 'core-contract', 'core-client'] },
             {
-              from: ['adapter-db', 'adapter-auth', 'adapter-domains'],
+              from: ['adapter-db', 'adapter-auth', 'adapter-domains', 'adapter-storage'],
               allow: [
                 'core-domain',
                 'core-server',
@@ -240,6 +241,7 @@ export default tseslint.config(
                 'adapter-db',
                 'adapter-auth',
                 'adapter-domains',
+                'adapter-storage',
               ],
             },
             {
@@ -251,6 +253,7 @@ export default tseslint.config(
                 'adapter-db',
                 'adapter-auth',
                 'adapter-domains',
+                'adapter-storage',
                 'app-server',
               ],
             },
@@ -303,7 +306,7 @@ export default tseslint.config(
             },
             {
               from: ['web-test'],
-              allow: ['web-test'],
+              allow: ['web-test', 'web-theme'],
             },
             {
               from: ['web-ui'],

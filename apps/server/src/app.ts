@@ -4,8 +4,16 @@ import { secureHeaders } from 'hono/secure-headers';
 
 import {
   API_PATHS,
+  API_ROUTES,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
+  documentCreateInputSchema,
+  documentListInputSchema,
+  documentUpdateInputSchema,
+  exportDocumentsInputSchema,
+  fileUploadRequestInputSchema,
+  finalizeFileUploadInputSchema,
+  serverUploadMetadataSchema,
   tenantCreateInputSchema,
   toEnvelope,
   todoCreateInputSchema,
@@ -13,6 +21,7 @@ import {
 import {
   err,
   internal,
+  isAllowedDocumentContentType,
   ok,
   unauthorized,
   validation,
@@ -22,18 +31,34 @@ import {
 } from '#core/domain/index.js';
 import {
   addTodo,
+  createDocument,
   createTenant,
+  deleteDocument,
+  exportDocuments,
+  finalizeFileUpload,
+  getFileContent,
+  getFileExport,
+  getDocument,
   listMyTenants,
   listTodos,
+  listDocuments,
+  removeFile,
+  requestFileUpload,
   resolveIdentity,
+  serverUpload,
+  updateDocument,
   type AuthenticatedUser,
 } from '#core/server/index.js';
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
 
 import type { AppDeps } from './composition.js';
+import { cleanExportBytes } from './clean-export.js';
+import { archiveEntries, singleExportFileName, zipResponseStream } from './export-files.js';
 import { recordAppError, recordException, telemetryMiddleware } from './telemetry.js';
 
 type Vars = { Variables: { identity: Identity } };
+
+const SERVER_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 
 const respond = <T>(result: Result<T, AppError>): Response => {
   const envelope = toEnvelope(result);
@@ -45,6 +70,22 @@ const respond = <T>(result: Result<T, AppError>): Response => {
     // JSON must never be stored by any cache (see architecture §HTTP caching).
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
+};
+
+const attachmentHeaders = (fileName: string, contentType: string): HeadersInit => {
+  const encodedName = encodeURIComponent(fileName);
+  const fallbackName = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return {
+    'content-type': contentType,
+    'content-disposition': `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+    'cache-control': 'private, no-store',
+  };
+};
+
+const bytesResponse = (bytes: Uint8Array, fileName: string, contentType: string): Response => {
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+  return new Response(body, { headers: attachmentHeaders(fileName, contentType) });
 };
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
@@ -73,7 +114,7 @@ export const buildApp = (deps: AppDeps) => {
         styleSrc: ["'self'", "'unsafe-inline'"],
         connectSrc: ["'self'"],
         imgSrc: ["'self'", 'data:'],
-        objectSrc: ["'none'"],
+        objectSrc: ["'self'"], // WHY: same-origin PDF previews are embedded with <object>.
         baseUri: ["'self'"],
         frameAncestors: ["'none'"],
       },
@@ -83,13 +124,23 @@ export const buildApp = (deps: AppDeps) => {
   // JSON payloads are small; a 100KB cap is a cheap DoS floor under Vercel's
   // 4.5MB platform backstop. The over-limit response stays an envelope so
   // clients never see a non-JSON body from the API.
-  app.use(
-    '/api/*',
-    bodyLimit({
-      maxSize: 100 * 1024,
-      onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
-    }),
-  );
+  const jsonBodyLimit = bodyLimit({
+    maxSize: 100 * 1024,
+    onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
+  });
+  app.use(API_PATHS.tenants, jsonBodyLimit);
+  app.use(API_PATHS.todos, jsonBodyLimit);
+  app.use(API_PATHS.documents, jsonBodyLimit);
+  app.use(API_ROUTES.documentUpdate.path, jsonBodyLimit);
+  app.use(API_ROUTES.documentFileUploadRequest.path, jsonBodyLimit);
+  app.use(API_ROUTES.documentFileFinalize.path, jsonBodyLimit);
+  app.use(API_ROUTES.documentsExport.path, jsonBodyLimit);
+
+  const serverUploadBodyLimit = bodyLimit({
+    maxSize: SERVER_UPLOAD_MAX_BYTES,
+    onError: () => respond(err(validation('Uploaded file exceeds the 25MB limit'))),
+  });
+  app.use(API_ROUTES.documentFileServerUpload.path, serverUploadBodyLimit);
 
   app.use('*', telemetryMiddleware);
 
@@ -148,8 +199,7 @@ export const buildApp = (deps: AppDeps) => {
         tenant:
           identity.tenantId &&
           identity.tenantSlug &&
-          identity.tenantName &&
-          (identity.staffRole || identity.memberId)
+          identity.tenantName
             ? {
                 id: identity.tenantId,
                 slug: identity.tenantSlug,
@@ -180,6 +230,171 @@ export const buildApp = (deps: AppDeps) => {
     }
     const result = await addTodo({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ todo: result.value }) : result);
+  });
+
+  app.get(API_PATHS.documents, async (c) => {
+    const parsed = documentListInputSchema.safeParse({
+      docType: c.req.query('docType'),
+      person: c.req.query('person'),
+      text: c.req.query('text'),
+      dateFrom: c.req.query('dateFrom'),
+      dateTo: c.req.query('dateTo'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document filters', parsed.error.flatten())));
+    }
+    const result = await listDocuments({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ documents: result.value }) : result);
+  });
+
+  app.post(API_PATHS.documents, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document payload', parsed.error.flatten())));
+    }
+    const result = await createDocument({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.document.path, async (c) => {
+    const result = await getDocument({ identity: c.get('identity') }, c.req.param('documentId'), deps);
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.patch(API_ROUTES.documentUpdate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentUpdateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document payload', parsed.error.flatten())));
+    }
+    const result = await updateDocument(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentDelete.path, async (c) => {
+    const result = await deleteDocument(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileUploadRequest.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = fileUploadRequestInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid file upload request', parsed.error.flatten())));
+    }
+    const result = await requestFileUpload(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ upload: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileFinalize.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = finalizeFileUploadInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid uploaded file', parsed.error.flatten())));
+    }
+    const result = await finalizeFileUpload(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ file: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileServerUpload.path, async (c) => {
+    const parsed = serverUploadMetadataSchema.safeParse({
+      fileName: c.req.query('fileName'),
+      contentType: c.req.header('content-type'),
+      role: c.req.query('role'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid server upload metadata', parsed.error.flatten())));
+    }
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    const result = await serverUpload(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      { ...parsed.data, bytes },
+      deps,
+    );
+    return respond(result.ok ? ok({ file: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentFileDelete.path, async (c) => {
+    const result = await removeFile(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
+  });
+
+  app.get(API_ROUTES.documentFileContent.path, async (c) => {
+    const result = await getFileContent(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    if (!result.ok) return respond(result);
+    const encodedName = encodeURIComponent(result.value.fileName);
+    const fallbackName = result.value.fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+    const disposition = isAllowedDocumentContentType(result.value.contentType) ? 'inline' : 'attachment';
+    const body = new ArrayBuffer(result.value.bytes.byteLength);
+    new Uint8Array(body).set(result.value.bytes);
+    return new Response(body, {
+      headers: {
+        'content-type': result.value.contentType,
+        'content-disposition': `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+        'cache-control': 'private, no-store',
+      },
+    });
+  });
+
+  app.get(API_ROUTES.documentFileExport.path, async (c) => {
+    const result = await getFileExport(
+      { identity: c.get('identity') },
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    if (!result.ok) return respond(result);
+    const bytes = await cleanExportBytes(result.value.bytes, result.value.contentType);
+    return bytesResponse(
+      bytes,
+      singleExportFileName(result.value.document, result.value.file),
+      result.value.contentType,
+    );
+  });
+
+  app.post(API_ROUTES.documentsExport.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = exportDocumentsInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid export request', parsed.error.flatten())));
+    }
+    const result = await exportDocuments({ identity: c.get('identity') }, parsed.data, deps);
+    if (!result.ok) return respond(result);
+    const entries = await archiveEntries(result.value);
+    return new Response(zipResponseStream(entries), {
+      headers: attachmentHeaders('eksport-dokumentow.zip', 'application/zip'),
+    });
   });
 
   return app;

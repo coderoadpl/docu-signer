@@ -1,11 +1,20 @@
 import { z } from 'zod';
 
 import {
+  createDocumentSchema,
+  documentFileSchema,
+  documentListFilterSchema,
+  documentSchema,
+  documentWithFilesSchema,
+  exportDocumentsSchema,
+  fileUploadRequestSchema,
+  finalizeFileUploadSchema,
   membershipSchema,
   newTodoSchema,
   staffRoleSchema,
   tenantSchema,
   todoSchema,
+  updateDocumentSchema,
 } from '#core/domain/index.js';
 
 /**
@@ -61,6 +70,61 @@ export const todoCreateOutputSchema = z.object({
   todo: todoSchema,
 });
 
+export const documentListInputSchema = documentListFilterSchema;
+
+export const documentListOutputSchema = z.object({
+  documents: z.array(documentWithFilesSchema),
+});
+
+export const documentCreateInputSchema = createDocumentSchema;
+
+export const documentCreateOutputSchema = z.object({
+  document: documentSchema,
+});
+
+export const documentGetOutputSchema = z.object({
+  document: documentWithFilesSchema,
+});
+
+export const documentUpdateInputSchema = updateDocumentSchema;
+
+export const documentUpdateOutputSchema = documentCreateOutputSchema;
+
+export const documentDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
+
+export const fileUploadRequestInputSchema = fileUploadRequestSchema;
+
+export const fileUploadRequestOutputSchema = z.object({
+  upload: z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('direct'),
+      key: z.string(),
+      target: z.object({
+        url: z.string().url(),
+        method: z.literal('PUT'),
+        headers: z.record(z.string()),
+      }),
+    }),
+    z.object({ kind: z.literal('server'), key: z.string() }),
+  ]),
+});
+
+export const finalizeFileUploadInputSchema = finalizeFileUploadSchema;
+
+export const documentFileOutputSchema = z.object({
+  file: documentFileSchema,
+});
+
+export const serverUploadMetadataSchema = fileUploadRequestSchema;
+
+export const documentFileDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
+
+export const exportDocumentsInputSchema = exportDocumentsSchema;
+
 /**
  * Every route carries its HTTP method so clients can discriminate reads from
  * writes at the type level (CQRS partition). Safe GETs are queries; unsafe
@@ -73,6 +137,39 @@ export const API_ROUTES = {
   tenantsCreate: { method: 'POST', path: '/api/tenants' },
   todos: { method: 'GET', path: '/api/todos' },
   todosCreate: { method: 'POST', path: '/api/todos' },
+  documents: { method: 'GET', path: '/api/documents' },
+  documentsCreate: { method: 'POST', path: '/api/documents' },
+  document: { method: 'GET', path: '/api/documents/:documentId' },
+  documentUpdate: { method: 'PATCH', path: '/api/documents/:documentId' },
+  documentDelete: { method: 'DELETE', path: '/api/documents/:documentId' },
+  documentFileUploadRequest: {
+    method: 'POST',
+    path: '/api/documents/:documentId/files/upload-request',
+  },
+  documentFileFinalize: {
+    method: 'POST',
+    path: '/api/documents/:documentId/files/finalize',
+  },
+  documentFileServerUpload: {
+    method: 'POST',
+    path: '/api/documents/:documentId/files/upload',
+  },
+  documentFileDelete: {
+    method: 'DELETE',
+    path: '/api/documents/:documentId/files/:fileId',
+  },
+  documentFileContent: {
+    method: 'GET',
+    path: '/api/documents/:documentId/files/:fileId/content',
+  },
+  documentFileExport: {
+    method: 'GET',
+    path: '/api/documents/:documentId/files/:fileId/export',
+  },
+  documentsExport: {
+    method: 'POST',
+    path: '/api/export',
+  },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -84,6 +181,7 @@ export const API_PATHS = {
   me: API_ROUTES.me.path,
   tenants: API_ROUTES.tenants.path,
   todos: API_ROUTES.todos.path,
+  documents: API_ROUTES.documents.path,
 } as const;
 
 /** Header used by non-browser clients (CLI, tests) to select the tenant. */

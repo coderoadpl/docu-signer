@@ -1,115 +1,79 @@
-/**
- * Demo seed: one user who belongs to two tenants, each with its own todos.
- *   email:    demo@agentproofarch.dev
- *   password: demo1234
- * Tenants: acme.localhost and globex.localhost (subdomains of APP_BASE_DOMAIN).
- * Idempotent: running twice is a no-op.
- */
-import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 
-import { createAuth } from '#adapters/auth/create-auth.js';
+import { and, eq } from 'drizzle-orm';
+import { hashPassword } from 'better-auth/crypto';
 
 import { createDb } from './client.js';
-import { members, tenantAdmins, tenantDomains, tenants, todos, user } from './schema.js';
+import { account, tenantAdmins, tenants, user } from './schema.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
   'postgresql://agentproofarch:agentproofarch@localhost:47542/agentproofarch';
 
+const admin1Email = process.env['SEED_ADMIN1_EMAIL'] ?? 'admin1@dev.local';
+const admin2Email = process.env['SEED_ADMIN2_EMAIL'] ?? 'admin2@dev.local';
+const admin1Password = process.env['SEED_ADMIN1_PASSWORD'] ?? `dev-${randomUUID()}`;
+const admin2Password = process.env['SEED_ADMIN2_PASSWORD'] ?? `dev-${randomUUID()}`;
+
+if (admin1Email === admin2Email) throw new Error('Seed admin emails must be different');
+
 const db = createDb('node-postgres', connectionString);
 
-const auth = createAuth(db, {
-  secret: process.env['BETTER_AUTH_SECRET'] ?? 'dev-only-secret-do-not-use-in-prod',
-  baseUrl: 'http://localhost:47100',
-  baseDomain: 'localhost',
-  trustedOrigins: () => ['http://localhost:47100'],
-  secureCookies: false,
-});
+const ensureAdmin = async (name: string, email: string, password: string) => {
+  const existing = await db.select().from(user).where(eq(user.email, email)).limit(1);
+  const userId = existing[0]?.id ?? randomUUID();
+  if (existing.length === 0) {
+    await db.insert(user).values({ id: userId, name, email, emailVerified: true });
+  }
 
-const DEMO_EMAIL = 'demo@agentproofarch.dev';
+  const passwordHash = await hashPassword(password);
+  const existingAccount = await db
+    .select()
+    .from(account)
+    .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')))
+    .limit(1);
+  if (existingAccount[0]) {
+    await db.update(account).set({ password: passwordHash }).where(eq(account.id, existingAccount[0].id));
+  } else {
+    await db.insert(account).values({
+      id: randomUUID(),
+      accountId: userId,
+      providerId: 'credential',
+      userId,
+      password: passwordHash,
+    });
+  }
+  return userId;
+};
 
-const existing = await db.select().from(user).where(eq(user.email, DEMO_EMAIL)).limit(1);
-if (existing.length === 0) {
-  await auth.api.signUpEmail({
-    body: { name: 'Demo User', email: DEMO_EMAIL, password: 'demo1234' },
-  });
-}
-const seededUsers = await db.select().from(user).where(eq(user.email, DEMO_EMAIL)).limit(1);
-const demoUser = seededUsers[0];
-if (!demoUser) throw new Error('Seeded user not found');
-
+const admin1Id = await ensureAdmin('Admin 1', admin1Email, admin1Password);
+const admin2Id = await ensureAdmin('Admin 2', admin2Email, admin2Password);
 const nowIso = new Date().toISOString();
 
-const tenantRows = [
-  { id: 'tenant-acme', slug: 'acme', name: 'Acme Sp. z o.o.' },
-  { id: 'tenant-globex', slug: 'globex', name: 'Globex Corp' },
-];
+await db.insert(tenants).values({
+  id: 'tenant-default',
+  slug: 'default',
+  name: 'Default',
+  createdAt: nowIso,
+}).onConflictDoNothing();
 
-await db.insert(tenants).values(tenantRows.map((tenant) => ({ ...tenant, createdAt: nowIso }))).onConflictDoNothing();
-
-await db.insert(tenantAdmins).values(
-  tenantRows.map((tenant, index) => ({
-    id: `admin-${tenant.slug}`,
-    tenantId: tenant.id,
-    userId: demoUser.id,
-    role: index === 0 ? ('owner' as const) : ('admin' as const),
-  })),
-).onConflictDoNothing();
-
-await db.insert(members).values([
+await db.insert(tenantAdmins).values([
   {
-    id: 'member-acme-alice',
-    tenantId: 'tenant-acme',
-    userId: 'customer-alice-opaque',
-    email: 'alice@example.com',
-    displayName: 'Alice Example',
-    createdAt: nowIso,
+    id: 'admin-default-1',
+    tenantId: 'tenant-default',
+    userId: admin1Id,
+    role: 'owner',
   },
   {
-    id: 'member-globex-bob',
-    tenantId: 'tenant-globex',
-    userId: 'customer-bob-opaque',
-    email: 'bob@example.com',
-    displayName: 'Bob Example',
-    createdAt: nowIso,
-  },
-]).onConflictDoNothing();
-
-await db.insert(tenantDomains).values(
-  tenantRows.map((tenant) => ({
-    id: `domain-${tenant.slug}`,
-    tenantId: tenant.id,
-    domain: `${tenant.slug}.localhost`,
-    kind: 'subdomain' as const,
-    verified: true,
-  })),
-).onConflictDoNothing();
-
-await db.insert(todos).values([
-  {
-    id: crypto.randomUUID(),
-    tenantId: 'tenant-acme',
-    title: 'Wdrożyć walking skeleton na produkcję',
-    createdBy: demoUser.id,
-    createdAt: nowIso,
-  },
-  {
-    id: crypto.randomUUID(),
-    tenantId: 'tenant-acme',
-    title: 'Sprawdzić izolację danych między tenantami',
-    createdBy: demoUser.id,
-    createdAt: nowIso,
-  },
-  {
-    id: crypto.randomUUID(),
-    tenantId: 'tenant-globex',
-    title: 'Globex: przygotować prezentację architektury',
-    createdBy: demoUser.id,
-    createdAt: nowIso,
+    id: 'admin-default-2',
+    tenantId: 'tenant-default',
+    userId: admin2Id,
+    role: 'admin',
   },
 ]).onConflictDoNothing();
 
 console.log('Seed applied:');
-console.log(`  user     ${DEMO_EMAIL} / demo1234`);
-console.log('  tenants  http://acme.localhost:47100  http://globex.localhost:47100');
+console.log(`  admin 1  ${admin1Email} / ${admin1Password}`);
+console.log(`  admin 2  ${admin2Email} / ${admin2Password}`);
+console.log('  tenant   default');
 process.exit(0);

@@ -4,6 +4,7 @@ import {
   API_PATHS,
   API_ROUTES,
   healthOutputSchema,
+  exportDocumentsInputSchema,
   meOutputSchema,
   TENANT_HEADER,
   tenantCreateInputSchema,
@@ -118,5 +119,16 @@ describe('route schemas parse their example payloads', () => {
       },
     };
     expect(todoCreateOutputSchema.parse(example)).toEqual(example);
+  });
+
+  it('exportDocumentsInputSchema limits a command to 100 ids', () => {
+    expect(exportDocumentsInputSchema.parse({ documentIds: ['document-1'] })).toEqual({
+      documentIds: ['document-1'],
+    });
+    expect(
+      exportDocumentsInputSchema.safeParse({
+        documentIds: Array.from({ length: 101 }, (_, index) => `document-${index}`),
+      }).success,
+    ).toBe(false);
   });
 });

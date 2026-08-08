@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { isAbsolute, resolve } from 'node:path';
+
 import { z } from 'zod';
 
 /** Parse, don't cast: the process refuses to boot on invalid configuration. */
@@ -16,11 +19,29 @@ const envSchema = z.object({
   VERCEL_URL: z.string().optional(),
   VERCEL_BRANCH_URL: z.string().optional(),
   BETTER_AUTH_SECRET: z.string().min(16).default('dev-only-secret-do-not-use-in-prod'),
+  SEED_ADMIN1_EMAIL: z.string().email().default('admin1@dev.local'),
+  SEED_ADMIN1_PASSWORD: z.string().min(8).default(() => `dev-${randomUUID()}`),
+  SEED_ADMIN2_EMAIL: z.string().email().default('admin2@dev.local'),
+  SEED_ADMIN2_PASSWORD: z.string().min(8).default(() => `dev-${randomUUID()}`),
   SECURE_COOKIES: z
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
   WEB_DIST_DIR: z.string().default('dist/web'),
+  STORAGE_DRIVER: z.enum(['local-fs', 'vercel-blob']).default('local-fs'),
+  STORAGE_LOCAL_PATH: z
+    .string()
+    .default(resolve(process.cwd(), '.storage'))
+    .refine(isAbsolute, 'STORAGE_LOCAL_PATH must be absolute'),
+  BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.STORAGE_DRIVER === 'vercel-blob' && !value.BLOB_READ_WRITE_TOKEN) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['BLOB_READ_WRITE_TOKEN'],
+      message: 'BLOB_READ_WRITE_TOKEN is required for vercel-blob storage',
+    });
+  }
 });
 
 export type Env = z.output<typeof envSchema> & { APP_BASE_URL: string };
