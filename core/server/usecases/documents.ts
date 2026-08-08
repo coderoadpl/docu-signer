@@ -2,10 +2,12 @@ import {
   createDocumentSchema,
   documentListFilterSchema,
   err,
+  exportTooLarge,
   exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
   MAX_DOCUMENT_EXPORT_FILES,
+  MAX_DOCUMENT_EXPORT_BYTES,
   notFound,
   ok,
   updateDocumentSchema,
@@ -191,16 +193,22 @@ const finalizeUpload = async (
   if (!parsed.success) return err(validation('Invalid uploaded file', parsed.error.flatten()));
   const expectedPrefix = `documents/${tenantId}/${documentId}/`;
   if (!parsed.data.key.startsWith(expectedPrefix)) return err(validation('Invalid storage key'));
-  const exists = await deps.storage.exists(parsed.data.key);
-  if (!exists.ok) return exists;
-  if (!exists.value) return err(notFound('Uploaded file not found'));
+  const metadata = await deps.storage.head(parsed.data.key);
+  if (!metadata.ok) return metadata;
+  if (!metadata.value) return err(notFound('Uploaded file not found'));
+  if (
+    metadata.value.contentType !== parsed.data.contentType ||
+    metadata.value.sizeBytes !== parsed.data.sizeBytes
+  ) {
+    return err(validation('Uploaded file metadata does not match the declared upload'));
+  }
   const created = await deps.documents.createFile(tenantId, {
     id: deps.ids.nextId(),
     documentId,
     role: parsed.data.role,
     fileName: parsed.data.fileName,
-    contentType: parsed.data.contentType,
-    sizeBytes: parsed.data.sizeBytes,
+    contentType: metadata.value.contentType,
+    sizeBytes: metadata.value.sizeBytes,
     storageKey: parsed.data.key,
   });
   return created ? ok(created) : err(notFound('Document not found'));
@@ -316,6 +324,7 @@ export const exportDocuments = async (
   const parsed = exportDocumentsSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid export request', parsed.error.flatten()));
   const exported: ExportDocumentContent[] = [];
+  let exportedBytes = 0;
   for (const documentId of parsed.data.documentIds) {
     const document = await deps.documents.findById(scope.value, documentId);
     if (!document) continue;
@@ -326,10 +335,18 @@ export const exportDocuments = async (
     }
     const exportedFiles: Array<{ file: DocumentFile; bytes: Uint8Array }> = [];
     for (const file of files) {
+      if (exportedBytes + file.sizeBytes > MAX_DOCUMENT_EXPORT_BYTES) {
+        return err(
+          exportTooLarge(
+            `An export may contain at most ${MAX_DOCUMENT_EXPORT_BYTES} uncompressed bytes`,
+          ),
+        );
+      }
       const bytes = await deps.storage.get(file.storageKey);
       if (!bytes.ok) return bytes;
       if (!bytes.value) return err(notFound('Document file content not found'));
       exportedFiles.push({ file, bytes: bytes.value });
+      exportedBytes += file.sizeBytes;
     }
     exported.push({ document, files: exportedFiles });
   }

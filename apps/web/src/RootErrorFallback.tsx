@@ -19,6 +19,8 @@ const headingFor = (error: unknown): string => {
       return 'Żądanie jest nieprawidłowe';
     case 'conflict':
       return 'Wystąpił konflikt zmian';
+    case 'export_too_large':
+      return 'Eksport jest zbyt duży';
     case 'unavailable':
       return 'Usługa jest tymczasowo niedostępna';
     case 'internal':

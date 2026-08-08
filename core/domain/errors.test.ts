@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appError,
   ERROR_CODES,
+  exportTooLarge,
   forbidden,
   internal,
   notFound,
@@ -64,6 +65,17 @@ describe('error constructors', () => {
     expect(tenantNotFound('gone')).toEqual({ code: 'tenant_not_found', message: 'gone' });
   });
 
+  it('exportTooLarge uses default and custom messages', () => {
+    expect(exportTooLarge()).toEqual({
+      code: 'export_too_large',
+      message: 'Export is too large',
+    });
+    expect(exportTooLarge('too many bytes')).toEqual({
+      code: 'export_too_large',
+      message: 'too many bytes',
+    });
+  });
+
   it('internal uses default and custom messages', () => {
     expect(internal()).toEqual({ code: 'internal', message: 'Internal error' });
     expect(internal('kaboom')).toEqual({ code: 'internal', message: 'kaboom' });
@@ -82,6 +94,7 @@ describe('ERROR_CODES taxonomy', () => {
     not_found: notFound,
     validation: () => validation('x'),
     conflict: () => appError('conflict', 'x'),
+    export_too_large: exportTooLarge,
     tenant_not_found: tenantNotFound,
     unavailable,
     internal,

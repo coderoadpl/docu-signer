@@ -4,6 +4,7 @@ export const ERROR_CODES = [
   'not_found',
   'validation',
   'conflict',
+  'export_too_large',
   'tenant_not_found',
   'unavailable',
   'internal',
@@ -29,6 +30,9 @@ export const notFound = (message = 'Not found'): AppError => appError('not_found
 
 export const validation = (message: string, details?: unknown): AppError =>
   appError('validation', message, details);
+
+export const exportTooLarge = (message = 'Export is too large'): AppError =>
+  appError('export_too_large', message);
 
 export const tenantNotFound = (message = 'Unknown tenant'): AppError =>
   appError('tenant_not_found', message);

@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const MAX_DOCUMENT_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_DOCUMENT_EXPORT_DOCUMENTS = 100;
 export const MAX_DOCUMENT_EXPORT_FILES = 100;
+export const MAX_DOCUMENT_EXPORT_BYTES = 256 * 1024 * 1024;
 
 export const documentTypeSchema = z.enum([
   'umowa-uod',

@@ -36,7 +36,6 @@ import {
   unauthorized,
   unavailable,
   validation,
-  isAllowedDocumentContentType,
   type Identity,
 } from '#core/domain/index.js';
 import {
@@ -98,6 +97,14 @@ type Vars = { Variables: { identity: Identity } };
 // The Better Auth namespace prefix, derived from the one sanctioned pattern so no
 // route string is spelled by hand (lint bans literal auth routes outside adapters).
 const BETTER_AUTH_PATH_PREFIX = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
+const INLINE_DOCUMENT_CONTENT_TYPES = [
+  'application/pdf',
+  'image/avif',
+  'image/gif',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const;
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   userId: user.userId,
@@ -451,7 +458,9 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     if (!result.ok) return respond(result);
-    const disposition = isAllowedDocumentContentType(result.value.contentType)
+    const disposition = INLINE_DOCUMENT_CONTENT_TYPES.some(
+      (contentType) => contentType === result.value.contentType.trim().toLowerCase(),
+    )
       ? 'inline'
       : 'attachment';
     const body = new ArrayBuffer(result.value.bytes.byteLength);

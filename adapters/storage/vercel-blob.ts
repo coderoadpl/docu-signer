@@ -35,13 +35,13 @@ export const createVercelBlobStorage = (token: string): StoragePort => ({
       if (!result || result.statusCode !== 200) return null;
       return new Uint8Array(await new Response(result.stream).arrayBuffer());
     }),
-  exists: async (key) => {
+  head: async (key) => {
     try {
-      await head(key, { token });
-      return ok(true);
+      const metadata = await head(key, { token });
+      return ok({ contentType: metadata.contentType, sizeBytes: metadata.size });
     } catch (cause) {
       return cause instanceof BlobNotFoundError
-        ? ok(false)
+        ? ok(null)
         : err(internal(`Blob storage operation failed: ${String(cause)}`));
     }
   },

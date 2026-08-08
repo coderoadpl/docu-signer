@@ -58,10 +58,15 @@ export interface UploadTarget {
   headers: Record<string, string>;
 }
 
+export interface StorageMetadata {
+  contentType: string;
+  sizeBytes: number;
+}
+
 export interface StoragePort {
   put(key: string, bytes: Uint8Array, contentType: string): Promise<Result<void, AppError>>;
   get(key: string): Promise<Result<Uint8Array | null, AppError>>;
-  exists(key: string): Promise<Result<boolean, AppError>>;
+  head(key: string): Promise<Result<StorageMetadata | null, AppError>>;
   delete(key: string): Promise<Result<void, AppError>>;
   createUploadUrl(key: string, contentType: string): Promise<Result<UploadTarget | null, AppError>>;
 }
