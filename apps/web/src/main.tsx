@@ -18,6 +18,8 @@ import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { BoardRoute } from './routes/board.js';
+import { DocumentDetailRoute } from './routes/document-detail.js';
+import { DocumentsRoute } from './routes/documents.js';
 import { LoginRoute } from './routes/login.js';
 import { MembersRoute } from './routes/members.js';
 import { AppLayout } from './features/settings/AppLayout.js';
@@ -93,6 +95,16 @@ const membersRoute = createRoute({
   path: 'members',
   component: MembersRoute,
 });
+const documentsRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: 'documents',
+  component: DocumentsRoute,
+});
+const documentDetailRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: 'documents/$id',
+  component: DocumentDetailRoute,
+});
 const settingsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: 'settings',
@@ -119,6 +131,8 @@ const router = createRouter({
       boardRoute,
       teamBoardRoute,
       membersRoute,
+      documentsRoute,
+      documentDetailRoute,
       settingsRoute,
       settingsStaffRoute,
       settingsDomainsRoute,

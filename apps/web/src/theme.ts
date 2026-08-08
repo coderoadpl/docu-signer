@@ -327,3 +327,25 @@ export const TenantSwatch = styled(Box)(({ theme }) => ({
 }));
 
 export const LedgerNav = styled(Stack)<AsElement>({ borderBottom: `1px solid ${LINE}` });
+
+export const FileDropZone = styled(Box)(({ theme }) => ({
+  border: `1px dashed ${theme.palette.divider}`,
+  backgroundColor: theme.palette.background.paper,
+}));
+
+export const PdfPreview = styled('object')(({ theme }) => ({
+  display: 'block',
+  width: '100%',
+  minHeight: '32rem',
+  border: `1px solid ${theme.palette.divider}`,
+  backgroundColor: theme.palette.background.paper,
+}));
+
+export const PreviewImage = styled('img')({
+  display: 'block',
+  width: '100%',
+  maxHeight: '32rem',
+  objectFit: 'contain',
+});
+
+export const EmptyState = styled(Box)({ textAlign: 'center' });

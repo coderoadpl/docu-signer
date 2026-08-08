@@ -364,6 +364,20 @@ describe('createApiClient', () => {
       ok: true,
       value: { fileName: 'archive.zip' },
     });
+    expect(client.documentFileContentUrl(documentId, fileId)).toBe(
+      `/api/documents/${documentId}/files/${fileId}/content`,
+    );
+    expect(client.documentFileExportUrl(documentId, fileId)).toBe(
+      `/api/documents/${documentId}/files/${fileId}/export`,
+    );
+    await expect(
+      client.directFileUpload({
+        url: 'https://upload.example',
+        method: 'PUT',
+        headers: { token: 'signed' },
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
+    ).resolves.toEqual({ ok: true, value: undefined });
     await expect(client.deleteDocumentFile(documentId, fileId)).resolves.toMatchObject({ ok: true });
     await expect(client.deleteDocument(documentId)).resolves.toMatchObject({ ok: true });
   });
@@ -389,6 +403,14 @@ describe('createApiClient', () => {
         bytes: new Uint8Array([1]),
       }),
     ).resolves.toMatchObject({ ok: false, error: { code: 'internal' } });
+    await expect(
+      failing.directFileUpload({
+        url: 'https://upload.example',
+        method: 'PUT',
+        headers: {},
+        bytes: new Uint8Array([1]),
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'internal' } });
 
     const denied = createApiClient({
       baseUrl: '',
@@ -407,6 +429,14 @@ describe('createApiClient', () => {
         bytes: new Uint8Array([1]),
       }),
     ).resolves.toMatchObject({ ok: false, error: { code: 'not_found' } });
+    await expect(
+      denied.directFileUpload({
+        url: 'https://upload.example',
+        method: 'PUT',
+        headers: {},
+        bytes: new Uint8Array([1]),
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'internal' } });
 
     const malformed = createApiClient({
       baseUrl: '',

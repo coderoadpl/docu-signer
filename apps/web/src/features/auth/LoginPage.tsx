@@ -72,14 +72,14 @@ export const LoginPage = () => {
         }}
       >
         <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          agentproofarch
+          Podpisy
         </Wordmark>
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          sign in · tenant {window.location.hostname}
+          Logowanie · {window.location.hostname}
         </Eyebrow>
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
-            <FormLabel htmlFor="login-email">email</FormLabel>
+            <FormLabel htmlFor="login-email">Adres e-mail</FormLabel>
             <OutlinedInput
               id="login-email"
               type="email"
@@ -90,7 +90,7 @@ export const LoginPage = () => {
             />
           </FormControl>
           <FormControl fullWidth>
-            <FormLabel htmlFor="login-password">password</FormLabel>
+            <FormLabel htmlFor="login-password">Hasło</FormLabel>
             <OutlinedInput
               id="login-password"
               type="password"
@@ -107,7 +107,7 @@ export const LoginPage = () => {
             disabled={signIn.isPending}
             sx={{ mt: '0.4rem' }}
           >
-            {signIn.isPending ? 'signing in…' : 'sign in'}
+            {signIn.isPending ? 'Logowanie…' : 'Zaloguj się'}
           </Button>
           <Button
             type="button"
@@ -116,7 +116,9 @@ export const LoginPage = () => {
             disabled={magicLink.isPending || email.length === 0}
             onClick={() => magicLink.mutate({ email, callbackURL: `${window.location.origin}/app` })}
           >
-            {magicLink.isPending ? 'sending link…' : 'email me a sign-in link'}
+            {magicLink.isPending
+              ? 'Wysyłanie linku…'
+              : 'Wyślij link do logowania'}
           </Button>
           <Button
             type="button"
@@ -125,7 +127,9 @@ export const LoginPage = () => {
             disabled={passkey.isPending}
             onClick={() => passkey.mutate()}
           >
-            {passkey.isPending ? 'waiting for passkey…' : 'continue with a passkey'}
+            {passkey.isPending
+              ? 'Oczekiwanie na klucz…'
+              : 'Zaloguj się kluczem dostępu'}
           </Button>
           {config.data?.googleEnabled ? (
             <Button
@@ -135,13 +139,14 @@ export const LoginPage = () => {
               disabled={google.isPending}
               onClick={() => google.mutate({ provider: 'google', callbackURL: `${window.location.origin}/app` })}
             >
-              continue with Google
+              Zaloguj się przez Google
             </Button>
           ) : null}
         </Stack>
         {magicLink.isSuccess ? (
           <Alert severity="success" sx={{ mt: '0.6rem' }}>
-            Check your email for a sign-in link. In dev the send is captured by Mailpit — open its inbox to follow the link.
+            Sprawdź skrzynkę e-mail. W środowisku deweloperskim wiadomość
+            znajdziesz w Mailpit.
           </Alert>
         ) : null}
         {signIn.isError ? (
@@ -156,7 +161,7 @@ export const LoginPage = () => {
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
-          demo account: <DemoValue>demo@agentproofarch.dev</DemoValue> /{' '}
+          konto demonstracyjne: <DemoValue>demo@agentproofarch.dev</DemoValue> /{' '}
           <DemoValue>demo1234</DemoValue>
         </FinePrint>
       </Paper>

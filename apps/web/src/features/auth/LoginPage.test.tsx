@@ -19,17 +19,18 @@ const renderLoginPage = async () => {
 };
 
 const fillCredentials = async () => {
-  await userEvent.type(screen.getByLabelText('email'), 'demo@agentproofarch.dev');
-  await userEvent.type(screen.getByLabelText('password'), 'wrong-password');
+  await userEvent.type(screen.getByLabelText('Adres e-mail'), 'demo@agentproofarch.dev');
+  await userEvent.type(screen.getByLabelText('Hasło'), 'wrong-password');
 };
 
 describe('LoginPage', () => {
   it('renders labeled login inputs', async () => {
     await renderLoginPage();
 
-    expect(screen.getByLabelText('email')).toBeInTheDocument();
-    expect(screen.getByLabelText('password')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'sign in' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Adres e-mail')).toBeInTheDocument();
+    expect(screen.getByLabelText('Hasło')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zaloguj się' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Podpisy' })).toBeInTheDocument();
   });
 
   it('renders the AppError from a failed sign-in mutation', async () => {
@@ -41,7 +42,7 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: 'sign in' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Zaloguj się' }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
@@ -56,24 +57,24 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: 'sign in' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Zaloguj się' }));
 
-    expect(await screen.findByRole('button', { name: 'signing in…' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Logowanie…' })).toBeDisabled();
   });
 
   it('requests a passwordless magic link and confirms delivery (US-026)', async () => {
     server.use(http.post('*/sign-in/magic-link', () => HttpResponse.json({ status: true })));
 
     await renderLoginPage();
-    await userEvent.type(screen.getByLabelText('email'), 'mag@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'email me a sign-in link' }));
+    await userEvent.type(screen.getByLabelText('Adres e-mail'), 'mag@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Wyślij link do logowania' }));
 
-    expect(await screen.findByText(/captured by mailpit/i)).toBeInTheDocument();
+    expect(await screen.findByText(/wiadomość znajdziesz w Mailpit/i)).toBeInTheDocument();
   });
 
   it('hides the Google button when the provider is not configured', async () => {
     await renderLoginPage();
-    expect(screen.queryByRole('button', { name: /continue with Google/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Zaloguj się przez Google/i })).not.toBeInTheDocument();
   });
 
   it('shows the Google button only when the server reports it enabled (FR-26)', async () => {
@@ -82,6 +83,6 @@ describe('LoginPage', () => {
     );
 
     await renderLoginPage();
-    expect(await screen.findByRole('button', { name: /continue with Google/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Zaloguj się przez Google/i })).toBeInTheDocument();
   });
 });

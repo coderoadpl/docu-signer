@@ -23,12 +23,22 @@ import type {
   CardMove,
   CreateDocument,
   DocumentListFilter,
+  ExportDocuments,
+  FileUploadRequest,
+  FinalizeFileUpload,
   NewCard,
   NewTodo,
+  UpdateDocument,
 } from '#core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult, MagicLinkRequest, SocialSignInInput } from './auth-port.js';
-import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
+import {
+  unwrap,
+  type ApiClient,
+  type DirectFileUploadInput,
+  type ReadResult,
+  type WriteResult,
+} from './http.js';
 
 /**
  * Identity helpers that type descriptors against `@tanstack/query-core` option
@@ -108,6 +118,8 @@ export const documentsScopes = {
   all: () => ['documents'] as const,
   lists: () => ['documents', 'list'] as const,
   list: (filter: DocumentListFilter) => ['documents', 'list', filter] as const,
+  details: () => ['documents', 'detail'] as const,
+  detail: (documentId: string) => ['documents', 'detail', documentId] as const,
 };
 
 export const cardsScopes = {
@@ -192,13 +204,77 @@ export const documentsQuery = (api: ApiClient, filter: DocumentListFilter = {}) 
     call: ({ signal }) => api.listDocuments(filter, signal),
   });
 
+export const documentQuery = (api: ApiClient, documentId: string) =>
+  defineQuery({
+    queryKey: documentsScopes.detail(documentId),
+    call: ({ signal }) => api.getDocument(documentId, signal),
+  });
+
 export const createDocumentMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...documentsScopes.all(), 'create'],
     call: (input: CreateDocument) => api.createDocument(input),
   });
 
-export const documentsInvalidates = () => ({ queryKey: documentsScopes.lists() });
+export const updateDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'update'],
+    call: ({ documentId, input }: { documentId: string; input: UpdateDocument }) =>
+      api.updateDocument(documentId, input),
+  });
+
+export const deleteDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'delete'],
+    call: (documentId: string) => api.deleteDocument(documentId),
+  });
+
+export const requestFileUploadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'request-upload'],
+    call: ({ documentId, input }: { documentId: string; input: FileUploadRequest }) =>
+      api.requestFileUpload(documentId, input),
+  });
+
+export const finalizeFileUploadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'finalize'],
+    call: ({ documentId, input }: { documentId: string; input: FinalizeFileUpload }) =>
+      api.finalizeFileUpload(documentId, input),
+  });
+
+export const uploadDocumentFileMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'server-upload'],
+    call: ({
+      documentId,
+      input,
+    }: {
+      documentId: string;
+      input: FileUploadRequest & { bytes: Uint8Array };
+    }) => api.uploadDocumentFile(documentId, input),
+  });
+
+export const directFileUploadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'direct-upload'],
+    call: (input: DirectFileUploadInput) => api.directFileUpload(input),
+  });
+
+export const deleteDocumentFileMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'delete'],
+    call: ({ documentId, fileId }: { documentId: string; fileId: string }) =>
+      api.deleteDocumentFile(documentId, fileId),
+  });
+
+export const exportDocumentsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'export'],
+    call: (input: ExportDocuments) => api.exportDocuments(input),
+  });
+
+export const documentsInvalidates = () => ({ queryKey: documentsScopes.all() });
 
 export const cardsQuery = (api: ApiClient, board: BoardId = 'personal') =>
   defineQuery({

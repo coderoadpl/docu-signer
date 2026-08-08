@@ -12,9 +12,19 @@ import {
   cardsInvalidates,
   cardsQuery,
   cardsScopes,
+  createDocumentMutation,
   createTenantMutation,
+  deleteDocumentFileMutation,
+  deleteDocumentMutation,
+  directFileUploadMutation,
+  documentQuery,
+  documentsInvalidates,
+  documentsQuery,
+  documentsScopes,
   ensureMemberInvalidates,
   ensureMemberMutation,
+  exportDocumentsMutation,
+  finalizeFileUploadMutation,
   membersQuery,
   membersScopes,
   meQuery,
@@ -23,6 +33,7 @@ import {
   passkeysQuery,
   registerPasskeyMutation,
   removePasskeyMutation,
+  requestFileUploadMutation,
   signInMutation,
   signInPasskeyMutation,
   signOutMutation,
@@ -31,6 +42,8 @@ import {
   tenantsScopes,
   todosQuery,
   todosScopes,
+  updateDocumentMutation,
+  uploadDocumentFileMutation,
 } from './queries.js';
 
 const todo = {
@@ -64,6 +77,17 @@ const document = {
   tags: [],
   createdAt: '2026-07-03T00:00:00.000Z',
   updatedAt: '2026-07-03T00:00:00.000Z',
+};
+
+const documentFile = {
+  id: '22222222-2222-4222-8222-222222222222',
+  documentId: document.id,
+  role: 'source' as const,
+  fileName: 'agreement.pdf',
+  contentType: 'application/pdf',
+  sizeBytes: 3,
+  storageKey: 'documents/t-acme/document/file',
+  createdAt: '2026-07-03T00:00:00.000Z',
 };
 
 const member = {
@@ -110,13 +134,22 @@ const happyApi: ApiClient = {
       },
     }),
   deleteDocument: async () => ok({ deleted: true }),
-  requestFileUpload: async () => err(internal('unused')),
-  finalizeFileUpload: async () => err(internal('unused')),
-  uploadDocumentFile: async () => err(internal('unused')),
+  requestFileUpload: async () =>
+    ok({ upload: { kind: 'server', key: documentFile.storageKey } }),
+  finalizeFileUpload: async () => ok({ file: documentFile }),
+  uploadDocumentFile: async () => ok({ file: documentFile }),
   deleteDocumentFile: async () => ok({ deleted: true }),
   downloadDocumentFile: async () => err(internal('unused')),
   exportDocumentFile: async () => err(internal('unused')),
-  exportDocuments: async () => err(internal('unused')),
+  exportDocuments: async () =>
+    ok({
+      bytes: new Uint8Array([1]),
+      contentType: 'application/zip',
+      fileName: 'documents.zip',
+    }),
+  documentFileContentUrl: () => '/content',
+  documentFileExportUrl: () => '/export',
+  directFileUpload: async () => ok(undefined),
   listCards: async () => ok({ cards: [card] }),
   addCard: async (input) => ok({ card: { ...card, title: input.title, column: input.column } }),
   moveCard: async (input) => ok({ card: { ...card, column: input.toColumn, position: input.toIndex } }),
@@ -167,6 +200,9 @@ const sadApi: ApiClient = {
   downloadDocumentFile: async () => err(internal('boom')),
   exportDocumentFile: async () => err(internal('boom')),
   exportDocuments: async () => err(internal('boom')),
+  documentFileContentUrl: () => '/content',
+  documentFileExportUrl: () => '/export',
+  directFileUpload: async () => err(internal('boom')),
   listCards: async () => err(internal('boom')),
   addCard: async () => err(internal('boom')),
   moveCard: async () => err(internal('boom')),
@@ -193,6 +229,12 @@ describe('query descriptors', () => {
     expect(meQuery(happyApi).queryKey).toEqual(meScopes.all());
     expect(tenantsQuery(happyApi).queryKey).toEqual(tenantsScopes.all());
     expect(todosQuery(happyApi).queryKey).toEqual(todosScopes.lists());
+    expect(documentsQuery(happyApi).queryKey).toEqual(
+      documentsScopes.list({}),
+    );
+    expect(documentQuery(happyApi, document.id).queryKey).toEqual(
+      documentsScopes.detail(document.id),
+    );
     expect(cardsQuery(happyApi).queryKey).toEqual(cardsScopes.list('personal'));
     expect(membersQuery(happyApi).queryKey).toEqual(membersScopes.lists());
   });
@@ -210,6 +252,12 @@ describe('query descriptors', () => {
       tenants: [{ tenant, staffRole: 'owner' }],
     });
     await expect(client.fetchQuery(todosQuery(happyApi))).resolves.toEqual({ todos: [todo] });
+    await expect(client.fetchQuery(documentsQuery(happyApi))).resolves.toEqual({
+      documents: [{ ...document, files: [] }],
+    });
+    await expect(
+      client.fetchQuery(documentQuery(happyApi, document.id)),
+    ).resolves.toEqual({ document: { ...document, files: [] } });
     await expect(client.fetchQuery(cardsQuery(happyApi))).resolves.toEqual({ cards: [card] });
     await expect(client.fetchQuery(membersQuery(happyApi))).resolves.toEqual({ members: [member] });
   });
@@ -272,6 +320,88 @@ describe('mutation descriptors', () => {
 
   it('invalidates the card lists after a successful add or move', () => {
     expect(cardsInvalidates()).toEqual({ queryKey: cardsScopes.lists() });
+  });
+
+  it('binds the complete document command surface', async () => {
+    const client = newClient();
+    const observe = <TData, TVariables>(
+      descriptor: ConstructorParameters<
+        typeof MutationObserver<TData, Error, TVariables>
+      >[1],
+    ) => new MutationObserver(client, descriptor);
+    const input = {
+      title: document.title,
+      docType: document.docType,
+      documentDate: document.documentDate,
+    };
+
+    await expect(
+      observe(createDocumentMutation(happyApi)).mutate(input),
+    ).resolves.toMatchObject({ document });
+    await expect(
+      observe(updateDocumentMutation(happyApi)).mutate({
+        documentId: document.id,
+        input,
+      }),
+    ).resolves.toMatchObject({ document });
+    await expect(
+      observe(deleteDocumentMutation(happyApi)).mutate(document.id),
+    ).resolves.toEqual({ deleted: true });
+    await expect(
+      observe(requestFileUploadMutation(happyApi)).mutate({
+        documentId: document.id,
+        input: {
+          fileName: documentFile.fileName,
+          contentType: documentFile.contentType,
+          role: documentFile.role,
+        },
+      }),
+    ).resolves.toMatchObject({ upload: { kind: 'server' } });
+    await expect(
+      observe(finalizeFileUploadMutation(happyApi)).mutate({
+        documentId: document.id,
+        input: {
+          key: documentFile.storageKey,
+          fileName: documentFile.fileName,
+          contentType: documentFile.contentType,
+          sizeBytes: documentFile.sizeBytes,
+          role: documentFile.role,
+        },
+      }),
+    ).resolves.toEqual({ file: documentFile });
+    await expect(
+      observe(uploadDocumentFileMutation(happyApi)).mutate({
+        documentId: document.id,
+        input: {
+          fileName: documentFile.fileName,
+          contentType: documentFile.contentType,
+          role: documentFile.role,
+          bytes: new Uint8Array([1, 2, 3]),
+        },
+      }),
+    ).resolves.toEqual({ file: documentFile });
+    await expect(
+      observe(directFileUploadMutation(happyApi)).mutate({
+        url: 'https://upload.example',
+        method: 'PUT',
+        headers: {},
+        bytes: new Uint8Array([1]),
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      observe(deleteDocumentFileMutation(happyApi)).mutate({
+        documentId: document.id,
+        fileId: documentFile.id,
+      }),
+    ).resolves.toEqual({ deleted: true });
+    await expect(
+      observe(exportDocumentsMutation(happyApi)).mutate({
+        documentIds: [document.id],
+      }),
+    ).resolves.toMatchObject({ fileName: 'documents.zip' });
+    expect(documentsInvalidates()).toEqual({
+      queryKey: documentsScopes.all(),
+    });
   });
 });
 

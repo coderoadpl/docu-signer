@@ -102,7 +102,7 @@ const Shell = ({ tenant, email }: { tenant: Tenant | null; email: string }) => {
       <AppBar position="static" color="transparent" elevation={0}>
         <Toolbar sx={{ gap: '1rem', flexWrap: 'wrap' }}>
           <RouterLink to="/app" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <Wordmark variant="h2">agentproofarch</Wordmark>
+            <Wordmark variant="h2">Podpisy</Wordmark>
           </RouterLink>
           <TenantSwitcher activeSlug={tenant?.slug ?? null} />
           <Box sx={{ flex: 1 }} />
@@ -132,6 +132,11 @@ const Shell = ({ tenant, email }: { tenant: Tenant | null; email: string }) => {
           {tenant?.staffRole ? (
             <Link component={RouterLink} to="/app/members" variant="body2">
               members
+            </Link>
+          ) : null}
+          {tenant?.staffRole ? (
+            <Link component={RouterLink} to="/app/documents" variant="body2">
+              Dokumenty
             </Link>
           ) : null}
           <Link component={RouterLink} to="/app/settings" variant="body2">
@@ -195,7 +200,7 @@ const Onboarding = () => {
     <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
       <Paper variant="outlined" sx={{ width: '100%', maxWidth: '26rem', px: '1.8rem', pt: '2rem', pb: '1.6rem' }}>
         <Stack direction="row" sx={{ alignItems: 'baseline' }}>
-          <Wordmark variant="h1">agentproofarch</Wordmark>
+          <Wordmark variant="h1">Podpisy</Wordmark>
           <Box sx={{ flex: 1 }} />
           <Button variant="text" size="small" disabled={signOut.isPending} onClick={() => signOut.mutate()}>
             sign out

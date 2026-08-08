@@ -174,6 +174,35 @@ export interface ExportDownload {
   fileName: string;
 }
 
+export interface DirectFileUploadInput {
+  url: string;
+  method: 'PUT';
+  headers: Record<string, string>;
+  bytes: Uint8Array;
+}
+
+const directFileUpload = async (
+  options: ApiClientOptions,
+  input: DirectFileUploadInput,
+  signal?: AbortSignal,
+): Promise<WriteResult<void>> => {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  let response: Response;
+  try {
+    response = await fetchImpl(input.url, {
+      method: input.method,
+      headers: input.headers,
+      body: binaryBody(input.bytes),
+      signal: signal ?? null,
+    });
+  } catch (cause) {
+    return err(internal(`Network error uploading ${input.url}: ${String(cause)}`));
+  }
+  return response.ok
+    ? ok(undefined)
+    : err(internal(`Upload to object storage failed (HTTP ${response.status})`));
+};
+
 const download = async <M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -372,6 +401,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  documentFileContentUrl: (documentId: string, fileId: string) =>
+    `${options.baseUrl}${pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId })}`,
+  documentFileExportUrl: (documentId: string, fileId: string) =>
+    `${options.baseUrl}${pathWith(API_ROUTES.documentFileExport.path, { documentId, fileId })}`,
+  directFileUpload: (input: DirectFileUploadInput, signal?: AbortSignal) =>
+    directFileUpload(options, input, signal),
   listCards: (board: BoardId = 'personal', signal?: AbortSignal) =>
     request(
       options,
