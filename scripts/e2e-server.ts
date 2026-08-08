@@ -78,7 +78,7 @@ const buildWebIfStale = async (): Promise<void> => {
     'build',
     '--config',
     'apps/web/vite.config.ts',
-  ], {});
+  ], { VITE_MAGIC_LINK: 'on' });
   assert(build.code === 0, `build:web failed:\n${build.stdout}${build.stderr}`);
 };
 

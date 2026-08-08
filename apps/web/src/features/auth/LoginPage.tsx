@@ -23,6 +23,8 @@ export const LoginPage = () => {
   const [password, setPassword] = useState('');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const magicLinkEnabled =
+    import.meta.env.DEV || import.meta.env.VITE_MAGIC_LINK === 'on';
 
   const config = useQuery(actions.config);
 
@@ -109,17 +111,19 @@ export const LoginPage = () => {
           >
             {signIn.isPending ? 'Logowanie…' : 'Zaloguj się'}
           </Button>
-          <Button
-            type="button"
-            variant="outlined"
-            fullWidth
-            disabled={magicLink.isPending || email.length === 0}
-            onClick={() => magicLink.mutate({ email, callbackURL: `${window.location.origin}/app` })}
-          >
-            {magicLink.isPending
-              ? 'Wysyłanie linku…'
-              : 'Wyślij link do logowania'}
-          </Button>
+          {magicLinkEnabled ? (
+            <Button
+              type="button"
+              variant="outlined"
+              fullWidth
+              disabled={magicLink.isPending || email.length === 0}
+              onClick={() => magicLink.mutate({ email, callbackURL: `${window.location.origin}/app` })}
+            >
+              {magicLink.isPending
+                ? 'Wysyłanie linku…'
+                : 'Wyślij link do logowania'}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outlined"
@@ -143,7 +147,7 @@ export const LoginPage = () => {
             </Button>
           ) : null}
         </Stack>
-        {magicLink.isSuccess ? (
+        {magicLinkEnabled && magicLink.isSuccess ? (
           <Alert severity="success" sx={{ mt: '0.6rem' }}>
             Sprawdź skrzynkę e-mail. W środowisku deweloperskim wiadomość
             znajdziesz w Mailpit.
@@ -159,11 +163,15 @@ export const LoginPage = () => {
             {passkey.error instanceof ApiError ? passkey.error.appError.message : passkey.error.message}
           </Alert>
         ) : null}
-        <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
-        <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
-          konto demonstracyjne: <DemoValue>demo@agentproofarch.dev</DemoValue> /{' '}
-          <DemoValue>demo1234</DemoValue>
-        </FinePrint>
+        {import.meta.env.DEV ? (
+          <>
+            <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
+            <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
+              konto demonstracyjne: <DemoValue>demo@agentproofarch.dev</DemoValue> /{' '}
+              <DemoValue>demo1234</DemoValue>
+            </FinePrint>
+          </>
+        ) : null}
       </Paper>
     </Box>
   );

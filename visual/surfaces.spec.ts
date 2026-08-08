@@ -67,7 +67,7 @@ test('StatusView loading inside AppShell', async ({ page }) => {
   await openLogin(page);
   await page.route('**/api/me', () => undefined);
   await submitSignIn(page);
-  await expect(page.getByText('opening the app…')).toBeVisible();
+  await expect(page.getByText('Ładowanie aplikacji…')).toBeVisible();
 
   await expect(page).toHaveScreenshot('layout-status-view-loading.png', { fullPage: true });
 });

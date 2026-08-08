@@ -27,7 +27,7 @@ describe('AppShell', () => {
       <AppShell
         brand={<span>brand</span>}
         navigation={<a href="/next">next</a>}
-        state={{ kind: 'loading', label: 'opening the app…' }}
+        state={{ kind: 'loading', label: 'Ładowanie aplikacji…' }}
       >
         <p>page content</p>
       </AppShell>,
@@ -35,7 +35,7 @@ describe('AppShell', () => {
 
     expect(screen.getByRole('banner')).toBeInTheDocument();
     expect(screen.getByTestId('app-shell-status')).toHaveStyle({ maxWidth: '44rem' });
-    expect(screen.getByText('opening the app…')).toBeInTheDocument();
+    expect(screen.getByText('Ładowanie aplikacji…')).toBeInTheDocument();
     expect(screen.queryByText('page content')).not.toBeInTheDocument();
   });
 });
