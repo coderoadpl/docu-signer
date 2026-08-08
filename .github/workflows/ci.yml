@@ -115,7 +115,6 @@ jobs:
       # so it stays out of `pnpm run check`; the e2e server boots entry.node.ts
       # against an isolated agentproofarch_e2e database and serves this bundle.
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm run build:web
       - run: pnpm run e2e
 
   # NON-REQUIRED (ADR-0008): `visual` is in no ruleset's required list, so
@@ -159,7 +158,6 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm run build:web
       - run: pnpm run visual
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
