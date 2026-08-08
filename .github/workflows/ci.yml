@@ -115,7 +115,11 @@ jobs:
       # so it stays out of `pnpm run check`; the e2e server boots entry.node.ts
       # against an isolated agentproofarch_e2e database and serves this bundle.
       - run: pnpm exec playwright install --with-deps chromium
+      # The magic-link spec needs the dev-only affordance compiled in; the
+      # production bundle hides it (no SMTP), so only this job's build enables it.
       - run: pnpm run build:web
+        env:
+          VITE_MAGIC_LINK: 'on'
       - run: pnpm run e2e
 
   # NON-REQUIRED (ADR-0008): `visual` is in no ruleset's required list, so
