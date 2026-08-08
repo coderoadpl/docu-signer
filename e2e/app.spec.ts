@@ -9,7 +9,7 @@ const signIn = async (page: Page, password: string): Promise<void> => {
   await page.goto('/login');
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(password);
-  await page.getByRole('button', { name: 'Zaloguj się' }).click();
+  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
 };
 
 test('login lands on the tenant ledger with seeded todos', async ({ page }) => {
@@ -18,7 +18,7 @@ test('login lands on the tenant ledger with seeded todos', async ({ page }) => {
 
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: 'Zaloguj się' }).click();
+  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
 
   // The authenticated shell resolves the tenant from the host (localhost = acme)
   // and shows it in the header switcher; the seeded ledger renders below.

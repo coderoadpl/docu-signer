@@ -1,7 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { PDFDocument } from 'pdf-lib';
 
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
 const DEMO_PASSWORD = 'demo1234';
+
+const validPdfBuffer = async () => {
+  const pdf = await PDFDocument.create();
+  pdf.addPage([200, 200]);
+  return Buffer.from(await pdf.save());
+};
 
 test('creates, uploads, previews and exports an archived document', async ({
   page,
@@ -14,7 +21,7 @@ test('creates, uploads, previews and exports an archived document', async ({
   await page.goto('/login');
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: 'Zaloguj się' }).click();
+  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
 
   await page.getByRole('link', { name: 'Dokumenty' }).click();
   await expect(
@@ -36,7 +43,7 @@ test('creates, uploads, previews and exports an archived document', async ({
   await sourceSection.locator('input[type="file"]').setInputFiles({
     name: sourceName,
     mimeType: 'application/pdf',
-    buffer: Buffer.from('%PDF-1.4\n%%EOF\n'),
+    buffer: await validPdfBuffer(),
   });
   await expect(sourceSection.getByText(sourceName)).toBeVisible();
 

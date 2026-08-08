@@ -27,7 +27,7 @@ const signInWithPassword = async (page: Page): Promise<void> => {
   await page.goto('/login');
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: 'Zaloguj się' }).click();
+  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
 };
 

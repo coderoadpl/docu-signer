@@ -5,7 +5,7 @@ const signIn = async (page: Page): Promise<void> => {
   await expect(page.getByRole('heading', { name: 'Podpisy' })).toBeVisible();
   await page.getByLabel('Adres e-mail').fill('demo@agentproofarch.dev');
   await page.getByLabel('Hasło').fill('demo1234');
-  await page.getByRole('button', { name: 'Zaloguj się' }).click();
+  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
 };
 

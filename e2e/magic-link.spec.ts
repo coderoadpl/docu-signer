@@ -16,7 +16,7 @@ test('magic link signs in a provisioned member and binds them to the tenant', as
   await page.getByRole('button', { name: 'Wyślij link do logowania' }).click();
 
   // The request is confirmed on the page without exposing the link.
-  await expect(page.getByText(/captured by mailpit/i)).toBeVisible();
+  await expect(page.getByText(/znajdziesz w Mailpit/i)).toBeVisible();
 
   // Recover the captured link from Mailpit (as a human would from the inbox).
   const link = await fetchMagicLink(MAILPIT_API_URL, PROVISIONED_MEMBER);
