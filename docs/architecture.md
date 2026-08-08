@@ -1445,6 +1445,12 @@ production build runs** — the correct ordering, and the specific correction ov
 the old dashboard-promote model, where the review ran *after* the build. The
 former `staging` branch relic is deleted; `main` replaces it.
 
+> **Fork caveat (docu-signer, 2026-07-27).** Everything below about the public
+> repo and the two rulesets describes the **upstream** wall. This fork is a
+> private repo on GitHub Free where rulesets are unavailable; protection is
+> procedural — see FOUNDATION.md. The section is kept as the pattern the
+> discipline substitutes for.
+
 **The two rulesets (the enforced wall).** Both carry an **empty bypass list**, so
 no identity — Admin included — merges past them.
 
