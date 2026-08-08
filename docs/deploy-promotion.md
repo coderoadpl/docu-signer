@@ -1,5 +1,11 @@
 # Deploy release runbook (Vercel target)
 
+> **Fork caveat (docu-signer, 2026-07-27).** The ruleset setup and
+> ruleset-based safety arguments below describe the upstream pattern. This
+> fork has no rulesets (private repo on GitHub Free — FOUNDATION.md): skip the
+> ruleset steps; the release gate is procedural — the owner alone approves and
+> merges `main → production`.
+
 The step-by-step companion to [architecture.md](architecture.md) §Environments.
 That section is normative: **production is released by the owner merging an
 approved pull request `main → production`; the merge triggers the production

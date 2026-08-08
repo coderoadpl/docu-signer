@@ -8,8 +8,9 @@ note below and [architecture.md](../architecture.md) §Environments (normative).
 > **production is a dedicated `production` branch** with Vercel Production Branch
 > Tracking set to it. The long-lived `staging` branch relic is deleted. A
 > production release is an **owner-approved PR `main → production`** whose merge
-> triggers the production build, gated by the `production-protection` GitHub
-> ruleset (empty bypass); agents act as a Write-not-Admin machine account. The
+> triggers the production build — gated upstream by the `production-protection`
+> ruleset, procedurally in this fork (no rulesets; FOUNDATION.md); agents act
+> as a Write-not-Admin machine account. The
 > Neon branch-per-environment model (point 2), build-time migrations (point 3),
 > entry/routing (point 4), Frankfurt co-location (point 5) and the single-tenant
 > `*.vercel.app` constraint (point 6) are unchanged. Everything below records the
