@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -29,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
         env:
           POSTGRES_USER: agentproofarch
           POSTGRES_PASSWORD: agentproofarch
@@ -44,7 +47,7 @@ jobs:
       # Local SMTP sink for the US-026 magic-link phase: the real smtp adapter
       # delivers here; smoke/e2e read the message back over its HTTP API.
       mailpit:
-        image: axllent/mailpit:v1.21
+        image: axllent/mailpit:v1.21@sha256:81370195cd4a0eab9604d17c2617a7525b0486f9365555253b6c5376c6350f1a
         ports:
           - 47925:1025
           - 47980:8025
@@ -75,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
         env:
           POSTGRES_USER: agentproofarch
           POSTGRES_PASSWORD: agentproofarch
@@ -90,7 +93,7 @@ jobs:
       # Local SMTP sink for the US-026 magic-link phase: the real smtp adapter
       # delivers here; smoke/e2e read the message back over its HTTP API.
       mailpit:
-        image: axllent/mailpit:v1.21
+        image: axllent/mailpit:v1.21@sha256:81370195cd4a0eab9604d17c2617a7525b0486f9365555253b6c5376c6350f1a
         ports:
           - 47925:1025
           - 47980:8025
@@ -117,14 +120,13 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run e2e
 
-  # NON-REQUIRED (ADR-0008): `visual` is in no ruleset's required list, so
-  # this job reports a pixel regression without blocking a merge until the owner
-  # arms it. Baselines are rendered by this same linux image, never on a mac.
+  # NON-REQUIRED (ADR-0008): this fork has no ruleset or required-check arming
+  # for `visual`. Baselines are rendered by this linux image, never on a mac.
   visual:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
         env:
           POSTGRES_USER: agentproofarch
           POSTGRES_PASSWORD: agentproofarch
@@ -137,7 +139,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       mailpit:
-        image: axllent/mailpit:v1.21
+        image: axllent/mailpit:v1.21@sha256:81370195cd4a0eab9604d17c2617a7525b0486f9365555253b6c5376c6350f1a
         ports:
           - 47925:1025
           - 47980:8025
@@ -158,6 +160,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run build:web
       - run: pnpm run visual
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
@@ -165,3 +168,104 @@ jobs:
           name: visual-diff
           path: test-results
           retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+
+  visual-report:
+    needs: visual
+    if: >-
+      always()
+      && github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && contains(fromJSON('["success", "failure"]'), needs.visual.result)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: visual-reports
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: needs.visual.result == 'failure'
+        continue-on-error: true
+        with:
+          name: visual-diff
+          path: ${{ runner.temp }}/visual-diff
+      - id: publisher
+        run: |
+          if [ -f scripts/visual-report.ts ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::visual-report publisher absent at the trusted base commit; skipping"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Detect verdict token
+        id: verdict-token
+        env:
+          SLOT1: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
+        run: |
+          [ -n "$SLOT1" ] && echo "has_token=true" >> "$GITHUB_OUTPUT" || echo "has_token=false" >> "$GITHUB_OUTPUT"
+      - name: Prepare AI verdict input
+        id: verdict-input
+        if: steps.publisher.outputs.present == 'true' && steps.verdict-token.outputs.has_token == 'true'
+        continue-on-error: true
+        run: |
+          if [ -f scripts/visual-verdict-input.ts ]; then
+            pnpm run visual:verdict-input
+          else
+            echo "::notice::verdict input builder absent at the trusted base commit"
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          VISUAL_ARTIFACT_DIR: ${{ runner.temp }}/visual-diff
+          VERDICT_DIR: ${{ runner.temp }}/visual-verdict
+      - name: AI verdict — advisory, fail-open
+        id: verdict
+        if: steps.verdict-input.outcome == 'success' && steps.verdict-input.outputs.screenshots != '0'
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: anthropics/claude-code-action@44423bdec74b97d67543eb16c110546762c110b2 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Read ${{ runner.temp }}/visual-verdict/context.md and the listed
+            baseline, actual and diff images. For every screenshot, write one
+            short Polish advisory line saying whether the change is explained
+            by the pull-request diff. Use "ok" when explained and "uwaga" when
+            it is not. Do not modify files. Conclude with StructuredOutput
+            containing `verdicts`: one { screenshot, line } object per stem.
+          claude_args: >-
+            --model ${{ vars.VISUAL_VERDICT_MODEL || 'sonnet' }}
+            --max-turns 16
+            --add-dir ${{ runner.temp }}/visual-verdict
+            --allowedTools "Read,Glob"
+            --json-schema '{"type":"object","properties":{"verdicts":{"type":"array","items":{"type":"object","properties":{"screenshot":{"type":"string"},"line":{"type":"string"}},"required":["screenshot","line"]}}},"required":["verdicts"]}'
+      - if: steps.publisher.outputs.present == 'true'
+        run: pnpm run visual:report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+          VISUAL_OUTCOME: ${{ needs.visual.result }}
+          VISUAL_ARTIFACT_DIR: ${{ runner.temp }}/visual-diff
+          AI_VERDICTS: ${{ steps.verdict.outputs.structured_output }}

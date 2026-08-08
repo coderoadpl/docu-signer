@@ -115,7 +115,7 @@ core/
   server/      # use-cases + ports (interfaces): AuthPort, DomainPort,
                # repository interfaces. Pure TS. No HTTP, no React, no Node
                # platform APIs beyond std types.
-               # dependencies: core/domain
+               # dependencies: core/domain, core/contract
   client/      # typed HTTP client built from contract + query/mutation
                # definitions on @tanstack/query-core + AuthClientPort interface.
                # dependencies: core/contract, @tanstack/query-core
@@ -139,7 +139,7 @@ tasks/         # PRDs and agent task files
 
 - `core/domain` → zod only.
 - `core/contract` → `core/domain`.
-- `core/server` → `core/domain`. Never imports contract, adapters, apps, hono, react.
+- `core/server` → `core/domain`, `core/contract`. Never imports adapters, apps, hono, react.
 - `core/client` → `core/contract`, `@tanstack/query-core`. Never imports core/server or adapters.
 - `adapters/*` → `core/server` (to implement ports), `core/domain`.
 - `apps/server` → everything server-side (composition root). The ONLY place adapters are instantiated.

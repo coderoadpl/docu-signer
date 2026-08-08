@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { DEFAULT_DEV_PORT } from '#core/contract/index.js';
 import { TENANT_CREATION_MODES } from '#core/domain/index.js';
 
 /**
@@ -32,7 +33,7 @@ const dbDriverField = dbDriverSchema.default(
 
 /** Runtime server env — the full set the Hono process boots on. */
 export const serverEnvSchema = z.object({
-  PORT: z.coerce.number().int().positive().default(47100),
+  PORT: z.coerce.number().int().positive().default(DEFAULT_DEV_PORT),
   // Self-host only: the private port the internal control-plane app binds
   // (Caddy's on-demand-TLS `ask` endpoint). Set exclusively in the compose
   // stack, where it is reachable only on the container network and never

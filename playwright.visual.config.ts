@@ -31,7 +31,7 @@ export default defineConfig({
       scale: 'css',
     },
   },
-  reporter: 'list',
+  reporter: [['list'], ['html', { open: 'never' }]],
   projects: [
     {
       name: 'chromium',

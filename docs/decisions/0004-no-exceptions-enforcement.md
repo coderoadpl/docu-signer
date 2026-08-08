@@ -30,8 +30,9 @@ green.
 1. **Both gates are required CI checks on every PR.** A GitHub Actions
    workflow (`ci`) runs on `pull_request` and on `push` to `main`:
    - **`check`** — `pnpm install --frozen-lockfile && pnpm run check`, the static gate, from a clean
-     install. Its six members are: typecheck + ESLint (layer boundaries) +
-     lock-lint + dependency-cruiser + doc-lint + vitest with coverage.
+     install. Its eight members are: typecheck + island typecheck + ESLint
+     (layer boundaries) + lock-lint + dependency-cruiser + knip + doc-lint +
+     vitest with coverage.
    - **`smoke`** — `pnpm install --frozen-lockfile && pnpm run smoke` against a `postgres:16` service
      container, the runtime gate: it verifies the installed tree matches
      `pnpm-lock.yaml`, drops+recreates the isolated `agentproofarch_smoke`

@@ -4,8 +4,11 @@ on:
   deployment_status:
 
 concurrency:
-  group: post-deploy-smoke-${{ github.event.deployment.environment }}-${{ github.event.deployment.sha }}
+  group: post-deploy-smoke-${{ github.event.deployment.environment }}-${{ github.event.deployment.environment == 'Production' && 'shared' || github.event.deployment.sha }}
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   smoke-remote:
