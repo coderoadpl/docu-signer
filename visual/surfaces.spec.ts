@@ -24,7 +24,7 @@ const openLogin = async (page: Page): Promise<void> => {
 const submitSignIn = async (page: Page): Promise<void> => {
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: 'Zaloguj się' }).click();
+  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
 };
 
 test('login page', async ({ page }) => {
@@ -37,7 +37,7 @@ test('login page with a rejected sign-in', async ({ page }) => {
   await openLogin(page);
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill('wrong-password');
-  await page.getByRole('button', { name: 'Zaloguj się' }).click();
+  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
 
   await expect(page).toHaveScreenshot('login-error.png', { fullPage: true });
