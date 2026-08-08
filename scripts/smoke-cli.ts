@@ -170,6 +170,7 @@ export interface SmokeTarget {
   tenant: string;
   /** Deploy attestation: when set, health.sha must equal it (right deploy verified). */
   expectedSha?: string;
+  anonymousOnly?: boolean;
   /**
    * Mailpit HTTP-API base URL (local/CI only). When set, the magic-link phase
    * requests a link, recovers it from Mailpit and follows it. Absent for
@@ -409,7 +410,6 @@ export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<vo
   const { baseUrl } = target;
   await assertResponseHeaders(baseUrl);
   await assertIndexHtmlCacheHeader(baseUrl);
-  await assertSessionCookieHardening(target);
   await assertPublicSurface(baseUrl, target.tenant);
   const authedHome = mkdtempSync(join(tmpdir(), 'smoke-cli-'));
   const anonHome = mkdtempSync(join(tmpdir(), 'smoke-anon-'));
@@ -432,6 +432,8 @@ export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<vo
       `health SHA mismatch: expected ${target.expectedSha}, deployment reports ${health.sha}`,
     );
   }
+  if (target.anonymousOnly === true) return;
+  await assertSessionCookieHardening(target);
 
   expectOk(
     await cli(
