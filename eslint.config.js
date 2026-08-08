@@ -329,7 +329,10 @@ export default tseslint.config(
           rules: [
             { from: ['core-domain'], allow: ['core-domain'] },
             { from: ['core-contract'], allow: ['core-domain', 'core-contract'] },
-            { from: ['core-server'], allow: ['core-domain', 'core-server'] },
+            {
+              from: ['core-server'],
+              allow: ['core-domain', 'core-contract', 'core-server'],
+            },
             { from: ['core-client'], allow: ['core-domain', 'core-contract', 'core-client'] },
             {
               from: ['adapter-db', 'adapter-auth', 'adapter-domains'],

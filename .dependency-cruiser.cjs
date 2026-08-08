@@ -12,7 +12,7 @@ module.exports = {
       name: 'core-server-pure',
       severity: 'error',
       from: { path: '^core/server' },
-      to: { path: '^(core/(contract|client)|adapters|apps)' },
+      to: { path: '^(core/client|adapters|apps)' },
     },
     {
       name: 'core-contract-only-domain',

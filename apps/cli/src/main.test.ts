@@ -13,7 +13,11 @@ import {
 import type { ApiClientOptions } from '#core/client/index.js';
 import { appError, err, ok, type AppError, type Result } from '#core/domain/index.js';
 
-import type { CliConfig } from './config.js';
+import type {
+  CliConfig,
+  ResolveCliConfigInput,
+  ResolvedCliConfig,
+} from './config.js';
 
 type Async<T> = () => Promise<Result<T, AppError>>;
 type AsyncIn<I, T> = (input: I) => Promise<Result<T, AppError>>;
@@ -68,6 +72,8 @@ interface FakeAuth {
 
 interface Hoisted {
   config: CliConfig;
+  loadError: Error | null;
+  repoDetected: boolean;
   saved: CliConfig[];
   apiOptions: ApiClientOptions | null;
   authBaseUrl: string | null;
@@ -78,7 +84,15 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
-    config: { apiUrl: 'http://localhost:47100', token: null, tenant: null },
+    config: {
+      version: 2,
+      currentOrigin: 'http://localhost:47100',
+      profiles: {
+        'http://localhost:47100': { token: null, tenant: null },
+      },
+    },
+    loadError: null,
+    repoDetected: false,
     saved: [],
     apiOptions: null,
     authBaseUrl: null,
@@ -107,10 +121,48 @@ const h = vi.hoisted(
 );
 
 vi.mock('./config.js', () => ({
-  loadConfig: (): CliConfig => h.config,
+  apiOrigin: (apiUrl: string): string => new URL(apiUrl).origin,
+  loadConfig: (): CliConfig => {
+    if (h.loadError) throw h.loadError;
+    return h.config;
+  },
+  resolveCliConfig: (input: ResolveCliConfigInput): ResolvedCliConfig => {
+    const selection =
+      input.apiUrl !== undefined
+        ? { apiUrl: input.apiUrl, originSource: 'flag' as const }
+        : input.env.APP_CLI_API_URL !== undefined
+          ? { apiUrl: input.env.APP_CLI_API_URL, originSource: 'env' as const }
+          : h.repoDetected
+            ? { apiUrl: 'http://localhost:47100', originSource: 'repo' as const }
+            : { apiUrl: input.config.currentOrigin, originSource: 'stored' as const };
+    const origin = new URL(selection.apiUrl).origin;
+    const profile = input.config.profiles[origin] ?? { token: null, tenant: null };
+    return {
+      ...selection,
+      origin,
+      profile,
+      tenant: input.tenant ?? input.env.APP_CLI_TENANT ?? profile.tenant,
+    };
+  },
   saveConfig: (config: CliConfig): void => {
     h.saved.push(config);
   },
+  updateOriginProfile: (
+    config: CliConfig,
+    origin: string,
+    patch: { token?: string | null; tenant?: string | null },
+    setCurrent: boolean,
+  ): CliConfig => ({
+    ...config,
+    currentOrigin: setCurrent ? origin : config.currentOrigin,
+    profiles: {
+      ...config.profiles,
+      [origin]: {
+        ...(config.profiles[origin] ?? { token: null, tenant: null }),
+        ...patch,
+      },
+    },
+  }),
 }));
 
 vi.mock('#core/client/index.js', () => ({
@@ -131,12 +183,26 @@ vi.mock('#adapters/auth/client-adapter.js', () => ({
 }));
 
 const originalArgv = process.argv;
+const originalApiUrlEnv = process.env['APP_CLI_API_URL'];
+const originalTenantEnv = process.env['APP_CLI_TENANT'];
+
+const singleProfile = (
+  origin: string,
+  token: string | null,
+  tenant: string | null,
+): CliConfig => ({
+  version: 2,
+  currentOrigin: origin,
+  profiles: {
+    [origin]: { token, tenant },
+  },
+});
 
 let logSpy: MockInstance<typeof console.log>;
 let errorSpy: MockInstance<typeof console.error>;
 
 const run = async (...args: string[]): Promise<void> => {
-  process.argv = ['node', 'agentproofarch', ...args];
+  process.argv = ['node', 'podpisy', ...args];
   vi.resetModules();
   await import('./main.js');
 };
@@ -148,7 +214,11 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
-  h.config = { apiUrl: 'http://localhost:47100', token: null, tenant: null };
+  h.config = singleProfile('http://localhost:47100', null, null);
+  h.loadError = null;
+  h.repoDetected = false;
+  delete process.env['APP_CLI_API_URL'];
+  delete process.env['APP_CLI_TENANT'];
   h.saved = [];
   h.apiOptions = null;
   h.authBaseUrl = null;
@@ -210,6 +280,10 @@ afterEach(() => {
 
 afterAll(() => {
   process.argv = originalArgv;
+  if (originalApiUrlEnv === undefined) delete process.env['APP_CLI_API_URL'];
+  else process.env['APP_CLI_API_URL'] = originalApiUrlEnv;
+  if (originalTenantEnv === undefined) delete process.env['APP_CLI_TENANT'];
+  else process.env['APP_CLI_TENANT'] = originalTenantEnv;
 });
 
 describe('command wiring', () => {
@@ -547,7 +621,9 @@ describe('auth commands persist the session token', () => {
     await run('login', '--email', 'demo@x', '--password', 'pw');
 
     expect(h.auth.signIn).toHaveBeenCalledExactlyOnceWith({ email: 'demo@x', password: 'pw' });
-    expect(h.saved).toEqual([{ apiUrl: 'http://localhost:47100', token: 'sess-tok', tenant: null }]);
+    expect(h.saved).toEqual([
+      singleProfile('http://localhost:47100', 'sess-tok', null),
+    ]);
     expect(logSpy).toHaveBeenCalledExactlyOnceWith('signed in as demo@x');
     expect(process.exitCode).toBe(0);
   });
@@ -568,28 +644,90 @@ describe('auth commands persist the session token', () => {
     await run('register', '--name', 'Ada', '--email', 'ada@x', '--password', 'pw');
 
     expect(h.auth.signUp).toHaveBeenCalledExactlyOnceWith({ name: 'Ada', email: 'ada@x', password: 'pw' });
-    expect(h.saved).toEqual([{ apiUrl: 'http://localhost:47100', token: 'reg-tok', tenant: null }]);
+    expect(h.saved).toEqual([
+      singleProfile('http://localhost:47100', 'reg-tok', null),
+    ]);
+  });
+
+  it('writes a login token only under the explicitly active origin', async () => {
+    h.config = {
+      version: 2,
+      currentOrigin: 'https://stored.example',
+      profiles: {
+        'https://stored.example': { token: 'stored-token', tenant: 'stored' },
+        'https://active.example': { token: 'old-active-token', tenant: 'active' },
+      },
+    };
+
+    await run(
+      '--api-url',
+      'https://active.example/path',
+      'login',
+      '--email',
+      'demo@x',
+      '--password',
+      'pw',
+    );
+
+    expect(h.saved).toEqual([
+      {
+        version: 2,
+        currentOrigin: 'https://active.example',
+        profiles: {
+          'https://stored.example': { token: 'stored-token', tenant: 'stored' },
+          'https://active.example': { token: 'sess-tok', tenant: 'active' },
+        },
+      },
+    ]);
+  });
+
+  it('writes a repo-default login token under the dev origin without moving currentOrigin', async () => {
+    h.repoDetected = true;
+    h.config = {
+      version: 2,
+      currentOrigin: 'https://stored.example',
+      profiles: {
+        'https://stored.example': { token: 'stored-token', tenant: 'stored' },
+      },
+    };
+
+    await run('login', '--email', 'demo@x', '--password', 'pw');
+
+    expect(h.saved).toEqual([
+      {
+        version: 2,
+        currentOrigin: 'https://stored.example',
+        profiles: {
+          'https://stored.example': { token: 'stored-token', tenant: 'stored' },
+          'http://localhost:47100': { token: 'sess-tok', tenant: null },
+        },
+      },
+    ]);
   });
 
   it('revokes the session server-side then clears the stored token on logout', async () => {
-    h.config = { apiUrl: 'http://localhost:47100', token: 'existing', tenant: 'acme' };
+    h.config = singleProfile('http://localhost:47100', 'existing', 'acme');
 
     await run('logout');
 
     expect(h.auth.signOut).toHaveBeenCalledTimes(1);
-    expect(h.saved).toEqual([{ apiUrl: 'http://localhost:47100', token: null, tenant: 'acme' }]);
+    expect(h.saved).toEqual([
+      singleProfile('http://localhost:47100', null, 'acme'),
+    ]);
     expect(logSpy).toHaveBeenCalledExactlyOnceWith('signed out');
   });
 
   it('surfaces a failed server sign-out (and still clears the local token)', async () => {
-    h.config = { apiUrl: 'http://localhost:47100', token: 'existing', tenant: 'acme' };
+    h.config = singleProfile('http://localhost:47100', 'existing', 'acme');
     h.auth.signOut.mockResolvedValue(err(appError('internal', 'sign-out failed')));
 
     await run('--json', 'logout');
 
     expect(h.auth.signOut).toHaveBeenCalledTimes(1);
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'internal' } });
-    expect(h.saved).toEqual([{ apiUrl: 'http://localhost:47100', token: null, tenant: 'acme' }]);
+    expect(h.saved).toEqual([
+      singleProfile('http://localhost:47100', null, 'acme'),
+    ]);
     expect(process.exitCode).toBe(10);
   });
 });
@@ -657,7 +795,9 @@ describe('tenant switch', () => {
 
     await run('tenant', 'switch', 'acme');
 
-    expect(h.saved).toEqual([{ apiUrl: 'http://localhost:47100', token: null, tenant: 'acme' }]);
+    expect(h.saved).toEqual([
+      singleProfile('http://localhost:47100', null, 'acme'),
+    ]);
     expect(logSpy).toHaveBeenCalledExactlyOnceWith('active tenant: Acme (acme)');
   });
 
@@ -684,20 +824,27 @@ describe('tenant switch', () => {
 
 describe('global options feed the client and auth adapter', () => {
   it('honours --api-url and --tenant overrides and builds request headers', async () => {
-    h.config = { apiUrl: 'http://localhost:47100', token: 'cfg-token', tenant: null };
+    h.config = {
+      version: 2,
+      currentOrigin: 'http://localhost:47100',
+      profiles: {
+        'http://localhost:47100': { token: 'local-token', tenant: null },
+        'https://override.test': { token: 'override-token', tenant: 'stored-override' },
+      },
+    };
 
     await run('--api-url', 'https://override.test', '--tenant', 'acme', 'health');
 
     expect(h.apiOptions?.baseUrl).toBe('https://override.test');
     expect(h.authBaseUrl).toBe('https://override.test');
     expect(h.apiOptions?.headers?.()).toEqual({
-      authorization: 'Bearer cfg-token',
+      authorization: 'Bearer override-token',
       'x-tenant': 'acme',
     });
   });
 
   it('falls back to the stored config and omits auth/tenant headers when unset', async () => {
-    h.config = { apiUrl: 'http://cfg-url', token: null, tenant: null };
+    h.config = singleProfile('http://cfg-url', null, null);
 
     await run('health');
 
@@ -705,13 +852,128 @@ describe('global options feed the client and auth adapter', () => {
     expect(h.apiOptions?.headers?.()).toEqual({});
   });
 
+  it('honours env overrides below flags and reads that origin profile', async () => {
+    h.config = {
+      version: 2,
+      currentOrigin: 'https://stored.example',
+      profiles: {
+        'https://stored.example': { token: 'stored-token', tenant: 'stored' },
+        'https://env.example': { token: 'env-token', tenant: 'env-stored' },
+      },
+    };
+    process.env['APP_CLI_API_URL'] = 'https://env.example/api';
+    process.env['APP_CLI_TENANT'] = 'env-tenant';
+
+    await run('health');
+
+    expect(h.apiOptions?.baseUrl).toBe('https://env.example/api');
+    expect(h.apiOptions?.headers?.()).toEqual({
+      authorization: 'Bearer env-token',
+      'x-tenant': 'env-tenant',
+    });
+  });
+
   it('wires the adapter onToken callback to persist a freshly issued token', async () => {
-    h.config = { apiUrl: 'http://cfg-url', token: null, tenant: null };
+    h.config = singleProfile('http://cfg-url', null, null);
 
     await run('health');
     h.onToken?.('adapter-token');
 
-    expect(h.saved).toEqual([{ apiUrl: 'http://cfg-url', token: 'adapter-token', tenant: null }]);
+    expect(h.saved).toEqual([
+      singleProfile('http://cfg-url', 'adapter-token', null),
+    ]);
+  });
+});
+
+describe('origin commands', () => {
+  it('lists origins without exposing token values', async () => {
+    h.config = {
+      version: 2,
+      currentOrigin: 'https://two.example',
+      profiles: {
+        'https://two.example': { token: 'secret-two', tenant: 'two' },
+        'https://one.example': { token: null, tenant: null },
+      },
+    };
+
+    await run('--json', 'origin', 'list');
+
+    expect(soleJson()).toEqual({
+      ok: true,
+      data: {
+        origins: [
+          {
+            origin: 'https://one.example',
+            current: false,
+            hasToken: false,
+            tenant: null,
+          },
+          {
+            origin: 'https://two.example',
+            current: true,
+            hasToken: true,
+            tenant: 'two',
+          },
+        ],
+      },
+    });
+    expect(logSpy.mock.calls.flat().join(' ')).not.toContain('secret-two');
+  });
+
+  it('selects a canonical origin without making an API call', async () => {
+    h.config = singleProfile('https://one.example', 'one-token', 'one');
+
+    await run('origin', 'use', 'HTTPS://TWO.example:443/path');
+
+    expect(h.saved).toEqual([
+      {
+        version: 2,
+        currentOrigin: 'https://two.example',
+        profiles: {
+          'https://one.example': { token: 'one-token', tenant: 'one' },
+          'https://two.example': { token: null, tenant: null },
+        },
+      },
+    ]);
+    expect(h.api.health).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith(
+      'active origin: https://two.example',
+    );
+  });
+});
+
+describe('fatal config protocol', () => {
+  it('emits exactly one internal envelope for a corrupted config under --json', async () => {
+    h.loadError = new Error(
+      'podpisy: invalid ~/.config/agentproofarch/config.json: malformed JSON',
+    );
+
+    await run('--json', 'health');
+
+    expect(h.api.health).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({
+      ok: false,
+      error: {
+        code: 'internal',
+        message: 'podpisy: invalid ~/.config/agentproofarch/config.json: malformed JSON',
+      },
+    });
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(10);
+  });
+
+  it('prints one human error line for a corrupted config', async () => {
+    h.loadError = new Error(
+      'podpisy: invalid ~/.config/agentproofarch/config.json: malformed JSON',
+    );
+
+    await run('health');
+
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledExactlyOnceWith(
+      'error(internal): podpisy: invalid ~/.config/agentproofarch/config.json: malformed JSON',
+    );
+    expect(process.exitCode).toBe(10);
   });
 });
 
