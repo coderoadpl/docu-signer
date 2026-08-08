@@ -1,18 +1,19 @@
-import { unzipSync } from 'fflate';
-import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
-import { BETTER_AUTH_SIGN_UP_PATH, createAuth } from '#adapters/auth/create-auth.js';
+import { createAuth } from '#adapters/auth/create-auth.js';
 import { createDb } from '#adapters/db/client.js';
 import {
   API_PATHS,
-  API_ROUTES,
+  healthLiveOutputSchema,
   healthOutputSchema,
+  healthReadyOutputSchema,
   looseEnvelopeSchema,
+  memberListOutputSchema,
+  staffGrantOutputSchema,
+  staffListOutputSchema,
   TENANT_HEADER,
 } from '#core/contract/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
-import { ok } from '#core/domain/index.js';
 
 import { buildApp } from './app.js';
 import type { AppDeps } from './composition.js';
@@ -26,58 +27,67 @@ const auth = createAuth(
     secret: 'test-secret-value-that-is-at-least-32-chars',
     baseUrl: 'http://localhost',
     baseDomain: 'localhost',
+    rateLimitEnabled: false,
     trustedOrigins: [],
     secureCookies: false,
-    rateLimitEnabled: false,
+    email: { sendMail: async () => {} },
   },
 );
 
 const baseDeps = (): AppDeps => ({
   auth,
   authPort: { getAuthenticatedUser: async () => null },
+  email: { sendMail: async () => {} },
+  googleEnabled: false,
   todos: {
     listByTenant: async () => [],
     create: async () => {},
   },
-  documents: {
-    listByTenant: async () => ok([]),
-    findById: async () => ok(null),
-    listFiles: async () => ok([]),
-    listFilesForDocuments: async () => ok([]),
-    create: async () => ok({
-      id: 'document-1',
-      tenantId: 'tenant-default',
-      title: 'Document',
-      docType: 'inny',
-      documentDate: '2026-07-18',
-      tags: [],
-      createdAt: '2026-07-18T00:00:00.000Z',
-      updatedAt: '2026-07-18T00:00:00.000Z',
-    }),
-    update: async () => ok(null),
-    delete: async () => ok(false),
-    createFile: async () => ok(null),
-    findFile: async () => ok(null),
-    deleteFile: async () => ok(false),
+  cards: {
+    listByTenant: async () => [],
+    create: async () => {},
+    updatePositions: async () => {},
   },
-  storage: {
-    put: async () => ok(undefined),
-    get: async () => ok(null),
-    exists: async () => ok(true),
-    delete: async () => ok(undefined),
-    createUploadUrl: async () => ok(null),
+  members: {
+    listByTenant: async () => [],
+    findByEmail: async () => null,
+    findByTenantAndId: async () => null,
+    create: async () => {},
+    update: async () => {},
+    deleteByTenantAndId: async () => 0,
+  },
+  staff: {
+    listByTenant: async () => [],
+    findGrant: async () => null,
+    grant: async () => {},
+    revokeLastOwnerSafe: async () => 0,
+  },
+  users: {
+    findByEmail: async () => null,
   },
   tenantDomains: {
     findByDomain: async () => null,
     listVerifiedDomains: async () => [],
+    listByTenant: async () => [],
+    findAnyByDomain: async () => null,
+    findByTenantAndDomain: async () => null,
+    add: async (input) => input,
+    setVerified: async () => null,
+    removeByTenantAndDomain: async () => 0,
+  },
+  domainTarget: { cname: null, ip: null },
+  domainPort: {
+    provision: async () => {},
+    remove: async () => {},
+    check: async () => ({ resolved: true, detail: 'noop' }),
   },
   tenants: {
     findById: async () => null,
     findBySlug: async () => null,
-    createTenant: async () => {
+    createTenantWithOwner: async () => {
       throw new Error('not implemented in fake');
     },
-    createOwnerGrant: async () => {
+    deleteTenant: async () => {
       throw new Error('not implemented in fake');
     },
   },
@@ -87,9 +97,17 @@ const baseDeps = (): AppDeps => ({
     findMember: async () => null,
   },
   health: { pingDatabase: async () => true },
+  backfills: {
+    loadCheckpoint: async () => null,
+    saveCheckpoint: async () => {},
+    normalizeMemberEmails: async () => ({ processed: 0, nextCursor: null, done: true }),
+  },
+  backfillSecret: null,
   ids: { nextId: () => 'test-id' },
   clock: { nowIso: () => '2026-07-15T00:00:00.000Z' },
   baseDomain: 'localhost',
+  tenantCreationMode: 'open',
+  commitSha: 'test-sha',
 });
 
 const user: AuthenticatedUser = {
@@ -98,79 +116,12 @@ const user: AuthenticatedUser = {
   name: 'Demo',
 };
 
-const document = {
-  id: 'document-1',
-  tenantId: 'tenant-default',
-  title: 'Agreement',
-  docType: 'umowa-uod' as const,
-  documentDate: '2026-07-18',
-  tags: [],
-  createdAt: '2026-07-18T00:00:00.000Z',
-  updatedAt: '2026-07-18T00:00:00.000Z',
-};
-
-const file = {
-  id: 'file-1',
-  documentId: document.id,
-  role: 'source' as const,
-  fileName: 'source.pdf',
-  contentType: 'application/pdf',
-  sizeBytes: 3,
-  storageKey: 'documents/tenant-default/document-1/storage-id',
-  createdAt: '2026-07-18T00:00:00.000Z',
-};
-
-const metadataPdf = async (): Promise<Uint8Array> => {
-  const pdf = await PDFDocument.create();
-  pdf.addPage();
-  pdf.setTitle('Private title');
-  pdf.setCreator('Private creator');
-  pdf.setCreationDate(new Date('2024-01-02T03:04:05.000Z'));
-  return pdf.save();
-};
-
-const authenticatedDeps = (): AppDeps => {
-  const deps = baseDeps();
-  deps.authPort = { getAuthenticatedUser: async () => user };
-  deps.tenants.findBySlug = async (slug) =>
-    slug === 'default' ? { id: 'tenant-default', slug: 'default', name: 'Default' } : null;
-  deps.tenantAccess.findStaffGrant = async () => ({
-    tenant: { id: 'tenant-default', slug: 'default', name: 'Default' },
-    staffRole: 'owner',
-  });
-  deps.documents = {
-    listByTenant: async () => ok([document]),
-    findById: async (_tenantId, documentId) => ok(documentId === document.id ? document : null),
-    listFiles: async () => ok([file]),
-    listFilesForDocuments: async () => ok([file]),
-    create: async () => ok(document),
-    update: async () => ok(document),
-    delete: async () => ok(true),
-    createFile: async () => ok(file),
-    findFile: async () => ok(file),
-    deleteFile: async () => ok(true),
-  };
-  deps.storage.get = async () => ok(new Uint8Array([1, 2, 3]));
-  return deps;
-};
-
 describe('buildApp routes', () => {
-  it('rejects email and password sign-up', async () => {
-    const response = await buildApp(baseDeps()).request(BETTER_AUTH_SIGN_UP_PATH, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'New User', email: 'new@example.com', password: 'password123' }),
-    });
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ code: 'EMAIL_PASSWORD_SIGN_UP_DISABLED' });
-  });
-
   it('answers an over-100KB POST with a validation envelope, never a bare 413', async () => {
     const oversized = JSON.stringify({ slug: 'a', name: 'x'.repeat(200 * 1024) });
     const res = await buildApp(baseDeps()).request(API_PATHS.tenants, {
       method: 'POST',
-      headers: { 'content-type': 'text/plain' },
+      headers: { 'content-type': 'application/json' },
       body: oversized,
     });
 
@@ -231,7 +182,7 @@ describe('buildApp routes', () => {
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     const csp = res.headers.get('content-security-policy');
     expect(csp).toContain("script-src 'self'");
-    expect(csp).toContain("object-src 'self'");
+    expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("frame-ancestors 'none'");
   });
 
@@ -245,6 +196,80 @@ describe('buildApp routes', () => {
     expect(errorRes.headers.get('cache-control')).toBe('no-store');
   });
 
+  it('answers an unknown /api/* path with a not_found envelope, never a bare text/plain 404', async () => {
+    const deps = baseDeps();
+    deps.authPort = { getAuthenticatedUser: async () => user };
+    const res = await buildApp(deps).request('/api/does-not-exist');
+
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = looseEnvelopeSchema.parse(await res.json());
+    expect(body.ok).toBe(false);
+    if (!body.ok) expect(body.error.code).toBe('not_found');
+  });
+
+  it('exposes the unauthenticated config flags (googleEnabled) without a session', async () => {
+    const deps = baseDeps();
+    deps.googleEnabled = true;
+    const res = await buildApp(deps).request(API_PATHS.config);
+    expect(res.status).toBe(200);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
+  });
+
+  it('mounts the Vercel backfill route only with a secret and gates it on that secret', async () => {
+    // No secret → the route is never registered, so the request falls through to
+    // the authenticated /api/* middleware (401), not the backfill handler.
+    const withoutSecret = baseDeps();
+    const unmounted = await buildApp(withoutSecret).request(
+      '/api/internal/backfills/members-email-normalize',
+      { method: 'POST' },
+    );
+    expect(unmounted.status).toBe(401);
+
+    const secret = 'a-strong-shared-secret-value-1234';
+    const deps = baseDeps();
+    deps.backfillSecret = secret;
+    const app = buildApp(deps);
+
+    // Missing/wrong secret header → unauthorized.
+    const forbidden = await app.request('/api/internal/backfills/members-email-normalize', {
+      method: 'POST',
+    });
+    expect(forbidden.status).toBe(401);
+
+    // Correct secret + a registered backfill → 200 with the batch progress.
+    const okRes = await app.request('/api/internal/backfills/members-email-normalize', {
+      method: 'POST',
+      headers: { 'x-internal-secret': secret },
+    });
+    expect(okRes.status).toBe(200);
+    const okBody = looseEnvelopeSchema.parse(await okRes.json());
+    expect(okBody.ok).toBe(true);
+
+    // Correct secret + an unknown backfill → not_found envelope.
+    const unknown = await app.request('/api/internal/backfills/no-such-backfill', {
+      method: 'POST',
+      headers: { 'x-internal-secret': secret },
+    });
+    expect(unknown.status).toBe(404);
+    const unknownBody = looseEnvelopeSchema.parse(await unknown.json());
+    if (!unknownBody.ok) expect(unknownBody.error.code).toBe('not_found');
+  });
+
+  it('answers a wrong method on a known route (POST /api/me) with a not_found envelope', async () => {
+    const deps = baseDeps();
+    deps.authPort = { getAuthenticatedUser: async () => user };
+    const res = await buildApp(deps).request(API_PATHS.me, { method: 'POST' });
+
+    expect(res.status).toBe(404);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = looseEnvelopeSchema.parse(await res.json());
+    expect(body.ok).toBe(false);
+    if (!body.ok) expect(body.error.code).toBe('not_found');
+  });
+
   it('reports the database as down when the health ping fails', async () => {
     const deps = baseDeps();
     deps.health = { pingDatabase: async () => false };
@@ -256,258 +281,211 @@ describe('buildApp routes', () => {
     if (body.ok) {
       const health = healthOutputSchema.parse(body.data);
       expect(health.database).toBe('down');
+      expect(health.sha).toBe('test-sha');
     }
   });
 
-  it('serves document CRUD and file command routes', async () => {
-    const app = buildApp(authenticatedDeps());
-    const createResponse = await app.request(API_PATHS.documents, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'Agreement', docType: 'umowa-uod', documentDate: '2026-07-18' }),
-    });
-    expect(createResponse.status).toBe(200);
-    expect((await createResponse.json())).toMatchObject({ ok: true, data: { document: { id: 'document-1' } } });
-
-    expect((await app.request(`${API_PATHS.documents}?docType=umowa-uod`)).status).toBe(200);
-    const detailPath = API_ROUTES.document.path.replace(':documentId', document.id);
-    expect((await app.request(detailPath)).status).toBe(200);
-    expect(
-      (
-        await app.request(detailPath, {
-          method: 'PATCH',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ title: 'Agreement', docType: 'umowa-uod', documentDate: '2026-07-18' }),
-        })
-      ).status,
-    ).toBe(200);
-
-    const uploadRequestPath = API_ROUTES.documentFileUploadRequest.path.replace(':documentId', document.id);
-    expect(
-      (
-        await app.request(uploadRequestPath, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ fileName: 'source.pdf', contentType: 'application/pdf', role: 'source' }),
-        })
-      ).status,
-    ).toBe(200);
-
-    const finalizePath = API_ROUTES.documentFileFinalize.path.replace(':documentId', document.id);
-    expect(
-      (
-        await app.request(finalizePath, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            key: 'documents/tenant-default/document-1/storage-id',
-            fileName: 'source.pdf',
-            contentType: 'application/pdf',
-            sizeBytes: 3,
-            role: 'source',
-          }),
-        })
-      ).status,
-    ).toBe(200);
-
-    const serverUploadPath = API_ROUTES.documentFileServerUpload.path.replace(':documentId', document.id);
-    expect(
-      (
-        await app.request(`${serverUploadPath}?fileName=source.pdf&role=source`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/pdf' },
-          body: new Uint8Array([1, 2, 3]),
-        })
-      ).status,
-    ).toBe(200);
-
-    const removePath = API_ROUTES.documentFileDelete.path
-      .replace(':documentId', document.id)
-      .replace(':fileId', file.id);
-    const contentPath = API_ROUTES.documentFileContent.path
-      .replace(':documentId', document.id)
-      .replace(':fileId', file.id);
-    const contentResponse = await app.request(contentPath);
-    expect(contentResponse.status).toBe(200);
-    expect(contentResponse.headers.get('content-type')).toBe('application/pdf');
-    expect(contentResponse.headers.get('content-disposition')).toContain("filename*=UTF-8''source.pdf");
-    expect(new Uint8Array(await contentResponse.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
-    expect((await app.request(removePath, { method: 'DELETE' })).status).toBe(200);
-    expect((await app.request(detailPath, { method: 'DELETE' })).status).toBe(200);
-  });
-
-  it('authenticates and tenant-scopes a clean single-file export', async () => {
-    const exportPath = API_ROUTES.documentFileExport.path
-      .replace(':documentId', document.id)
-      .replace(':fileId', file.id);
-    const unauthenticated = await buildApp(baseDeps()).request(exportPath);
-    expect(unauthenticated.status).toBe(401);
-
-    const deps = authenticatedDeps();
-    deps.storage.get = async () => ok(await metadataPdf());
-    const response = await buildApp(deps).request(exportPath);
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toBe('application/pdf');
-    expect(response.headers.get('content-disposition')).toContain(
-      "filename*=UTF-8''2026-07-18--agreement--source.pdf",
-    );
-    const exported = await PDFDocument.load(await response.arrayBuffer(), { updateMetadata: false });
-    expect(exported.context.trailerInfo.Info).toBeUndefined();
-    expect(exported.getTitle()).toBeUndefined();
-    expect(exported.getCreator()).toBeUndefined();
-    expect(exported.getCreationDate()).toBeUndefined();
-
-    const foreignPath = API_ROUTES.documentFileExport.path
-      .replace(':documentId', 'foreign-document')
-      .replace(':fileId', file.id);
-    expect((await buildApp(deps).request(foreignPath)).status).toBe(404);
-  });
-
-  it('returns a tenant-scoped bulk ZIP and validates the 100-id limit', async () => {
-    const deps = authenticatedDeps();
-    deps.storage.get = async () => ok(await metadataPdf());
-    const response = await buildApp(deps).request(API_ROUTES.documentsExport.path, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ documentIds: [document.id, 'foreign-document'] }),
-    });
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toBe('application/zip');
-    expect(response.headers.get('content-disposition')).toContain(
-      "filename*=UTF-8''eksport-dokumentow.zip",
-    );
-    const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
-    expect(Object.keys(archive)).toEqual(['2026-07-18--agreement/source--source.pdf']);
-    const archivedPdf = archive['2026-07-18--agreement/source--source.pdf'];
-    if (!archivedPdf) throw new Error('Missing exported PDF');
-    const exported = await PDFDocument.load(archivedPdf, {
-      updateMetadata: false,
-    });
-    expect(exported.context.trailerInfo.Info).toBeUndefined();
-
-    const tooMany = await buildApp(deps).request(API_ROUTES.documentsExport.path, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ documentIds: Array.from({ length: 101 }, (_, index) => `id-${index}`) }),
-    });
-    expect(tooMany.status).toBe(400);
-
-    const noneOwned = await buildApp(deps).request(API_ROUTES.documentsExport.path, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ documentIds: ['foreign-document'] }),
-    });
-    expect(noneOwned.status).toBe(404);
-  });
-
-  it('allows scan bytes above the JSON body limit on the server upload route', async () => {
-    const path = API_ROUTES.documentFileServerUpload.path.replace(':documentId', document.id);
-    const response = await buildApp(authenticatedDeps()).request(
-      `${path}?fileName=scan.jpg&role=signed-scan`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'image/jpeg' },
-        body: new Uint8Array(120 * 1024),
+  it('liveness is 200 with attestation and never touches the database', async () => {
+    const deps = baseDeps();
+    deps.health = {
+      pingDatabase: async () => {
+        throw new Error('the DB must not be pinged for liveness');
       },
-    );
-    expect(response.status).toBe(200);
+    };
+    const res = await buildApp(deps).request(API_PATHS.healthLive);
+
+    expect(res.status).toBe(200);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    expect(body.ok).toBe(true);
+    if (body.ok) {
+      const live = healthLiveOutputSchema.parse(body.data);
+      expect(live.sha).toBe('test-sha');
+      expect(live.version).toBeTruthy();
+    }
   });
 
-  it('rejects server uploads above 25MB with a validation envelope', async () => {
-    const path = API_ROUTES.documentFileServerUpload.path.replace(':documentId', document.id);
-    const response = await buildApp(authenticatedDeps()).request(
-      `${path}?fileName=scan.jpg&role=signed-scan`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'image/jpeg' },
-        body: new Uint8Array(25 * 1024 * 1024 + 1),
-      },
-    );
+  it('readiness is 200 with database up when the ping succeeds', async () => {
+    const res = await buildApp(baseDeps()).request(API_PATHS.healthReady);
 
-    expect(response.status).toBe(400);
-    const body = looseEnvelopeSchema.parse(await response.json());
+    expect(res.status).toBe(200);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    expect(body.ok).toBe(true);
+    if (body.ok) {
+      const ready = healthReadyOutputSchema.parse(body.data);
+      expect(ready.database).toBe('up');
+      expect(ready.sha).toBe('test-sha');
+    }
+  });
+
+  it('readiness is a 503 unavailable envelope when the database is down', async () => {
+    const deps = baseDeps();
+    deps.health = { pingDatabase: async () => false };
+    const res = await buildApp(deps).request(API_PATHS.healthReady);
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = looseEnvelopeSchema.parse(await res.json());
     expect(body.ok).toBe(false);
-    if (!body.ok) expect(body.error.code).toBe('validation');
+    if (!body.ok) expect(body.error.code).toBe('unavailable');
   });
 
-  it('rejects unsupported upload content types on request and finalize routes', async () => {
-    const app = buildApp(authenticatedDeps());
-    const uploadRequestPath = API_ROUTES.documentFileUploadRequest.path.replace(':documentId', document.id);
-    const finalizePath = API_ROUTES.documentFileFinalize.path.replace(':documentId', document.id);
-    const responses = await Promise.all([
-      app.request(uploadRequestPath, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ fileName: 'notes.txt', contentType: 'text/plain', role: 'other' }),
-      }),
-      app.request(finalizePath, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          key: 'documents/tenant-default/document-1/storage-id',
-          fileName: 'page.html',
-          contentType: 'text/html',
-          sizeBytes: 3,
-          role: 'source',
-        }),
-      }),
-    ]);
+  const acme = { id: 't-acme', slug: 'acme', name: 'Acme Inc' };
+  const asStaff = (): AppDeps => {
+    const deps = baseDeps();
+    deps.authPort = { getAuthenticatedUser: async () => user };
+    deps.tenants = { ...deps.tenants, findBySlug: async () => acme };
+    deps.tenantAccess = {
+      ...deps.tenantAccess,
+      findStaffGrant: async () => ({ tenant: acme, staffRole: 'owner' }),
+    };
+    return deps;
+  };
 
-    expect(responses.map((response) => response.status)).toEqual([400, 400]);
-  });
-
-  it('serves unsupported stored content types as attachments', async () => {
-    const deps = authenticatedDeps();
-    deps.documents.findFile = async () =>
-      ok({ ...file, fileName: 'legacy.html', contentType: 'text/html' });
-    const path = API_ROUTES.documentFileContent.path
-      .replace(':documentId', document.id)
-      .replace(':fileId', file.id);
-    const response = await buildApp(deps).request(path);
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-disposition')).toMatch(/^attachment;/);
-  });
-
-  it('exposes the constant default tenant in me', async () => {
-    const response = await buildApp(authenticatedDeps()).request(API_PATHS.me);
-    expect(await response.json()).toMatchObject({
-      ok: true,
-      data: { tenant: { id: 'tenant-default', slug: 'default' } },
+  it('serves the members list to resolved staff (member:read)', async () => {
+    const deps = asStaff();
+    deps.members = {
+      ...deps.members,
+      listByTenant: async () => [
+        {
+          id: 'm-1',
+          tenantId: 't-acme',
+          userId: null,
+          email: 'alice@example.com',
+          displayName: 'Alice',
+          tags: [],
+          marketingConsents: [],
+          externalCustomerIds: [],
+          createdAt: '2026-07-10T00:00:00.000Z',
+          lastSeenAt: null,
+        },
+      ],
+    };
+    const res = await buildApp(deps).request(API_PATHS.members, {
+      headers: { [TENANT_HEADER]: 'acme' },
     });
+
+    expect(res.status).toBe(200);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    expect(body.ok).toBe(true);
+    if (body.ok) expect(memberListOutputSchema.parse(body.data).members).toHaveLength(1);
   });
 
-  it('returns validation envelopes for malformed document commands', async () => {
-    const app = buildApp(authenticatedDeps());
-    const invalidRequests = [
-      app.request(`${API_PATHS.documents}?dateFrom=2026-07-19&dateTo=2026-07-18`),
-      app.request(API_PATHS.documents, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: '{}',
+  it('forbids an end-customer member from reading the roster (staff-only capability)', async () => {
+    const deps = baseDeps();
+    deps.authPort = { getAuthenticatedUser: async () => user };
+    deps.tenants = { ...deps.tenants, findBySlug: async () => acme };
+    deps.tenantAccess = {
+      ...deps.tenantAccess,
+      findMember: async () => ({
+        id: 'm-1',
+        tenantId: 't-acme',
+        userId: 'user-1',
+        email: 'demo@agentproofarch.dev',
+        displayName: null,
+        tags: [],
+        marketingConsents: [],
+        externalCustomerIds: [],
+        createdAt: '2026-07-10T00:00:00.000Z',
+        lastSeenAt: null,
       }),
-      app.request(API_ROUTES.documentUpdate.path.replace(':documentId', document.id), {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: '{}',
-      }),
-      app.request(API_ROUTES.documentFileUploadRequest.path.replace(':documentId', document.id), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: '{}',
-      }),
-      app.request(API_ROUTES.documentFileFinalize.path.replace(':documentId', document.id), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: '{}',
-      }),
-      app.request(`${API_ROUTES.documentFileServerUpload.path.replace(':documentId', document.id)}?role=source`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/pdf' },
-        body: new Uint8Array([1]),
-      }),
-    ];
-    const responses = await Promise.all(invalidRequests);
-    expect(responses.every((response) => response.status === 400)).toBe(true);
+    };
+    const res = await buildApp(deps).request(API_PATHS.members, {
+      headers: { [TENANT_HEADER]: 'acme' },
+    });
+
+    expect(res.status).toBe(403);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    expect(body.ok).toBe(false);
+    if (!body.ok) expect(body.error.code).toBe('forbidden');
+  });
+
+  const asAdmin = (): AppDeps => {
+    const deps = asStaff();
+    deps.tenantAccess = {
+      ...deps.tenantAccess,
+      findStaffGrant: async () => ({ tenant: acme, staffRole: 'admin' }),
+    };
+    return deps;
+  };
+
+  it('lets an owner grant admin access to an existing account (FR-8)', async () => {
+    const deps = asStaff();
+    deps.users = { findByEmail: async () => ({ userId: 'u-new', email: 'carlos@example.com', name: 'Carlos' }) };
+    const res = await buildApp(deps).request(API_PATHS.staff, {
+      method: 'POST',
+      headers: { [TENANT_HEADER]: 'acme', 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'carlos@example.com' }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    expect(body.ok).toBe(true);
+    if (body.ok) {
+      const parsed = staffGrantOutputSchema.parse(body.data);
+      expect(parsed).toMatchObject({ granted: true, staff: { role: 'admin', email: 'carlos@example.com' } });
+    }
+  });
+
+  it('returns not_found when granting to an email with no account (no invitations)', async () => {
+    const deps = asStaff();
+    deps.users = { findByEmail: async () => null };
+    const res = await buildApp(deps).request(API_PATHS.staff, {
+      method: 'POST',
+      headers: { [TENANT_HEADER]: 'acme', 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'ghost@example.com' }),
+    });
+
+    expect(res.status).toBe(404);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    if (!body.ok) expect(body.error.code).toBe('not_found');
+  });
+
+  it('forbids an admin from granting staff access (owner-only)', async () => {
+    const deps = asAdmin();
+    deps.users = { findByEmail: async () => ({ userId: 'u-new', email: 'carlos@example.com', name: 'Carlos' }) };
+    const res = await buildApp(deps).request(API_PATHS.staff, {
+      method: 'POST',
+      headers: { [TENANT_HEADER]: 'acme', 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'carlos@example.com' }),
+    });
+
+    expect(res.status).toBe(403);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    if (!body.ok) expect(body.error.code).toBe('forbidden');
+  });
+
+  it('serves the staff roster to a resolved admin (staff:read is shared)', async () => {
+    const deps = asAdmin();
+    deps.staff = {
+      ...deps.staff,
+      listByTenant: async () => [
+        { id: 'g-1', userId: 'user-1', email: 'demo@agentproofarch.dev', name: 'Demo', role: 'owner' },
+      ],
+    };
+    const res = await buildApp(deps).request(API_PATHS.staff, {
+      headers: { [TENANT_HEADER]: 'acme' },
+    });
+
+    expect(res.status).toBe(200);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    if (body.ok) expect(staffListOutputSchema.parse(body.data).staff).toHaveLength(1);
+  });
+
+  it('blocks revoking the last owner with a validation envelope (lockout guard)', async () => {
+    const deps = asStaff();
+    deps.staff = {
+      ...deps.staff,
+      findGrant: async () => ({ id: 'g-owner', userId: 'user-1', role: 'owner' }),
+      revokeLastOwnerSafe: async () => 0,
+    };
+    const res = await buildApp(deps).request(API_PATHS.staffRevoke, {
+      method: 'POST',
+      headers: { [TENANT_HEADER]: 'acme', 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'user-1' }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = looseEnvelopeSchema.parse(await res.json());
+    if (!body.ok) expect(body.error.code).toBe('validation');
   });
 });

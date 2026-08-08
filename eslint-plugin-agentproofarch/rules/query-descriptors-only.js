@@ -1,4 +1,48 @@
+import path from 'node:path';
+
 const QUERY_HOOKS = new Set(['useQuery', 'useQueries', 'useMutation']);
+
+/**
+ * Canonical descriptor sources, matched by the specifier's RESOLVED
+ * repo-relative path — never by filename suffix. A hook argument is accepted
+ * only when it originates from one of:
+ *   - `#core/client/*`                                 — the descriptor factories
+ *   - `apps/web/src/api.ts`                            — the web binding site (`actions`)
+ *   - `apps/web/src/features/<island>/core/index.ts`   — an island core's public seam
+ *   - `apps/web/src/features/<island>/index.web.ts`    — an island's web composition
+ * A relative specifier is resolved against the importing file, so a look-alike
+ * local module that merely ends in `/api.js` (e.g. `./helpers/api.js`) does not
+ * pass; only the one true `api.ts`, an island `core/index.ts` and an island
+ * `index.web.ts` do. The web composition (`index.web.ts`) is where a portable
+ * core is bound to its real gateway + descriptors, so the seam a view consumes
+ * (`useQuery(boardSelectors.list)`) resolves through it, not through `core/` —
+ * views never import `core/index.ts` directly.
+ */
+const CORE_CLIENT_PREFIX = '#core/client/';
+const WEB_API_BINDING = 'apps/web/src/api';
+const ISLAND_CORE_INDEX = /^apps\/web\/src\/features\/[^/]+\/core\/index$/;
+const ISLAND_WEB_BINDING = /^apps\/web\/src\/features\/[^/]+\/index\.web$/;
+
+const stripExt = (repoRel) => repoRel.replace(/\.[cm]?[jt]sx?$/, '');
+
+const resolveDescriptorSource = (specifier, importerFile, cwd) => {
+  if (typeof specifier !== 'string') return null;
+  if (specifier.startsWith(CORE_CLIENT_PREFIX)) return CORE_CLIENT_PREFIX;
+  if (!specifier.startsWith('.')) return null;
+  const absolute = path.resolve(path.dirname(importerFile), specifier);
+  const repoRel = stripExt(path.relative(cwd, absolute).split(path.sep).join('/'));
+  if (
+    repoRel === WEB_API_BINDING ||
+    ISLAND_CORE_INDEX.test(repoRel) ||
+    ISLAND_WEB_BINDING.test(repoRel)
+  ) {
+    return repoRel;
+  }
+  return null;
+};
+
+const isDescriptorModule = (specifier, importerFile, cwd) =>
+  resolveDescriptorSource(specifier, importerFile, cwd) !== null;
 
 const keyName = (key) => {
   if (key.type === 'Identifier') return key.name;
@@ -46,27 +90,48 @@ export default {
         'The {{hook}} argument must originate from an imported action descriptor (e.g. actions.todos or actions.todos(...)), never an inline object literal. Spread a descriptor to add callbacks: {{hook}}({ ...actions.foo, onSuccess }).',
       notImported:
         'The {{hook}} argument must originate from an imported action descriptor, not `{{name}}`.',
+      foreignModule:
+        'The {{hook}} argument must come from a canonical descriptor module (#core/client, the web api.ts binding, an island core/index.ts, or an island index.web.ts), not `{{name}}` imported from "{{module}}".',
     },
   },
   create(context) {
     const sourceCode = context.sourceCode;
-    const importedNames = new Set();
+    const importerFile = context.filename;
+    const cwd = context.cwd;
+    const descriptorNames = new Set();
+
+    const importSourceOf = (identifierNode) => {
+      const variable = findVariable(sourceCode.getScope(identifierNode), identifierNode.name);
+      if (!variable) return null;
+      for (const def of variable.defs) {
+        if (def.type === 'ImportBinding' && def.parent?.type === 'ImportDeclaration') {
+          return def.parent.source.value;
+        }
+      }
+      return null;
+    };
 
     const isFromImport = (node) => {
       const root = rootIdentifier(node);
       if (!root) return false;
-      if (importedNames.has(root.name)) return true;
+      if (descriptorNames.has(root.name)) return true;
       const variable = findVariable(sourceCode.getScope(root), root.name);
       if (!variable) return false;
       for (const def of variable.defs) {
-        if (def.type === 'ImportBinding') return true;
+        if (def.type === 'ImportBinding') {
+          const decl = def.parent;
+          return (
+            decl?.type === 'ImportDeclaration' &&
+            isDescriptorModule(decl.source.value, importerFile, cwd)
+          );
+        }
         if (
           def.type === 'Variable' &&
           def.node.type === 'VariableDeclarator' &&
           def.node.init
         ) {
           const initRoot = rootIdentifier(def.node.init);
-          if (initRoot && importedNames.has(initRoot.name)) return true;
+          if (initRoot && descriptorNames.has(initRoot.name)) return true;
         }
       }
       return false;
@@ -75,6 +140,15 @@ export default {
     const checkOrigin = (node, hook) => {
       if (isFromImport(node)) return;
       const root = rootIdentifier(node);
+      const module = root ? importSourceOf(root) : null;
+      if (root && module !== null) {
+        context.report({
+          node,
+          messageId: 'foreignModule',
+          data: { hook, name: root.name, module },
+        });
+        return;
+      }
       context.report({
         node,
         messageId: 'notImported',
@@ -101,7 +175,8 @@ export default {
 
     return {
       ImportDeclaration(node) {
-        for (const specifier of node.specifiers) importedNames.add(specifier.local.name);
+        if (!isDescriptorModule(node.source.value, importerFile, cwd)) return;
+        for (const specifier of node.specifiers) descriptorNames.add(specifier.local.name);
       },
       CallExpression(node) {
         if (node.callee.type !== 'Identifier') return;

@@ -14,6 +14,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
 
+/**
+ * __PLURAL_PASCAL__ page — a plain-CRUD view that reads server state DIRECTLY
+ * through `actions` (the rung-0 starting point, like the pre-existing todos page).
+ *
+ * RUNG-1 CORE (ADR-0005 — the events-in / selectors-out seam is uniform, no
+ * opt-outs): when this feature gains its own client state, give it the seam with
+ * `pnpm run new:island -- __SINGULAR_KEBAB__`, point that island's
+ * `__SINGULAR_CAMEL__Selectors.list` at this resource's `actions.__PLURAL_CAMEL__`,
+ * and read through the core here instead of importing api.ts — the generated
+ * island page shows the shape. See docs/decisions/0005-client-application-state.md.
+ */
 export const __PLURAL_PASCAL__Page = () => {
   const queryClient = useQueryClient();
   const __PLURAL_CAMEL__ = useQuery(actions.__PLURAL_CAMEL__);

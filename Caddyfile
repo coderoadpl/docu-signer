@@ -1,0 +1,39 @@
+# Self-host edge (PRD US-021): Caddy terminates TLS for tenant custom domains
+# with ZERO per-tenant config via on-demand TLS. Mounted into the `caddy` service
+# of docker-compose.prod.yml (the `edge` profile). Bring it up with:
+#   docker compose -f docker-compose.prod.yml --profile edge up -d --build
+#
+# On-demand TLS is gated: before issuing a certificate for a hostname, Caddy asks
+# the app's INTERNAL control-plane endpoint whether that domain is a verified
+# tenant domain. The endpoint runs on the app's INTERNAL_PORT (47101), which is
+# reachable only on the compose container network and is never published to the
+# host — network-internal isolation, not path-secrecy: the public app on :47100
+# does not serve /internal/* at all.
+{
+	on_demand_tls {
+		# Caddy GETs this with ?domain=<sni> appended; a 2xx = "issue a cert",
+		# anything else = "refuse". The app answers 200 only for a domain that
+		# exists and is verified in tenant_domains (apps/server internal-app.ts).
+		ask http://app:47101/internal/domain-check
+	}
+	# Local play: no ACME email set, so Caddy uses its internal CA and issues a
+	# locally-trusted cert for localhost. For a real deploy add an operator email
+	# here (`email ops@example.com`) to switch on public ACME (Let's Encrypt).
+}
+
+# Every HTTPS hostname clears the on-demand gate above, then reverse-proxies to
+# the app. No per-tenant site block is ever added: a newly-verified custom domain
+# starts terminating TLS the moment its first request passes the ask check.
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy app:47100
+}
+
+# Plain HTTP (and a caddy-fronted localhost demo without public DNS): proxy the
+# app directly, no on-demand gate. Caddy still auto-redirects real hostnames to
+# HTTPS; localhost stays reachable over http for a quick local smoke.
+http:// {
+	reverse_proxy app:47100
+}

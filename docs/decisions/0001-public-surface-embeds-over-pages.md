@@ -50,6 +50,7 @@ the admin panel and consumable from any external site.
   payment webhook.
 - Public routes form a new contract group with their own rules (no identity,
   open CORS, cache headers) — enforced like every other boundary.
-- The product PRD (Together `tasks/prd-together.md`) must rewrite FR-35 and
-  US-030: public product pages → embeds + headless API + shareable checkout
-  links.
+- The downstream **Together** product's own PRD (maintained in the Together
+  product repo, not this foundation repo — there is no `tasks/` directory here,
+  see the PRD §0 Errata) must rewrite FR-35 and US-030: public product pages →
+  embeds + headless API + shareable checkout links.

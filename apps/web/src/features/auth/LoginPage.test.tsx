@@ -60,4 +60,28 @@ describe('LoginPage', () => {
 
     expect(await screen.findByRole('button', { name: 'signing in…' })).toBeDisabled();
   });
+
+  it('requests a passwordless magic link and confirms delivery (US-026)', async () => {
+    server.use(http.post('*/sign-in/magic-link', () => HttpResponse.json({ status: true })));
+
+    await renderLoginPage();
+    await userEvent.type(screen.getByLabelText('email'), 'mag@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'email me a sign-in link' }));
+
+    expect(await screen.findByText(/captured by mailpit/i)).toBeInTheDocument();
+  });
+
+  it('hides the Google button when the provider is not configured', async () => {
+    await renderLoginPage();
+    expect(screen.queryByRole('button', { name: /continue with Google/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the Google button only when the server reports it enabled (FR-26)', async () => {
+    server.use(
+      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: true } })),
+    );
+
+    await renderLoginPage();
+    expect(await screen.findByRole('button', { name: /continue with Google/i })).toBeInTheDocument();
+  });
 });

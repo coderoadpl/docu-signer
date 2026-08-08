@@ -294,6 +294,10 @@ type AsElement = { component?: ElementType };
 
 export const CardTitle = styled(Typography)({ fontSize: '1.6rem' });
 
+// Bold tenant name inside a ListItemText primary slot: the weight is a
+// typography decision, so it lives here in theme.ts rather than an inline sx.
+export const TenantName = styled('span')({ fontWeight: 700 });
+
 export const Wordmark = styled(CardTitle)({ letterSpacing: 'normal' });
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
@@ -323,18 +327,3 @@ export const TenantSwatch = styled(Box)(({ theme }) => ({
 }));
 
 export const LedgerNav = styled(Stack)<AsElement>({ borderBottom: `1px solid ${LINE}` });
-
-export const FileDropZone = styled(Box)(({ theme }) => ({
-  border: `1px dashed ${theme.palette.divider}`,
-  backgroundColor: theme.palette.background.paper,
-}));
-
-export const PdfPreview = styled('object')(({ theme }) => ({
-  display: 'block',
-  width: '100%',
-  minHeight: '32rem',
-  border: `1px solid ${theme.palette.divider}`,
-  backgroundColor: theme.palette.background.paper,
-}));
-
-export const EmptyState = styled(Box)({ textAlign: 'center' });

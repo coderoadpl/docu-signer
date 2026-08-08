@@ -1,5 +1,79 @@
 # PRD: Agentproofarch — Agent-First Full-Stack Foundation
 
+> **Status (owner decision, 2026-07-20, DECIDE A1):** the **full PRD scope is
+> ACCEPTED for build** — nothing here is demoted to roadmap. The not-yet-built
+> stories land as a multi-PR program; the sub-packages and their order are
+> tracked on the board, not in this document.
+
+## 0. Errata (mechanical corrections, 2026-07-20)
+
+This PRD is the original accepted source; some of its concrete mechanics drifted
+from what the demo actually shipped. The corrections below supersede the cited
+passages **on mechanics only** — they do not re-adjudicate scope (settled by the
+Status note above: full scope accepted for build). Where this block and
+the body disagree, this block wins.
+
+- **Platform entry file (§2 Goals, §3.1 `apps/server`, §3.2, US-023).** There is
+  no `entry.vercel.ts`. The Vercel entry is `demo/api/index.ts`, which exports a
+  node-style handler via `@hono/node-server/vercel` (see
+  [ADR-0003](decisions/0003-vercel-environments.md) §4). Everywhere the PRD says
+  `entry.vercel.ts` (including the `@vercel/*`/`@neondatabase/*` containment
+  exemption), read `api/index.ts`.
+- **Module resolution (§3.1, US-001 acceptance).** There are **no** tsconfig
+  path aliases `@core/*`/`@adapters/*`. The repo uses Node **subpath imports**
+  declared in `package.json` (`"imports": { "#core/*": "./core/*",
+  "#adapters/*": "./adapters/*" }`); all code imports `#core/...` / `#adapters/...`.
+- **No `tasks/` directory (§3.1).** The `tasks/` entry in the directory layout
+  does not exist; PRDs and agent docs live under `docs/`. The whole
+  implementation is rooted in `demo/` (its own `package.json`); paths in this
+  PRD are relative to that root.
+- **`AuthPort` return type (§3.4 vs §3.5).** §3.5 lists `AuthPort` as
+  `request → Identity or error`, which contradicts §3.4 ("`AuthPort` yields the
+  authenticated user; the resolver builds `Identity`"). §3.4 is correct:
+  `AuthPort.getAuthenticatedUser(headers)` returns `AuthenticatedUser | null`
+  (userId, email, name); the core tenant-resolution resolver builds `Identity`
+  from that plus tenant context. Read §3.5's `AuthPort` line accordingly.
+- **Tenancy vocabulary — no "organizations" (§2 Goals, US-013/US-016/US-017,
+  FR-7).** Tenancy is foundation-owned `tenants` with flat `owner`/`admin`
+  grants in `tenant_admins`; there is deliberately **no organization/team
+  concept** (see [ADR-0002](decisions/0002-member-identity-and-idp.md) and the
+  §3.4 model this PRD already adopted). "organizations/invitations" in the Goals
+  list, the `org …` CLI verbs (US-013), and "a personal default organization
+  created" (US-016) are legacy wording: registration creates a **tenant** with
+  its **owner row**, the CLI namespace is `tenant`, and the auth provider is
+  never involved in tenancy.
+- **`tenant_domains.createdAt` struck (§3, ~line 171).** The `tenant_domains`
+  shape in §3 lists a `createdAt` column, but the shipped domain schema
+  (`core/domain/tenant.ts`), the Drizzle table (`adapters/db/app-schema.ts`) and
+  migration `0000` have **no `created_at`**. Read the table as
+  `{ id, tenantId, domain, kind, verified }` — no `createdAt`. The column is
+  struck here rather than added, since nothing reads it. (The round-1 audit
+  finding R1 flagged this and was **rejected on a misread** — the round-1 judge
+  attributed `memberSchema.createdAt` to `tenantDomainSchema`. The round-2
+  consensus of 2026-07-20 overturned that rejection and is the record; the
+  round-1 rejection was factually wrong.)
+- **Built `AuthClientPort` surface — no `getSession` (§3.5, ~line 197).** The
+  shipped `AuthClientPort` deliberately has **no `getSession`**: current session
+  state is read over HTTP via `/api/me`, not through the client port. Its further
+  methods §3.5 lists are now **built** (US-026/US-028a, A1 sub-package 4 — this
+  package was the trigger): `requestMagicLink`, `signInSocial` (Google, gated on
+  `GOOGLE_CLIENT_*`), and TOTP 2FA (`enableTwoFactor`/`verifyTotp`/
+  `disableTwoFactor`). `EmailPort` (deferred in §3.5) is built alongside as the
+  magic-link transport (SMTP default / dev-capture; see
+  [ADR-0007](decisions/0007-email-port-and-magic-link-transport.md)). Passkeys
+  (`registerPasskey`/`listPasskeys`/`removePasskey`/`signInPasskey`) are now
+  **built too**: `@better-auth/passkey` pinned a `better-call` whose optional
+  `zod@^4` peer conflicted with the tree's former `zod@^3`, so the tree was
+  migrated to `zod@^4` first (gates green) and the plugin then wired — no faked
+  seam.
+- **`Identity` shape includes `tenantSlug`/`tenantName` (§3.4, ~line 167).** The
+  declared shape lists six fields and omits the tenant display fields the shipped
+  type carries. `core/domain/identity.ts` (and the `/api/me` response) is
+  `Identity = { userId, email, name, tenantId: string | null,
+  tenantSlug: string | null, tenantName: string | null,
+  staffRole: 'owner' | 'admin' | null, memberId: string | null }` — read the §3.4
+  shape with `tenantSlug` and `tenantName` (both nullable) added.
+
 ## 1. Introduction / Overview
 
 Agentproofarch is a foundation (starter architecture, not a product) for building multi-tenant SaaS web applications that are maximally friendly to AI-agent development. Every business feature built on top of it flows through strictly enforced layers: a pure-TypeScript core, thin adapters for external resources, and thin client/server applications. The primary feedback loop for agents is the CLI: every capability of the platform is invocable from the command line with structured JSON output and deterministic exit codes, so an agent can implement, run, and verify features without a browser.
@@ -12,7 +86,7 @@ Two deployment targets are first-class and must work from the same commit:
 
 ## 2. Goals
 
-- A repository where architectural rules are machine-enforced (ESLint boundaries + dependency-cruiser), so an AI agent physically cannot violate layering without failing `npm run check`.
+- A repository where architectural rules are machine-enforced (ESLint boundaries + dependency-cruiser), so an AI agent physically cannot violate layering without failing `pnpm run check`.
 - Full multi-tenant auth: registration, login, organizations, invitations, tenant switching. One email = one global account that can belong to many tenants.
 - Custom domains per tenant working on both targets: Vercel Domains API and Caddy on-demand TLS.
 - A CLI that covers 100% of the foundation's API surface with `--json` output and mapped exit codes — the reference client and the agent verification loop.
@@ -199,7 +273,7 @@ server-side rendering of pages, only of embed widgets.
 
 ## 4. User Stories
 
-Stories are ordered; each is one focused session. "Check passes" means `npm run check` (typecheck + lint + dependency-cruiser + knip + tests) is green.
+Stories are ordered; each is one focused session. "Check passes" means `pnpm run check` (typecheck + lint + dependency-cruiser + knip + tests) is green.
 
 ### US-001: Repository scaffold and toolchain
 **Description:** As a developer, I need the repo skeleton with strict TypeScript and test tooling so all later work has a foundation.
@@ -219,7 +293,7 @@ Stories are ordered; each is one focused session. "Check passes" means `npm run 
 - [ ] ESLint flat config: `eslint-plugin-boundaries` encoding all rules from §3.2; `@typescript-eslint` strict preset; `no-explicit-any` and `consistent-type-assertions` (forbid `as` except `as const`) as errors
 - [ ] dependency-cruiser config: layer rules, no-circular, forbidden `@vercel/*` / `@neondatabase/*` outside allowed paths
 - [ ] knip configured for dead code/exports
-- [ ] Proof test: a temporary file importing `core/server` from `apps/web` makes `npm run check` fail; file removed after demonstrating (document the demonstration in the story log)
+- [ ] Proof test: a temporary file importing `core/server` from `apps/web` makes `pnpm run check` fail; file removed after demonstrating (document the demonstration in the story log)
 - [ ] Check passes
 
 ### US-003: Domain primitives — Result, errors, env
@@ -494,7 +568,7 @@ Stories are ordered; each is one focused session. "Check passes" means `npm run 
 
 **Architecture & enforcement**
 - FR-1: The system must be a single-package repository (no workspaces, no published packages) with the layout of §3.1 and path aliases.
-- FR-2: All dependency rules of §3.2 must be enforced by ESLint boundaries and dependency-cruiser; any violation must fail `npm run check`.
+- FR-2: All dependency rules of §3.2 must be enforced by ESLint boundaries and dependency-cruiser; any violation must fail `pnpm run check`.
 - FR-3: TypeScript must run with `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`; `any` and non-const `as` assertions are lint errors.
 - FR-4: All external input (HTTP bodies, CLI args, env) must be zod-parsed at the boundary; no unvalidated casts.
 - FR-5: Use-cases must return `Result`; the HTTP layer must translate to the envelope of §3.3; no exception may cross the HTTP boundary as a 500 with stack trace.
@@ -571,11 +645,11 @@ Stories are ordered; each is one focused session. "Check passes" means `npm run 
 
 ## 9. Success Metrics
 
-- `npm run check` is the single gate: green means typecheck, lint, boundaries, dependency graph, dead code, and tests all pass.
+- `pnpm run check` is the single gate: green means typecheck, lint, boundaries, dependency graph, dead code, and tests all pass.
 - Fresh clone → `docker compose up` → working registration/login in under 5 minutes with no manual steps beyond copying `.env.example`.
 - The same commit deploys to Vercel with only env configuration.
 - An agent can verify any foundation capability via CLI `--json` + exit code without a browser.
-- Deliberate boundary violations (e.g. importing `core/server` from `apps/web`, importing `@vercel/*` from core) fail `npm run check` — demonstrated, not assumed.
+- Deliberate boundary violations (e.g. importing `core/server` from `apps/web`, importing `@vercel/*` from core) fail `pnpm run check` — demonstrated, not assumed.
 
 ## 10. Open Questions
 

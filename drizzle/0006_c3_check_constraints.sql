@@ -1,0 +1,4 @@
+ALTER TABLE "cards" ADD CONSTRAINT "cards_board_check" CHECK ("cards"."board" IN ('personal', 'team'));--> statement-breakpoint
+ALTER TABLE "cards" ADD CONSTRAINT "cards_column_check" CHECK (("cards"."board" = 'personal' AND "cards"."column" IN ('todo', 'doing', 'done')) OR ("cards"."board" = 'team' AND "cards"."column" IN ('todo', 'in-dev', 'review', 'done')));--> statement-breakpoint
+ALTER TABLE "tenant_admins" ADD CONSTRAINT "tenant_admins_role_check" CHECK ("tenant_admins"."role" IN ('owner', 'admin'));--> statement-breakpoint
+ALTER TABLE "tenant_domains" ADD CONSTRAINT "tenant_domains_kind_check" CHECK ("tenant_domains"."kind" IN ('subdomain', 'custom'));

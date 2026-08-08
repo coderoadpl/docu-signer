@@ -129,8 +129,10 @@ statement, no lint rule exists); "query descriptors only in
 `core/client/queries.ts`" (followed, unlinted); MUI-stock-plus-`sx`-layout-only
 styling with all visual language in `theme.ts` (followed, unlinted).
 
-**Undecided / never discussed** (now decided in `architecture.md` §Frontend):
-client-state policy, invalidation conventions, folder structure inside
+**Undecided / never discussed** (now decided in `architecture.md` §Frontend —
+client application state in full in
+[ADR-0005](decisions/0005-client-application-state.md), the island-core
+model): client-state policy, invalidation conventions, folder structure inside
 `apps/web`, error boundaries, forms, a11y, component testing strategy, bundle
 budgets.
 
@@ -144,6 +146,17 @@ budgets.
 - No root error boundary; a render-time throw is uncaught.
 - `scripts/**` and `**/*.mjs` (the visual-diff tooling) are outside both ESLint
   and dependency-cruiser scope.
+
+**Landed (2026-07-20):** all four defects above are closed and enforced.
+`eslint-plugin-react-hooks`, `eslint-plugin-react` and `eslint-plugin-jsx-a11y`
+are wired in `demo/eslint.config.js` (`react-hooks/exhaustive-deps` and
+`rules-of-hooks` at error, the jsx-a11y recommended set). `demo/vitest.config.ts`
+now includes `**/*.test.tsx` and runs `apps/web` tests under a `jsdom`
+environment (with a `node` project for the pure cores). The root error surface
+ships as `apps/web/src/RootErrorFallback.tsx` + `components/ui/ErrorBoundary.tsx`
+(with tests). `scripts/**` and `**/*.mjs` are inside the ESLint config's file
+globs. The gap analysis above is retained as the record of why these enforcers
+exist.
 
 ## 5. Conclusions
 

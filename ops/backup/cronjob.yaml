@@ -1,0 +1,257 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: agentproofarch-postgres-backup
+  namespace: agentproofarch-backup
+spec:
+  schedule: "7 * * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 2700
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            fsGroup: 999
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: postgres:16-bookworm
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/bash
+                - -c
+              args:
+                - |
+                  set -Eeuo pipefail
+                  umask 027
+                  export GNUPGHOME=/tmp/gnupg
+                  mkdir -p "$GNUPGHOME"
+                  chmod 700 "$GNUPGHOME"
+                  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+                  artifact="agentproofarch-${timestamp}.dump.gpg"
+                  partial="/backups/.${artifact}.partial"
+                  final="/backups/${artifact}"
+                  verification="/tmp/${timestamp}.dump"
+                  backup_failed() {
+                    rm -f -- "$partial" "$verification"
+                    touch /work/backup-failed
+                  }
+                  trap backup_failed ERR
+                  pg_dump "$DATABASE_URL" \
+                    --format=custom \
+                    --compress=9 \
+                    --no-owner \
+                    --no-privileges |
+                    gpg \
+                      --symmetric \
+                      --batch \
+                      --yes \
+                      --pinentry-mode loopback \
+                      --passphrase-file /secrets/backup-passphrase \
+                      --cipher-algo AES256 \
+                      --compress-algo none \
+                      --output "$partial"
+                  gpg \
+                    --decrypt \
+                    --batch \
+                    --quiet \
+                    --pinentry-mode loopback \
+                    --passphrase-file /secrets/backup-passphrase \
+                    --output "$verification" \
+                    "$partial"
+                  pg_restore --list "$verification" >/dev/null
+                  rm -f -- "$verification"
+                  mv "$partial" "$final"
+                  (
+                    cd /backups
+                    sha256sum "$artifact" >"${artifact}.sha256"
+                  )
+                  find /backups \
+                    -type f \
+                    \( -name 'agentproofarch-*.dump.gpg' -o -name 'agentproofarch-*.dump.gpg.sha256' \) \
+                    -mmin "+$((RETENTION_DAYS * 1440))" \
+                    -delete
+                  find /backups -type f -name '.agentproofarch-*.partial' -mmin +1440 -delete
+                  printf '%s\n' "$artifact" >/work/artifact
+                  touch /work/ready
+                  printf 'Created local encrypted backup %s\n' "$artifact"
+                  while [[ ! -f /work/uploaded ]]; do
+                    if [[ -f /work/upload-failed ]]; then
+                      exit 1
+                    fi
+                    sleep 2
+                  done
+                  printf 'Backup run completed for %s\n' "$artifact"
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentproofarch-backup-secrets
+                      key: DATABASE_URL
+                - name: RETENTION_DAYS
+                  value: "14"
+                - name: HOME
+                  value: /tmp
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: "1"
+                  memory: 1Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 999
+                runAsGroup: 999
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                - name: work
+                  mountPath: /work
+                - name: backup-tmp
+                  mountPath: /tmp
+                - name: secrets
+                  mountPath: /secrets
+                  readOnly: true
+            - name: upload
+              image: rclone/rclone:1.71.0
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+              args:
+                - |
+                  set -eu
+                  trap 'touch /work/upload-failed' 0
+                  while [ ! -f /work/ready ]; do
+                    if [ -f /work/backup-failed ]; then
+                      exit 1
+                    fi
+                    sleep 2
+                  done
+                  artifact="$(cat /work/artifact)"
+                  prefix="${S3_PREFIX%/}"
+                  if [ -n "$prefix" ]; then
+                    remote="offsite:${S3_BUCKET}/${prefix}/${artifact}"
+                  else
+                    remote="offsite:${S3_BUCKET}/${artifact}"
+                  fi
+                  if rclone copyto \
+                    "/backups/${artifact}" \
+                    "$remote" \
+                    --immutable \
+                    --s3-no-check-bucket \
+                    --transfers 1 &&
+                    rclone copyto \
+                      "/backups/${artifact}.sha256" \
+                      "${remote}.sha256" \
+                      --immutable \
+                      --s3-no-check-bucket \
+                      --transfers 1; then
+                    touch /work/uploaded
+                    printf 'Uploaded encrypted backup %s\n' "$artifact"
+                    trap - 0
+                  else
+                    exit 1
+                  fi
+              env:
+                - name: RCLONE_CONFIG
+                  value: /dev/null
+                - name: RCLONE_CONFIG_OFFSITE_TYPE
+                  value: s3
+                - name: RCLONE_CONFIG_OFFSITE_ACL
+                  value: private
+                - name: RCLONE_CONFIG_OFFSITE_PROVIDER
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentproofarch-backup-secrets
+                      key: S3_PROVIDER
+                - name: RCLONE_CONFIG_OFFSITE_ENDPOINT
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentproofarch-backup-secrets
+                      key: S3_ENDPOINT
+                - name: RCLONE_CONFIG_OFFSITE_REGION
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentproofarch-backup-secrets
+                      key: S3_REGION
+                - name: RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentproofarch-backup-secrets
+                      key: S3_ACCESS_KEY_ID
+                - name: RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentproofarch-backup-secrets
+                      key: S3_SECRET_ACCESS_KEY
+                - name: S3_BUCKET
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentproofarch-backup-secrets
+                      key: S3_BUCKET
+                - name: S3_PREFIX
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentproofarch-backup-secrets
+                      key: S3_PREFIX
+                - name: HOME
+                  value: /tmp
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1000
+                runAsGroup: 1000
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+                - name: upload-tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: agentproofarch-backups
+            - name: work
+              emptyDir: {}
+            - name: backup-tmp
+              emptyDir: {}
+            - name: upload-tmp
+              emptyDir: {}
+            - name: secrets
+              secret:
+                secretName: agentproofarch-backup-secrets
+                defaultMode: 0440
+                items:
+                  - key: backup-passphrase
+                    path: backup-passphrase

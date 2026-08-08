@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   API_PATHS,
   API_ROUTES,
+  healthLiveOutputSchema,
   healthOutputSchema,
-  exportDocumentsInputSchema,
+  healthReadyOutputSchema,
+  memberEnsureOutputSchema,
+  memberListOutputSchema,
+  memberRemoveOutputSchema,
   meOutputSchema,
   TENANT_HEADER,
   tenantCreateInputSchema,
@@ -14,6 +18,19 @@ import {
   todoCreateOutputSchema,
   todoListOutputSchema,
 } from './routes.js';
+
+const exampleMember = {
+  id: 'm1',
+  tenantId: 'acme',
+  userId: null,
+  email: 'a@b.com',
+  displayName: 'Ada',
+  tags: ['vip'],
+  marketingConsents: [{ channel: 'email', granted: true, updatedAt: '2026-07-10T00:00:00.000Z' }],
+  externalCustomerIds: [],
+  createdAt: '2026-07-03T00:00:00.000Z',
+  lastSeenAt: null,
+};
 
 describe('API_ROUTES', () => {
   it('gives every route an HTTP method and an /api path', () => {
@@ -30,6 +47,11 @@ describe('API_ROUTES', () => {
     expect(API_ROUTES.tenantsCreate.method).toBe('POST');
     expect(API_ROUTES.todos.method).toBe('GET');
     expect(API_ROUTES.todosCreate.method).toBe('POST');
+    expect(API_ROUTES.members.method).toBe('GET');
+    expect(API_ROUTES.membersEnsure.method).toBe('POST');
+    expect(API_ROUTES.membersUpdate.method).toBe('POST');
+    expect(API_ROUTES.membersRemove.method).toBe('POST');
+    expect(API_ROUTES.membersExport.method).toBe('GET');
   });
 });
 
@@ -50,9 +72,22 @@ describe('TENANT_HEADER', () => {
 
 describe('route schemas parse their example payloads', () => {
   it('healthOutputSchema', () => {
-    const example = { status: 'ok', version: '0.1.0', database: 'up' };
+    const example = { status: 'ok', version: '0.1.0', sha: 'deadbeef', database: 'up' };
     expect(healthOutputSchema.parse(example)).toEqual(example);
     expect(healthOutputSchema.safeParse({ ...example, database: 'sideways' }).success).toBe(false);
+    expect(healthOutputSchema.safeParse({ status: 'ok', version: '0.1.0', database: 'up' }).success).toBe(false);
+  });
+
+  it('healthLiveOutputSchema carries attestation without a database field', () => {
+    const example = { status: 'ok', version: '0.1.0', sha: 'deadbeef' };
+    expect(healthLiveOutputSchema.parse(example)).toEqual(example);
+    expect(healthLiveOutputSchema.safeParse({ ...example, sha: undefined }).success).toBe(false);
+  });
+
+  it('healthReadyOutputSchema only accepts database up', () => {
+    const example = { status: 'ok', version: '0.1.0', sha: 'deadbeef', database: 'up' };
+    expect(healthReadyOutputSchema.parse(example)).toEqual(example);
+    expect(healthReadyOutputSchema.safeParse({ ...example, database: 'down' }).success).toBe(false);
   });
 
   it('meOutputSchema with a tenant', () => {
@@ -121,14 +156,19 @@ describe('route schemas parse their example payloads', () => {
     expect(todoCreateOutputSchema.parse(example)).toEqual(example);
   });
 
-  it('exportDocumentsInputSchema limits a command to 100 ids', () => {
-    expect(exportDocumentsInputSchema.parse({ documentIds: ['document-1'] })).toEqual({
-      documentIds: ['document-1'],
-    });
-    expect(
-      exportDocumentsInputSchema.safeParse({
-        documentIds: Array.from({ length: 101 }, (_, index) => `document-${index}`),
-      }).success,
-    ).toBe(false);
+  it('memberListOutputSchema', () => {
+    const example = { members: [exampleMember] };
+    expect(memberListOutputSchema.parse(example)).toEqual(example);
+  });
+
+  it('memberEnsureOutputSchema carries the created flag', () => {
+    const example = { member: exampleMember, created: true };
+    expect(memberEnsureOutputSchema.parse(example)).toEqual(example);
+    expect(memberEnsureOutputSchema.safeParse({ member: exampleMember }).success).toBe(false);
+  });
+
+  it('memberRemoveOutputSchema reports the cascade counts', () => {
+    const example = { memberId: 'm1', deleted: { members: 1 } };
+    expect(memberRemoveOutputSchema.parse(example)).toEqual(example);
   });
 });

@@ -92,11 +92,43 @@ export (CSV/JSON incl. email) is a foundation capability.
 
 - Foundation PRD §3.4 rewritten; FR-6/7 amended; FR-19..25 and US-025..028
   added; US-007 redefined (no organization plugin).
-- Implementation debt: the demo currently models tenants as Better Auth
+- Implementation debt: the demo originally modelled tenants as Better Auth
   organizations — to be migrated to foundation-owned `tenants` +
   `tenant_admins` tables. The full inventory of provider couplings, with
   priorities and fixes, lives in
   [provider-coupling-audit.md](../provider-coupling-audit.md) (docs first,
   code follows).
+
+  > **Landed (2026-07-20).** The P1 migration batch is complete: `demo/` now
+  > ships foundation-owned `tenants`, `tenant_admins` and `members` tables (see
+  > `demo/adapters/db/app-schema.ts`), the organization plugin is gone, and no
+  > provider organization/member table backs tenancy. This debt is resolved.
 - Together PRD FR-3 should be rephrased from "isolated member accounts" to
   "isolated member relationship ownership over shared authentication".
+
+  > **Members aggregate built (2026-07-21).** The full vertical shipped:
+  > `member` domain (`core/domain/member.ts`), the `member:read`/`:write`/
+  > `:remove`/`:export` capabilities, use-cases `ensureMember` (the FR-20
+  > idempotent find-or-create entry point), `listMembers`, `updateMember`,
+  > `removeMember`, `exportMember`, contract routes + CLI `member` verbs + a
+  > staff-facing web island, with cross-tenant isolation and removal-cascade
+  > integration tests and a smoke phase. Aggregate stances, recorded per the
+  > §Data-conventions requirement that each aggregate state them:
+  > - **Authorization**: `member:*` is STAFF-ONLY (owner|admin) — members are
+  >   the end customers this aggregate is *about*, managed by staff, not editors
+  >   of the roster; a customer's self-scoped read is `/api/me`, not a
+  >   capability. Default-deny; `member:remove` is split from `member:write` so a
+  >   later policy can reserve destructive removal for owners.
+  > - **Concurrency**: last-write-wins (short-lived per-tenant rows; a lost
+  >   profile edit costs a re-type, not data).
+  > - **Deletion**: hard delete of the member row; today that row is the ONLY
+  >   tenant-scoped data keyed by the member (todos/cards are authored by
+  >   `userId`), so `removeMember` reports `deleted.members` and future
+  >   `memberId`-keyed aggregates add their own counts + FK cascade. The global
+  >   account is untouched (operation 1 of the two-operation deletion model).
+  > - **Storage**: `members` is on the §Data-conventions GRANDFATHER list, so it
+  >   stays text id + text ISO timestamps (not migrated to uuid/timestamptz); the
+  >   new columns join that convention to avoid a table mixing timestamp types.
+  >   New sibling aggregates keyed by `member_id` adopt uuid/timestamptz.
+  >   `user_id` is now nullable: `ensureMember` provisions a member row before an
+  >   auth account exists (the passwordless magic-link binding is US-026).

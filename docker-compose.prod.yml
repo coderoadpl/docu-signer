@@ -1,0 +1,82 @@
+# Self-host production stack (PRD US-021 + US-022). Distinct from
+# docker-compose.dev.yml, which only runs a bare Postgres for local `pnpm` dev.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#     -> postgres + app (app runs migrations on startup, then serves API + SPA)
+#   docker compose -f docker-compose.prod.yml --profile edge up -d --build
+#     -> also starts Caddy (on-demand TLS terminator) in front of the app
+#
+# Caddy is gated behind the `edge` profile so the default `up` needs no
+# Caddyfile and binds no privileged ports — that is what CI and a bare
+# localhost demo use. Real TLS needs the Caddyfile (US-021, mounted below) and
+# ports 80/443, so it is opt-in. Configuration comes from .env (see
+# .env.example, the "Docker self-host (docker-compose.prod.yml)" block).
+
+name: agentproofarch
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agentproofarch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentproofarch}
+      POSTGRES_DB: ${POSTGRES_DB:-agentproofarch}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-agentproofarch}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentproofarch:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # The service-internal DB URL always wins over any .env value (which points
+      # at a host port for local `pnpm` dev). This is the one line that differs
+      # between the Vercel and Docker targets — node-postgres against the sidecar.
+      DB_DRIVER: node-postgres
+      DATABASE_URL: postgresql://${POSTGRES_USER:-agentproofarch}:${POSTGRES_PASSWORD:-agentproofarch}@postgres:5432/${POSTGRES_DB:-agentproofarch}
+      PORT: '47100'
+      # US-021: the domain-check control plane binds here. It is deliberately NOT
+      # in `ports:` below, so it is reachable only on this compose network — the
+      # caddy service asks app:47101, the public host never can.
+      INTERNAL_PORT: '47101'
+    ports:
+      # Published so a bare (caddy-less) stack and the CI smoke can reach the app
+      # directly. Behind the `edge` profile Caddy fronts it; you may drop this.
+      # INTERNAL_PORT (47101) is intentionally absent — see above.
+      - '${APP_PORT:-47100}:47100'
+
+  caddy:
+    image: caddy:2
+    profiles: ['edge']
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - '${CADDY_HTTP_PORT:-80}:80'
+      - '${CADDY_HTTPS_PORT:-443}:443'
+      - '${CADDY_HTTPS_PORT:-443}:443/udp'
+    volumes:
+      # Provided by the US-021 endpoint workstream at demo/Caddyfile — the
+      # on_demand_tls config that asks the app's internal domain-check endpoint.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

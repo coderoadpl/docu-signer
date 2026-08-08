@@ -19,10 +19,12 @@ re-type a large API surface, defeat `@tanstack/eslint-plugin-query`, and hide a
 library every model knows behind an abstraction none does. Never do it.
 
 `queryOptions()`/`infiniteQueryOptions()` live in `@tanstack/react-query` and
-are therefore banned from `core/client`; descriptors are typed by a local
-`defineQuery`/`defineInfiniteQuery` identity helper (typed against
+are therefore banned from `core/client`; descriptors are typed by the local
+`defineQuery`/`defineMutation` identity helpers (typed against
 `@tanstack/query-core` option types, binding the `queryFn` result type to the
-key). `skipToken` imports from `@tanstack/query-core` and is allowed in core.
+key). The shipped pair is `defineQuery`/`defineMutation` (`core/client/queries.ts`);
+a `defineInfiniteQuery` helper lands with the first infinite list, not before.
+`skipToken` imports from `@tanstack/query-core` and is allowed in core.
 
 ## Descriptors
 
@@ -108,7 +110,10 @@ key). `skipToken` imports from `@tanstack/query-core` and is allowed in core.
   `mutationKey`) live next to query descriptors in `core/client`.
 - After success, **invalidate the owning hierarchical scope** (in `onSettled`)
   — the server owns sort/filter/projection rules. `setQueryData` is allowed
-  only when the mutation returns the complete resource, and only immutably.
+  only when the mutation returns the complete resource, and only immutably —
+  and since [ADR-0005](decisions/0005-client-application-state.md) such cache
+  writes live in the owning island's `optimistic.ts`, where lint confines
+  `queryClient.setQueryData` (architecture.md §Client application state).
 - `invalidateQueries` takes a filter object (`{ queryKey: todos.lists() }`),
   never a bare array. Invalidation refetches active queries and marks the rest
   stale; `refetchType: 'all'` needs justification.
@@ -117,6 +122,9 @@ key). `skipToken` imports from `@tanstack/query-core` and is allowed in core.
   `cancelQueries` → snapshot (`getQueryData`) → immutable write → rollback
   context consumed in `onError` → invalidate in `onSettled`. Simpler cases use
   the v5 UI variant (`variables` + `isPending`) instead of cache writes.
+  Optimism over *interaction* state inside a rung-2/3 island machine is
+  governed by architecture.md §Client application state (ADR-0005); this
+  document governs only cache-level optimism.
 
 ## Freshness and polling
 

@@ -18,14 +18,14 @@ describe('createApiClient', () => {
 
       return jsonResponse({
         ok: true,
-        data: { status: 'ok', version: '0.1.0', database: 'up' },
+        data: { status: 'ok', version: '0.1.0', sha: 'deadbeef', database: 'up' },
       });
     };
     const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
 
     await expect(client.health()).resolves.toEqual({
       ok: true,
-      value: { status: 'ok', version: '0.1.0', database: 'up' },
+      value: { status: 'ok', version: '0.1.0', sha: 'deadbeef', database: 'up' },
     });
   });
 
@@ -58,6 +58,43 @@ describe('createApiClient', () => {
     await expect(client.health()).resolves.toMatchObject({
       ok: false,
       error: { code: 'internal' },
+    });
+  });
+
+  it('ensureMember posts the input and parses the created flag', async () => {
+    const member = {
+      id: 'm1',
+      tenantId: 'acme',
+      userId: null,
+      email: 'a@b.com',
+      displayName: null,
+      tags: [],
+      marketingConsents: [],
+      externalCustomerIds: [],
+      createdAt: '2026-07-10T00:00:00.000Z',
+      lastSeenAt: null,
+    };
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('/api/members');
+      expect(init).toMatchObject({ method: 'POST' });
+      return jsonResponse({ ok: true, data: { member, created: true } });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+    await expect(client.ensureMember({ email: 'a@b.com' })).resolves.toEqual({
+      ok: true,
+      value: { member, created: true },
+    });
+  });
+
+  it('exportMember reads the member id from the query string', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      expect(input).toBe('/api/members/export?id=m1');
+      return jsonResponse({ ok: false, error: { code: 'not_found', message: 'gone' } }, 404);
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+    await expect(client.exportMember('m1')).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
     });
   });
 
@@ -127,93 +164,6 @@ describe('createApiClient', () => {
     expect(contentType).toBeNull();
   });
 
-  it('builds file-content and export URLs and maps direct upload status to a Result', async () => {
-    const fetchImpl: typeof fetch = async (input, init) => {
-      expect(input).toBe('https://blob.example/upload');
-      expect(init).toMatchObject({ method: 'PUT', headers: { authorization: 'token' } });
-      expect(new Uint8Array(await new Response(init?.body).arrayBuffer())).toEqual(
-        new Uint8Array([1, 2, 3]),
-      );
-      return new Response(null, { status: 201 });
-    };
-    const client = createApiClient({ baseUrl: '/base', fetchImpl });
-
-    expect(client.fileContentUrl('document/id', 'file/id')).toBe(
-      '/base/api/documents/document%2Fid/files/file%2Fid/content',
-    );
-    expect(client.fileExportUrl('document/id', 'file/id')).toBe(
-      '/base/api/documents/document%2Fid/files/file%2Fid/export',
-    );
-    await expect(
-      client.directFileUpload({
-        url: 'https://blob.example/upload',
-        method: 'PUT',
-        headers: { authorization: 'token' },
-        bytes: new Uint8Array([1, 2, 3]),
-      }),
-    ).resolves.toEqual({ ok: true, value: undefined });
-  });
-
-  it('downloads a bulk export through the write transport', async () => {
-    const fetchImpl: typeof fetch = async (input, init) => {
-      expect(input).toBe('/api/export');
-      expect(init).toMatchObject({
-        method: 'POST',
-        credentials: 'include',
-        body: JSON.stringify({ documentIds: ['document-1'] }),
-      });
-      return new Response(new Uint8Array([1, 2, 3]), {
-        headers: {
-          'content-type': 'application/zip',
-          'content-disposition': "attachment; filename*=UTF-8''eksport-dokumentow.zip",
-        },
-      });
-    };
-    const client = createApiClient({ baseUrl: '', fetchImpl });
-
-    await expect(client.exportDocuments({ documentIds: ['document-1'] })).resolves.toEqual({
-      ok: true,
-      value: {
-        bytes: new Uint8Array([1, 2, 3]),
-        contentType: 'application/zip',
-        fileName: 'eksport-dokumentow.zip',
-      },
-    });
-  });
-
-  it('parses bulk export error envelopes', async () => {
-    const client = createApiClient({
-      baseUrl: '',
-      fetchImpl: async () =>
-        jsonResponse({ ok: false, error: { code: 'not_found', message: 'Documents not found' } }, 404),
-    });
-
-    await expect(client.exportDocuments({ documentIds: ['missing'] })).resolves.toEqual({
-      ok: false,
-      error: { code: 'not_found', message: 'Documents not found' },
-    });
-  });
-
-  it('maps failed direct uploads to internal errors', async () => {
-    const failed = createApiClient({
-      baseUrl: '',
-      fetchImpl: async () => new Response(null, { status: 503 }),
-    });
-    await expect(
-      failed.directFileUpload({ url: 'https://blob.example', method: 'PUT', headers: {}, bytes: new Uint8Array() }),
-    ).resolves.toMatchObject({ ok: false, error: { code: 'internal' } });
-
-    const offline = createApiClient({
-      baseUrl: '',
-      fetchImpl: async () => {
-        throw new Error('offline');
-      },
-    });
-    await expect(
-      offline.directFileUpload({ url: 'https://blob.example', method: 'PUT', headers: {}, bytes: new Uint8Array() }),
-    ).resolves.toMatchObject({ ok: false, error: { code: 'internal' } });
-  });
-
   it('resolves listTodos and addTodo through their route schemas', async () => {
     const todo = {
       id: 'todo-1',
@@ -230,98 +180,6 @@ describe('createApiClient', () => {
 
     await expect(client.listTodos()).resolves.toEqual({ ok: true, value: { todos: [todo] } });
     await expect(client.addTodo({ title: 'Ship it' })).resolves.toEqual({ ok: true, value: { todo } });
-  });
-
-  it('routes every document action through its contract schema', async () => {
-    const document = {
-      id: 'document-1',
-      tenantId: 'tenant-default',
-      title: 'Agreement',
-      docType: 'umowa-uod',
-      documentDate: '2026-07-18',
-      tags: [],
-      createdAt: '2026-07-18T00:00:00.000Z',
-      updatedAt: '2026-07-18T00:00:00.000Z',
-    };
-    const file = {
-      id: 'file-1',
-      documentId: document.id,
-      role: 'source',
-      fileName: 'source.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 3,
-      storageKey: 'key',
-      createdAt: '2026-07-18T00:00:00.000Z',
-    };
-    const responses: unknown[] = [
-      { documents: [{ ...document, files: [file] }] },
-      { document },
-      { document: { ...document, files: [file] } },
-      { document },
-      { deleted: true },
-      { upload: { kind: 'server', key: 'key' } },
-      { file },
-      { file },
-      { deleted: true },
-    ];
-    const requests: { input: string; method: string | undefined; contentType: string | null }[] = [];
-    const fetchImpl: typeof fetch = async (input, init) => {
-      requests.push({
-        input: String(input),
-        method: init?.method,
-        contentType: new Headers(init?.headers).get('content-type'),
-      });
-      return jsonResponse({ ok: true, data: responses.shift() });
-    };
-    const client = createApiClient({ baseUrl: '', fetchImpl });
-    const input = { title: 'Agreement', docType: 'umowa-uod' as const, documentDate: '2026-07-18' };
-
-    await client.listDocuments({
-      docType: 'umowa-uod',
-      person: 'Ada',
-      text: 'agree',
-      dateFrom: '2026-01-01',
-      dateTo: '2026-12-31',
-    });
-    await client.createDocument(input);
-    await client.getDocument(document.id);
-    await client.updateDocument(document.id, input);
-    await client.deleteDocument(document.id);
-    await client.requestFileUpload(document.id, {
-      fileName: 'source.pdf',
-      contentType: 'application/pdf',
-      role: 'source',
-    });
-    await client.finalizeFileUpload(document.id, {
-      key: 'key',
-      fileName: 'source.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 3,
-      role: 'source',
-    });
-    await client.serverUpload(document.id, {
-      fileName: 'source.pdf',
-      contentType: 'application/pdf',
-      role: 'source',
-      bytes: new Uint8Array([1, 2, 3]),
-    });
-    await client.removeFile(document.id, file.id);
-
-    expect(requests[0]?.input).toContain(
-      '/api/documents?docType=umowa-uod&person=Ada&text=agree&dateFrom=2026-01-01&dateTo=2026-12-31',
-    );
-    expect(requests.map((request) => request.method)).toEqual([
-      'GET',
-      'POST',
-      'GET',
-      'PATCH',
-      'DELETE',
-      'POST',
-      'POST',
-      'POST',
-      'DELETE',
-    ]);
-    expect(requests[7]).toMatchObject({ contentType: 'application/pdf' });
   });
 
   it('injects the W3C traceparent header when a trace is active', async () => {
@@ -349,6 +207,34 @@ describe('createApiClient', () => {
     await client.health();
 
     expect(seen?.has('traceparent')).toBe(false);
+  });
+
+  it('reads the public tenant discovery route by slug', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('/api/public/tenants/acme');
+      expect(init).toMatchObject({ method: 'GET' });
+      return jsonResponse({ ok: true, data: { slug: 'acme', contentVersion: 'abc123' } });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+    await expect(client.publicTenantDiscovery('acme')).resolves.toEqual({
+      ok: true,
+      value: { slug: 'acme', contentVersion: 'abc123' },
+    });
+  });
+
+  it('keys the public profile URL on slug and version', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      expect(input).toBe('/api/public/tenants/acme/v/abc123');
+      return jsonResponse({
+        ok: true,
+        data: { slug: 'acme', displayName: 'Acme Inc', contentVersion: 'abc123' },
+      });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+    await expect(client.publicTenantProfile('acme', 'abc123')).resolves.toEqual({
+      ok: true,
+      value: { slug: 'acme', displayName: 'Acme Inc', contentVersion: 'abc123' },
+    });
   });
 });
 

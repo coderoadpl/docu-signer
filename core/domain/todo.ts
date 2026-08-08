@@ -5,7 +5,7 @@ export const todoSchema = z.object({
   tenantId: z.string(),
   title: z.string().min(1).max(500),
   createdBy: z.string(),
-  createdAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
 });
 
 export type Todo = z.infer<typeof todoSchema>;

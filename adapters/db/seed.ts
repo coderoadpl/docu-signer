@@ -1,79 +1,145 @@
-import { randomUUID } from 'node:crypto';
+/**
+ * Demo seed: one user who belongs to two tenants, each with its own todos.
+ *   email:    demo@agentproofarch.dev
+ *   password: demo1234
+ * Tenants: acme.localhost and globex.localhost (subdomains of APP_BASE_DOMAIN).
+ * Idempotent: running twice is a no-op.
+ */
+import { eq } from 'drizzle-orm';
 
-import { and, eq } from 'drizzle-orm';
-import { hashPassword } from 'better-auth/crypto';
+import { createAuth } from '#adapters/auth/create-auth.js';
+import { seedEnvSchema } from '#core/server/config.js';
 
 import { createDb } from './client.js';
-import { account, tenantAdmins, tenants, user } from './schema.js';
+import { members, tenantAdmins, tenantDomains, tenants, todos, user } from './schema.js';
 
-const connectionString =
-  process.env['DATABASE_URL'] ??
-  'postgresql://agentproofarch:agentproofarch@localhost:47542/agentproofarch';
-
-const admin1Email = process.env['SEED_ADMIN1_EMAIL'] ?? 'admin1@dev.local';
-const admin2Email = process.env['SEED_ADMIN2_EMAIL'] ?? 'admin2@dev.local';
-const admin1Password = process.env['SEED_ADMIN1_PASSWORD'] ?? `dev-${randomUUID()}`;
-const admin2Password = process.env['SEED_ADMIN2_PASSWORD'] ?? `dev-${randomUUID()}`;
-
-if (admin1Email === admin2Email) throw new Error('Seed admin emails must be different');
+const { DATABASE_URL: connectionString, BETTER_AUTH_SECRET } = seedEnvSchema.parse(process.env);
 
 const db = createDb('node-postgres', connectionString);
 
-const ensureAdmin = async (name: string, email: string, password: string) => {
-  const existing = await db.select().from(user).where(eq(user.email, email)).limit(1);
-  const userId = existing[0]?.id ?? randomUUID();
-  if (existing.length === 0) {
-    await db.insert(user).values({ id: userId, name, email, emailVerified: true });
-  }
+const auth = createAuth(db, {
+  secret: BETTER_AUTH_SECRET,
+  baseUrl: 'http://localhost:47100',
+  baseDomain: 'localhost',
+  trustedOrigins: () => ['http://localhost:47100'],
+  secureCookies: false,
+  rateLimitEnabled: false,
+  // The seed signs up the demo user by password (no email is sent), so a
+  // no-op sink satisfies the auth wiring without pulling in a live relay.
+  email: { sendMail: async () => {} },
+});
 
-  const passwordHash = await hashPassword(password);
-  const existingAccount = await db
-    .select()
-    .from(account)
-    .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')))
-    .limit(1);
-  if (existingAccount[0]) {
-    await db.update(account).set({ password: passwordHash }).where(eq(account.id, existingAccount[0].id));
-  } else {
-    await db.insert(account).values({
-      id: randomUUID(),
-      accountId: userId,
-      providerId: 'credential',
-      userId,
-      password: passwordHash,
-    });
-  }
-  return userId;
-};
+const DEMO_EMAIL = 'demo@agentproofarch.dev';
 
-const admin1Id = await ensureAdmin('Admin 1', admin1Email, admin1Password);
-const admin2Id = await ensureAdmin('Admin 2', admin2Email, admin2Password);
-const nowIso = new Date().toISOString();
+const existing = await db.select().from(user).where(eq(user.email, DEMO_EMAIL)).limit(1);
+if (existing.length === 0) {
+  await auth.api.signUpEmail({
+    body: { name: 'Demo User', email: DEMO_EMAIL, password: 'demo1234' },
+  });
+}
+const seededUsers = await db.select().from(user).where(eq(user.email, DEMO_EMAIL)).limit(1);
+const demoUser = seededUsers[0];
+if (!demoUser) throw new Error('Seeded user not found');
 
-await db.insert(tenants).values({
-  id: 'tenant-default',
-  slug: 'default',
-  name: 'Default',
-  createdAt: nowIso,
-}).onConflictDoNothing();
+const seededAt = Date.now();
+const nowIso = new Date(seededAt).toISOString();
 
-await db.insert(tenantAdmins).values([
+const tenantRows = [
+  { id: 'tenant-acme', slug: 'acme', name: 'Acme Sp. z o.o.' },
+  { id: 'tenant-globex', slug: 'globex', name: 'Globex Corp' },
+];
+
+await db.insert(tenants).values(tenantRows.map((tenant) => ({ ...tenant, createdAt: nowIso }))).onConflictDoNothing();
+
+await db.insert(tenantAdmins).values(
+  tenantRows.map((tenant, index) => ({
+    id: `admin-${tenant.slug}`,
+    tenantId: tenant.id,
+    userId: demoUser.id,
+    role: index === 0 ? ('owner' as const) : ('admin' as const),
+  })),
+).onConflictDoNothing();
+
+await db.insert(members).values([
   {
-    id: 'admin-default-1',
-    tenantId: 'tenant-default',
-    userId: admin1Id,
-    role: 'owner',
+    id: 'member-acme-alice',
+    tenantId: 'tenant-acme',
+    userId: 'customer-alice-opaque',
+    email: 'alice@example.com',
+    displayName: 'Alice Example',
+    tags: ['vip', 'early-adopter'],
+    marketingConsents: [{ channel: 'email', granted: true, updatedAt: nowIso }],
+    externalCustomerIds: ['cus_acme_alice'],
+    createdAt: nowIso,
+    lastSeenAt: nowIso,
   },
   {
-    id: 'admin-default-2',
-    tenantId: 'tenant-default',
-    userId: admin2Id,
-    role: 'admin',
+    // US-026: a passwordless provisioned member (no account yet). Its userId
+    // binds on first magic-link sign-in into acme.localhost.
+    id: 'member-acme-mag',
+    tenantId: 'tenant-acme',
+    userId: null,
+    email: 'mag@example.com',
+    displayName: 'Magic Link Member',
+    tags: ['provisioned'],
+    marketingConsents: [],
+    externalCustomerIds: [],
+    createdAt: nowIso,
+    lastSeenAt: null,
+  },
+  {
+    id: 'member-globex-bob',
+    tenantId: 'tenant-globex',
+    userId: 'customer-bob-opaque',
+    email: 'bob@example.com',
+    displayName: 'Bob Example',
+    tags: [],
+    marketingConsents: [{ channel: 'email', granted: false, updatedAt: nowIso }],
+    externalCustomerIds: [],
+    createdAt: nowIso,
+    lastSeenAt: null,
   },
 ]).onConflictDoNothing();
 
+await db.insert(tenantDomains).values(
+  tenantRows.map((tenant) => ({
+    id: `domain-${tenant.slug}`,
+    tenantId: tenant.id,
+    domain: `${tenant.slug}.localhost`,
+    kind: 'subdomain' as const,
+    verified: true,
+  })),
+).onConflictDoNothing();
+
+const todoRows = [
+  {
+    id: 'todo-walking-skeleton',
+    tenantId: 'tenant-acme',
+    title: 'Wdrożyć walking skeleton na produkcję',
+  },
+  {
+    id: 'todo-tenant-isolation',
+    tenantId: 'tenant-acme',
+    title: 'Sprawdzić izolację danych między tenantami',
+  },
+  {
+    id: 'todo-globex-architecture',
+    tenantId: 'tenant-globex',
+    title: 'Globex: przygotować prezentację architektury',
+  },
+];
+
+// Todos list by ascending `createdAt`, so one shared timestamp would leave the
+// documented order down to Postgres; a second apart makes the listing stable.
+await db.insert(todos).values(
+  todoRows.map((todo, index) => ({
+    ...todo,
+    createdBy: demoUser.id,
+    createdAt: new Date(seededAt + index * 1000).toISOString(),
+  })),
+).onConflictDoNothing();
+
 console.log('Seed applied:');
-console.log(`  admin 1  ${admin1Email} / ${admin1Password}`);
-console.log(`  admin 2  ${admin2Email} / ${admin2Password}`);
-console.log('  tenant   default');
+console.log(`  user     ${DEMO_EMAIL} / demo1234`);
+console.log('  tenants  http://acme.localhost:47100  http://globex.localhost:47100');
 process.exit(0);

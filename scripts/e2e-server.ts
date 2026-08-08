@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
+import net from 'node:net';
 import { join } from 'node:path';
 
 import pg from 'pg';
@@ -6,12 +7,17 @@ import pg from 'pg';
 import { distFreshnessWarning } from '../apps/server/src/dist-freshness.js';
 
 import { assert, delay, fail, rootDir, run, SmokeFailure, tsxBin } from './smoke-cli.js';
+import { clearMailpit, waitForMailpit } from './mailpit.js';
 
 // A fixed high port keeps the Playwright baseURL static (single-tenant page,
 // like production). The e2e stack is torn down and rebuilt every run.
 const PORT = 47990;
 const E2E_DB = 'agentproofarch_e2e';
 const WEB_DIST_DIR = join(rootDir, 'dist/web');
+// The dev/CI Mailpit (docker-compose.dev.yml): the real smtp adapter delivers
+// the US-026 magic link here; the magic-link spec reads it back over its HTTP API.
+const MAILPIT_SMTP_PORT = 47925;
+const MAILPIT_API_URL = 'http://localhost:47980';
 
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ??
@@ -29,7 +35,7 @@ const setupDatabase = async (adminUrl: string): Promise<void> => {
     await client.query(`CREATE DATABASE ${E2E_DB}`);
   } catch (cause) {
     fail(
-      `Could not prepare the e2e database "${E2E_DB}". Is the dev Postgres up (npm run db:up)?\n${String(cause)}`,
+      `Could not prepare the e2e database "${E2E_DB}". Is the dev Postgres up (pnpm run db:up)?\n${String(cause)}`,
     );
   } finally {
     await client.end();
@@ -76,6 +82,29 @@ const buildWebIfStale = async (): Promise<void> => {
   assert(build.code === 0, `build:web failed:\n${build.stdout}${build.stderr}`);
 };
 
+const isPortFree = (port: number): Promise<boolean> =>
+  new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', () => resolve(false));
+    probe.once('listening', () => probe.close(() => resolve(true)));
+    probe.listen(port, '0.0.0.0');
+  });
+
+// A hardcoded port keeps the Playwright baseURL static, but on CI a leftover
+// listener or a TIME_WAIT socket from an earlier run in the same job makes the
+// server's bind fail with EADDRINUSE — killing the whole e2e job before any
+// test runs, which `retries` cannot recover. Wait the transient out, and after
+// a grace period force-free the port (fuser is Linux-only; the exec no-ops
+// elsewhere — dev reuses the existing server anyway).
+const ensurePortFree = async (port: number): Promise<void> => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (await isPortFree(port)) return;
+    if (attempt === 4) await new Promise<void>((resolve) => exec(`fuser -k ${port}/tcp`, () => resolve()));
+    await delay(500);
+  }
+  throw new SmokeFailure(`port ${port} is still occupied after 10s; cannot boot the e2e server`);
+};
+
 const bootServer = (): void => {
   const child = spawn(tsxBin, ['apps/server/src/entry.node.ts'], {
     cwd: rootDir,
@@ -87,6 +116,17 @@ const bootServer = (): void => {
       APP_BASE_URL: `http://localhost:${PORT}`,
       APP_BASE_DOMAIN: 'localhost',
       WEB_DIST_DIR,
+      // Real smtp transport → the dev/CI Mailpit captures the magic-link send.
+      EMAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'localhost',
+      SMTP_PORT: String(MAILPIT_SMTP_PORT),
+      SMTP_SECURE: 'false',
+      // Surfaced by the domains settings page (US-019) as the DNS record tenants
+      // create; the noop provisioner still verifies every domain regardless.
+      SELF_HOST_TARGET_CNAME: 'apps.agentproofarch.test',
+      // The suite fires many sign-ins from one shared bucket (no client IP
+      // behind the harness) — production keeps the limiter on.
+      AUTH_RATE_LIMIT: 'off',
     },
   });
   child.on('exit', (code) => process.exit(code ?? 0));
@@ -117,7 +157,13 @@ try {
   await setupDatabase(baseDatabaseUrl);
   await migrateAndSeed(e2eDatabaseUrl);
   await registerLocalhostTenant(e2eDatabaseUrl);
+  console.log('e2e: waiting for Mailpit...');
+  await waitForMailpit(MAILPIT_API_URL).catch((cause: unknown) => {
+    fail(`Mailpit is not reachable at ${MAILPIT_API_URL}. Is it up (pnpm run db:up)?\n${String(cause)}`);
+  });
+  await clearMailpit(MAILPIT_API_URL);
   await buildWebIfStale();
+  await ensurePortFree(PORT);
   console.log(`e2e: booting server on port ${PORT}...`);
   bootServer();
   await waitForHealth();

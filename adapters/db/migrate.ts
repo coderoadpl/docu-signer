@@ -5,13 +5,9 @@ import { drizzle as drizzleNodePg } from 'drizzle-orm/node-postgres';
 import { migrate as migrateNodePg } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 
-const connectionString =
-  process.env['DATABASE_URL'] ??
-  'postgresql://agentproofarch:agentproofarch@localhost:47542/agentproofarch';
+import { databaseEnvSchema } from '#core/server/config.js';
 
-// Mirrors env.ts: neon-http on Vercel (build-time migrations hit Neon over HTTP),
-// node-postgres everywhere else. Explicit DB_DRIVER wins.
-const driver = process.env['DB_DRIVER'] ?? (process.env['VERCEL'] ? 'neon-http' : 'node-postgres');
+const { DATABASE_URL: connectionString, DB_DRIVER: driver } = databaseEnvSchema.parse(process.env);
 
 if (driver === 'neon-http') {
   await migrateNeonHttp(drizzleNeonHttp(neon(connectionString)), { migrationsFolder: 'drizzle' });

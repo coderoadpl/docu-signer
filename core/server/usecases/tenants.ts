@@ -3,6 +3,10 @@ import { ok, type AppError, type Membership, type Result } from '#core/domain/in
 import type { Ctx } from '../context.js';
 import type { TenantAccessReader } from '../ports.js';
 
+/**
+ * Self-scoped read: enumerates only the caller's own staff memberships, so
+ * authentication is the control — there is no capability to check (§Authorization).
+ */
 export const listMyTenants = async (
   ctx: Ctx,
   deps: { tenantAccess: TenantAccessReader },

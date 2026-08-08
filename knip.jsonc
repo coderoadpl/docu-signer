@@ -1,0 +1,52 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "api/index.ts", // Vercel serverless entry (vercel.json), not inferable from a package script
+    "eslint-plugin-agentproofarch/index.js", // loaded by eslint.config.js
+    "eslint-plugin-agentproofarch/rules/*.test.js", // rule unit tests (vitest node project)
+    "adapters/auth/auth.generate.ts", // @better-auth/cli generate config: codegen only, never imported
+    "scripts/*.{ts,mjs}", // each script runs via a package script or by hand
+    "e2e/*.spec.ts", // Playwright specs
+    "visual/*.spec.ts", // Playwright visual-regression specs (ADR-0008)
+    "**/*.test.{ts,tsx}" // vitest suites (the config uses nested projects the plugin can't fully infer)
+  ],
+  "project": [
+    "core/**/*.ts",
+    "adapters/**/*.ts",
+    "apps/**/*.{ts,tsx}",
+    "api/**/*.ts",
+    "scripts/**/*.{ts,mjs}",
+    "eslint-plugin-agentproofarch/**/*.js",
+    "config-regression/**/*.ts"
+  ],
+  "ignoreDependencies": [
+    // Peer of the @opentelemetry/sdk-trace-* packages, pinned in devDependencies
+    // for version alignment across the OTel graph; never imported directly.
+    "@opentelemetry/core"
+  ],
+  "ignoreBinaries": [
+    // System binary (psmisc) the e2e harness shells out to free a stuck port on
+    // Linux CI; not a package dependency, so knip cannot resolve it.
+    "fuser"
+  ],
+  "rules": {
+    // Gate on the unambiguous dead weight: dead files, undeclared/unused
+    // dependencies, unresolved imports, duplicate exports. Unused *exports* and
+    // *types* are surfaced but do NOT fail `check` — this foundation deliberately
+    // ships its API surface (theme tokens, island-core interfaces, client
+    // query/mutation helpers, contract schemas) ahead of the consumers that the
+    // in-progress PRD build-out (DECIDE A1) wires in, so export-level pruning
+    // would thrash against that work. Tighten to "error" once the scope is built.
+    "files": "error",
+    "dependencies": "error",
+    "unlisted": "error",
+    "unresolved": "error",
+    "binaries": "error",
+    "duplicates": "error",
+    "exports": "warn",
+    "types": "warn",
+    "nsExports": "warn",
+    "nsTypes": "warn",
+    "enumMembers": "warn"
+  }
+}

@@ -5,7 +5,12 @@ import type { Identity, Tenant } from '#core/domain/index.js';
 import type { TenantRepository } from '../ports.js';
 import { createTenant } from './create-tenant.js';
 
-type OwnerGrant = Parameters<TenantRepository['createOwnerGrant']>[0];
+interface OwnerGrantRecord {
+  id: string;
+  tenantId: string;
+  userId: string;
+  staffRole: 'owner';
+}
 
 const identity: Identity = {
   userId: 'u1',
@@ -18,20 +23,43 @@ const identity: Identity = {
   memberId: null,
 };
 
+const memberIdentity: Identity = {
+  userId: 'u2',
+  email: 'member@example.com',
+  name: 'Member',
+  tenantId: 't-acme',
+  tenantSlug: 'acme',
+  tenantName: 'Acme Inc',
+  staffRole: null,
+  memberId: 'm-1',
+};
+
+const ownerIdentity: Identity = {
+  ...identity,
+  staffRole: 'owner',
+};
+
 const fakeTenants = (initialTenants: Tenant[] = []) => {
   const tenants = [...initialTenants];
-  const ownerGrants: OwnerGrant[] = [];
+  const ownerGrants: OwnerGrantRecord[] = [];
 
   const repo: TenantRepository = {
     findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
     findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
-    createTenant: async (input) => {
-      const tenant = { id: input.id, slug: input.slug, name: input.name };
+    createTenantWithOwner: async (input) => {
+      const tenant = { id: input.tenant.id, slug: input.tenant.slug, name: input.tenant.name };
       tenants.push(tenant);
+      ownerGrants.push({
+        id: input.ownerGrant.id,
+        tenantId: tenant.id,
+        userId: input.ownerGrant.userId,
+        staffRole: 'owner',
+      });
       return tenant;
     },
-    createOwnerGrant: async (input) => {
-      ownerGrants.push(input);
+    deleteTenant: async (tenantId) => {
+      const index = tenants.findIndex((tenant) => tenant.id === tenantId);
+      if (index >= 0) tenants.splice(index, 1);
     },
   };
 
@@ -57,7 +85,7 @@ describe('createTenant', () => {
     const store = fakeTenants();
 
     const result = await createTenant(
-      { identity },
+      { identity, tenantCreationMode: 'open' },
       { slug: 'new-co', name: 'New Co' },
       deps(store.repo),
     );
@@ -76,11 +104,53 @@ describe('createTenant', () => {
     ]);
   });
 
+  it('denies an end-customer member with forbidden before touching the repository', async () => {
+    const store = fakeTenants();
+
+    const result = await createTenant(
+      { identity: memberIdentity, tenantCreationMode: 'open' },
+      { slug: 'new-co', name: 'New Co' },
+      deps(store.repo),
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(store.tenants).toEqual([]);
+    expect(store.ownerGrants).toEqual([]);
+  });
+
+  it('denies a visitor under staff mode before touching the repository', async () => {
+    const store = fakeTenants();
+
+    const result = await createTenant(
+      { identity, tenantCreationMode: 'staff' },
+      { slug: 'new-co', name: 'New Co' },
+      deps(store.repo),
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(store.tenants).toEqual([]);
+    expect(store.ownerGrants).toEqual([]);
+  });
+
+  it('denies an owner under closed mode before touching the repository', async () => {
+    const store = fakeTenants();
+
+    const result = await createTenant(
+      { identity: ownerIdentity, tenantCreationMode: 'closed' },
+      { slug: 'new-co', name: 'New Co' },
+      deps(store.repo),
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(store.tenants).toEqual([]);
+    expect(store.ownerGrants).toEqual([]);
+  });
+
   it('rejects slug conflicts before creating records', async () => {
     const store = fakeTenants([{ id: 't-acme', slug: 'acme', name: 'Acme' }]);
 
     const result = await createTenant(
-      { identity },
+      { identity, tenantCreationMode: 'open' },
       { slug: 'acme', name: 'Acme Duplicate' },
       deps(store.repo),
     );
@@ -93,18 +163,31 @@ describe('createTenant', () => {
     expect(store.ownerGrants).toEqual([]);
   });
 
-  it('validates slug and name before writing', async () => {
+  it('normalizes free-form slug input before writing', async () => {
     const store = fakeTenants();
 
     const result = await createTenant(
-      { identity },
-      { slug: 'No Spaces', name: 'Invalid' },
+      { identity, tenantCreationMode: 'open' },
+      { slug: '  New Co!!  ', name: 'New Co' },
+      deps(store.repo),
+    );
+
+    expect(result).toMatchObject({ ok: true, value: { slug: 'new-co' } });
+    expect(store.tenants).toEqual([{ id: 't-new', slug: 'new-co', name: 'New Co' }]);
+  });
+
+  it('rejects a reserved slug before writing', async () => {
+    const store = fakeTenants();
+
+    const result = await createTenant(
+      { identity, tenantCreationMode: 'open' },
+      { slug: 'admin', name: 'Invalid' },
       deps(store.repo),
     );
 
     expect(result).toMatchObject({
       ok: false,
-      error: { code: 'validation', message: 'Tenant slug must be 3-63 lowercase letters, numbers or hyphens' },
+      error: { code: 'validation', message: 'Slug is reserved' },
     });
     expect(store.tenants).toEqual([]);
     expect(store.ownerGrants).toEqual([]);
@@ -114,7 +197,7 @@ describe('createTenant', () => {
     const store = fakeTenants();
 
     const result = await createTenant(
-      { identity },
+      { identity, tenantCreationMode: 'open' },
       { slug: 'valid-co', name: '   ' },
       deps(store.repo),
     );

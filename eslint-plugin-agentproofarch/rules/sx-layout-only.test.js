@@ -40,8 +40,29 @@ it('sx-layout-only', () => {
         filename,
         options: withBaseline(2),
       },
+      {
+        // Nested slotProps sx carrying only layout keys stays valid.
+        code: "const C = () => <div slotProps={{ primary: { sx: { mt: 1, display: 'flex' } } }} />;",
+        filename,
+      },
     ],
     invalid: [
+      {
+        // TodosPage slotProps bypass: a nested `sx` object reached through
+        // `slotProps.primary.sx` must still be checked (fontWeight is typography).
+        code:
+          "const C = () => <div slotProps={{ primary: { sx: { fontWeight: 700 } }, " +
+          "secondary: { variant: 'caption' } }} />;",
+        filename,
+        errors: [{ messageId: 'reserved' }],
+      },
+      {
+        // CP-3 quoted-key bypass: a string-literal `'sx'` key opens the scope
+        // just like the identifier key — fontWeight is typography.
+        code: "const C = () => <div slotProps={{ primary: { 'sx': { fontWeight: 700 } } }} />;",
+        filename,
+        errors: [{ messageId: 'reserved' }],
+      },
       {
         code: "const C = () => <div sx={{ color: 'red' }} />;",
         filename,

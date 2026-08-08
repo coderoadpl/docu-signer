@@ -36,7 +36,7 @@ describe('listMyTenants', () => {
   it('returns the staff memberships for the caller', async () => {
     const deps = { tenantAccess: fakeTenantAccess({ u1: [acme, globex] }) };
 
-    const result = await listMyTenants({ identity }, deps);
+    const result = await listMyTenants({ identity, tenantCreationMode: 'open' }, deps);
 
     expect(result).toEqual({ ok: true, value: [acme, globex] });
   });
@@ -44,7 +44,7 @@ describe('listMyTenants', () => {
   it('returns an empty list when the caller has no staff grants', async () => {
     const deps = { tenantAccess: fakeTenantAccess({}) };
 
-    const result = await listMyTenants({ identity }, deps);
+    const result = await listMyTenants({ identity, tenantCreationMode: 'open' }, deps);
 
     expect(result).toEqual({ ok: true, value: [] });
   });
@@ -52,7 +52,7 @@ describe('listMyTenants', () => {
   it('enumerates only the calling user, not others', async () => {
     const deps = { tenantAccess: fakeTenantAccess({ other: [acme] }) };
 
-    const result = await listMyTenants({ identity }, deps);
+    const result = await listMyTenants({ identity, tenantCreationMode: 'open' }, deps);
 
     expect(result).toEqual({ ok: true, value: [] });
   });

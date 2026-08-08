@@ -6,6 +6,8 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { bearer } from 'better-auth/plugins';
+import { magicLink } from 'better-auth/plugins/magic-link';
+import { twoFactor } from 'better-auth/plugins/two-factor';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 
@@ -17,5 +19,9 @@ export const auth = betterAuth({
   secret: 'generate-only-secret',
   emailAndPassword: { enabled: true },
   rateLimit: { enabled: true, storage: 'database' },
-  plugins: [bearer()],
+  plugins: [
+    bearer(),
+    magicLink({ sendMagicLink: async () => {} }),
+    twoFactor(),
+  ],
 });

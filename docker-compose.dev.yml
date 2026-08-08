@@ -1,3 +1,5 @@
+name: agentproofarch-dev
+
 services:
   db:
     image: postgres:16
@@ -14,6 +16,18 @@ services:
       interval: 3s
       timeout: 3s
       retries: 15
+
+  # Local SMTP sink that captures real sends (like a self-hosted MailTrap) — the
+  # dev/CI email transport. The app's smtp adapter delivers to :1025; magic-link
+  # smoke/e2e read messages back over the HTTP API on :8025 (no in-app dev route).
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - '${MAILPIT_SMTP_PORT:-47925}:1025'
+      - '${MAILPIT_API_PORT:-47980}:8025'
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
 
 volumes:
   agentproofarch-pgdata:

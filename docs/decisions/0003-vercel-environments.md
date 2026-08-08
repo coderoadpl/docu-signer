@@ -1,6 +1,19 @@
 # ADR-0003: Vercel environments — dev, staging, prod + previews on Hobby
 
-Status: accepted (2026-07-14)
+Status: accepted (2026-07-14); **release topology superseded (2026-07-24)** — see
+note below and [architecture.md](../architecture.md) §Environments (normative).
+
+> **Superseding note (2026-07-24).** Decision point 1's release mapping has
+> changed: **staging is now `main`** (its Preview on a stable URL), and
+> **production is a dedicated `production` branch** with Vercel Production Branch
+> Tracking set to it. The long-lived `staging` branch relic is deleted. A
+> production release is an **owner-approved PR `main → production`** whose merge
+> triggers the production build, gated by the `production-protection` GitHub
+> ruleset (empty bypass); agents act as a Write-not-Admin machine account. The
+> Neon branch-per-environment model (point 2), build-time migrations (point 3),
+> entry/routing (point 4), Frankfurt co-location (point 5) and the single-tenant
+> `*.vercel.app` constraint (point 6) are unchanged. Everything below records the
+> original decision.
 
 ## Context
 
@@ -44,7 +57,11 @@ fixed cost (Vercel Hobby + Neon Free), without fighting the platform.
 6. **No custom domain yet** (accepted constraint): web is single-tenant on
    `*.vercel.app`; API/CLI remain fully multi-tenant via `X-Tenant`. Attaching
    a wildcard domain later changes env vars (`APP_BASE_DOMAIN`), not code.
-   The `DOMAIN_PROVISIONER` stays `noop` until then.
+   The `DOMAIN_PROVISIONER` switch is live: `caddy` (US-021) for the Docker
+   self-host target and `vercel` (US-020) for this one — the Vercel adapter
+   attaches each tenant host to the project over the Domains API. This
+   deployment stays on the `noop` default until the owner sets `VERCEL_TOKEN` +
+   `VERCEL_PROJECT_ID`, which is also when the adapter first runs live.
 7. **Remote runtime gate**: `smoke:remote` reuses the smoke CLI suite against
    a deployment URL (health → sign-in → todos → negative case), replacing the
    boot-a-server phase with the deployed target.

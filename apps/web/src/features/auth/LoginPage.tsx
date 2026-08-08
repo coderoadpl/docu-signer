@@ -3,19 +3,20 @@ import {
   Alert,
   Box,
   Button,
+  Divider,
   FormControl,
   FormLabel,
   OutlinedInput,
   Paper,
   Stack,
 } from '@mui/material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
-import { Eyebrow, Wordmark } from '../../theme.js';
+import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -23,11 +24,30 @@ export const LoginPage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const config = useQuery(actions.config);
+
   const signIn = useMutation({
     ...actions.signIn,
     onSuccess: async () => {
       await queryClient.invalidateQueries();
-      await navigate({ to: '/' });
+      await navigate({ to: '/app' });
+    },
+  });
+
+  const magicLink = useMutation(actions.requestMagicLink);
+
+  const passkey = useMutation({
+    ...actions.signInPasskey,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries();
+      await navigate({ to: '/app' });
+    },
+  });
+
+  const google = useMutation({
+    ...actions.signInSocial,
+    onSuccess: (result) => {
+      if (result.url) window.location.assign(result.url);
     },
   });
 
@@ -52,10 +72,10 @@ export const LoginPage = () => {
         }}
       >
         <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          podpisy
+          agentproofarch
         </Wordmark>
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          logowanie
+          sign in · tenant {window.location.hostname}
         </Eyebrow>
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
@@ -89,12 +109,56 @@ export const LoginPage = () => {
           >
             {signIn.isPending ? 'signing in…' : 'sign in'}
           </Button>
+          <Button
+            type="button"
+            variant="outlined"
+            fullWidth
+            disabled={magicLink.isPending || email.length === 0}
+            onClick={() => magicLink.mutate({ email, callbackURL: `${window.location.origin}/app` })}
+          >
+            {magicLink.isPending ? 'sending link…' : 'email me a sign-in link'}
+          </Button>
+          <Button
+            type="button"
+            variant="outlined"
+            fullWidth
+            disabled={passkey.isPending}
+            onClick={() => passkey.mutate()}
+          >
+            {passkey.isPending ? 'waiting for passkey…' : 'continue with a passkey'}
+          </Button>
+          {config.data?.googleEnabled ? (
+            <Button
+              type="button"
+              variant="outlined"
+              fullWidth
+              disabled={google.isPending}
+              onClick={() => google.mutate({ provider: 'google', callbackURL: `${window.location.origin}/app` })}
+            >
+              continue with Google
+            </Button>
+          ) : null}
         </Stack>
+        {magicLink.isSuccess ? (
+          <Alert severity="success" sx={{ mt: '0.6rem' }}>
+            Check your email for a sign-in link. In dev the send is captured by Mailpit — open its inbox to follow the link.
+          </Alert>
+        ) : null}
         {signIn.isError ? (
           <Alert sx={{ mt: '0.6rem' }}>
             {signIn.error instanceof ApiError ? signIn.error.appError.message : signIn.error.message}
           </Alert>
         ) : null}
+        {passkey.isError ? (
+          <Alert sx={{ mt: '0.6rem' }}>
+            {passkey.error instanceof ApiError ? passkey.error.appError.message : passkey.error.message}
+          </Alert>
+        ) : null}
+        <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
+        <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
+          demo account: <DemoValue>demo@agentproofarch.dev</DemoValue> /{' '}
+          <DemoValue>demo1234</DemoValue>
+        </FinePrint>
       </Paper>
     </Box>
   );

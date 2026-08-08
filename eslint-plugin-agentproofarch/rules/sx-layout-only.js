@@ -79,10 +79,26 @@ export default {
     let sxDepth = 0;
 
     return {
+      // An `sx` prop, or a nested `sx:` object property (e.g. MUI
+      // `slotProps={{ primary: { sx: { fontWeight: 700 } } }}`), opens an sx
+      // scope. Both an identifier key (`sx:`) and a string-literal key (`'sx':`)
+      // open it — matching `key.name` alone let a quoted `'sx'` slip through.
       'JSXAttribute[name.name="sx"]'() {
         sxDepth += 1;
       },
       'JSXAttribute[name.name="sx"]:exit'() {
+        sxDepth -= 1;
+      },
+      'Property[key.name="sx"]'() {
+        sxDepth += 1;
+      },
+      'Property[key.name="sx"]:exit'() {
+        sxDepth -= 1;
+      },
+      'Property[key.value="sx"]'() {
+        sxDepth += 1;
+      },
+      'Property[key.value="sx"]:exit'() {
         sxDepth -= 1;
       },
       Property(node) {

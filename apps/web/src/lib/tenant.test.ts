@@ -30,6 +30,13 @@ describe('tenantUrl', () => {
 
     expect(tenantUrl('globex')).toBe('https://globex.localhost');
   });
+
+  it('returns null on the shared vercel.app apex — sibling subdomains are strangers', () => {
+    setLocation({ protocol: 'https:', hostname: 'agentproofarch.vercel.app', port: '' });
+
+    expect(tenantUrl('acme')).toBeNull();
+    expect(tenantUrl('globex')).toBeNull();
+  });
 });
 
 describe('tenantHue', () => {
