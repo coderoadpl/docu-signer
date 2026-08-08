@@ -5,7 +5,7 @@ import { createAppTheme } from './theme.js';
 
 describe('createAppTheme', () => {
   it('carries the tenant accent as the primary color', () => {
-    expect(createAppTheme(120).palette.primary.main).toBe('hsl(120 62% 42%)');
+    expect(createAppTheme(120).palette.primary.main).toBe('hsl(120, 62%, 42%)');
   });
 
   it('keeps the MUI default primary when no accent is provided', () => {

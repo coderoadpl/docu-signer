@@ -6,7 +6,7 @@ export const createAppTheme = (accentHue?: number): Theme => {
   const base = createTheme();
   const primaryMain = accentHue === undefined
     ? base.palette.primary.main
-    : `hsl(${accentHue} 62% 42%)`;
+    : `hsl(${accentHue}, 62%, 42%)`;
 
   return createTheme({
     palette: {
