@@ -170,6 +170,9 @@ export interface SmokeTarget {
   tenant: string;
   /** Deploy attestation: when set, health.sha must equal it (right deploy verified). */
   expectedSha?: string;
+  // WHY: production has no canary account until the owner provisions one, so a
+  // secret-less remote drive can only exercise the unauthenticated surface.
+  anonymousOnly?: boolean;
   /**
    * Mailpit HTTP-API base URL (local/CI only). When set, the magic-link phase
    * requests a link, recovers it from Mailpit and follows it. Absent for
@@ -397,6 +400,9 @@ const assertPublicSurface = async (baseUrl: string, tenant: string): Promise<voi
  * (exit 4) → last-owner-revoke blocked (exit 2) → revoke → the revoked user loses
  * tenant access (exit 7), self-cleaning) → unauthorized (exit 3), plus the
  * security/caching response headers and the session-cookie hardening assertion.
+ * With `anonymousOnly` the drive stops after health + deploy attestation —
+ * headers, the public surface and health are still asserted, everything from
+ * the cookie-hardening sign-in onward is skipped (no canary account exists).
  *
  * Non-self-poisoning property (architecture §Environments, smoke-account
  * doctrine): every card this run creates is parked in an **unbounded** column
@@ -409,7 +415,6 @@ export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<vo
   const { baseUrl } = target;
   await assertResponseHeaders(baseUrl);
   await assertIndexHtmlCacheHeader(baseUrl);
-  await assertSessionCookieHardening(target);
   await assertPublicSurface(baseUrl, target.tenant);
   const authedHome = mkdtempSync(join(tmpdir(), 'smoke-cli-'));
   const anonHome = mkdtempSync(join(tmpdir(), 'smoke-anon-'));
@@ -432,6 +437,8 @@ export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<vo
       `health SHA mismatch: expected ${target.expectedSha}, deployment reports ${health.sha}`,
     );
   }
+  if (target.anonymousOnly === true) return;
+  await assertSessionCookieHardening(target);
 
   expectOk(
     await cli(

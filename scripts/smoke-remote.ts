@@ -7,9 +7,11 @@ if (!baseUrl) {
   console.error('smoke:remote: FAIL\nBASE_URL is required (the deployment URL, e.g. https://app.vercel.app)');
   process.exit(2);
 }
-const email = process.env['SMOKE_EMAIL'] ?? 'demo@agentproofarch.dev';
-const password = process.env['SMOKE_PASSWORD'] ?? 'demo1234';
-const tenant = process.env['SMOKE_TENANT'] ?? 'acme';
+const smokeEmail = process.env['SMOKE_EMAIL'];
+const anonymousOnly = smokeEmail === undefined || smokeEmail === '';
+const email = anonymousOnly ? 'demo@agentproofarch.dev' : smokeEmail;
+const password = process.env['SMOKE_PASSWORD'] || 'demo1234';
+const tenant = process.env['SMOKE_TENANT'] || 'default';
 // When CI passes the deployment SHA, assert the live health SHA equals it so a
 // smoke run can never green-light a deployment other than the one that triggered it.
 const expectedSha = process.env['EXPECTED_SHA'] || undefined;
@@ -18,7 +20,15 @@ const startedAt = Date.now();
 const homes: string[] = [];
 try {
   console.log(`smoke:remote: driving the CLI against ${baseUrl}...`);
-  await driveCli({ baseUrl, email, password, tenant, ...(expectedSha ? { expectedSha } : {}) }, homes);
+  if (anonymousOnly) {
+    console.log(
+      'smoke:remote: no SMOKE_EMAIL — unauthenticated surface only (headers, public API, health, attestation); set SMOKE_EMAIL/SMOKE_PASSWORD/SMOKE_TENANT for the full canary drive',
+    );
+  }
+  await driveCli(
+    { baseUrl, email, password, tenant, anonymousOnly, ...(expectedSha ? { expectedSha } : {}) },
+    homes,
+  );
   console.log(`\nsmoke:remote: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof SmokeFailure ? error.message : String(error);

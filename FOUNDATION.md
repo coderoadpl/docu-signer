@@ -47,6 +47,14 @@ each.
   §Environments owner ruling); forward-only binds from that merge onward.
 - Login hides demo credentials and magic-link controls outside dev/e2e builds
   until SMTP exists in production.
+- Merges to `main` land over SSH as the owner — Vercel Hobby blocks production
+  deploys from commits authored by an unconnected account, so `gh pr merge`
+  (agent-authored merge commit) cannot release; `gh` stays for PR management.
+- Remote post-deploy smoke drives the unauthenticated surface only (headers,
+  the public API of the `default` tenant, health, deploy attestation) until
+  the owner provisions a canary account and the `SMOKE_EMAIL`/`SMOKE_PASSWORD`
+  repo secrets (`SMOKE_TENANT` only if the canary lives outside `default`) —
+  production deliberately has no demo account the upstream defaults assume.
 - A single Material theme and sidebar shell replace the upstream logbook look
   and top navigation (owner decision 2026-07-27).
 - The shell and system states are Polish-first, including upstream demo surfaces.
