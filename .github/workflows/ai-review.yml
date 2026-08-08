@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '15') }}
     env:
       REVIEW_PROMPT: |
-        You are the fail-closed AI review gate for the Podpisy repository.
+        You are the fail-closed AI review gate for the agentproofarch repository.
         Review ONLY the changes in this pull request — the diff of the PR head
         against origin/main — not the whole repository.
 
