@@ -45,3 +45,5 @@ each.
   90 min).
 - Migration lineage reset wholesale at the skeleton migration (architecture.md
   §Environments owner ruling); forward-only binds from that merge onward.
+- Login hides demo credentials and magic-link controls outside dev/e2e builds
+  until SMTP exists in production.

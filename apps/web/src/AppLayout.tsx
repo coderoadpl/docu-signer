@@ -40,7 +40,7 @@ export const AppLayout = () => {
   }, [unauthorized, navigate]);
 
   if (me.isPending) {
-    return <Shell state={{ kind: 'loading', label: 'opening the app…' }} />;
+    return <Shell state={{ kind: 'loading', label: 'Ładowanie aplikacji…' }} />;
   }
   if (unauthorized) return null;
 

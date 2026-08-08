@@ -137,46 +137,67 @@ export const databaseEnvSchema = z.object({
   DB_DRIVER: dbDriverField,
 });
 
-/** Seed subset: connection string + the auth secret the seeder signs up with. */
+const seedAdminEnvFields = {
+  SEED_ADMIN1_EMAIL: z.email().optional(),
+  SEED_ADMIN1_PASSWORD: z.string().min(8).optional(),
+  SEED_ADMIN2_EMAIL: z.email().optional(),
+  SEED_ADMIN2_PASSWORD: z.string().min(8).optional(),
+};
+
+interface SeedAdminEnv {
+  SEED_ADMIN1_EMAIL?: string | undefined;
+  SEED_ADMIN1_PASSWORD?: string | undefined;
+  SEED_ADMIN2_EMAIL?: string | undefined;
+  SEED_ADMIN2_PASSWORD?: string | undefined;
+}
+
+const validateSeedAdminEnv = (data: SeedAdminEnv, ctx: z.RefinementCtx): void => {
+  for (const slot of ['1', '2'] as const) {
+    const email = data[`SEED_ADMIN${slot}_EMAIL`];
+    const password = data[`SEED_ADMIN${slot}_PASSWORD`];
+    if ((email === undefined) === (password === undefined)) continue;
+    ctx.addIssue({
+      code: 'custom',
+      path: [`SEED_ADMIN${slot}_${email === undefined ? 'EMAIL' : 'PASSWORD'}`],
+      message: `SEED_ADMIN${slot}_EMAIL and SEED_ADMIN${slot}_PASSWORD must be set together`,
+    });
+  }
+  if (data.SEED_ADMIN2_EMAIL && !data.SEED_ADMIN1_EMAIL) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['SEED_ADMIN1_EMAIL'],
+      message: 'SEED_ADMIN1 must be configured before SEED_ADMIN2',
+    });
+  }
+  if (
+    data.SEED_ADMIN1_EMAIL &&
+    data.SEED_ADMIN2_EMAIL &&
+    data.SEED_ADMIN1_EMAIL === data.SEED_ADMIN2_EMAIL
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['SEED_ADMIN2_EMAIL'],
+      message: 'Seed admin emails must be different',
+    });
+  }
+};
+
+/** Deploy seed subset: connection selection + optional admin credentials. */
+export const deploySeedEnvSchema = z
+  .object({
+    ...databaseEnvSchema.shape,
+    ...seedAdminEnvFields,
+  })
+  .superRefine(validateSeedAdminEnv);
+
+/** Dev seed subset: deploy seed fields + the auth secret used for demo signup. */
 export const seedEnvSchema = z
   .object({
-    DATABASE_URL: databaseUrlField,
+    ...databaseEnvSchema.shape,
     BETTER_AUTH_SECRET: z.string().default(DEV_ONLY_SECRET),
-    SEED_ADMIN1_EMAIL: z.email().optional(),
-    SEED_ADMIN1_PASSWORD: z.string().min(8).optional(),
-    SEED_ADMIN2_EMAIL: z.email().optional(),
-    SEED_ADMIN2_PASSWORD: z.string().min(8).optional(),
+    ...seedAdminEnvFields,
   })
-  .superRefine((data, ctx) => {
-    for (const slot of ['1', '2'] as const) {
-      const email = data[`SEED_ADMIN${slot}_EMAIL`];
-      const password = data[`SEED_ADMIN${slot}_PASSWORD`];
-      if ((email === undefined) === (password === undefined)) continue;
-      ctx.addIssue({
-        code: 'custom',
-        path: [`SEED_ADMIN${slot}_${email === undefined ? 'EMAIL' : 'PASSWORD'}`],
-        message: `SEED_ADMIN${slot}_EMAIL and SEED_ADMIN${slot}_PASSWORD must be set together`,
-      });
-    }
-    if (data.SEED_ADMIN2_EMAIL && !data.SEED_ADMIN1_EMAIL) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['SEED_ADMIN1_EMAIL'],
-        message: 'SEED_ADMIN1 must be configured before SEED_ADMIN2',
-      });
-    }
-    if (
-      data.SEED_ADMIN1_EMAIL &&
-      data.SEED_ADMIN2_EMAIL &&
-      data.SEED_ADMIN1_EMAIL === data.SEED_ADMIN2_EMAIL
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['SEED_ADMIN2_EMAIL'],
-        message: 'Seed admin emails must be different',
-      });
-    }
-  });
+  .superRefine(validateSeedAdminEnv);
 
 /**
  * Observability subset. All optional — absent = no-op (dev/CI untouched):

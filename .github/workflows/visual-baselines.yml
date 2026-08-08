@@ -50,7 +50,6 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm run build:web
       # Playwright reports a newly written snapshot as a failed test, so the
       # authoring run itself cannot gate the upload that carries the PNGs out of
       # CI. The comparison below gates it instead: it re-renders against what was

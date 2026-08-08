@@ -79,9 +79,10 @@ apps/cli        commander commands                        → core/client only
 
 `composition.ts` is the only place a *server* adapter is instantiated. Two
 deliberate exceptions: the auth *client* adapter is constructed in
-`apps/web/src/api.ts` (web) and the CLI's `cliCtx`, and `adapters/db/migrate.ts`
-reads `DB_DRIVER`/`DATABASE_URL`/`VERCEL` itself as a sanctioned composition
-point outside the server root.
+`apps/web/src/api.ts` (web) and the CLI's `cliCtx`; the standalone
+`adapters/db/migrate.ts`, `adapters/db/seed.ts`, and
+`adapters/db/seed-deploy.ts` operations are sanctioned composition points
+outside the server root.
 
 Rules are **machine-enforced**: `eslint-plugin-boundaries` + `dependency-cruiser`
 fail the build on any cross-layer import, on `@vercel/*`/`@neondatabase/*`
@@ -113,7 +114,7 @@ Dependency lifecycle scripts are blocked unless explicitly named in
 configuration applies a three-day (`4320` minute) minimum-release-age cooldown.
 
 Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
-<!--count:integration-tests-->53<!--/count--> integration tests against a real
+<!--count:integration-tests-->54<!--/count--> integration tests against a real
 Postgres and <!--count:e2e-tests-->16<!--/count--> Playwright tests across
 <!--count:e2e-specs-->7<!--/count--> spec files:
 

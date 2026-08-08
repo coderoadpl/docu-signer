@@ -4,7 +4,6 @@ import { join } from 'node:path';
 
 import pg from 'pg';
 
-import { distFreshnessWarning } from '../apps/server/src/dist-freshness.js';
 
 import { assert, delay, fail, rootDir, run, SmokeFailure, tsxBin } from './smoke-cli.js';
 import { clearMailpit, waitForMailpit } from './mailpit.js';
@@ -71,14 +70,18 @@ const registerLocalhostTenant = async (databaseUrl: string): Promise<void> => {
   }
 };
 
-const buildWebIfStale = async (): Promise<void> => {
-  if (distFreshnessWarning(WEB_DIST_DIR, rootDir) === null) return;
-  console.log('e2e: web bundle missing or stale, building...');
+// WHY: the freshness guard is env-blind (mtimes only), so a dist built with a
+// different VITE_MAGIC_LINK state would pass as fresh — the harness always
+// rebuilds so each suite's bundle deterministically reflects its own env.
+const buildWeb = async (): Promise<void> => {
+  console.log('e2e: building the web bundle...');
   const build = await run(join(rootDir, 'node_modules/.bin/vite'), [
     'build',
     '--config',
     'apps/web/vite.config.ts',
-  ], {});
+  ], process.env['VITE_MAGIC_LINK'] === undefined
+    ? {}
+    : { VITE_MAGIC_LINK: process.env['VITE_MAGIC_LINK'] });
   assert(build.code === 0, `build:web failed:\n${build.stdout}${build.stderr}`);
 };
 
@@ -162,7 +165,7 @@ try {
     fail(`Mailpit is not reachable at ${MAILPIT_API_URL}. Is it up (pnpm run db:up)?\n${String(cause)}`);
   });
   await clearMailpit(MAILPIT_API_URL);
-  await buildWebIfStale();
+  await buildWeb();
   await ensurePortFree(PORT);
   console.log(`e2e: booting server on port ${PORT}...`);
   bootServer();
