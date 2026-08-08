@@ -42,9 +42,10 @@ green.
 
 2. **Post-deploy verification against real production.** A second workflow
    (`post-deploy-smoke`) listens for the `deployment_status` event and, when a
-   **Production** or **Preview** deployment reports **success**, checks out the
-   deployed commit and runs `pnpm run smoke:remote` against the production
-   alias or the preview deployment URL (via the `BASE_URL` the script reads).
+   **Production** deployment reports **success**, checks out the deployed
+   commit and runs `pnpm run smoke:remote` against the production alias (via
+   the `BASE_URL` the script reads). Previews sit behind Vercel
+   Authentication and are not remotely smoked (see FOUNDATION.md).
    This is the only gate that exercises the actual platform contract that broke
    in #10–#15; it turns "deployed" into "deployed and verified working".
 
@@ -118,8 +119,8 @@ cells name a commissioned gate, not a shipped one.
 
 ## Remote smoke target
 
-- **The caller chooses Production or Preview.** Production verification drives
-  the user-facing alias; preview verification drives its deployment URL.
+- **Production only.** Verification drives the user-facing alias; previews are
+  excluded (Vercel Authentication — see FOUNDATION.md).
 - **Because it drives live production, `smoke:remote` obeys the production
   smoke-account doctrine** — a dedicated canary tenant, never `db:seed` against a
   real database, caller-supplied credentials, and a non-self-poisoning drive that

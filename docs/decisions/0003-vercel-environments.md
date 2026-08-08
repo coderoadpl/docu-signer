@@ -32,9 +32,9 @@ fixed cost (Vercel Hobby + Neon Free), without fighting the platform.
    `VERCEL_URL`/`VERCEL_BRANCH_URL`, so every non-production deployment is
    fully functional (including sign-in) with zero per-branch configuration.
    Every PR gets a standard Preview. Development is local (`vercel env pull`
-   for parity). Production and Preview deployments are verified by
-   `post-deploy-smoke` (production via the alias, previews/staging via their
-   deployment URL).
+   for parity). Production deployments are verified by `post-deploy-smoke`
+   via the production alias; previews sit behind Vercel Authentication and
+   are not remotely smoked (see FOUNDATION.md).
 2. **One Neon project, branch per environment**: `production`, `staging`, and
    an **ephemeral branch per preview PR** created by the Neon⇄Vercel
    marketplace integration (copy-on-write from `production`'s parent, deleted

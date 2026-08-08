@@ -2,6 +2,12 @@
 
 Architecture spec: `docs/prd-agentproofarch-foundation.md` (see also `docs/architecture.md`) (§3 is normative).
 
+**Scale ruling (owner, 2026-07-27):** this is a non-commercial tool for 2
+users. Structural rules apply in full; ceremony does not graduate without a
+named trigger. Conscious deviations from the upstream foundation are recorded
+one line each in [FOUNDATION.md](FOUNDATION.md) — read it before invoking
+upstream doctrine, and prefer simplicity + a delta line over new ADRs.
+
 ## The two gates
 
 - `pnpm run check` = typecheck + ESLint (boundaries) + lock-lint (proves
