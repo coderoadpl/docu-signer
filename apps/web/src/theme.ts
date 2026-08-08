@@ -3,14 +3,13 @@ import { Box, Typography } from '@mui/material';
 import { createTheme, styled, type Theme } from '@mui/material/styles';
 
 export const createAppTheme = (accentHue?: number): Theme => {
-  const base = createTheme();
+  const base = createTheme({ palette: { contrastThreshold: 4.5 } });
   const primaryMain = accentHue === undefined
     ? base.palette.primary.main
-    : `hsl(${accentHue}, 62%, 42%)`;
+    : `hsl(${accentHue}, 62%, 36%)`;
 
   return createTheme({
     palette: {
-      contrastThreshold: 4.5,
       primary: base.palette.augmentColor({
         color: { main: primaryMain },
         name: 'primary',

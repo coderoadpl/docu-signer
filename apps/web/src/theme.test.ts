@@ -5,7 +5,7 @@ import { createAppTheme } from './theme.js';
 
 describe('createAppTheme', () => {
   it('carries the tenant accent as the primary color', () => {
-    expect(createAppTheme(120).palette.primary.main).toBe('hsl(120, 62%, 42%)');
+    expect(createAppTheme(120).palette.primary.main).toBe('hsl(120, 62%, 36%)');
   });
 
   it('keeps the MUI default primary when no accent is provided', () => {
@@ -13,7 +13,7 @@ describe('createAppTheme', () => {
   });
 
   it('picks contrast text meeting WCAG AA for any accent hue', () => {
-    for (const hue of [0, 60, 120, 200, 280, 340]) {
+    for (let hue = 0; hue < 360; hue += 15) {
       const { main, contrastText } = createAppTheme(hue).palette.primary;
       expect(getContrastRatio(main, contrastText)).toBeGreaterThanOrEqual(4.5);
     }
