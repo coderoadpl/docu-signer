@@ -63,7 +63,7 @@ never carries silent gaps.
 ```
 core/domain     entities, Result, error taxonomy, zod schemas   → zod only
 core/contract   API routes + I/O schemas + error envelope       → domain
-core/server     use-cases + ports (interfaces)                  → domain
+core/server     use-cases + ports (interfaces)                  → domain, contract
 core/client     typed HTTP client + query definitions           → contract
 adapters/*      implement ports (db, auth, domain provisioning:
                 vercel + caddy + noop)                        → core
@@ -267,8 +267,8 @@ State rules:
   other or sharing client state. Shared code extracts downward
   (`components/ui`, `lib`, `core/client`), never sideways.
 - **No stringly-typed client event bus.** An untyped bus hides coupling from
-  the dependency graph — the enforcers stop telling the truth and agents
-  cannot trace control flow. The sanctioned shape — a closed union of typed
+  the dependency graph — the enforcers go incomplete and control flow becomes
+  slower and less reliable for agents to trace. The sanctioned shape — a closed union of typed
   events in one module (like `ErrorCode`) that both sides import — was
   reserved "at first proven need"; ADR-0005 declares that need proven and
   defines the bus channel below. Two features that constantly coordinate are
@@ -1466,7 +1466,14 @@ no identity — Admin included — merges past them.
 The `visual` job (pixel comparison,
 [ADR-0008](decisions/0008-visual-regression.md)) is deliberately **absent** from
 both lists: it reports a screenshot regression without blocking a merge until the
-owner adds it to the required set, and it comes back out the moment it flakes.
+owner explicitly changes the fork policy; no required-check arming is planned.
+The fork’s review loop
+([ADR-0013](decisions/0013-visual-review-loop.md), wired 2026-07-28) posts the
+baseline/actual/diff gallery into the pull request. An owner or explicitly
+configured approver may use `/approve-visuals` to re-render the exact reviewed
+SHA and commit the gated baselines onto that non-main PR branch. The advisory AI
+read is fail-open and never a gate. This fork has no ruleset or required-check
+arming for `visual`; the workflow rejects a write to `main` explicitly.
 
 Agents have full `main` freedom (0 approvals, gated only by the four green checks
 and up-to-date-ness); `production` needs an approval the agent cannot supply for

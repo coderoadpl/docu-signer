@@ -15,9 +15,8 @@ import { lintMigrations } from './migration-lint.js';
  *     eslint.config.js / .dependency-cruiser.cjs.
  *   config -> docs: every custom rule in eslint-plugin-agentproofarch/rules
  *     must be documented by name.
- *   counts:         hand-maintained numeric claims in the READMEs are replaced
- *     with `<!--count:NAME-->N<!--/count-->` tokens verified against the real
- *     sources here, so a stale number fails the gate instead of misleading.
+ *   counts:         numeric claims use invisible tokens verified against source;
+ *     a required-token manifest prevents deleting the verification wrapper.
  *   env schema:     every key the config schema reads is documented in
  *     `.env.example`.
  *   links:          every relative link in a tracked `.md` resolves to a file.
@@ -224,24 +223,62 @@ const COUNTERS: Record<string, () => number> = {
   'config-regression': () => countDecls(configRegressionFiles()),
 };
 
-const COUNT_TOKEN = /<!--count:([a-z0-9-]+)-->(\d+)<!--\/count-->/g;
+const COUNT_TOKEN_SYNTAXES: readonly RegExp[] = [
+  /<!--count:([a-z0-9-]+)-->(\d+)<!--\/count-->/g,
+  /\{\/\*count:([a-z0-9-]+)\*\/\}(\d+)\{\/\*\/count\*\/\}/g,
+];
+
+const ALL_COUNTERS = [
+  'test-files',
+  'integration-tests',
+  'e2e-tests',
+  'e2e-specs',
+  'config-regression',
+] as const;
+const REQUIRED_COUNT_TOKENS: Readonly<Record<string, readonly string[]>> = {
+  'README.md': ALL_COUNTERS,
+};
+
 let countTokensSeen = 0;
+const countersByFile = new Map<string, Set<string>>();
 for (const rel of trackedMarkdown) {
   const text = readFileSync(join(repoRoot, rel), 'utf8');
-  for (const match of text.matchAll(COUNT_TOKEN)) {
-    countTokensSeen += 1;
-    const name = match[1] ?? '';
-    const claimed = Number(match[2]);
-    const counter = COUNTERS[name];
-    if (!counter) {
-      problems.push(`[count] unknown counter "${name}" in ${rel} — valid: ${Object.keys(COUNTERS).join(', ')}.`);
-      continue;
+  const seenHere = new Set<string>();
+  countersByFile.set(rel, seenHere);
+  for (const syntax of COUNT_TOKEN_SYNTAXES) {
+    for (const match of text.matchAll(syntax)) {
+      countTokensSeen += 1;
+      const name = match[1] ?? '';
+      const claimed = Number(match[2]);
+      const counter = COUNTERS[name];
+      if (!counter) {
+        problems.push(`[count] unknown counter "${name}" in ${rel} — valid: ${Object.keys(COUNTERS).join(', ')}.`);
+        continue;
+      }
+      seenHere.add(name);
+      const actual = counter();
+      if (actual !== claimed) {
+        problems.push(
+          `[count] ${rel}: count:${name} claims ${claimed} but the source has ${actual} — ` +
+            `update the token to ${actual}.`,
+        );
+      }
     }
-    const actual = counter();
-    if (actual !== claimed) {
+  }
+}
+
+for (const [rel, required] of Object.entries(REQUIRED_COUNT_TOKENS)) {
+  const seenHere = countersByFile.get(rel);
+  if (!seenHere) {
+    problems.push(
+      `[count] ${rel} is listed in REQUIRED_COUNT_TOKENS but is not a tracked .md file.`,
+    );
+    continue;
+  }
+  for (const name of required) {
+    if (!seenHere.has(name)) {
       problems.push(
-        `[count] ${rel}: count:${name} claims ${claimed} but the source has ${actual} — ` +
-          `update the token to ${actual}.`,
+        `[count] ${rel} must state count:${name} as a verified token but does not.`,
       );
     }
   }

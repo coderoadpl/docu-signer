@@ -84,8 +84,8 @@ patch on npm:
 
 4. **A minimum-release-age cooldown is on.** Freshly published versions are not
    installable until they have aged past the configured `minimumReleaseAge`; the
-   value is measured in days, not minutes, and lives in configuration where it is
-   reviewed like any other setting. **The override procedure is explicit**: an
+   value is measured in minutes; `4320` equals three days and lives in
+   configuration where it is reviewed like any other setting. **The override procedure is explicit**: an
    urgent security patch that is younger than the cooldown is taken by lowering
    the setting (or adding a scoped exclusion) **in a reviewed pull request**,
    never by a local flag on someone's machine and never silently — the lowering
