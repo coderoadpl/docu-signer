@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * Resource scaffolder — the mechanical form of the 12-step "adding a resource"
- * chain in demo/CLAUDE.md. It GENERATES the files a resource owns outright and
+ * chain in CLAUDE.md. It GENERATES the files a resource owns outright and
  * prints an ordered checklist for the shared files that must be EDITED by hand,
  * each with its anchor line and a ready-to-paste snippet. Generated edits to
  * shared files rot; the type system is left to enforce completion instead, so
@@ -197,7 +197,7 @@ below. Three steps are NOT type-forced — the server route registration (7,
 wired by hand against API_PATHS with no parity check), the CLI command (10)
 and the web route registration (12) all typecheck while unwired — so finish
 the whole list; the checklist, not the compiler, guarantees those three.
-Work top to bottom — this is the 12-step chain from demo/CLAUDE.md:
+Work top to bottom — this is the 12-step chain from CLAUDE.md:
 
 1. DOMAIN — core/domain/index.ts
    anchor:  export * from './todo.js';

@@ -13,7 +13,7 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env['CI'],
   // A retry that turns a screenshot green is the rerun-to-green the flake
-  // doctrine bans (demo/CLAUDE.md), so the suite is not given the option.
+  // doctrine bans (CLAUDE.md), so the suite is not given the option.
   retries: 0,
   // Screenshot bytes follow the OS font stack and rasterizer: a mac run must not
   // be able to author or overwrite the baselines CI compares against.

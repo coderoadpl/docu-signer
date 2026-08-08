@@ -1,8 +1,9 @@
 name: ai-review
 
 # Fail-closed AI code-review gate (DECIDE F1). The status-check context is the
-# job name `ai-review`, a required check on the `main-gates` ruleset since
-# 2026-07-26 — a PR without a PASS verdict cannot merge. The ONLY green path is
+# job name `ai-review`, intended as a required check once the owner creates the
+# `main-gates` ruleset in podpisy. A PR without a PASS verdict cannot merge once
+# that ruleset is live. The ONLY green path is
 # a positive PASS verdict from a token slot; every other outcome — a FAIL verdict,
 # an infra failure (rate-limit / auth / network / timeout) on all available
 # slots, an empty/malformed model output, or a missing slot-1 secret — exits the
@@ -30,6 +31,7 @@ permissions:
 
 jobs:
   ai-review:
+    # WHY: Fork PRs receive no secrets, so the gate fails closed instead of skipping.
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     # Bounds the known `--json-schema` CLI-hang failure mode (claude-code#27926);
@@ -37,7 +39,7 @@ jobs:
     timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '15') }}
     env:
       REVIEW_PROMPT: |
-        You are the fail-closed AI review gate for the agentproofarch repository.
+        You are the fail-closed AI review gate for the podpisy repository.
         Review ONLY the changes in this pull request — the diff of the PR head
         against origin/main — not the whole repository.
 

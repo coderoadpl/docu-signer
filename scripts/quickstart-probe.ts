@@ -2,8 +2,8 @@
  * The quickstart's fresh-clone promises, executable: the documented seed-table
  * counts and specifics (member emails/tags/binding, the demo user's grants,
  * the tenant domains), seeding twice as a no-op, a second clone driving the
- * same named dev stack, and the documented CLI hello printing exactly what
- * `website/docs/start/quickstart.md` shows.
+ * same named dev stack, and the CLI login/tenant/todo flow documented in
+ * `README.md`.
  */
 import { type ChildProcess } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';

@@ -52,15 +52,13 @@ patch on npm:
   (structure over discipline);
 - **content-addressable store.** Packages are stored once per machine and linked
   into each project, so installs are faster and cheaper — a direct win on the
-  four required CI jobs, which each pay a cold install.
+  four CI jobs, which each pay a cold install.
 
 ## Decision
 
-1. **pnpm is the package manager for every npm project in the tree** — ``
-   (the foundation) and `website/` (Docusaurus). Both move together: keeping one
-   on npm would leave two lockfile formats, two install semantics and two
-   hardening stories in the same CI matrix, which is worse than either choice
-   alone.
+1. **pnpm is the package manager for the npm project at the repository root.**
+   The upstream Docusaurus `website/` project is not carried in this fork, so
+   there is no second package-manager surface to migrate or enforce here.
 
 2. **The toolchain is pinned by the `packageManager` field**, exactly as the
    npm 11 pin was — `"packageManager": "pnpm@<exact.version>"`, activated through

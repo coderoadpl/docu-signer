@@ -24,9 +24,8 @@ import { lintMigrations } from './migration-lint.js';
  *   delimiters:     no tool/XML delimiter leaks into committed prose.
  */
 
-const demoRoot = join(import.meta.dirname, '..');
-const repoRoot = demoRoot;
-const docsRoot = join(demoRoot, 'docs');
+const repoRoot = join(import.meta.dirname, '..');
+const docsRoot = join(repoRoot, 'docs');
 const require = createRequire(import.meta.url);
 
 /**
@@ -35,9 +34,9 @@ const require = createRequire(import.meta.url);
  */
 const LEAKED_DELIMITERS = ['</content>', '</invoke>'];
 
-const eslintConfigPath = join(demoRoot, 'eslint.config.js');
-const depcruiseConfigPath = join(demoRoot, '.dependency-cruiser.cjs');
-const rulesDir = join(demoRoot, 'eslint-plugin-agentproofarch', 'rules');
+const eslintConfigPath = join(repoRoot, 'eslint.config.js');
+const depcruiseConfigPath = join(repoRoot, '.dependency-cruiser.cjs');
+const rulesDir = join(repoRoot, 'eslint-plugin-agentproofarch', 'rules');
 
 type ConfigTarget = 'eslint' | 'depcruise';
 
@@ -189,7 +188,7 @@ const walkTestFiles = (dir: string): string[] => {
 };
 
 const filesIn = (rel: string, suffix: string): string[] => {
-  const dir = join(demoRoot, rel);
+  const dir = join(repoRoot, rel);
   return existsSync(dir)
     ? readdirSync(dir)
         .filter((name) => name.endsWith(suffix))
@@ -202,13 +201,13 @@ const countDecls = (files: readonly string[]): number =>
 
 const defaultRunTestFiles = (): string[] =>
   ['core', 'adapters', 'apps', 'scripts', 'config-regression', 'eslint-plugin-agentproofarch']
-    .flatMap((root) => (existsSync(join(demoRoot, root)) ? walkTestFiles(join(demoRoot, root)) : []))
+    .flatMap((root) => (existsSync(join(repoRoot, root)) ? walkTestFiles(join(repoRoot, root)) : []))
     .filter((file) => !file.endsWith('.integration.test.ts'));
 
 const e2eSpecFiles = (): string[] => filesIn('e2e', '.spec.ts');
 const integrationFiles = (): string[] =>
   ['adapters', 'apps']
-    .flatMap((root) => (existsSync(join(demoRoot, root)) ? walkTestFiles(join(demoRoot, root)) : []))
+    .flatMap((root) => (existsSync(join(repoRoot, root)) ? walkTestFiles(join(repoRoot, root)) : []))
     .filter((file) => file.endsWith('.integration.test.ts'));
 const configRegressionFiles = (): string[] => filesIn('config-regression', '.test.ts');
 
@@ -244,7 +243,7 @@ for (const rel of trackedMarkdown) {
 }
 
 // ── env schema ⊆ .env.example: every key the config schema reads is documented. ─
-const envExample = readFileSync(join(demoRoot, '.env.example'), 'utf8');
+const envExample = readFileSync(join(repoRoot, '.env.example'), 'utf8');
 const declaredEnvKeys = new Set([
   ...Object.keys(serverEnvSchema.shape),
   ...Object.keys(observabilityEnvSchema.shape),
@@ -259,13 +258,6 @@ for (const key of declaredEnvKeys) {
 }
 
 // ── Dead relative-link check: every tracked `.md`. ──────────────────────────
-/**
- * Build-generated docs are legitimate link targets that are absent from a clean
- * checkout, so `existsSync` is the wrong question for them. Each entry must be
- * produced by a `prebuild`/`prestart` hook and gitignored — never a file a human
- * is expected to create — so a genuine typo still fails.
- */
-const GENERATED_DOCS = new Set([resolve(repoRoot, 'website/docs/changelog.md')]);
 const LINK = /\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 for (const rel of trackedMarkdown) {
   const raw = readFileSync(join(repoRoot, rel), 'utf8');
@@ -276,7 +268,6 @@ for (const rel of trackedMarkdown) {
     const path = target.split('#')[0];
     if (!path) continue;
     const resolved = resolve(dirname(join(repoRoot, rel)), path);
-    if (GENERATED_DOCS.has(resolved)) continue;
     if (!existsSync(resolved)) {
       problems.push(`[link] ${rel}: relative link "${target}" points at a missing file.`);
     }
@@ -284,7 +275,7 @@ for (const rel of trackedMarkdown) {
 }
 
 // ── Migration sequence: gapless, duplicate-free prefixes matching the journal. ─
-const migrationProblems = lintMigrations(join(demoRoot, 'drizzle'));
+const migrationProblems = lintMigrations(join(repoRoot, 'drizzle'));
 problems.push(...migrationProblems);
 
 if (problems.length > 0) {
