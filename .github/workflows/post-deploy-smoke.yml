@@ -29,5 +29,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run smoke:remote
         env:
-          BASE_URL: ${{ github.event.deployment.environment == 'Production' && 'https://podpisy.vercel.app' || github.event.deployment_status.environment_url }}
+          BASE_URL: ${{ github.event.deployment.environment == 'Production' && 'https://docu-signer-nine.vercel.app' || github.event.deployment_status.environment_url }}
           EXPECTED_SHA: ${{ github.event.deployment.sha }}
