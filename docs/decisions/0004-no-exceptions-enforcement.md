@@ -42,11 +42,11 @@ green.
 
 2. **Post-deploy verification against real production.** A second workflow
    (`post-deploy-smoke`) listens for the `deployment_status` event and, when a
-   **Production** deployment reports **success**, checks out the deployed
-   commit and runs `pnpm run smoke:remote` against the deployment's
-   `environment_url` (via the `BASE_URL` the script reads). This is the only
-   gate that exercises the actual platform contract that broke in #10–#15;
-   it turns "deployed" into "deployed and verified working".
+   **Production** or **Preview** deployment reports **success**, checks out the
+   deployed commit and runs `pnpm run smoke:remote` against the production
+   alias or the preview deployment URL (via the `BASE_URL` the script reads).
+   This is the only gate that exercises the actual platform contract that broke
+   in #10–#15; it turns "deployed" into "deployed and verified working".
 
 3. **Config-regression probes.** The lint and dependency-cruiser
    configurations are themselves covered by behavioural tests: a deliberately

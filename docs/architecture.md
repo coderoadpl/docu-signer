@@ -1384,7 +1384,7 @@ The `visual` job (pixel comparison,
 both lists: it reports a screenshot regression without blocking a merge until the
 owner adds it to the required set, and it comes back out the moment it flakes.
 
-Agents have full `main` freedom (0 approvals, gated only by the five green checks
+Agents have full `main` freedom (0 approvals, gated only by the four green checks
 and up-to-date-ness); `production` needs an approval the agent cannot supply for
 its own PR — GitHub forbids self-approval, and the only other identity that can
 approve is the owner's. That single approval, from an owner device, is the
@@ -1478,7 +1478,7 @@ foundation):
 - **Production release goes through an owner-approved PR to `production`**
   (control 1 of 5). Production Branch Tracking points at the real `production`
   branch, and the `production-protection` ruleset (require PR + 1 approval, empty
-  bypass, four required status checks) means the only way to trigger a production
+  bypass, three required status checks) means the only way to trigger a production
   build is a pull request `main → production` that the owner approves and merges.
   An agent (`chomamateusz-agent`, Write, not Admin) can open the PR but cannot
   approve its own PR, cannot edit the ruleset, and cannot force-push past it — so

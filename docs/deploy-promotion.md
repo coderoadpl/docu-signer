@@ -72,9 +72,8 @@ PR may be delegated to an agent; **approval and merge are not.**
    cannot self-approve its own PR, and no other identity can approve). Merging to
    `production` triggers the Production build against production env vars.
 6. **Verify the deploy SHA attestation.** Confirm production `/api/health`
-   reports the merged commit's `sha`, then run `smoke:remote` with
-   `EXPECTED_SHA` set to that commit. Deployment automation is external to this
-   repository.
+   reports the merged commit's `sha`. The `post-deploy-smoke` workflow performs
+   the same check automatically with `EXPECTED_SHA` set to that commit.
 
 **Rollback** is a release in reverse: open and merge a PR that reverts
 `production` to the previous known-good SHA (or `git revert` the offending
@@ -89,7 +88,7 @@ Each is a property of the environment, not a rule an agent is asked to remember.
 
 1. **Owner-approved PR is the only path to production.** Production Branch
    Tracking points at `production`, guarded by the `production-protection`
-   ruleset (PR + 1 approval, empty bypass, four required checks). *WHY:* agents
+   ruleset (PR + 1 approval, empty bypass, three required checks). *WHY:* agents
    have full `main` freedom by design; the wall is that the merge which triggers a
    production build needs an approval the agent cannot supply — GitHub forbids
    self-approval, the agent is Write-not-Admin so it cannot edit the ruleset, and
@@ -121,7 +120,7 @@ Operating-hygiene context for these lives in
 ## d. What agents may do
 
 **Everything on `main`, nothing that releases production.** Agents (acting as
-`chomamateusz-agent`, Write) branch, open PRs, merge to `main` once the three
+`chomamateusz-agent`, Write) branch, open PRs, merge to `main` once the four
 checks pass, dispatch workflows, and drive preview + staging deployments freely —
 that is the whole development environment. An agent may **open** the
 `main → production` release PR, but cannot approve it (no self-approval), cannot
