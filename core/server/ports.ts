@@ -74,12 +74,26 @@ export interface StoragePort {
  * no-op when the id belongs to another tenant).
  */
 export interface MemberRepository {
-  listByTenant(tenantId: string): Promise<Member[]>;
+  listPageByTenant(
+    tenantId: string,
+    cursor: MemberPageCursor | null,
+    limit: number,
+  ): Promise<Page<Member, MemberPageCursor>>;
   findByEmail(tenantId: string, email: string): Promise<Member | null>;
   findByTenantAndId(tenantId: string, id: string): Promise<Member | null>;
   create(member: Member): Promise<void>;
   update(member: Member): Promise<void>;
   deleteByTenantAndId(tenantId: string, id: string): Promise<number>;
+}
+
+export interface MemberPageCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface Page<T, C> {
+  items: T[];
+  nextCursor: C | null;
 }
 
 /**
@@ -168,7 +182,11 @@ export interface StaffGrant {
  * `findGrant` first).
  */
 export interface StaffRepository {
-  listByTenant(tenantId: string): Promise<StaffMember[]>;
+  listPageByTenant(
+    tenantId: string,
+    cursor: StaffPageCursor | null,
+    limit: number,
+  ): Promise<Page<StaffMember, StaffPageCursor>>;
   findGrant(tenantId: string, userId: string): Promise<StaffGrant | null>;
   grant(input: { id: string; tenantId: string; userId: string; role: StaffRole }): Promise<void>;
   /**
@@ -181,6 +199,12 @@ export interface StaffRepository {
    * enforcement; a use-case `findGrant` read only shapes the error taxonomy.
    */
   revokeLastOwnerSafe(tenantId: string, userId: string): Promise<number>;
+}
+
+export interface StaffPageCursor {
+  role: StaffRole;
+  email: string;
+  id: string;
 }
 
 /** One global account, resolved from the auth `user` table for an FR-8 grant. */

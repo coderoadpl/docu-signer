@@ -17,10 +17,15 @@ const meOwner = {
 };
 
 const roster = {
+  items: [
+    { id: 'g1', userId: 'u-owner', email: 'owner@acme.dev', name: 'Owner', role: 'owner' },
+    { id: 'g2', userId: 'u-admin', email: 'admin@acme.dev', name: 'Admin', role: 'admin' },
+  ],
   staff: [
     { id: 'g1', userId: 'u-owner', email: 'owner@acme.dev', name: 'Owner', role: 'owner' },
     { id: 'g2', userId: 'u-admin', email: 'admin@acme.dev', name: 'Admin', role: 'admin' },
   ],
+  nextCursor: null,
 };
 
 /** The owner row renders a disabled revoke button; the admin's is the enabled one. */

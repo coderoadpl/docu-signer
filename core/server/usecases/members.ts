@@ -1,22 +1,27 @@
 import {
+  decodeOpaqueCursor,
+  encodeOpaqueCursor,
   err,
   memberRefSchema,
   memberUpdateSchema,
   newMemberSchema,
   notFound,
   ok,
+  paginationQuerySchema,
   validation,
   type AppError,
   type Member,
   type MemberExport,
   type MemberUpdate,
   type NewMember,
+  type PaginationQueryInput,
   type Result,
 } from '#core/domain/index.js';
+import { z } from 'zod';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { Clock, IdGenerator, MemberRepository } from '../ports.js';
+import type { Clock, IdGenerator, MemberPageCursor, MemberRepository } from '../ports.js';
 
 export interface MemberDeps {
   members: MemberRepository;
@@ -42,13 +47,38 @@ export interface RemoveMemberResult {
   deleted: { members: number };
 }
 
+export interface MemberPage {
+  items: Member[];
+  nextCursor: string | null;
+}
+
+const memberPageCursorSchema = z.object({
+  createdAt: z.iso.datetime(),
+  id: z.string(),
+});
+
 export const listMembers = async (
   ctx: Ctx,
+  input: PaginationQueryInput,
   deps: MemberDeps,
-): Promise<Result<Member[], AppError>> => {
+): Promise<Result<MemberPage, AppError>> => {
   const scope = authorizeTenant(ctx, 'member:read');
   if (!scope.ok) return scope;
-  return ok(await deps.members.listByTenant(scope.value));
+  const query = paginationQuerySchema.safeParse(input);
+  if (!query.success) return err(validation('Invalid pagination query', query.error.flatten()));
+  const cursor = parseMemberCursor(query.data.cursor);
+  if (cursor === undefined) return err(validation('Invalid pagination cursor'));
+  const page = await deps.members.listPageByTenant(scope.value, cursor, query.data.limit);
+  return ok({
+    items: page.items,
+    nextCursor: page.nextCursor === null ? null : encodeOpaqueCursor(page.nextCursor),
+  });
+};
+
+const parseMemberCursor = (cursor: string | undefined): MemberPageCursor | null | undefined => {
+  if (cursor === undefined) return null;
+  const parsed = memberPageCursorSchema.safeParse(decodeOpaqueCursor(cursor));
+  return parsed.success ? parsed.data : undefined;
 };
 
 /**

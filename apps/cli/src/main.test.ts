@@ -28,9 +28,21 @@ type TodoCreate = { todo: { id: string; title: string } };
 type CardItem = { id: string; title: string; column: string; position: number };
 type CardList = { cards: CardItem[] };
 type CardWrite = { card: CardItem };
+type PageQuery = { cursor?: string; limit?: number };
+type MemberList = {
+  members: { id: string; email: string; displayName: string | null; tags: string[] }[];
+  nextCursor: string | null;
+};
+type StaffList = {
+  staff: { email: string; name: string; role: string }[];
+  nextCursor: string | null;
+};
 type Session = { token: string | null };
 type PublicDiscovery = { slug: string; contentVersion: string };
 type PublicProfile = { slug: string; displayName: string; contentVersion: string };
+
+const CARD_ID = '11111111-1111-4111-8111-111111111111';
+const TEAM_CARD_ID = '22222222-2222-4222-8222-222222222222';
 
 interface FakeApi {
   health: Mock<Async<Health>>;
@@ -42,6 +54,8 @@ interface FakeApi {
   listCards: Mock<Async<CardList>>;
   addCard: Mock<AsyncIn<{ title: string; board: string; column: string }, CardWrite>>;
   moveCard: Mock<AsyncIn<{ cardId: string; board: string; toColumn: string; toIndex: number }, CardWrite>>;
+  listMembers: Mock<AsyncIn<PageQuery, MemberList>>;
+  listStaff: Mock<AsyncIn<PageQuery, StaffList>>;
   publicTenantDiscovery: Mock<AsyncIn<string, PublicDiscovery>>;
   publicTenantProfile: Mock<(slug: string, version: string) => Promise<Result<PublicProfile, AppError>>>;
 }
@@ -79,6 +93,8 @@ const h = vi.hoisted(
       listCards: vi.fn<Async<CardList>>(),
       addCard: vi.fn<AsyncIn<{ title: string; board: string; column: string }, CardWrite>>(),
       moveCard: vi.fn<AsyncIn<{ cardId: string; board: string; toColumn: string; toIndex: number }, CardWrite>>(),
+      listMembers: vi.fn<AsyncIn<PageQuery, MemberList>>(),
+      listStaff: vi.fn<AsyncIn<PageQuery, StaffList>>(),
       publicTenantDiscovery: vi.fn<AsyncIn<string, PublicDiscovery>>(),
       publicTenantProfile: vi.fn<(slug: string, version: string) => Promise<Result<PublicProfile, AppError>>>(),
     },
@@ -148,6 +164,8 @@ beforeEach(() => {
     h.api.listCards,
     h.api.addCard,
     h.api.moveCard,
+    h.api.listMembers,
+    h.api.listStaff,
     h.api.publicTenantDiscovery,
     h.api.publicTenantProfile,
   ]) {
@@ -165,11 +183,13 @@ beforeEach(() => {
   h.api.addTodo.mockResolvedValue(ok({ todo: { id: 'todo-1234abcd', title: 'buy milk' } }));
   h.api.listCards.mockResolvedValue(ok({ cards: [] }));
   h.api.addCard.mockResolvedValue(
-    ok({ card: { id: 'card-1234abcd', title: 'ship it', column: 'todo', position: 0 } }),
+    ok({ card: { id: CARD_ID, title: 'ship it', column: 'todo', position: 0 } }),
   );
   h.api.moveCard.mockResolvedValue(
-    ok({ card: { id: 'card-1234abcd', title: 'ship it', column: 'doing', position: 1 } }),
+    ok({ card: { id: CARD_ID, title: 'ship it', column: 'doing', position: 1 } }),
   );
+  h.api.listMembers.mockResolvedValue(ok({ members: [], nextCursor: null }));
+  h.api.listStaff.mockResolvedValue(ok({ staff: [], nextCursor: null }));
   h.api.publicTenantDiscovery.mockResolvedValue(ok({ slug: 'acme', contentVersion: 'v1abc' }));
   h.api.publicTenantProfile.mockResolvedValue(
     ok({ slug: 'acme', displayName: 'Acme Corp', contentVersion: 'v1abc' }),
@@ -311,7 +331,7 @@ describe('card commands', () => {
     await run('card', 'add', 'ship', 'it');
 
     expect(h.api.addCard).toHaveBeenCalledExactlyOnceWith({ title: 'ship it', board: 'personal', column: 'todo' });
-    expect(logSpy).toHaveBeenCalledExactlyOnceWith('added: ship it [todo#0] (card-123)');
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('added: ship it [todo#0] (11111111)');
   });
 
   it('passes the explicit --column to `card add`', async () => {
@@ -326,13 +346,13 @@ describe('card commands', () => {
 
   it('adds a team card into the todo column and reports where it landed', async () => {
     h.api.addCard.mockResolvedValue(
-      ok({ card: { id: 'team-1234ab', title: 'ship it', column: 'todo', position: 0 } }),
+      ok({ card: { id: TEAM_CARD_ID, title: 'ship it', column: 'todo', position: 0 } }),
     );
 
     await run('card', 'add', '--board', 'team', 'ship', 'it');
 
     expect(h.api.addCard).toHaveBeenCalledExactlyOnceWith({ title: 'ship it', board: 'team', column: 'todo' });
-    expect(logSpy).toHaveBeenCalledExactlyOnceWith('added: ship it [todo#0] (team-123)');
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('added: ship it [todo#0] (22222222)');
     expect(process.exitCode).toBe(0);
   });
 
@@ -343,10 +363,10 @@ describe('card commands', () => {
       })),
     );
 
-    await run('--json', 'card', 'move', 'team-1234ab', '--board', 'team', '--to', 'done');
+    await run('--json', 'card', 'move', TEAM_CARD_ID, '--board', 'team', '--to', 'done');
 
     expect(h.api.moveCard).toHaveBeenCalledExactlyOnceWith({
-      cardId: 'team-1234ab',
+      cardId: TEAM_CARD_ID,
       board: 'team',
       toColumn: 'done',
       toIndex: Number.MAX_SAFE_INTEGER,
@@ -361,13 +381,13 @@ describe('card commands', () => {
   it('walks the legal team chain todo -> in-dev -> review -> done, each move exiting 0', async () => {
     for (const column of ['in-dev', 'review', 'done'] as const) {
       h.api.moveCard.mockResolvedValue(
-        ok({ card: { id: 'team-1234ab', title: 'ship it', column, position: 0 } }),
+        ok({ card: { id: TEAM_CARD_ID, title: 'ship it', column, position: 0 } }),
       );
 
-      await run('card', 'move', 'team-1234ab', '--board', 'team', '--to', column);
+      await run('card', 'move', TEAM_CARD_ID, '--board', 'team', '--to', column);
 
       expect(h.api.moveCard).toHaveBeenLastCalledWith({
-        cardId: 'team-1234ab',
+        cardId: TEAM_CARD_ID,
         board: 'team',
         toColumn: column,
         toIndex: Number.MAX_SAFE_INTEGER,
@@ -384,21 +404,21 @@ describe('card commands', () => {
   });
 
   it('moves a card to the end of a column when --index is omitted', async () => {
-    await run('card', 'move', 'card-1234abcd', '--to', 'doing');
+    await run('card', 'move', CARD_ID, '--to', 'doing');
 
     expect(h.api.moveCard).toHaveBeenCalledExactlyOnceWith({
-      cardId: 'card-1234abcd',
+      cardId: CARD_ID,
       board: 'personal',
       toColumn: 'doing',
       toIndex: Number.MAX_SAFE_INTEGER,
     });
-    expect(logSpy).toHaveBeenCalledExactlyOnceWith('moved: ship it -> [doing#1] (card-123)');
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('moved: ship it -> [doing#1] (11111111)');
   });
 
   it('passes an explicit --index to `card move`', async () => {
-    await run('card', 'move', 'card-1234abcd', '--to', 'doing', '--index', '0');
+    await run('card', 'move', CARD_ID, '--to', 'doing', '--index', '0');
     expect(h.api.moveCard).toHaveBeenCalledExactlyOnceWith({
-      cardId: 'card-1234abcd',
+      cardId: CARD_ID,
       board: 'personal',
       toColumn: 'doing',
       toIndex: 0,
@@ -407,11 +427,11 @@ describe('card commands', () => {
 
   it('passes an explicit --board to `card move`', async () => {
     h.api.moveCard.mockResolvedValue(
-      ok({ card: { id: 'card-123', title: 'ship it', column: 'in-dev', position: 0 } }),
+      ok({ card: { id: CARD_ID, title: 'ship it', column: 'in-dev', position: 0 } }),
     );
-    await run('card', 'move', 'card-1234abcd', '--board', 'team', '--to', 'in-dev');
+    await run('card', 'move', CARD_ID, '--board', 'team', '--to', 'in-dev');
     expect(h.api.moveCard).toHaveBeenCalledExactlyOnceWith({
-      cardId: 'card-1234abcd',
+      cardId: CARD_ID,
       board: 'team',
       toColumn: 'in-dev',
       toIndex: Number.MAX_SAFE_INTEGER,
@@ -419,7 +439,7 @@ describe('card commands', () => {
   });
 
   it('rejects a non-integer --index locally (validation, exit 2) without calling the API', async () => {
-    await run('--json', 'card', 'move', 'card-1234abcd', '--to', 'doing', '--index', 'abc');
+    await run('--json', 'card', 'move', CARD_ID, '--to', 'doing', '--index', 'abc');
 
     expect(h.api.moveCard).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -433,6 +453,39 @@ describe('card commands', () => {
 
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
     expect(process.exitCode).toBe(3);
+  });
+});
+
+describe('paginated roster commands', () => {
+  it('passes cursor and limit through `member list` and prints the continuation token', async () => {
+    h.api.listMembers.mockResolvedValue(
+      ok({
+        members: [
+          { id: 'member-1', email: 'alice@example.com', displayName: 'Alice', tags: ['vip'] },
+        ],
+        nextCursor: 'next-members',
+      }),
+    );
+
+    await run('member', 'list', '--cursor', 'opaque-members', '--limit', '12');
+
+    expect(h.api.listMembers).toHaveBeenCalledExactlyOnceWith({
+      cursor: 'opaque-members',
+      limit: 12,
+    });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith(
+      '- alice@example.com\tAlice  (member-1)  [vip]\nnext cursor: next-members',
+    );
+  });
+
+  it('passes cursor and a server-capped limit through `staff list`', async () => {
+    await run('staff', 'list', '--cursor', 'opaque-staff', '--limit', '999');
+
+    expect(h.api.listStaff).toHaveBeenCalledExactlyOnceWith({
+      cursor: 'opaque-staff',
+      limit: 100,
+    });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('no staff');
   });
 });
 

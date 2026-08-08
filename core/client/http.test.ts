@@ -86,6 +86,19 @@ describe('createApiClient', () => {
     });
   });
 
+  it('sends opaque cursor pagination query parameters for member lists', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      expect(input).toBe('/api/members?cursor=opaque-token&limit=12');
+      return jsonResponse({ ok: true, data: { items: [], members: [], nextCursor: null } });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(client.listMembers({ cursor: 'opaque-token', limit: 12 })).resolves.toEqual({
+      ok: true,
+      value: { items: [], members: [], nextCursor: null },
+    });
+  });
+
   it('exportMember reads the member id from the query string', async () => {
     const fetchImpl: typeof fetch = async (input) => {
       expect(input).toBe('/api/members/export?id=m1');

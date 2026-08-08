@@ -153,12 +153,15 @@ const happyApi: ApiClient = {
   listCards: async () => ok({ cards: [card] }),
   addCard: async (input) => ok({ card: { ...card, title: input.title, column: input.column } }),
   moveCard: async (input) => ok({ card: { ...card, column: input.toColumn, position: input.toIndex } }),
-  listMembers: async () => ok({ members: [member] }),
+  listMembers: async () => ok({ items: [member], members: [member], nextCursor: null }),
   ensureMember: async (input) => ok({ member: { ...member, email: input.email }, created: true }),
   updateMember: async (input) => ok({ member: { ...member, id: input.id } }),
   removeMember: async (input) => ok({ memberId: input.id, deleted: { members: 1 } }),
   exportMember: async (id) => ok({ exportedAt: '2026-07-10T00:00:00.000Z', tenantId: 't-acme', member: { ...member, id } }),
-  listStaff: async () => ok({ staff: [{ id: 'g-1', userId: 'u1', email: 'demo@example.com', name: 'Demo', role: 'owner' }] }),
+  listStaff: async () => {
+    const staff = [{ id: 'g-1', userId: 'u1', email: 'demo@example.com', name: 'Demo', role: 'owner' as const }];
+    return ok({ items: staff, staff, nextCursor: null });
+  },
   grantStaff: async (input) => ok({ staff: { id: 'g-new', userId: 'u-new', email: input.email, name: 'New', role: 'admin' }, granted: true }),
   revokeStaff: async (input) => ok({ userId: input.userId ?? 'u-x', revoked: 1 }),
   listDomains: async () =>
@@ -259,7 +262,32 @@ describe('query descriptors', () => {
       client.fetchQuery(documentQuery(happyApi, document.id)),
     ).resolves.toEqual({ document: { ...document, files: [] } });
     await expect(client.fetchQuery(cardsQuery(happyApi))).resolves.toEqual({ cards: [card] });
-    await expect(client.fetchQuery(membersQuery(happyApi))).resolves.toEqual({ members: [member] });
+    await expect(client.fetchQuery(membersQuery(happyApi))).resolves.toEqual({
+      items: [member],
+      members: [member],
+      nextCursor: null,
+    });
+  });
+
+  it('follows member cursors until null for web roster consumers', async () => {
+    const calls: unknown[] = [];
+    const second = { ...member, id: 'member-2', email: 'bob@example.com' };
+    const pagedApi: ApiClient = {
+      ...happyApi,
+      listMembers: async (query) => {
+        calls.push(query);
+        return query?.cursor === undefined
+          ? ok({ items: [member], members: [member], nextCursor: 'page-2' })
+          : ok({ items: [second], members: [second], nextCursor: null });
+      },
+    };
+
+    await expect(newClient().fetchQuery(membersQuery(pagedApi))).resolves.toEqual({
+      items: [member, second],
+      members: [member, second],
+      nextCursor: null,
+    });
+    expect(calls).toEqual([{}, { cursor: 'page-2' }]);
   });
 
   it('throw an ApiError carrying the AppError when the call fails', async () => {

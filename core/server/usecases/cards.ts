@@ -1,5 +1,6 @@
 import {
   canApplyTeamMove,
+  cardIdSchema,
   cardListQuerySchema,
   cardMoveSchema,
   err,
@@ -79,7 +80,7 @@ export const addCard = async (
   const position = existing.filter((card) => card.column === column).length;
 
   const card: Card = {
-    id: deps.ids.nextId(),
+    id: cardIdSchema.parse(deps.ids.nextId()),
     tenantId: scope.value,
     title,
     board,

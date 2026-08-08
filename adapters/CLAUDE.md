@@ -25,8 +25,9 @@ Concrete implementations of `core/server` ports: the database repositories
 - `apps/server/src/composition.ts` — the only place a *server* adapter is
   instantiated. Two sanctioned exceptions: the auth *client* adapter is
   constructed in `apps/web/src/api.ts` and the CLI's `cliCtx`; and
-  `adapters/db/migrate.ts` reads `DB_DRIVER`/`DATABASE_URL`/`VERCEL` itself as a
-  composition point outside the server root.
+  `adapters/db/migrate.ts` and `adapters/db/seed.ts` are sanctioned standalone
+  composition points outside the server root. Seed needs the real auth adapter
+  to hash credentials, just as migrate needs the real database adapter.
 - `apps/web` and `apps/cli` never import server adapters or `adapters/db`.
 
 ## Hard rules

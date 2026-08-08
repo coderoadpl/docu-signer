@@ -85,9 +85,10 @@ Dependency rules (enforced):
   self-host, `noop` by default). The
   one deliberate exception is the
   auth *client* adapter, constructed in `apps/web/src/api.ts` (web) and the
-  CLI's `cliCtx`; the operational entry `adapters/db/migrate.ts` also reads
-  `DB_DRIVER`/`DATABASE_URL`/`VERCEL` itself as a sanctioned composition point
-  outside the server root.
+  CLI's `cliCtx`; the standalone DB operations `adapters/db/migrate.ts` and
+  `adapters/db/seed.ts` are also sanctioned composition points outside the
+  server root. Seed needs the real auth adapter to hash credentials, just as
+  migrate needs the real database adapter.
 - `@vercel/*` and `@neondatabase/*` are importable only inside `adapters/`
   (and the platform entry `api/index.ts`).
 - No `any`, no `as` (except `as const`), zod-parse at every boundary.
@@ -846,8 +847,8 @@ carrying amounts outside the shared schema.
 tables declare `timestamp('…', { withTimezone: true })`; the domain and
 contract keep speaking ISO-8601 strings (driver-agnostic, as today) with the
 mapping at the adapter's schema column. Existing tables are grandfathered:
-the app tables' `created_at` columns (`tenants`, `members`, `todos`, `cards`
-in `adapters/db/app-schema.ts`) are text ISO-8601, and the generated Better
+the app tables' `created_at` columns (`tenants`, `members`, `todos` in
+`adapters/db/app-schema.ts`) are text ISO-8601, and the generated Better
 Auth tables use naive `timestamp` — documented legacy, deliberately **not
 migrated now** (nothing ranges or sorts across zones on them; converting is a
 routine expand→contract package the day a query needs index-backed time
@@ -864,26 +865,28 @@ declare `uuid('id')` primary keys — application-minted as today (the domain
 already generates ids) — and an FK column always matches the type of the key
 it references, so references into legacy text PKs stay text. Native `uuid` is
 16 bytes instead of 36, indexes tighter, and the storage layer rejects
-malformed ids for free. Existing tables are grandfathered: all current app
-tables and the Better Auth tables (whose generated ids are not UUIDs at all)
-use text ids — documented legacy, **not migrated now**.
+malformed ids for free. Existing tables are grandfathered: `tenants`,
+`tenant_admins`, `members`, `todos`, and `tenant_domains` use text ids, as do
+the Better Auth tables (whose generated ids are not UUIDs at all) — documented
+legacy, **not migrated now**.
 — **TYPE**: n/a (both spellings surface as `string` in TS) · **LINT**: n/a
 (same fixture-cost judgment as timestamps) · **TEST**: n/a · **REVIEW+AI**: a
 migration adding a text PK to a NEW table is rejected unless it FK-chains to a
 legacy text key; the grandfather list above is closed.
 
 **List-endpoint pagination is cursor-based** (NORMATIVE NOW — the contract
-grammar for every FUTURE list endpoint). Request: `?cursor=<opaque>&limit=<n>`
+grammar for list endpoints). Request: `?cursor=<opaque>&limit=<n>`
 with a server-side cap on `limit`; the cursor is an opaque token encoding the
 sort key plus an id tiebreak — never a raw offset. Response (inside the
 standard `{ ok: true, data }` envelope): `{ items, nextCursor }`, where
 `nextCursor` is a string to pass back or `null` on the last page. Why not
 offset/limit: offsets skew under concurrent writes (rows shift between pages)
 and cost the database the full skipped prefix, while a keyed cursor is stable
-and index-backed. Existing list endpoints (todos, cards) return the full
-tenant-scoped array — **exempt** as small bounded lists; if one ever needs
-paging it adopts this grammar additively (add `cursor`/`limit`/`nextCursor`,
-keep the full read until consumers move), per §API versioning.
+and index-backed. The members and staff rosters implement this grammar
+additively: their named arrays remain for existing consumers while `items` and
+`nextCursor` carry the shared pagination shape. Existing todos and cards return
+the full tenant-scoped array — **exempt** as small bounded lists; if one ever
+needs paging it adopts this grammar additively, per §API versioning.
 — **TYPE**: the envelope is one shared generic zod schema in `core/contract`
 (landing with the first paginated endpoint), so later endpoints cannot invent
 a rival shape without a visible new schema · **LINT**: n/a · **TEST**:

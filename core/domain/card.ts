@@ -12,6 +12,8 @@ export const boardIdSchema = z.enum(BOARD_IDS);
 
 export type BoardId = z.infer<typeof boardIdSchema>;
 
+export const cardIdSchema = z.uuid();
+
 /**
  * A card is the board-agnostic substrate both boards share. `column` is a plain
  * string here on purpose: the set of legal columns is *data of a board*, not of
@@ -24,7 +26,7 @@ export type BoardId = z.infer<typeof boardIdSchema>;
  * (see the cards use-cases for the index-rewrite repositioning model).
  */
 export const cardSchema = z.object({
-  id: z.string(),
+  id: cardIdSchema,
   tenantId: z.string(),
   title: z.string().min(1).max(500),
   board: boardIdSchema,
@@ -46,7 +48,7 @@ export const newCardSchema = z.object({
 export type NewCard = z.input<typeof newCardSchema>;
 
 export const cardMoveSchema = z.object({
-  cardId: z.string(),
+  cardId: cardIdSchema,
   board: boardIdSchema.default('personal'),
   toColumn: z.string(),
   toIndex: z.number().int(),

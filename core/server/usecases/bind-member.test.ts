@@ -25,7 +25,10 @@ const repo = (rows: Member[]): { deps: { members: MemberRepository; clock: { now
     deps: {
       clock: { nowIso: () => '2026-07-20T12:00:00.000Z' },
       members: {
-        listByTenant: async (tenantId) => store.filter((r) => r.tenantId === tenantId),
+        listPageByTenant: async (tenantId) => ({
+          items: store.filter((r) => r.tenantId === tenantId),
+          nextCursor: null,
+        }),
         findByEmail: async (tenantId, email) =>
           store.find((r) => r.tenantId === tenantId && r.email === email) ?? null,
         findByTenantAndId: async (tenantId, id) =>

@@ -300,7 +300,22 @@ export const cardsInvalidates = () => ({ queryKey: cardsScopes.lists() });
 export const membersQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: membersScopes.lists(),
-    call: ({ signal }) => api.listMembers(signal),
+    call: async ({ signal }) => {
+      const members = [];
+      let cursor: string | undefined;
+      while (true) {
+        const page = await api.listMembers(cursor === undefined ? {} : { cursor }, signal);
+        if (!page.ok) return page;
+        members.push(...page.value.items);
+        if (page.value.nextCursor === null) {
+          return {
+            ok: true,
+            value: { items: members, members, nextCursor: null },
+          };
+        }
+        cursor = page.value.nextCursor;
+      }
+    },
   });
 
 export const ensureMemberMutation = (api: ApiClient) =>
@@ -315,7 +330,22 @@ export const ensureMemberInvalidates = () => ({ queryKey: membersScopes.lists() 
 export const staffQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: staffScopes.lists(),
-    call: ({ signal }) => api.listStaff(signal),
+    call: async ({ signal }) => {
+      const staff = [];
+      let cursor: string | undefined;
+      while (true) {
+        const page = await api.listStaff(cursor === undefined ? {} : { cursor }, signal);
+        if (!page.ok) return page;
+        staff.push(...page.value.items);
+        if (page.value.nextCursor === null) {
+          return {
+            ok: true,
+            value: { items: staff, staff, nextCursor: null },
+          };
+        }
+        cursor = page.value.nextCursor;
+      }
+    },
   });
 
 export const grantStaffMutation = (api: ApiClient) =>

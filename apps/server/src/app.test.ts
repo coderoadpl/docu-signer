@@ -72,7 +72,7 @@ const baseDeps = (): AppDeps => ({
     createUploadUrl: async () => ok(null),
   },
   members: {
-    listByTenant: async () => [],
+    listPageByTenant: async () => ({ items: [], nextCursor: null }),
     findByEmail: async () => null,
     findByTenantAndId: async () => null,
     create: async () => {},
@@ -80,7 +80,7 @@ const baseDeps = (): AppDeps => ({
     deleteByTenantAndId: async () => 0,
   },
   staff: {
-    listByTenant: async () => [],
+    listPageByTenant: async () => ({ items: [], nextCursor: null }),
     findGrant: async () => null,
     grant: async () => {},
     revokeLastOwnerSafe: async () => 0,
@@ -369,8 +369,8 @@ describe('buildApp routes', () => {
     const deps = asStaff();
     deps.members = {
       ...deps.members,
-      listByTenant: async () => [
-        {
+      listPageByTenant: async () => ({
+        items: [{
           id: 'm-1',
           tenantId: 't-acme',
           userId: null,
@@ -381,8 +381,9 @@ describe('buildApp routes', () => {
           externalCustomerIds: [],
           createdAt: '2026-07-10T00:00:00.000Z',
           lastSeenAt: null,
-        },
-      ],
+        }],
+        nextCursor: null,
+      }),
     };
     const res = await buildApp(deps).request(API_PATHS.members, {
       headers: { [TENANT_HEADER]: 'acme' },
@@ -716,9 +717,12 @@ describe('buildApp routes', () => {
     const deps = asAdmin();
     deps.staff = {
       ...deps.staff,
-      listByTenant: async () => [
-        { id: 'g-1', userId: 'user-1', email: 'demo@agentproofarch.dev', name: 'Demo', role: 'owner' },
-      ],
+      listPageByTenant: async () => ({
+        items: [
+          { id: 'g-1', userId: 'user-1', email: 'demo@agentproofarch.dev', name: 'Demo', role: 'owner' },
+        ],
+        nextCursor: null,
+      }),
     };
     const res = await buildApp(deps).request(API_PATHS.staff, {
       headers: { [TENANT_HEADER]: 'acme' },

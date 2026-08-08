@@ -85,10 +85,13 @@ const todoB1 = {
   createdAt: '2026-01-01T12:00:00.000Z',
 };
 
-const cardA1 = { id: 'itest-card-a1', tenantId: tenantA.id, title: 'A todo 1', board: 'personal' as const, column: 'todo', position: 0, visited: ['todo'], createdAt: '2026-01-01T00:00:00.000Z' };
-const cardA2 = { id: 'itest-card-a2', tenantId: tenantA.id, title: 'A todo 2', board: 'personal' as const, column: 'todo', position: 1, visited: ['todo'], createdAt: '2026-01-02T00:00:00.000Z' };
-const cardA3 = { id: 'itest-card-a3', tenantId: tenantA.id, title: 'A doing 1', board: 'personal' as const, column: 'doing', position: 0, visited: ['doing'], createdAt: '2026-01-03T00:00:00.000Z' };
-const cardB1 = { id: 'itest-card-b1', tenantId: tenantB.id, title: 'B todo 1', board: 'personal' as const, column: 'todo', position: 0, visited: ['todo'], createdAt: '2026-01-01T00:00:00.000Z' };
+const fixtureUuid = (suffix: number): string =>
+  `00000000-0000-4000-8000-${suffix.toString(16).padStart(12, '0')}`;
+
+const cardA1 = { id: fixtureUuid(1), tenantId: tenantA.id, title: 'A todo 1', board: 'personal' as const, column: 'todo', position: 0, visited: ['todo'], createdAt: '2026-01-01T00:00:00.000Z' };
+const cardA2 = { id: fixtureUuid(2), tenantId: tenantA.id, title: 'A todo 2', board: 'personal' as const, column: 'todo', position: 1, visited: ['todo'], createdAt: '2026-01-02T00:00:00.000Z' };
+const cardA3 = { id: fixtureUuid(3), tenantId: tenantA.id, title: 'A doing 1', board: 'personal' as const, column: 'doing', position: 0, visited: ['doing'], createdAt: '2026-01-03T00:00:00.000Z' };
+const cardB1 = { id: fixtureUuid(4), tenantId: tenantB.id, title: 'B todo 1', board: 'personal' as const, column: 'todo', position: 0, visited: ['todo'], createdAt: '2026-01-01T00:00:00.000Z' };
 
 let appPool: pg.Pool;
 let db: Db;
@@ -311,7 +314,7 @@ describe('CardRepository', () => {
   });
 
   it('create inserts a card visible only within its tenant', async () => {
-    const extra = { id: 'itest-card-a4', tenantId: tenantA.id, title: 'A doing 2', board: 'personal' as const, column: 'doing', position: 1, visited: ['doing'], createdAt: '2026-01-04T00:00:00.000Z' };
+    const extra = { id: fixtureUuid(5), tenantId: tenantA.id, title: 'A doing 2', board: 'personal' as const, column: 'doing', position: 1, visited: ['doing'], createdAt: '2026-01-04T00:00:00.000Z' };
     await cardRepo().create(extra);
     const aIds = (await cardRepo().listByTenant(tenantA.id, 'personal')).map((c) => c.id);
     expect(aIds).toContain(extra.id);
@@ -447,13 +450,13 @@ describe('team board rules against Postgres', () => {
   const ctx: Ctx = { identity: identityA, tenantCreationMode: 'open' };
   const teamDeps = () => ({
     cards: cardRepo(),
-    ids: { nextId: () => `itest-team-${crypto.randomUUID()}` },
+    ids: { nextId: () => crypto.randomUUID() },
     clock: { nowIso: () => '2026-03-01T00:00:00.000Z' },
   });
 
   it('cross-board isolation: the personal list never shows team cards', async () => {
     const teamCard = {
-      id: 'itest-team-iso',
+      id: fixtureUuid(6),
       tenantId: tenantA.id,
       title: 'Team iso',
       board: 'team' as const,
@@ -503,7 +506,7 @@ describe('team board rules against Postgres', () => {
     // in-dev limit is 3: seed three occupants, a fourth move is rejected.
     for (let i = 0; i < 3; i += 1) {
       await cardRepo().create({
-        id: `itest-team-wip-${i}`,
+        id: fixtureUuid(10 + i),
         tenantId: tenantA.id,
         title: `WIP ${i}`,
         board: 'team' as const,
@@ -559,6 +562,36 @@ describe('MemberRepository + member use-cases', () => {
     clock: { nowIso: () => '2026-03-01T00:00:00.000Z' },
   });
 
+  it('pages by createdAt plus id without duplicates and terminates with null', async () => {
+    await db.insert(members).values([
+      {
+        id: 'itest-member-page-a',
+        tenantId: tenantA.id,
+        userId: null,
+        email: 'page-a@example.com',
+        displayName: null,
+        createdAt: '2026-02-01T00:00:00.000Z',
+      },
+      {
+        id: 'itest-member-page-b',
+        tenantId: tenantA.id,
+        userId: null,
+        email: 'page-b@example.com',
+        displayName: null,
+        createdAt: '2026-02-01T00:00:00.000Z',
+      },
+    ]);
+
+    const repo = memberRepo();
+    const first = await repo.listPageByTenant(tenantA.id, null, 1);
+    const second = await repo.listPageByTenant(tenantA.id, first.nextCursor, 1);
+
+    expect(first.items).toHaveLength(1);
+    expect(second.items).toHaveLength(1);
+    expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
+    expect(first.nextCursor).not.toBeNull();
+  });
+
   it('cross-tenant isolation: a tenant sees only its own members (F5)', async () => {
     const deps = memberDeps();
     const inB = await ensureMember(
@@ -569,8 +602,8 @@ describe('MemberRepository + member use-cases', () => {
     expect(inB.ok).toBe(true);
     const bMemberId = inB.ok ? inB.value.member.id : '';
 
-    const listedA = await listMembers(staffCtx(tenantA.id), deps);
-    expect(listedA.ok && listedA.value.some((m) => m.id === bMemberId)).toBe(false);
+    const listedA = await listMembers(staffCtx(tenantA.id), {}, deps);
+    expect(listedA.ok && listedA.value.items.some((m) => m.id === bMemberId)).toBe(false);
 
     // A staff member of A cannot read (or export) B's member by id — tenant-scoped.
     expect(await memberRepo().findByTenantAndId(tenantA.id, bMemberId)).toBeNull();
@@ -649,15 +682,26 @@ describe('StaffRepository + UserDirectory', () => {
   const userDir = () => createUserDirectory(db);
 
   it('listByTenant joins the account for email/name and is tenant-scoped', async () => {
-    const roster = await staffRepo().listByTenant(tenantB.id);
-    expect(roster).toEqual(
+    const roster = await staffRepo().listPageByTenant(tenantB.id, null, 50);
+    expect(roster.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ userId: staffB, email: 'staff-b@example.com', role: 'owner' }),
         expect.objectContaining({ userId: adminB, email: 'admin-b@example.com', role: 'admin' }),
       ]),
     );
     // A's staff never leaks into B's roster.
-    expect(roster.map((row) => row.userId)).not.toContain(staffA);
+    expect(roster.items.map((row) => row.userId)).not.toContain(staffA);
+  });
+
+  it('pages by role, email and id with a null cursor on the final page', async () => {
+    const repo = staffRepo();
+    const first = await repo.listPageByTenant(tenantB.id, null, 1);
+    const second = await repo.listPageByTenant(tenantB.id, first.nextCursor, 1);
+
+    expect(first.items).toHaveLength(1);
+    expect(second.items).toHaveLength(1);
+    expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
+    expect(second.nextCursor).toBeNull();
   });
 
   it('findGrant reads the tenant grant graph, tenant-scoped', async () => {
@@ -682,7 +726,7 @@ describe('StaffRepository + UserDirectory', () => {
     expect(await staffRepo().findGrant(tenantB.id, grantable.id)).toMatchObject({ role: 'admin' });
     // Cross-tenant isolation: the grant lives only in B.
     expect(await staffRepo().findGrant(tenantA.id, grantable.id)).toBeNull();
-    expect((await staffRepo().listByTenant(tenantA.id)).map((row) => row.userId)).not.toContain(grantable.id);
+    expect((await staffRepo().listPageByTenant(tenantA.id, null, 50)).items.map((row) => row.userId)).not.toContain(grantable.id);
 
     // A tenant-A revoke cannot remove a tenant-B grant (an admin is always
     // removable — the last-owner guard only protects owners).
@@ -767,14 +811,14 @@ describe('C3 invariant enforcement', () => {
 
   it('DB rejects a cards.board outside the closed set', async () => {
     await expectCheckViolation(
-      sql`INSERT INTO cards (id, tenant_id, title, board, "column", position, created_at) VALUES ('itest-bad-board', ${tenantB.id}, 'x', 'archive', 'todo', 0, '2026-01-01T00:00:00.000Z')`,
+      sql`INSERT INTO cards (id, tenant_id, title, board, "column", position, created_at) VALUES (${fixtureUuid(20)}, ${tenantB.id}, 'x', 'archive', 'todo', 0, '2026-01-01T00:00:00.000Z')`,
       'cards_board_check',
     );
   });
 
   it('DB rejects a cards.column that is not legal for its board', async () => {
     await expectCheckViolation(
-      sql`INSERT INTO cards (id, tenant_id, title, board, "column", position, created_at) VALUES ('itest-bad-col', ${tenantB.id}, 'x', 'personal', 'in-dev', 0, '2026-01-01T00:00:00.000Z')`,
+      sql`INSERT INTO cards (id, tenant_id, title, board, "column", position, created_at) VALUES (${fixtureUuid(21)}, ${tenantB.id}, 'x', 'personal', 'in-dev', 0, '2026-01-01T00:00:00.000Z')`,
       'cards_column_check',
     );
   });
@@ -816,7 +860,7 @@ describe('C3 invariant enforcement', () => {
   it('the adapter zod boundary rejects a corrupted card row (negative position)', async () => {
     await db.execute(
       sql`INSERT INTO cards (id, tenant_id, title, board, "column", position, visited, created_at)
-          VALUES ('itest-corrupt-card', ${tenantB.id}, 'corrupt', 'personal', 'todo', -1, '[]'::jsonb, '2026-01-01T00:00:00.000Z')`,
+          VALUES (${fixtureUuid(22)}, ${tenantB.id}, 'corrupt', 'personal', 'todo', -1, '[]'::jsonb, '2026-01-01T00:00:00.000Z')`,
     );
     await expect(cardRepo().listByTenant(tenantB.id, 'personal')).rejects.toThrow();
   });

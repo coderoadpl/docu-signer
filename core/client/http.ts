@@ -47,6 +47,7 @@ import {
   type MemberEnsureInput,
   type MemberRemoveInput,
   type MemberUpdateInput,
+  type PaginationQuery,
   type ReadMethod,
   type StaffGrantInput,
   type StaffRevokeInput,
@@ -158,6 +159,14 @@ const queryString = (filter: DocumentListFilter): string => {
   for (const [key, value] of Object.entries(filter)) {
     if (value !== undefined) params.set(key, value);
   }
+  const encoded = params.toString();
+  return encoded.length > 0 ? `?${encoded}` : '';
+};
+
+const paginationQueryString = (query: Partial<PaginationQuery>): string => {
+  const params = new URLSearchParams();
+  if (query.cursor !== undefined) params.set('cursor', query.cursor);
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
   const encoded = params.toString();
   return encoded.length > 0 ? `?${encoded}` : '';
 };
@@ -420,8 +429,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.cardsCreate.method, API_ROUTES.cardsCreate.path, cardCreateOutputSchema, input, signal),
   moveCard: (input: CardMove, signal?: AbortSignal) =>
     request(options, API_ROUTES.cardsMove.method, API_ROUTES.cardsMove.path, cardMoveOutputSchema, input, signal),
-  listMembers: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.members.method, API_ROUTES.members.path, memberListOutputSchema, undefined, signal),
+  listMembers: (query: Partial<PaginationQuery> = {}, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.members.method,
+      `${API_ROUTES.members.path}${paginationQueryString(query)}`,
+      memberListOutputSchema,
+      undefined,
+      signal,
+    ),
   ensureMember: (input: MemberEnsureInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.membersEnsure.method, API_ROUTES.membersEnsure.path, memberEnsureOutputSchema, input, signal),
   updateMember: (input: MemberUpdateInput, signal?: AbortSignal) =>
@@ -437,8 +453,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  listStaff: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.staff.method, API_ROUTES.staff.path, staffListOutputSchema, undefined, signal),
+  listStaff: (query: Partial<PaginationQuery> = {}, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.staff.method,
+      `${API_ROUTES.staff.path}${paginationQueryString(query)}`,
+      staffListOutputSchema,
+      undefined,
+      signal,
+    ),
   grantStaff: (input: StaffGrantInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.staffGrant.method, API_ROUTES.staffGrant.path, staffGrantOutputSchema, input, signal),
   revokeStaff: (input: StaffRevokeInput, signal?: AbortSignal) =>

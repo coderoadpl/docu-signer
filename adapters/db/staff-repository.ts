@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, or, sql } from 'drizzle-orm';
 
 import { staffMemberSchema } from '#core/domain/index.js';
 import type { StaffGrant, StaffRepository, UserDirectory } from '#core/server/index.js';
@@ -7,7 +7,7 @@ import type { Db } from './client.js';
 import { tenantAdmins, user } from './schema.js';
 
 export const createStaffRepository = (db: Db): StaffRepository => ({
-  listByTenant: async (tenantId) => {
+  listPageByTenant: async (tenantId, cursor, limit) => {
     const rows = await db
       .select({
         id: tenantAdmins.id,
@@ -18,11 +18,35 @@ export const createStaffRepository = (db: Db): StaffRepository => ({
       })
       .from(tenantAdmins)
       .innerJoin(user, eq(tenantAdmins.userId, user.id))
-      .where(eq(tenantAdmins.tenantId, tenantId))
-      .orderBy(tenantAdmins.role, user.email);
+      .where(
+        and(
+          eq(tenantAdmins.tenantId, tenantId),
+          cursor === null
+            ? undefined
+            : or(
+                gt(tenantAdmins.role, cursor.role),
+                and(eq(tenantAdmins.role, cursor.role), gt(user.email, cursor.email)),
+                and(
+                  eq(tenantAdmins.role, cursor.role),
+                  eq(user.email, cursor.email),
+                  gt(tenantAdmins.id, cursor.id),
+                ),
+              ),
+        ),
+      )
+      .orderBy(asc(tenantAdmins.role), asc(user.email), asc(tenantAdmins.id))
+      .limit(limit + 1);
     // Parse at the boundary: the `role` column stores a plain string the domain
     // schema narrows back to the `owner|admin` union.
-    return rows.map((row) => staffMemberSchema.parse(row));
+    const items = rows.slice(0, limit).map((row) => staffMemberSchema.parse(row));
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor:
+        rows.length > limit && last !== undefined
+          ? { role: last.role, email: last.email, id: last.id }
+          : null,
+    };
   },
   findGrant: async (tenantId, userId) => {
     const rows = await db

@@ -16,10 +16,12 @@ export const createCardRepository = (db: Db): CardRepository => ({
       .from(cards)
       .where(and(eq(cards.tenantId, tenantId), eq(cards.board, board)))
       .orderBy(asc(cards.column), asc(cards.position));
-    return rows.map((row) => cardSchema.parse(row));
+    return rows.map((row) =>
+      cardSchema.parse({ ...row, createdAt: row.createdAt.toISOString() }),
+    );
   },
   create: async (card) => {
-    await db.insert(cards).values(card);
+    await db.insert(cards).values({ ...card, createdAt: new Date(card.createdAt) });
   },
   // Positions are rewritten row-by-row scoped to the tenant + board. Sequential
   // (not a db.transaction) so the same code runs under neon-http, which has no

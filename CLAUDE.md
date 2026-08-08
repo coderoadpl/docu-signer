@@ -93,8 +93,10 @@ Per-layer one-screen summaries live beside the code — [`core/CLAUDE.md`](core/
 - `adapters/**` implement ports; only `apps/server/src/composition.ts`
   instantiates a *server* adapter. Two deliberate exceptions: the auth *client*
   adapter is constructed in `apps/web/src/api.ts` (web) and the CLI's `cliCtx`,
-  and `adapters/db/migrate.ts` reads `DB_DRIVER`/`DATABASE_URL`/`VERCEL` itself
-  as a sanctioned composition point outside the server root.
+  and the standalone DB operations `adapters/db/migrate.ts` and
+  `adapters/db/seed.ts` are sanctioned composition points outside the server
+  root. Seed needs the real auth adapter to hash credentials, just as migrate
+  needs the real database adapter.
 - `apps/web` and `apps/cli` import `core/client` (+ auth client adapter), never
   `core/server`, never `adapters/db`.
 - `@vercel/*` / `@neondatabase/*` only inside `adapters/` (and the platform

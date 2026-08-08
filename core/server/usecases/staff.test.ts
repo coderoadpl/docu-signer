@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, StaffRole } from '#core/domain/index.js';
+import { encodeOpaqueCursor, type Identity, type StaffRole } from '#core/domain/index.js';
 
 import type { DirectoryUser, StaffRepository, UserDirectory } from '../ports.js';
 import { grantAdmin, listStaff, revokeAdmin, type StaffDeps } from './staff.js';
@@ -39,9 +39,10 @@ interface GrantRow {
 const fakes = (grants: GrantRow[] = [], directory: DirectoryUser[] = []) => {
   let store = [...grants];
   const staff: StaffRepository = {
-    listByTenant: async (tenantId) =>
-      store
+    listPageByTenant: async (tenantId, _cursor, limit) => ({
+      items: store
         .filter((row) => row.tenantId === tenantId)
+        .slice(0, limit)
         .map((row) => {
           const user = directory.find((entry) => entry.userId === row.userId);
           return {
@@ -52,6 +53,8 @@ const fakes = (grants: GrantRow[] = [], directory: DirectoryUser[] = []) => {
             role: row.role,
           };
         }),
+      nextCursor: null,
+    }),
     findGrant: async (tenantId, userId) => {
       const row = store.find((entry) => entry.tenantId === tenantId && entry.userId === userId);
       return row ? { id: row.id, userId: row.userId, role: row.role } : null;
@@ -96,13 +99,13 @@ const carlos: DirectoryUser = { userId: 'u-carlos', email: 'carlos@example.com',
 describe('staff use-cases — authorization matrix', () => {
   it('listStaff is readable by owner AND admin, forbidden to member and tenant-less visitor', async () => {
     const { staff, users } = fakes([ownerGrant()]);
-    expect((await listStaff({ identity: owner, tenantCreationMode: 'open' }, deps(staff, users))).ok).toBe(true);
-    expect((await listStaff({ identity: admin, tenantCreationMode: 'open' }, deps(staff, users))).ok).toBe(true);
-    expect(await listStaff({ identity: member, tenantCreationMode: 'open' }, deps(staff, users))).toMatchObject({
+    expect((await listStaff({ identity: owner, tenantCreationMode: 'open' }, {}, deps(staff, users))).ok).toBe(true);
+    expect((await listStaff({ identity: admin, tenantCreationMode: 'open' }, {}, deps(staff, users))).ok).toBe(true);
+    expect(await listStaff({ identity: member, tenantCreationMode: 'open' }, {}, deps(staff, users))).toMatchObject({
       ok: false,
       error: { code: 'forbidden' },
     });
-    expect(await listStaff({ identity: visitor, tenantCreationMode: 'open' }, deps(staff, users))).toMatchObject({
+    expect(await listStaff({ identity: visitor, tenantCreationMode: 'open' }, {}, deps(staff, users))).toMatchObject({
       ok: false,
       error: { code: 'forbidden' },
     });
@@ -120,6 +123,34 @@ describe('staff use-cases — authorization matrix', () => {
     expect(await revokeAdmin({ identity: admin, tenantCreationMode: 'open' }, { userId: 'u-carlos' }, deps(staff, users))).toMatchObject({
       ok: false,
       error: { code: 'forbidden' },
+    });
+  });
+});
+
+describe('listStaff — cursor pagination', () => {
+  it('passes the decoded role/email/id key to the repository', async () => {
+    const { staff, users } = fakes([ownerGrant()]);
+    let seen: unknown;
+    staff.listPageByTenant = async (_tenantId, cursor, limit) => {
+      seen = { cursor, limit };
+      return { items: [], nextCursor: null };
+    };
+    const cursor = encodeOpaqueCursor({
+      role: 'admin',
+      email: 'admin@example.com',
+      id: 'grant-admin',
+    });
+
+    const result = await listStaff(
+      { identity: owner, tenantCreationMode: 'open' },
+      { cursor, limit: 7 },
+      deps(staff, users),
+    );
+
+    expect(result).toEqual({ ok: true, value: { items: [], nextCursor: null } });
+    expect(seen).toEqual({
+      cursor: { role: 'admin', email: 'admin@example.com', id: 'grant-admin' },
+      limit: 7,
     });
   });
 });

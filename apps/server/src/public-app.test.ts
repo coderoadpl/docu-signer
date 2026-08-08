@@ -59,7 +59,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     createUploadUrl: async () => ok(null),
   },
   members: {
-    listByTenant: async () => [],
+    listPageByTenant: async () => ({ items: [], nextCursor: null }),
     findByEmail: async () => null,
     findByTenantAndId: async () => null,
     create: async () => {},
@@ -67,7 +67,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     deleteByTenantAndId: async () => 0,
   },
   staff: {
-    listByTenant: async () => [],
+    listPageByTenant: async () => ({ items: [], nextCursor: null }),
     findGrant: async () => null,
     grant: async () => {},
     revokeLastOwnerSafe: async () => 0,

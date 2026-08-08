@@ -1,19 +1,25 @@
 import {
+  decodeOpaqueCursor,
+  encodeOpaqueCursor,
   err,
   grantAdminInputSchema,
   notFound,
   ok,
+  paginationQuerySchema,
   revokeAdminInputSchema,
+  staffRoleSchema,
   validation,
   type AppError,
   type GrantAdminInput,
+  type PaginationQueryInput,
   type Result,
   type StaffMember,
 } from '#core/domain/index.js';
+import { z } from 'zod';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { IdGenerator, StaffRepository, UserDirectory } from '../ports.js';
+import type { IdGenerator, StaffPageCursor, StaffRepository, UserDirectory } from '../ports.js';
 
 export interface StaffDeps {
   staff: StaffRepository;
@@ -33,14 +39,40 @@ export interface RevokeAdminResult {
   revoked: number;
 }
 
+export interface StaffPage {
+  items: StaffMember[];
+  nextCursor: string | null;
+}
+
+const staffPageCursorSchema = z.object({
+  role: staffRoleSchema,
+  email: z.string(),
+  id: z.string(),
+});
+
 /** Staff-readable roster of a tenant's owner+admin grants (FR-8). */
 export const listStaff = async (
   ctx: Ctx,
+  input: PaginationQueryInput,
   deps: StaffDeps,
-): Promise<Result<StaffMember[], AppError>> => {
+): Promise<Result<StaffPage, AppError>> => {
   const scope = authorizeTenant(ctx, 'staff:read');
   if (!scope.ok) return scope;
-  return ok(await deps.staff.listByTenant(scope.value));
+  const query = paginationQuerySchema.safeParse(input);
+  if (!query.success) return err(validation('Invalid pagination query', query.error.flatten()));
+  const cursor = parseStaffCursor(query.data.cursor);
+  if (cursor === undefined) return err(validation('Invalid pagination cursor'));
+  const page = await deps.staff.listPageByTenant(scope.value, cursor, query.data.limit);
+  return ok({
+    items: page.items,
+    nextCursor: page.nextCursor === null ? null : encodeOpaqueCursor(page.nextCursor),
+  });
+};
+
+const parseStaffCursor = (cursor: string | undefined): StaffPageCursor | null | undefined => {
+  if (cursor === undefined) return null;
+  const parsed = staffPageCursorSchema.safeParse(decodeOpaqueCursor(cursor));
+  return parsed.success ? parsed.data : undefined;
 };
 
 /**

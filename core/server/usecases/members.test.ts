@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, Member } from '#core/domain/index.js';
+import { encodeOpaqueCursor, type Identity, type Member } from '#core/domain/index.js';
 
 import type { MemberRepository } from '../ports.js';
 import {
@@ -51,7 +51,10 @@ const seedMember = (over: Partial<Member> = {}): Member => ({
 const fakeRepo = (initial: Member[] = []) => {
   let store = [...initial];
   const repo: MemberRepository = {
-    listByTenant: async (tenantId) => store.filter((row) => row.tenantId === tenantId),
+    listPageByTenant: async (tenantId, _cursor, limit) => ({
+      items: store.filter((row) => row.tenantId === tenantId).slice(0, limit),
+      nextCursor: null,
+    }),
     findByEmail: async (tenantId, email) =>
       store.find((row) => row.tenantId === tenantId && row.email === email) ?? null,
     findByTenantAndId: async (tenantId, id) =>
@@ -80,7 +83,7 @@ const deps = (repo: MemberRepository): MemberDeps => ({
 describe('member use-cases — authorization', () => {
   it('denies a tenant-less staff caller with forbidden before any repository access', async () => {
     const { repo, store } = fakeRepo();
-    const listed = await listMembers({ identity: staff(null), tenantCreationMode: 'open' }, deps(repo));
+    const listed = await listMembers({ identity: staff(null), tenantCreationMode: 'open' }, {}, deps(repo));
     expect(listed).toMatchObject({ ok: false, error: { code: 'forbidden' } });
 
     const ensured = await ensureMember({ identity: staff(null), tenantCreationMode: 'open' }, { email: 'a@b.com' }, deps(repo));
@@ -90,7 +93,7 @@ describe('member use-cases — authorization', () => {
 
   it('denies an end-customer member (members are staff-managed, not roster editors)', async () => {
     const { repo } = fakeRepo([seedMember()]);
-    expect(await listMembers({ identity: member, tenantCreationMode: 'open' }, deps(repo))).toMatchObject({
+    expect(await listMembers({ identity: member, tenantCreationMode: 'open' }, {}, deps(repo))).toMatchObject({
       ok: false,
       error: { code: 'forbidden' },
     });
@@ -105,6 +108,60 @@ describe('member use-cases — authorization', () => {
       ok: false,
       error: { code: 'forbidden' },
     });
+  });
+});
+
+describe('listMembers — cursor pagination', () => {
+  it('decodes the keyed cursor, applies the limit cap, and returns an opaque next cursor', async () => {
+    const seen: unknown[] = [];
+    const { repo } = fakeRepo();
+    repo.listPageByTenant = async (tenantId, cursor, limit) => {
+      seen.push({ tenantId, cursor, limit });
+      return {
+        items: [seedMember({ id: 'm-3' })],
+        nextCursor: { createdAt: '2026-07-03T00:00:00.000Z', id: 'm-3' },
+      };
+    };
+    const cursor = encodeOpaqueCursor({
+      createdAt: '2026-07-02T00:00:00.000Z',
+      id: 'm-2',
+    });
+
+    const result = await listMembers(
+      { identity: staff('t-acme'), tenantCreationMode: 'open' },
+      { cursor, limit: 999 },
+      deps(repo),
+    );
+
+    expect(seen).toEqual([
+      {
+        tenantId: 't-acme',
+        cursor: { createdAt: '2026-07-02T00:00:00.000Z', id: 'm-2' },
+        limit: 100,
+      },
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { items: [{ id: 'm-3' }], nextCursor: expect.any(String) },
+    });
+  });
+
+  it('rejects a malformed cursor after authorization without repository access', async () => {
+    const { repo } = fakeRepo();
+    let called = false;
+    repo.listPageByTenant = async () => {
+      called = true;
+      return { items: [], nextCursor: null };
+    };
+
+    const result = await listMembers(
+      { identity: staff('t-acme'), tenantCreationMode: 'open' },
+      { cursor: 'not-a-cursor' },
+      deps(repo),
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(called).toBe(false);
   });
 });
 

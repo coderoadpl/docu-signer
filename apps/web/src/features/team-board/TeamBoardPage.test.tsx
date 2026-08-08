@@ -20,8 +20,13 @@ interface ServerCard {
   createdAt: string;
 }
 
+const fixtureId = (value: string): string => {
+  const suffix = [...value].reduce((hash, char) => hash * 31 + char.charCodeAt(0), 0);
+  return `00000000-0000-4000-8000-${suffix.toString(16).padStart(12, '0')}`;
+};
+
 const makeCard = (id: string, title: string, column: string, visited: string[]): ServerCard => ({
-  id,
+  id: fixtureId(id),
   tenantId: 't1',
   title,
   board: 'team',

@@ -48,7 +48,10 @@ const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
 });
 
 const fakeMembers = (rows: Member[]): MemberRepository => ({
-  listByTenant: async (tenantId) => rows.filter((r) => r.tenantId === tenantId),
+  listPageByTenant: async (tenantId) => ({
+    items: rows.filter((r) => r.tenantId === tenantId),
+    nextCursor: null,
+  }),
   findByEmail: async (tenantId, email) =>
     rows.find((r) => r.tenantId === tenantId && r.email === email) ?? null,
   findByTenantAndId: async (tenantId, id) =>

@@ -101,7 +101,7 @@ export const todos = pgTable(
 export const cards = pgTable(
   'cards',
   {
-    id: text('id').primaryKey(),
+    id: uuid('id').primaryKey(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -118,8 +118,7 @@ export const cards = pgTable(
     // Ordered columns the card has entered — read by the team board's
     // review-requires-in-dev guard. jsonb string array; defaults to empty.
     visited: jsonb('visited').$type<string[]>().notNull().default([]),
-    // ISO 8601 string; the domain speaks ISO strings, not driver-specific Dates.
-    createdAt: text('created_at').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
   (table) => [
     index('cards_tenant_board_column_idx').on(

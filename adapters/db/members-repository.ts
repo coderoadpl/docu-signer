@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, gt, or } from 'drizzle-orm';
 
 import { memberSchema, type Member } from '#core/domain/index.js';
 import type { MemberRepository } from '#core/server/index.js';
@@ -12,13 +12,32 @@ import { members } from './schema.js';
 const toMember = (row: typeof members.$inferSelect): Member => memberSchema.parse(row);
 
 export const createMemberRepository = (db: Db): MemberRepository => ({
-  listByTenant: async (tenantId) => {
+  listPageByTenant: async (tenantId, cursor, limit) => {
     const rows = await db
       .select()
       .from(members)
-      .where(eq(members.tenantId, tenantId))
-      .orderBy(asc(members.createdAt));
-    return rows.map(toMember);
+      .where(
+        and(
+          eq(members.tenantId, tenantId),
+          cursor === null
+            ? undefined
+            : or(
+                gt(members.createdAt, cursor.createdAt),
+                and(eq(members.createdAt, cursor.createdAt), gt(members.id, cursor.id)),
+              ),
+        ),
+      )
+      .orderBy(asc(members.createdAt), asc(members.id))
+      .limit(limit + 1);
+    const items = rows.slice(0, limit).map(toMember);
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor:
+        rows.length > limit && last !== undefined
+          ? { createdAt: last.createdAt, id: last.id }
+          : null,
+    };
   },
   findByEmail: async (tenantId, email) => {
     const rows = await db

@@ -526,8 +526,20 @@ export const buildApp = (deps: AppDeps) => {
   });
 
   app.get(API_PATHS.members, async (c) => {
-    const result = await listMembers(ctxOf(c.get('identity')), deps);
-    return respond(result.ok ? ok({ members: result.value }) : result);
+    const result = await listMembers(
+      ctxOf(c.get('identity')),
+      { cursor: c.req.query('cursor'), limit: c.req.query('limit') },
+      deps,
+    );
+    return respond(
+      result.ok
+        ? ok({
+            items: result.value.items,
+            members: result.value.items,
+            nextCursor: result.value.nextCursor,
+          })
+        : result,
+    );
   });
 
   app.post(API_PATHS.members, async (c) => {
@@ -570,8 +582,20 @@ export const buildApp = (deps: AppDeps) => {
   });
 
   app.get(API_PATHS.staff, async (c) => {
-    const result = await listStaff(ctxOf(c.get('identity')), deps);
-    return respond(result.ok ? ok({ staff: result.value }) : result);
+    const result = await listStaff(
+      ctxOf(c.get('identity')),
+      { cursor: c.req.query('cursor'), limit: c.req.query('limit') },
+      deps,
+    );
+    return respond(
+      result.ok
+        ? ok({
+            items: result.value.items,
+            staff: result.value.items,
+            nextCursor: result.value.nextCursor,
+          })
+        : result,
+    );
   });
 
   app.post(API_PATHS.staff, async (c) => {

@@ -157,7 +157,7 @@ describe('route schemas parse their example payloads', () => {
   });
 
   it('memberListOutputSchema', () => {
-    const example = { members: [exampleMember] };
+    const example = { items: [exampleMember], members: [exampleMember], nextCursor: null };
     expect(memberListOutputSchema.parse(example)).toEqual(example);
   });
 

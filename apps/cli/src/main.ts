@@ -15,6 +15,7 @@ import {
   memberEnsureInputSchema,
   memberRemoveInputSchema,
   memberUpdateInputSchema,
+  paginationQuerySchema,
   staffGrantInputSchema,
   staffRevokeInputSchema,
   tenantCreateInputSchema,
@@ -519,19 +520,28 @@ const member = program
   .command('member')
   .description('End customers (members) in the active tenant — staff only (owner/admin)');
 
-member.command('list').description('List members').action(async () => {
-  const ctx = cliCtx();
-  emit(await ctx.api.listMembers(), ctx.json, (data) =>
-    data.members.length === 0
-      ? 'no members'
-      : data.members
-          .map((m) => {
-            const tags = m.tags.length > 0 ? `  [${m.tags.join(', ')}]` : '';
-            return `- ${m.email}\t${m.displayName ?? '—'}  (${m.id.slice(0, 8)})${tags}`;
-          })
-          .join('\n'),
-  );
-});
+member
+  .command('list')
+  .description('List one page of members')
+  .option('--cursor <cursor>', 'opaque cursor returned by the previous page')
+  .option('--limit <n>', 'page size (server-capped)')
+  .action(async (options: { cursor?: string; limit?: string }) => {
+    const ctx = cliCtx();
+    const query = parseArgs(paginationQuerySchema, options, ctx.json);
+    if (query === undefined) return;
+    emit(await ctx.api.listMembers(query), ctx.json, (data) => {
+      const rows =
+        data.members.length === 0
+          ? 'no members'
+          : data.members
+              .map((m) => {
+                const tags = m.tags.length > 0 ? `  [${m.tags.join(', ')}]` : '';
+                return `- ${m.email}\t${m.displayName ?? '—'}  (${m.id.slice(0, 8)})${tags}`;
+              })
+              .join('\n');
+      return data.nextCursor === null ? rows : `${rows}\nnext cursor: ${data.nextCursor}`;
+    });
+  });
 
 member
   .command('ensure <email>')
@@ -613,14 +623,23 @@ const staff = program
       'already have an account (grant returns not_found otherwise).',
   );
 
-staff.command('list').description('List the tenant staff (owner/admin)').action(async () => {
-  const ctx = cliCtx();
-  emit(await ctx.api.listStaff(), ctx.json, (data) =>
-    data.staff.length === 0
-      ? 'no staff'
-      : data.staff.map((s) => `- ${s.email}\t${s.name}  (${s.role})`).join('\n'),
-  );
-});
+staff
+  .command('list')
+  .description('List one page of tenant staff (owner/admin)')
+  .option('--cursor <cursor>', 'opaque cursor returned by the previous page')
+  .option('--limit <n>', 'page size (server-capped)')
+  .action(async (options: { cursor?: string; limit?: string }) => {
+    const ctx = cliCtx();
+    const query = parseArgs(paginationQuerySchema, options, ctx.json);
+    if (query === undefined) return;
+    emit(await ctx.api.listStaff(query), ctx.json, (data) => {
+      const rows =
+        data.staff.length === 0
+          ? 'no staff'
+          : data.staff.map((s) => `- ${s.email}\t${s.name}  (${s.role})`).join('\n');
+      return data.nextCursor === null ? rows : `${rows}\nnext cursor: ${data.nextCursor}`;
+    });
+  });
 
 staff
   .command('grant <email>')

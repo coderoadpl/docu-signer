@@ -35,6 +35,8 @@ import {
   updateDocumentSchema,
 } from '#core/domain/index.js';
 
+import { paginatedOutputSchema } from './pagination.js';
+
 /**
  * Single source of truth for the HTTP API shared by server and all clients.
  * Every route is described by its method, path and zod schemas; the server
@@ -210,7 +212,7 @@ export const cardMoveOutputSchema = z.object({
   card: cardSchema,
 });
 
-export const memberListOutputSchema = z.object({
+export const memberListOutputSchema = paginatedOutputSchema(memberSchema).extend({
   members: z.array(memberSchema),
 });
 
@@ -245,7 +247,7 @@ export const memberExportQuerySchema = memberRefSchema;
 
 export const memberExportOutputSchema = memberExportSchema;
 
-export const staffListOutputSchema = z.object({
+export const staffListOutputSchema = paginatedOutputSchema(staffMemberSchema).extend({
   staff: z.array(staffMemberSchema),
 });
 
