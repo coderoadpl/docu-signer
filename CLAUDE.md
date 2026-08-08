@@ -2,6 +2,12 @@
 
 Architecture spec: `docs/prd-agentproofarch-foundation.md` (see also `docs/architecture.md`) (§3 is normative).
 
+**Scale ruling (owner, 2026-07-27):** this is a non-commercial tool for 2
+users. Structural rules apply in full; ceremony does not graduate without a
+named trigger. Conscious deviations from the upstream foundation are recorded
+one line each in [FOUNDATION.md](FOUNDATION.md) — read it before invoking
+upstream doctrine, and prefer simplicity + a delta line over new ADRs.
+
 ## The two gates
 
 - `pnpm run check` = typecheck + ESLint (boundaries) + lock-lint (proves
@@ -74,7 +80,7 @@ rejected.)
   `toHaveScreenshot()` over the same boot harness, in its own suite
   (`visual/`, `playwright.visual.config.ts`) so a moved screenshot can never
   redden `e2e`. It is **not a required check** — the required set is
-  `check`/`smoke`/`e2e` (+ `ai-review` on `main-gates`), and
+  `check`/`smoke`/`e2e`/`ai-review` (procedurally — see FOUNDATION.md), and
   `visual` stays out of it until the owner arms it. Baselines
   (`visual/__screenshots__/<platform>/`) are rendered by the linux CI runner via
   the `visual-baselines` workflow and committed; a mac run compares nothing

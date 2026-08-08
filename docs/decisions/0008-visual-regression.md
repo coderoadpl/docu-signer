@@ -52,14 +52,14 @@ away, or not screenshotted at all.
    cannot go red because a screenshot moved — the isolation is a directory, not a
    filter someone can forget to apply.
 
-4. **The check is NON-REQUIRED until the owner arms it.** The required checks
-   (architecture §Environments) are `check` / `smoke` / `e2e`
-   on both rulesets, plus `ai-review` on `main-gates` since 2026-07-26. The
-   new `visual` job is deliberately not among them: it reports, it does not block.
-   Arming it is a one-line ruleset edit by the owner, made only after the check
-   has a run history of green comparisons — and it is reverted the moment the
-   gate flakes, because a flaky required gate is a P1 (ADR-0004 stance: an
-   enforcer that cannot be trusted is worse than no enforcer).
+4. **The check is NON-REQUIRED until the owner arms it.** The gating checks
+   are `check` / `smoke` / `e2e` / `ai-review` — procedurally in this fork
+   (no rulesets; FOUNDATION.md). The new `visual` job is deliberately not
+   among them: it reports, it does not block. Arming it is an owner decision,
+   made only after the check has a run history of green comparisons — and it
+   is reverted the moment the gate flakes, because a flaky required gate is a
+   P1 (ADR-0004 stance: an enforcer that cannot be trusted is worse than no
+   enforcer).
 
 5. **Determinism levers (the whole point).** All set in
    `playwright.visual.config.ts`:
