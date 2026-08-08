@@ -214,6 +214,13 @@ const integrationFiles = (): string[] =>
     .flatMap((root) => (existsSync(join(repoRoot, root)) ? walkTestFiles(join(repoRoot, root)) : []))
     .filter((file) => file.endsWith('.integration.test.ts'));
 const configRegressionFiles = (): string[] => filesIn('config-regression', '.test.ts');
+const cliCommandGroups = (): number => {
+  const source = readFileSync(join(repoRoot, 'apps/cli/src/main.ts'), 'utf8');
+  const names = [...source.matchAll(/\bprogram\s*\.\s*command\(\s*'([^' <]+)/g)]
+    .map((match) => match[1])
+    .filter((name): name is string => name !== undefined);
+  return new Set(names).size;
+};
 
 const COUNTERS: Record<string, () => number> = {
   'test-files': () => defaultRunTestFiles().length,
@@ -221,6 +228,7 @@ const COUNTERS: Record<string, () => number> = {
   'e2e-tests': () => countDecls(e2eSpecFiles()),
   'integration-tests': () => countDecls(integrationFiles()),
   'config-regression': () => countDecls(configRegressionFiles()),
+  'cli-command-groups': cliCommandGroups,
 };
 
 const COUNT_TOKEN_SYNTAXES: readonly RegExp[] = [
@@ -234,6 +242,7 @@ const ALL_COUNTERS = [
   'e2e-tests',
   'e2e-specs',
   'config-regression',
+  'cli-command-groups',
 ] as const;
 const REQUIRED_COUNT_TOKENS: Readonly<Record<string, readonly string[]>> = {
   'README.md': ALL_COUNTERS,

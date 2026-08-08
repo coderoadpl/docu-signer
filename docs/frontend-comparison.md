@@ -59,8 +59,8 @@ ahead on boundaries. What t3code does better, and what we adopt:
   subsystem, not per-page improvisation.
 - **No-barrel discipline enforced twice**: package `exports` expose only
   explicit subpaths *and* `no-restricted-imports` bans the package root.
-- **Docs that link to source**: `docs/architecture/overview.md` cross-links the
-  real files, giving agents a navigable map; `CLAUDE.md` is a symlink to
+- **Docs that link to source**: its architecture overview cross-links
+  the real files, giving agents a navigable map; its `CLAUDE.md` is a symlink to
   `AGENTS.md` (one instruction file for every agent).
 - **A third enforcement tier**: deterministic lint → type system → **AI reviewer
   with `conclusion: failure`** for conventions that are real but not

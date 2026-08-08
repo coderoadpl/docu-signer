@@ -849,9 +849,10 @@ removes credentials at the provider (foundation tables never FK provider tables)
 and any owned-email snapshot held in member rows is tombstoned in place, not left
 as PII. Until the trigger fires this is a documented use-case shape, not shipped
 code — the demo carries no real personal data. The same trigger activates the
-preview/staging data doctrine in §Environments (Vercel target): erasure must
-account for Neon preview branches, so previews branch from a scrubbed/seed-only
-parent and non-production deployments sit behind access protection.
+preview/staging data doctrine in §Environments (Vercel target): replace this
+fork's shared Preview store with a scrubbed/seed-only isolated store, account for
+that store in erasure, and keep non-production deployments behind access
+protection.
 
 **Retention** (NORMATIVE NOW) is a sink setting, not code: the application stores
 no logs or traces itself and configures no app-side retention — telemetry leaves
@@ -862,8 +863,8 @@ processed-events) gets a per-table prune job only when volume demands it
 (§Background jobs and webhooks).
 
 **Backups** (NORMATIVE NOW): on Vercel/Neon, disaster recovery is Neon instant
-restore (branch-from-timestamp, the same mechanism as preview branching); the Free
-tier's **6-hour** restore window is adequate for the demo but explicitly
+restore (branch-from-timestamp); the Free tier's **6-hour** restore window is adequate
+for the demo but explicitly
 insufficient for production personal data — a longer window (Launch ≈ 1 day, Scale
 up to 30 days) is a paid-plan flip made when the GDPR trigger fires. Self-host
 owns its own cadence; the foundation prescribes the mechanism (Postgres base
@@ -1017,12 +1018,12 @@ why the DB cannot hold it.
 constraint validates every existing row at `ALTER` time and **fails the deploy if
 any row violates** — that is the guarantee ("grandfather nothing silently"), but on
 production it means the deploy can abort mid-migration. Before shipping such a
-migration to staging/production, take a Neon branch-from-timestamp restore point
-(the same instant-restore mechanism as preview branching, §Data lifecycle
-Backups), so a violating row that only surfaces against real data is a one-command
-rollback, not an incident. Previews (ephemeral branches) and self-host (own backup
-cadence) need no extra step. — **REVIEW+AI**: a constraint-adding migration's PR
-notes the snapshot/PITR point taken before promotion.
+migration to a deployed environment, take a Neon branch-from-timestamp restore
+point (§Data lifecycle Backups), so a violating row that only surfaces against
+real data is a one-command rollback, not an incident. This includes Preview in
+this fork because Preview and Production share the database; self-host uses its
+own backup cadence. — **REVIEW+AI**: a constraint-adding migration's PR notes
+the snapshot/PITR point taken before promotion.
 
 ## Transactions
 
@@ -1490,10 +1491,14 @@ is [deploy-promotion.md](deploy-promotion.md).
 
 | Env | Git → deploy | Database | Host |
 |---|---|---|---|
-| Production | merge to `production` (owner-approved PR, `production-protection` ruleset) → Vercel Production build | Neon branch `production` | project custom domain (+ wildcard when added) |
-| Staging | `main` → auto Preview deployment on a stable URL | Neon branch `staging` | stable staging URL |
-| Preview | every PR → auto Preview deployment | **ephemeral Neon branch per PR** (marketplace integration) | per-PR URL |
+| Production | merge to `production` (owner-approved PR, `production-protection` ruleset) → Vercel Production build | Shared deployed Neon database | project custom domain (+ wildcard when added) |
+| Staging | `main` → auto Preview deployment on a stable URL | Shared deployed Neon database | stable staging URL |
+| Preview | every PR → auto Preview deployment | Shared deployed Neon database | per-PR URL |
 | Development | local | Docker Postgres (or a Neon `dev` branch) | `*.localhost` |
+
+Production, Staging, and Preview also share one Vercel Blob store. The fork
+configures no per-preview Neon branch or Blob store; Vercel supplies the shared
+`DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` consumed by the application.
 
 **Preview + staging ARE the development environment** — there is no separate
 deployed dev environment. Per-PR previews are where a change is exercised in a
@@ -1593,13 +1598,13 @@ foundation):
   non-secret local values (`.env.example` documents every name; the dev
   database is local Docker). Nothing secret in the repo. **All production env
   vars are marked Sensitive** (write-only in the dashboard/CLI; control 3 of 5).
-- **Migrations and the deploy admin seed run at build time** against that
-  environment's own database. `db:seed:deploy` runs after migration and creates
+- **Migrations and the deploy admin seed run at build time** against the shared
+  deployed database. `db:seed:deploy` runs after migration and creates
   only the `default` tenant plus the `SEED_ADMIN*` accounts and grants; it never
   invokes the local `db:seed` demo fixture. With no admin 1 pair it is a no-op.
-  Previews migrate and bootstrap their ephemeral branch; staging/prod migrations
-  are forward-only, so destructive changes ship as two deploys, expand →
-  contract.
+  Preview and Production migrations are forward-only, so destructive changes
+  ship as two deploys, expand → contract. A Preview build is not a database
+  isolation boundary in this fork.
 
   **Owner ruling (2026-07-27):** the migration lineage was rebuilt wholesale in
   the skeleton-migration PR while no persistent environment existed. Every
@@ -1681,22 +1686,22 @@ deployment details (its teams, domains, promotion cadence, app-specific env) are
 owned by that app's own docs, not here.
 
 **Preview/staging data doctrine** (NORMATIVE WHEN TRIGGERED — trigger: the
-first real user personal data in production; today every environment holds
-only the demo seed, so per-PR branches of production are harmless). The moment
-production data is real, three rules activate together:
+first real end-user personal data in production). This two-trusted-user fork
+currently shares one deployed database and Blob store across Production and
+Preview. If the trigger fires, isolation must be introduced before Preview can
+remain an exercise surface:
 
-- **Previews branch from a scrubbed or seed-only parent, never from live
-  production.** The per-PR Neon branch's parent becomes a dedicated
-  seed-only branch (or a scrubbed copy refreshed by a sanctioned job) — opening
-  a PR must not, by itself, copy live PII into an ephemeral environment.
+- **Previews move to a scrubbed or seed-only store, never the live Production
+  store.** A Neon preview branch may use a dedicated seed-only parent (or a
+  scrubbed copy refreshed by a sanctioned job); opening a PR must not, by
+  itself, expose live PII to preview code.
 - **Preview deployments get access protection.** Per-PR URLs are shareable and
   guessable; Vercel deployment protection (or an equivalent auth wall) fronts
   every non-production deployment.
-- **Preview branches are named in the erasure story.** The right-to-erasure
-  procedure in §Data lifecycle (GDPR mechanics — same trigger) must enumerate
-  live Neon branches: a seed-only parent keeps previews out of scope by
-  construction, and any branch ever taken from pre-scrub production is deleted
-  or re-parented as part of fulfilling an erasure request.
+- **Any isolated Preview stores are named in the erasure story.** A seed-only
+  parent keeps previews out of scope by construction; any store ever copied
+  from pre-scrub Production is deleted or re-parented as part of fulfilling an
+  erasure request.
 
 — **TYPE**: n/a (environment topology is not code) · **LINT**: n/a · **TEST**:
 once triggered, a CI assertion that the preview integration's parent branch is
