@@ -15,6 +15,8 @@ each.
   target is Vercel + Neon + Blob only.
 - No branch rulesets — GitHub Free private repo; gate discipline is
   procedural (agent merges only on green checks and the owner's word).
+  architecture.md §Environments still describes the upstream ruleset wall —
+  read it as the substituted-for pattern, not this repo's state.
 - Remote post-deploy smoke runs on Production only — previews sit behind
   Vercel Authentication, whose SSO interstitial an unauthenticated smoke
   cannot pass; staging-by-preview verification is deliberately waived.
