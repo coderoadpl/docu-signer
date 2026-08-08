@@ -51,8 +51,9 @@ each.
   deploys from commits authored by an unconnected account, so `gh pr merge`
   (agent-authored merge commit) cannot release; `gh` stays for PR management.
 - Remote post-deploy smoke drives the unauthenticated surface only (headers,
-  public API, health, deploy attestation) until the owner provisions a canary
-  account and the `SMOKE_EMAIL`/`SMOKE_PASSWORD`/`SMOKE_TENANT` repo secrets —
+  the public API of the `default` tenant, health, deploy attestation) until
+  the owner provisions a canary account and the `SMOKE_EMAIL`/`SMOKE_PASSWORD`
+  repo secrets (`SMOKE_TENANT` only if the canary lives outside `default`) —
   production deliberately has no demo account the upstream defaults assume.
 - A single Material theme and sidebar shell replace the upstream logbook look
   and top navigation (owner decision 2026-07-27).
