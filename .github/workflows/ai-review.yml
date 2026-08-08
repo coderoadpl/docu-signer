@@ -1,0 +1,259 @@
+name: ai-review
+
+# Fail-closed AI code-review gate (DECIDE F1). The status-check context is the
+# job name `ai-review`, a required check on the `main-gates` ruleset since
+# 2026-07-26 — a PR without a PASS verdict cannot merge. The ONLY green path is
+# a positive PASS verdict from a token slot; every other outcome — a FAIL verdict,
+# an infra failure (rate-limit / auth / network / timeout) on all available
+# slots, an empty/malformed model output, or a missing slot-1 secret — exits the
+# gate RED. "Could not verify" and "verified safe" never collapse to one colour.
+# The ONLY exception to slot ordering is a single same-slot retry when an attempt
+# matches the claude-code#23265 cold-start signature (an is_error result at zero
+# cost — the model was never called — whose text is not an auth rejection); all
+# other infra failures keep the failover/RED behaviour.
+
+on:
+  pull_request:
+    # ready_for_review fires when a draft is marked ready, so a PR opened as a
+    # draft still gets gated the moment it leaves draft state.
+    types: [opened, synchronize, ready_for_review]
+    branches: [main]
+
+# One in-flight review per PR; a new push cancels the superseded run.
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ai-review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    # Bounds the known `--json-schema` CLI-hang failure mode (claude-code#27926);
+    # a timeout is a RED could-not-run, never a silent pass.
+    timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '15') }}
+    env:
+      REVIEW_PROMPT: |
+        You are the fail-closed AI review gate for the Podpisy repository.
+        Review ONLY the changes in this pull request — the diff of the PR head
+        against origin/main — not the whole repository.
+
+        Obtain the diff yourself:
+          git fetch --no-tags --depth=200 origin main
+          git diff origin/main...HEAD
+
+        Judge the diff against this repo's doctrine. Read the files you need:
+        `CLAUDE.md`, the per-layer `*/CLAUDE.md`, and
+        `docs/architecture.md` (§Principles, §Layers, §Authorization). Enforce:
+          - Layer boundaries: core/** is pure TS (no hono/react/drizzle/pg/
+            better-auth/commander); apps import core/client only, never
+            core/server or adapters/db; @vercel/* and @neondatabase/* live only
+            in adapters/.
+          - Comment doctrine: zero narration. A comment is allowed ONLY for a
+            non-obvious WHY the code cannot express; flag any what-narration,
+            section headers, or change-describing comments as blocking.
+          - No false claims in docs/prose; no weakening of the gates or lint
+            rules to go green.
+          - authorize-first tenant-scoped use-cases; no `any`, no `as` (except
+            `as const`); domain errors returned as Result, not thrown.
+
+        Be strict: when a real doctrine violation is genuinely in doubt, FAIL.
+        Do not modify any files. Conclude by calling the StructuredOutput tool
+        with: verdict (PASS if mergeable, FAIL if there are blocking issues), a
+        concise summary, blocking_issues (empty when PASS), safe_to_merge (true
+        ONLY together with verdict PASS — a FAIL is never safe to merge), and
+        blast_radius judged from the diff alone: scope is `isolated` when the
+        effects stay inside the touched files (config-only, docs, a leaf
+        module), `contained` when one layer or feature reacts to them, `broad`
+        when core layers, the gates/CI or data/migrations are touched; note is
+        one sentence naming what is affected — which layers, gates or runtime
+        paths.
+
+        You run under a hard turn cap. Budget it: read the full diff first;
+        on a large diff, triage — inspect closely only the files where the
+        doctrine above is at risk. Always leave your last turn for the
+        StructuredOutput call. If the cap is near and you have not finished a
+        confident review, call StructuredOutput with verdict FAIL and say in
+        the summary what remained unreviewed — an explicit FAIL beats running
+        out of turns without a verdict.
+      # Read-only inspection tools only — the model never writes files or posts;
+      # the workflow posts the verdict comment itself (deterministic, decoupled
+      # from the model's tool use). Task permits delegating reads to subagents
+      # (they inherit this same allowlist) — without it a large diff burns the
+      # turn budget on sequential file reads (observed: 12 denials on PR #63).
+      # Owner cost knobs, all Admin-only repository variables (Settings →
+      # Secrets and variables → Actions → Variables), all with safe fallbacks:
+      # AI_REVIEW_MODEL (model), AI_REVIEW_MAX_TURNS (investigation depth),
+      # AI_REVIEW_TIMEOUT_MINUTES (job bound above). They tune cost/depth only —
+      # allowedTools and the verdict schema are the gate's security/contract
+      # surface and stay hardcoded.
+      CLAUDE_ARGS: >-
+        --model ${{ vars.AI_REVIEW_MODEL || 'sonnet' }}
+        --max-turns ${{ vars.AI_REVIEW_MAX_TURNS || 40 }}
+        --allowedTools "Read,Grep,Glob,Task,Bash(git diff:*),Bash(git fetch:*),Bash(git log:*),Bash(git show:*)"
+        --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          fetch-depth: 0
+
+      - name: Detect available token slots
+        id: preflight
+        # Only presence booleans are emitted — a slot secret's value is never
+        # echoed. Slot 1 must exist; 2 and 3 are wired-but-optional future slots.
+        env:
+          SLOT1: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
+          SLOT2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          SLOT3: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_3 }}
+        run: |
+          [ -n "$SLOT1" ] && echo "has_slot_1=true" >> "$GITHUB_OUTPUT" || echo "has_slot_1=false" >> "$GITHUB_OUTPUT"
+          [ -n "$SLOT2" ] && echo "has_slot_2=true" >> "$GITHUB_OUTPUT" || echo "has_slot_2=false" >> "$GITHUB_OUTPUT"
+          [ -n "$SLOT3" ] && echo "has_slot_3=true" >> "$GITHUB_OUTPUT" || echo "has_slot_3=false" >> "$GITHUB_OUTPUT"
+
+      - name: AI review — token slot 1
+        id: try1
+        if: steps.preflight.outputs.has_slot_1 == 'true'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@44423bdec74b97d67543eb16c110546762c110b2 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ env.REVIEW_PROMPT }}
+          claude_args: ${{ env.CLAUDE_ARGS }}
+
+      - name: Classify slot 1
+        id: classify1
+        if: always()
+        env:
+          RAW: ${{ steps.try1.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try1.outcome }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+
+      - name: Slot 1 failure reason
+        # Every attempt writes the same execution-log path, so each slot's
+        # un-masking step must run before the next attempt overwrites it.
+        if: steps.classify1.outputs.outcome == 'infra'
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: Detect cold-start (slot 1)
+        id: cold1
+        if: steps.classify1.outputs.outcome == 'infra'
+        env:
+          EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/detect-coldstart.sh"
+
+      - name: AI review — token slot 1 (cold-start retry)
+        id: try1r
+        if: steps.cold1.outputs.cold_start == 'true'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@44423bdec74b97d67543eb16c110546762c110b2 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ env.REVIEW_PROMPT }}
+          claude_args: ${{ env.CLAUDE_ARGS }}
+
+      - name: Classify slot 1 retry
+        id: classify1r
+        if: always()
+        env:
+          RAW: ${{ steps.try1r.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try1r.outcome }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+
+      - name: Slot 1 retry failure reason
+        if: steps.classify1r.outputs.outcome == 'infra'
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — token slot 2
+        id: try2
+        # Failover ONLY on infra failure of slot 1 (no valid verdict); a real
+        # PASS/FAIL verdict never burns the next slot.
+        if: steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1.outputs.outcome != 'pass' && steps.classify1.outputs.outcome != 'fail' && steps.classify1r.outputs.outcome != 'pass' && steps.classify1r.outputs.outcome != 'fail'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@44423bdec74b97d67543eb16c110546762c110b2 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ env.REVIEW_PROMPT }}
+          claude_args: ${{ env.CLAUDE_ARGS }}
+
+      - name: Classify slot 2
+        id: classify2
+        if: always()
+        env:
+          RAW: ${{ steps.try2.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try2.outcome }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+
+      - name: Slot 2 failure reason
+        if: steps.classify2.outputs.outcome == 'infra'
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — token slot 3
+        id: try3
+        if: steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1.outputs.outcome != 'pass' && steps.classify1.outputs.outcome != 'fail' && steps.classify1r.outputs.outcome != 'pass' && steps.classify1r.outputs.outcome != 'fail' && steps.classify2.outputs.outcome != 'pass' && steps.classify2.outputs.outcome != 'fail'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@44423bdec74b97d67543eb16c110546762c110b2 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_3 }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ env.REVIEW_PROMPT }}
+          claude_args: ${{ env.CLAUDE_ARGS }}
+
+      - name: Classify slot 3
+        id: classify3
+        if: always()
+        env:
+          RAW: ${{ steps.try3.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try3.outcome }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+
+      - name: Slot 3 failure reason
+        if: steps.classify3.outputs.outcome == 'infra'
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: Post verdict to PR
+        if: always()
+        # Best-effort: a failed comment post must not flip a real PASS to RED.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          O1: ${{ steps.classify1.outputs.outcome }}
+          O1R: ${{ steps.classify1r.outputs.outcome }}
+          O2: ${{ steps.classify2.outputs.outcome }}
+          O3: ${{ steps.classify3.outputs.outcome }}
+          OUT1: ${{ steps.try1.outputs.structured_output }}
+          OUT1R: ${{ steps.try1r.outputs.structured_output }}
+          OUT2: ${{ steps.try2.outputs.structured_output }}
+          OUT3: ${{ steps.try3.outputs.structured_output }}
+          EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
+          MODEL_ARG: ${{ vars.AI_REVIEW_MODEL || 'sonnet' }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/post-review.sh"
+
+      - name: Gate — fail-closed verdict
+        if: always()
+        # Authoritative exit code: green ONLY on a PASS verdict from some slot;
+        # every other state (any FAIL, all-infra, or no verdict at all) is RED.
+        env:
+          O1: ${{ steps.classify1.outputs.outcome }}
+          O1R: ${{ steps.classify1r.outputs.outcome }}
+          O2: ${{ steps.classify2.outputs.outcome }}
+          O3: ${{ steps.classify3.outputs.outcome }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/gate-review.sh"

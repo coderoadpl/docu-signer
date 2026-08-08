@@ -1,0 +1,169 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      # Advisory only (architecture §Security baseline): high/critical findings
+      # are triaged, but audit's transitive noise must not break the build.
+      - run: pnpm audit --prod --audit-level=high
+        continue-on-error: true
+
+  smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: agentproofarch
+          POSTGRES_PASSWORD: agentproofarch
+          POSTGRES_DB: agentproofarch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentproofarch"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Local SMTP sink for the US-026 magic-link phase: the real smtp adapter
+      # delivers here; smoke/e2e read the message back over its HTTP API.
+      mailpit:
+        image: axllent/mailpit:v1.21
+        ports:
+          - 47925:1025
+          - 47980:8025
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+          MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    env:
+      DATABASE_URL: postgresql://agentproofarch:agentproofarch@localhost:5432/agentproofarch
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # Integration tests need a real Postgres, which only this smoke job has;
+      # run them here (not in the check job, which is database-free, nor in the
+      # local `smoke` script, which must stay fast) before the runtime smoke.
+      - run: pnpm run test:integration
+      - run: pnpm run smoke
+      - run: pnpm run quickstart:probe
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: agentproofarch
+          POSTGRES_PASSWORD: agentproofarch
+          POSTGRES_DB: agentproofarch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentproofarch"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Local SMTP sink for the US-026 magic-link phase: the real smtp adapter
+      # delivers here; smoke/e2e read the message back over its HTTP API.
+      mailpit:
+        image: axllent/mailpit:v1.21
+        ports:
+          - 47925:1025
+          - 47980:8025
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+          MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    env:
+      DATABASE_URL: postgresql://agentproofarch:agentproofarch@localhost:5432/agentproofarch
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # A real browser over the real stack: the only surface smoke can't reach
+      # (it drives the CLI, never a browser). Needs both a browser and Postgres,
+      # so it stays out of `pnpm run check`; the e2e server boots entry.node.ts
+      # against an isolated agentproofarch_e2e database and serves this bundle.
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run build:web
+      - run: pnpm run e2e
+
+  # NON-REQUIRED (ADR-0008): `visual` is in no ruleset's required list, so
+  # this job reports a pixel regression without blocking a merge until the owner
+  # arms it. Baselines are rendered by this same linux image, never on a mac.
+  visual:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: agentproofarch
+          POSTGRES_PASSWORD: agentproofarch
+          POSTGRES_DB: agentproofarch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentproofarch"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      mailpit:
+        image: axllent/mailpit:v1.21
+        ports:
+          - 47925:1025
+          - 47980:8025
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+          MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    env:
+      DATABASE_URL: postgresql://agentproofarch:agentproofarch@localhost:5432/agentproofarch
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run build:web
+      - run: pnpm run visual
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: visual-diff
+          path: test-results
+          retention-days: 7
