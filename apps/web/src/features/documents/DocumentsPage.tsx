@@ -206,7 +206,7 @@ export const DocumentsPage = () => {
         </Button>
       </Stack> : null}
       {exportDocuments.isError ? (
-        <Alert sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert>
+        <Alert severity="error" sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert>
       ) : null}
 
       {documents.isPending ? (

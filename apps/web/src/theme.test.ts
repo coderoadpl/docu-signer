@@ -12,11 +12,12 @@ describe('createAppTheme', () => {
     expect(createAppTheme().palette.primary.main).toBe(createTheme().palette.primary.main);
   });
 
-  it('uses white contrast text on filled primary and secondary accents', () => {
-    const theme = createAppTheme(280);
+  it('picks accessible contrast text per accent hue at the 4.5 threshold', () => {
+    const purple = createAppTheme(280);
+    const yellow = createAppTheme(60);
 
-    expect(theme.palette.primary.contrastText).toBe('#fff');
-    expect(theme.palette.secondary.contrastText).toBe('#fff');
+    expect(purple.palette.primary.contrastText).toBe('#fff');
+    expect(yellow.palette.primary.contrastText).not.toBe('#fff');
   });
 
   it('uses the Material shape and scales down display headings', () => {

@@ -10,12 +10,13 @@ export const createAppTheme = (accentHue?: number): Theme => {
 
   return createTheme({
     palette: {
+      contrastThreshold: 4.5,
       primary: base.palette.augmentColor({
-        color: { main: primaryMain, contrastText: '#fff' },
+        color: { main: primaryMain },
         name: 'primary',
       }),
       secondary: base.palette.augmentColor({
-        color: { main: base.palette.secondary.main, contrastText: '#fff' },
+        color: { main: base.palette.secondary.main },
         name: 'secondary',
       }),
     },
