@@ -1,15 +1,15 @@
-# agentproofarch
+# Podpisy
 
 Agent-first, strictly layered full-stack TypeScript foundation for multi-tenant SaaS.
-The architecture is defined in [../docs/architecture.md](../docs/architecture.md)
-(and distilled from [../docs/prd-agentproofarch-foundation.md](../docs/prd-agentproofarch-foundation.md));
+The architecture is defined in [docs/architecture.md](docs/architecture.md)
+(and distilled from [docs/prd-agentproofarch-foundation.md](docs/prd-agentproofarch-foundation.md));
 this repo is the **walking skeleton**: auth, foundation-owned tenants (flat
 `owner`/`admin` grants — no organizations/teams concept), tenant resolution by
 domain, one tasks subdomain — todos plus the two exemplar boards (personal +
 team) — flowing through every layer, a full CLI and a web SPA. Live at
 <https://agentproofarch.vercel.app> (`demo@agentproofarch.dev` / `demo1234`).
 
-New here? Read [../docs/first-feature.md](../docs/first-feature.md) — it adds a
+New here? Read [docs/first-feature.md](docs/first-feature.md) — it adds a
 real resource end-to-end in 30 minutes.
 
 ## Quickstart (local demo)
@@ -126,7 +126,7 @@ pnpm run e2e                # real Chromium over the real stack
 covered boundary and island-core rules — most feed a violating fixture and
 assert the gate still goes red, a few are structural rule-presence checks rather
 than fixture-feeding probes — so you can't silently delete one of those rules and
-stay green ([ADR-0004](../docs/decisions/0004-no-exceptions-enforcement.md)).
+stay green ([ADR-0004](docs/decisions/0004-no-exceptions-enforcement.md)).
 
 ## Adding a resource
 
@@ -145,11 +145,11 @@ contract, port/use-case, client wiring). Three steps — the CLI command,
 server-route registration, and the web route — typecheck fine while unwired, so
 for those the checklist, not the compiler, enforces completion. Full narrated
 walkthrough:
-[../docs/first-feature.md](../docs/first-feature.md).
+[docs/first-feature.md](docs/first-feature.md).
 
 Its client-state sibling scaffolds a feature (island) with a rung-1 island
 core — the events-in / selectors-out seam of
-[ADR-0005](../docs/decisions/0005-client-application-state.md):
+[ADR-0005](docs/decisions/0005-client-application-state.md):
 
 ```bash
 pnpm run new:island -- <name>               # e.g. personal-board
@@ -166,7 +166,7 @@ tenant-scoped use-case takes `ctx.identity` and every repository call requires
 ## Deployment targets
 
 Same commit, env only — live on Vercel today
-([ADR-0003](../docs/decisions/0003-vercel-environments.md)):
+([ADR-0003](docs/decisions/0003-vercel-environments.md)):
 
 | | Vercel | Docker self-host |
 |---|---|---|
@@ -219,7 +219,7 @@ owner's VPS and are not part of any CI job.
 When agents (and humans) share this repo, safety is an operating property of the
 environment, not a policy list in an agent file — a rule an agent is asked to
 "remember" is not an enforcement (DECIDE B5). These are recommendations for the
-humans who own the platform; the architecture (`../docs/architecture.md`
+humans who own the platform; the architecture (`docs/architecture.md`
 §Environments) is where the enforced version lives.
 
 - **Production secrets live only in the platform env store, set by humans.** Real
