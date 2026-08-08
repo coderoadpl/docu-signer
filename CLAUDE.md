@@ -80,7 +80,7 @@ rejected.)
   `toHaveScreenshot()` over the same boot harness, in its own suite
   (`visual/`, `playwright.visual.config.ts`) so a moved screenshot can never
   redden `e2e`. It is **not a required check** — the required set is
-  `check`/`smoke`/`e2e` (+ `ai-review` on `main-gates`), and
+  `check`/`smoke`/`e2e`/`ai-review` (procedurally — see FOUNDATION.md), and
   `visual` stays out of it until the owner arms it. Baselines
   (`visual/__screenshots__/<platform>/`) are rendered by the linux CI runner via
   the `visual-baselines` workflow and committed; a mac run compares nothing
