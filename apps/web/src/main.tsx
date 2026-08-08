@@ -13,6 +13,7 @@ import {
 
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { ThemeSwitcher } from './components/ui/ThemeSwitcher.js';
+import { AppLayout } from './AppLayout.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
@@ -22,7 +23,6 @@ import { DocumentDetailRoute } from './routes/document-detail.js';
 import { DocumentsRoute } from './routes/documents.js';
 import { LoginRoute } from './routes/login.js';
 import { MembersRoute } from './routes/members.js';
-import { AppLayout } from './features/settings/AppLayout.js';
 import { RegisterRoute } from './routes/register.js';
 import { DomainsRoute } from './routes/settings-domains.js';
 import { StaffSettingsRoute } from './routes/settings-staff.js';

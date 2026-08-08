@@ -22,11 +22,13 @@ const featureDir = join('apps', 'web', 'src', 'features', token);
 const webDir = join('apps', 'web', 'src', token);
 const dcDir = join('core', 'domain', `${token}_dc`);
 const featureCoreDir = join('apps', 'web', 'src', 'features', `${token}_core`, 'core');
+const layoutDir = join('apps', 'web', 'src', 'components', 'layout', `${token}_layout`);
 
 const SWEEP_BASES = [
   join(demoRoot, 'core', 'domain'),
   join(demoRoot, 'apps', 'web', 'src'),
   join(demoRoot, 'apps', 'web', 'src', 'features'),
+  join(demoRoot, 'apps', 'web', 'src', 'components', 'layout'),
 ];
 
 const sweep = () => {
@@ -87,6 +89,10 @@ const dcFixtures = [
   { rel: join(dcDir, 'query-core-probe.ts'), content: "import '@tanstack/query-core';\n" },
   // react inside an island core fires the depcruise purity mirror.
   { rel: join(featureCoreDir, 'react-probe.ts'), content: "import 'react';\n" },
+  {
+    rel: join(layoutDir, 'feature-probe.ts'),
+    content: "import '../../../features/todos/TodosPage.js';\n",
+  },
 ] satisfies Array<{ rel: string; content: string }>;
 
 interface EslintMessage {
@@ -134,7 +140,7 @@ beforeAll(() => {
   }
 
   const depBin = join(demoRoot, 'node_modules', '.bin', 'depcruise');
-  const depRun = spawnSync(depBin, ['--output-type', 'json', dcDir, featureCoreDir], {
+  const depRun = spawnSync(depBin, ['--output-type', 'json', dcDir, featureCoreDir, layoutDir], {
     cwd: demoRoot,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
@@ -154,6 +160,7 @@ afterAll(() => {
     recursive: true,
     force: true,
   });
+  rmSync(join(demoRoot, layoutDir), { recursive: true, force: true });
   sweep();
 });
 
@@ -212,6 +219,10 @@ describe('dependency-cruiser gate still rejects violations', () => {
     expect(depcruiseRules.has('island-core-is-framework-agnostic')).toBe(true);
   });
 
+  it('behavioral: a layout importing a feature fires web-layouts-are-structure-only', () => {
+    expect(depcruiseRules.has('web-layouts-are-structure-only')).toBe(true);
+  });
+
   it('structural: every guarded rule is present with severity error', () => {
     const depConfig: { forbidden: Array<{ name: string; severity: string }> } = require(
       join(demoRoot, '.dependency-cruiser.cjs'),
@@ -226,6 +237,7 @@ describe('dependency-cruiser gate still rejects violations', () => {
       'adapters-never-import-apps',
       'web-never-server-side',
       'web-features-are-islands',
+      'web-layouts-are-structure-only',
       'island-core-is-framework-agnostic',
       'vercel-and-neon-only-in-adapters',
     ]) {

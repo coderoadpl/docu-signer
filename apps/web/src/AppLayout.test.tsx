@@ -10,8 +10,8 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { renderWithProviders } from '../../test/render.js';
-import { server } from '../../test/server.js';
+import { renderWithProviders } from './test/render.js';
+import { server } from './test/server.js';
 import { AppLayout } from './AppLayout.js';
 
 const meAcme = {
@@ -32,10 +32,11 @@ const renderApp = async (initial = '/app') => {
   const board = createRoute({ getParentRoute: () => layout, path: 'board', component: () => <p>board page</p> });
   const teamBoard = createRoute({ getParentRoute: () => layout, path: 'team-board', component: () => <p>team page</p> });
   const members = createRoute({ getParentRoute: () => layout, path: 'members', component: () => <p>members page</p> });
+  const documents = createRoute({ getParentRoute: () => layout, path: 'documents', component: () => <p>documents page</p> });
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       loginRoute,
-      layout.addChildren([index, settings, board, teamBoard, members]),
+      layout.addChildren([index, settings, board, teamBoard, members, documents]),
     ]),
     history: createMemoryHistory({ initialEntries: [initial] }),
   });
@@ -53,6 +54,7 @@ describe('AppLayout', () => {
     await renderApp();
 
     expect(await screen.findByText('ledger content')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dokumenty' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Switch tenant' }));
     expect(await screen.findByText('Globex Inc')).toBeInTheDocument();
   });

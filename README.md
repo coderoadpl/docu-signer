@@ -101,7 +101,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`, dead
   links), and vitest with coverage across
-  **<!--count:test-files-->96<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->99<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → todos →
@@ -122,7 +122,7 @@ pnpm run test:integration   # repositories, against a real Postgres
 pnpm run e2e                # real Chromium over the real stack
 ```
 
-<!--count:config-regression-->47<!--/count--> config-regression probes guard the
+<!--count:config-regression-->48<!--/count--> config-regression probes guard the
 covered boundary and island-core rules — most feed a violating fixture and
 assert the gate still goes red, a few are structural rule-presence checks rather
 than fixture-feeding probes — so you can't silently delete one of those rules and

@@ -144,17 +144,83 @@ apps/web/src/
   main.tsx          composition root: providers + router wiring only
   api.ts            binds core/client action factories once — the only module
                     that sees ApiClient, AuthClientPort and adapters
+  AppLayout.tsx     the stateful shell composition (ADR-0011): auth guard,
+                    tenant switcher, onboarding — renders components/layout/AppShell
   routes/           route components — thin: parse params, render a feature
   features/<name>/  feature folders (islands): core/ — the island core (events
                     in, selectors out) — plus views, hooks, <Name>.logic.ts
   components/ui/    design-system primitives → theme, lib only (no core, no features)
+  components/layout/ page skeletons: structure only → theme, components/ui, lib
+                    (no core, no features, no routes, no api, no TanStack)
   lib/              pure TS utilities → no react
   theme.ts          the entire visual language (MUI theme); no colors/fonts elsewhere
 ```
 
+### The layout layer (page skeletons)
+
+Decided in [ADR-0011](decisions/0011-layout-layer.md). `components/layout/` is
+the one legal home for a component that owns a **page's shape** — the grid, the
+widths, the sticky rails, the header/content/footer regions, the `Outlet` slot.
+Before it existed a stateful shell was *unrepresentable*: features are islands so
+no feature may consume one, and `components/ui/` is banned from TanStack, so the
+app shell lived inside `features/settings/` for want of anywhere else. Three
+properties define the layer and travel together:
+
+- **Structure only** — grid, flex, spacing, sizing and position live here; every
+  colour, font, background and border comes from `theme.ts` atoms. That is what
+  makes a skeleton survive a theme change untouched.
+- **Content arrives through slots** — callers pass `ReactNode` (`header`,
+  `action`, `rail`, `children`); a skeleton never fetches, never names a domain
+  type, never reads a route param.
+- **Non-happy branches render inside the skeleton** — loading, error, empty and
+  not-found are states *of* the page, not replacements for it, so width never
+  jumps between a pending render and a loaded one.
+
+**(a) Layouts are structure only.** `components/layout/**` imports `theme.ts`,
+`components/ui/` and `lib/` and nothing else in the app: no `core/**`, no
+`adapters/**`, no `features/**`, no `routes/**`, no `api.ts`, no TanStack.
+— **TYPE**: n/a (an import edge is not a type) · **LINT**:
+`web-layouts-are-structure-only` (dependency-cruiser), the same edge shape as
+`web-ui-is-presentational`, plus the boundaries element type for the directory ·
+**TEST**: config-regression probe — a fixture importing a feature from a layout
+must fail `check` · **REVIEW+AI**: n/a (mechanically covered).
+
+**(b) Features consume layouts; they do not define them.** A page skeleton — a
+component owning a `Container`/max-width/page grid — may be defined only under
+`components/layout/`. This is a rule about the *content* of a file, not about an
+edge in the graph, so the mechanical half is honestly incomplete until the
+structural `sx` tier below is triggered.
+— **TYPE**: n/a · **LINT**: n/a today (a dependency rule cannot see a
+`Container` declared in place; closes with the structural tier) · **TEST**: n/a ·
+**REVIEW+AI**: the review tier owns this one — flag a feature growing its own
+page grid or max-width instead of consuming a skeleton, and flag a skeleton that
+appears in two features at once (that duplication is also the named trigger
+below).
+
+**Visual specs** (NORMATIVE NOW, non-required gate): every layout skeleton
+carries screenshots of its states in the existing `visual/` suite on the
+ADR-0008 harness — lint catches scattered `sx`, pixels catch rendered drift, and
+one gate owns the pixels. No second screenshot engine.
+
+**Structural `sx` tier** (NORMATIVE WHEN TRIGGERED — *the first case of a
+duplicated page skeleton outside `components/layout/` in an app on the
+foundation*): a second key category in `agentproofarch/sx-layout-only` reserving
+`display`, `grid*`, `flex*` on containers, `position: sticky|fixed`, `width` and
+`maxWidth` for `components/layout/**` and `theme.ts`, on the same per-file,
+shrink-only, stale-erroring baseline mechanism the visual tier already uses. It
+waits because the tier is unproven — it is designed in the app this layer was
+graduated from and never shipped there — so the first app to hit the trigger is
+also its first honest test. **Optional technique** for apps on MUI: a
+`no-restricted-imports` ban on `Container`/`AppBar`/`Drawer`/`Toolbar` outside
+the layout directory closes the same hole cheaply; it is MUI-specific and is not
+part of the portable artifact.
+
 **Route tree** (US-015): the public routes are `/login` and `/register`; every
-authenticated surface lives under `/app`, whose layout route (`AppLayout`, a
-feature under `features/settings/`) is the shell. The shell guards auth
+authenticated surface lives under `/app`, whose layout route is the shell — split
+per [ADR-0011](decisions/0011-layout-layer.md) into the chrome skeleton
+(`components/layout/AppShell.tsx`: app bar, nav slots, widths, the `Outlet` slot,
+no server state) and a thin stateful composition (`AppLayout.tsx`, beside
+`main.tsx`) that renders it. The shell guards auth
 (an anonymous hit on any `/app/*` route redirects to `/login`), owns the shared
 chrome — the header **tenant switcher** (lists the caller's tenants; selecting one
 navigates to that tenant's host, the same subdomain mechanism `lib/tenant.ts`
@@ -1904,7 +1970,8 @@ structurally rather than describing it: `eslint.config.js` +
 `eslint-plugin-agentproofarch/` (the `query-descriptors-only`, `sx-layout-only`
 and `event-suffix-taxonomy` rules) + `.dependency-cruiser.cjs` (`no-frameworks-in-core`,
 `core-domain-depends-on-nothing`, `vercel-and-neon-only-in-adapters`,
-`web-features-are-islands`) for the layer and frontend graph; and `tsconfig.json`
+`web-features-are-islands`, `web-layouts-are-structure-only`) for the layer and
+frontend graph; and `tsconfig.json`
 strictness, `scripts/doc-lint.ts`, `scripts/smoke*.ts`, the
 `check`/`smoke`/`lock-lint` scripts, `config-regression/` and the CI workflow for
 the gates.

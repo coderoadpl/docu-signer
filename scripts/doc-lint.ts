@@ -60,6 +60,11 @@ const DOC_PROMISED_ENFORCERS: readonly Enforcer[] = [
   { id: 'no-frameworks-in-core', config: 'depcruise', doc: 'architecture.md §Layers' },
   { id: 'core-domain-depends-on-nothing', config: 'depcruise', doc: 'architecture.md §Layers' },
   { id: 'web-features-are-islands', config: 'depcruise', doc: 'architecture.md §Frontend' },
+  {
+    id: 'web-layouts-are-structure-only',
+    config: 'depcruise',
+    doc: 'architecture.md §Frontend',
+  },
 ];
 
 interface DocFile {
