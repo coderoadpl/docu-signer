@@ -29,7 +29,6 @@ jobs:
         env:
           DEPLOY_SHA: ${{ github.event.deployment.sha }}
         run: |
-          git fetch --no-tags origin main
           if ! git merge-base --is-ancestor "$DEPLOY_SHA" origin/main; then
             echo "Production deployment SHA $DEPLOY_SHA is not an ancestor of origin/main." >&2
             exit 1
