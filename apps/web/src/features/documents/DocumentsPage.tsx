@@ -5,7 +5,6 @@ import {
   Button,
   Checkbox,
   Chip,
-  Container,
   FormControl,
   InputLabel,
   MenuItem,
@@ -27,6 +26,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { DocumentType } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
@@ -110,7 +110,7 @@ export const DocumentsPage = () => {
     setFilters((current) => ({ ...current, [name]: value }));
 
   return (
-    <Container sx={{ maxWidth: '76rem !important', px: 2, py: 6 }}>
+    <PageContainer>
       <Stack
         direction="row"
         sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
@@ -318,6 +318,6 @@ export const DocumentsPage = () => {
         onClose={() => setCreateOpen(false)}
         onSubmit={(values) => createDocument.mutate(toDocumentInput(values))}
       />
-    </Container>
+    </PageContainer>
   );
 };

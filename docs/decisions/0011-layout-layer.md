@@ -119,7 +119,7 @@ anywhere. That fact is the reason for the split status in Decision 6 below.
 
 5. **Every layout skeleton carries a visual spec on the ADR-0008 harness.** The
    practice that graduates is "each skeleton has screenshots of its states" —
-   realised as specs in the existing `demo/visual/` suite, on the existing
+   realised as specs in the existing `visual/` suite, on the existing
    Playwright harness with CI-rendered, platform-scoped baselines. No second
    screenshot engine and no second baseline store: lint catches scattered `sx`,
    pixels catch rendered drift, and one gate owns the pixels. The visual check
@@ -143,7 +143,7 @@ anywhere. That fact is the reason for the split status in Decision 6 below.
 
    | Rejected | Why |
    |---|---|
-   | The upstream **seven-primitive catalog** (`FocusCard`, `MemberPage`, `PanelPage`, `ListSection`, `SectionCard`, `StatusView`, `ConfirmDialog`) and its width-token set | It is the codified result of a 44-screen inventory of *one product* and six product decisions (bottom tab bar, list-first, ledger widths). The foundation graduates the **category and the rules**; the catalog is an app's own output. `demo/` stays exemplary — "a change that would not generalise to every app on the foundation does not belong in it" — so it gets `AppShell` plus one status skeleton, not seven primitives. |
+   | The upstream **seven-primitive catalog** (`FocusCard`, `MemberPage`, `PanelPage`, `ListSection`, `SectionCard`, `StatusView`, `ConfirmDialog`) and its width-token set | It is the codified result of a 44-screen inventory of *one product* and six product decisions (bottom tab bar, list-first, ledger widths). The foundation graduates the **category and the rules**; the repository root stays exemplary — "a change that would not generalise to every app on the foundation does not belong in it" — so it gets `AppShell` plus one status skeleton, not seven primitives. |
    | The **Storybook + Lost Pixel** stack | ADR-0008 already decided this repo's visual mechanism deliberately: Playwright against the real stack, deterministic, baselines rendered in CI. A second screenshot engine would duplicate it and break the single-source-of-baselines rule. |
    | The **second golden-image harness** (pixelmatch goldens + a diff script) | Same reason: ADR-0008 covers it. |
    | **MUI skeleton-import bans** (`no-restricted-imports` on `Container`/`AppBar`/`Drawer`/`Toolbar` scoped to the layout directory) **as a mandatory rule** | It is MUI-specific, and — as recorded above — it exists only on paper even upstream. It is noted in architecture.md as an **optional** closing technique for apps that render on MUI, never as part of the portable artifact. |
@@ -171,3 +171,6 @@ anywhere. That fact is the reason for the split status in Decision 6 below.
   growing a page skeleton in place until the structural tier triggers. That is a
   REVIEW+AI-tier rule, documented as such rather than presented as guaranteed —
   the same honesty the enforcement-tier table demands everywhere else.
+- **Residual (2026-07-27):** the pre-existing Todos, Board, Members, Settings,
+  Domains, Staff and TeamBoard feature pages still hand-roll their grids;
+  converting them to named layout skeletons is the follow-up.

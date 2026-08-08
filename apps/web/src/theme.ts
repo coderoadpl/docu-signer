@@ -347,5 +347,3 @@ export const PreviewImage = styled('img')({
   maxHeight: '32rem',
   objectFit: 'contain',
 });
-
-export const EmptyState = styled(Box)({ textAlign: 'center' });

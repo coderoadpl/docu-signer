@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  Container,
   Dialog,
   DialogActions,
   DialogContent,
@@ -25,6 +24,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { DocumentFile, DocumentFileRole } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { FileDropZone, PdfPreview, PreviewImage } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
@@ -299,14 +299,14 @@ export const DocumentDetailPage = ({
 
   if (documentQuery.isPending) {
     return (
-      <Container sx={{ maxWidth: '76rem !important', px: 2, py: 6 }}>
+      <PageContainer>
         <StatusView state={{ kind: 'loading', label: 'Ładowanie dokumentu…' }} />
-      </Container>
+      </PageContainer>
     );
   }
   if (documentQuery.isError) {
     return (
-      <Container sx={{ maxWidth: '76rem !important', px: 2, py: 6 }}>
+      <PageContainer>
         <StatusView
           state={{
             kind: 'error',
@@ -317,7 +317,7 @@ export const DocumentDetailPage = ({
             },
           }}
         />
-      </Container>
+      </PageContainer>
     );
   }
 
@@ -348,7 +348,7 @@ export const DocumentDetailPage = ({
   };
 
   return (
-    <Container sx={{ maxWidth: '76rem !important', px: 2, py: 6 }}>
+    <PageContainer>
       <Button onClick={() => void navigate({ to: '/app/documents' })}>
         ← Dokumenty
       </Button>
@@ -455,6 +455,6 @@ export const DocumentDetailPage = ({
           }
         }}
       />
-    </Container>
+    </PageContainer>
   );
 };

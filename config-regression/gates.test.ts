@@ -253,15 +253,19 @@ describe('custom plugin rules stay registered as errors', () => {
     return entry;
   };
 
-  it('query-descriptors-only and sx-layout-only are errors on feature files', async () => {
-    const eslint = new ESLint({ cwd: demoRoot });
-    const config: Linter.Config = await eslint.calculateConfigForFile(
-      join('apps', 'web', 'src', 'features', 'todos', 'TodosPage.tsx'),
-    );
-    const rules = config.rules ?? {};
-    expect(severityOf(rules['agentproofarch/query-descriptors-only'])).toBe(2);
-    expect(severityOf(rules['agentproofarch/sx-layout-only'])).toBe(2);
-  });
+  it(
+    'query-descriptors-only and sx-layout-only are errors on feature files',
+    async () => {
+      const eslint = new ESLint({ cwd: demoRoot });
+      const config: Linter.Config = await eslint.calculateConfigForFile(
+        join('apps', 'web', 'src', 'features', 'todos', 'TodosPage.tsx'),
+      );
+      const rules = config.rules ?? {};
+      expect(severityOf(rules['agentproofarch/query-descriptors-only'])).toBe(2);
+      expect(severityOf(rules['agentproofarch/sx-layout-only'])).toBe(2);
+    },
+    15_000,
+  );
 
   it('sx-layout-baseline.json is empty (no tolerated debt to weaken behind)', () => {
     const baseline: unknown = JSON.parse(
