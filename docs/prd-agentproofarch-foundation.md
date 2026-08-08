@@ -4,6 +4,11 @@
 > ACCEPTED for build** — nothing here is demoted to roadmap. The not-yet-built
 > stories land as a multi-PR program; the sub-packages and their order are
 > tracked on the board, not in this document.
+>
+> **Podpisy fork scope:** Vercel remains the packaged deployment target.
+> Self-host packaging and its CI gate are not shipped here; the Node runtime,
+> node-postgres driver, caddy provisioner, and internal domain-check app remain
+> available for externally owned packaging.
 
 ## 0. Errata (mechanical corrections, 2026-07-20)
 
@@ -14,7 +19,7 @@ Status note above: full scope accepted for build). Where this block and
 the body disagree, this block wins.
 
 - **Platform entry file (§2 Goals, §3.1 `apps/server`, §3.2, US-023).** There is
-  no `entry.vercel.ts`. The Vercel entry is `demo/api/index.ts`, which exports a
+  no `entry.vercel.ts`. The Vercel entry is `api/index.ts`, which exports a
   node-style handler via `@hono/node-server/vercel` (see
   [ADR-0003](decisions/0003-vercel-environments.md) §4). Everywhere the PRD says
   `entry.vercel.ts` (including the `@vercel/*`/`@neondatabase/*` containment
@@ -25,7 +30,7 @@ the body disagree, this block wins.
   "#adapters/*": "./adapters/*" }`); all code imports `#core/...` / `#adapters/...`.
 - **No `tasks/` directory (§3.1).** The `tasks/` entry in the directory layout
   does not exist; PRDs and agent docs live under `docs/`. The whole
-  implementation is rooted in `demo/` (its own `package.json`); paths in this
+  implementation is rooted at the repository root (with its own `package.json`); paths in this
   PRD are relative to that root.
 - **`AuthPort` return type (§3.4 vs §3.5).** §3.5 lists `AuthPort` as
   `request → Identity or error`, which contradicts §3.4 ("`AuthPort` yields the
@@ -80,9 +85,9 @@ Agentproofarch is a foundation (starter architecture, not a product) for buildin
 
 The foundation itself contains **no example business resource** — its own features (auth, organizations, custom domains) are the walking skeleton that proves the architecture end-to-end. A separate example application will be built on top of it later.
 
-Two deployment targets are first-class and must work from the same commit:
-- **Vercel** (static SPA + serverless functions + Neon Postgres)
-- **Docker self-host** (`docker compose up`: app container + Postgres + Caddy with automatic TLS)
+The packaged deployment target is **Vercel** (static SPA, serverless functions,
+and Neon Postgres). Long-lived Node and Caddy integrations remain replaceable
+runtime seams, not a deployment package shipped by this fork.
 
 ## 2. Goals
 
@@ -484,20 +489,19 @@ Stories are ordered; each is one focused session. "Check passes" means `pnpm run
 
 **Acceptance Criteria:**
 - [ ] Internal endpoint `GET /internal/domain-check?domain=` returns 200 only if domain exists and is active in `tenant_domains`; unreachable from public routes (separate router, network-internal)
-- [ ] `Caddyfile` with `on_demand_tls { ask }` pointing at the endpoint; reverse-proxy to app container
+- [ ] External Caddy configuration uses `on_demand_tls { ask }` against the endpoint and reverse-proxies to the app
 - [ ] `caddy` DomainPort implementation (provision = no-op; check = DNS lookup that domain resolves to configured IP/CNAME)
 - [ ] Integration test for the domain-check endpoint (positive + negative)
 - [ ] Check passes
 
-### US-022: Docker self-host packaging
-**Description:** As a self-hosting operator, I want the entire stack up with one command.
+### US-022: External self-host packaging boundary
+**Description:** A self-hosting operator may package the retained Node,
+node-postgres, and Caddy runtime seams outside this repository.
 
 **Acceptance Criteria:**
-- [ ] Multi-stage `Dockerfile`: builds SPA + server; final image serves API and SPA static files from one Node process
-- [ ] `docker-compose.yml`: app + `postgres:16` + Caddy; migrations run on startup; healthchecks defined
-- [ ] Fresh-clone test: `docker compose up` → registration and login work in a browser against `localhost` (documented in story log)
-- [ ] `.env.example` covers the compose setup with sane defaults
-- [ ] Check passes
+- [ ] External packaging preserves the same env schema, migrations, and behavior
+- [ ] External packaging keeps the internal domain-check port private
+- [ ] External packaging runs the CLI smoke suite before release
 
 ### US-023: Vercel deployment target
 **Description:** As an operator, I want the same commit deployable to Vercel.
@@ -505,7 +509,7 @@ Stories are ordered; each is one focused session. "Check passes" means `pnpm run
 **Acceptance Criteria:**
 - [ ] `entry.vercel.ts` exporting the Hono handler for Vercel Functions (~5 lines); `vercel.json` routing `/api/*` to the function, everything else to the static SPA build
 - [ ] `DB_DRIVER=neon-http` path verified against a Neon database (connection from env)
-- [ ] Documented env matrix Vercel vs Docker in README
+- [ ] Documented Vercel env setup in README
 - [ ] Deployment checklist executed once and recorded in story log (build succeeds, health + login work on the deployment)
 - [ ] Check passes
 

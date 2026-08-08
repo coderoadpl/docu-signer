@@ -1,4 +1,4 @@
-name: agentproofarch-dev
+name: podpisy-dev
 
 services:
   db:

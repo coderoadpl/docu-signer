@@ -17,7 +17,7 @@ import { assert, fail, rootDir, run, SmokeFailure, tsxBin } from './smoke-cli.js
 import { bootServer, ephemeralPort, killServer } from './server-harness.js';
 
 const PROBE_DB = 'agentproofarch_quickstart';
-const COMPOSE_PROJECT = 'agentproofarch-dev';
+const COMPOSE_PROJECT = 'podpisy-dev';
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ??
   'postgresql://agentproofarch:agentproofarch@localhost:47542/agentproofarch';

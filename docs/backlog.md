@@ -106,13 +106,9 @@ enterprise customer questionnaire)
 - Cross-subdomain session on a real base domain (switcher keeps the session in
   prod) is documented but not locally testable (S6). Trigger: first custom
   base-domain deployment — verify live, then delete this row.
-- Post-deploy production smoke trigger — **resolved by the topology.** Production
-  is now released by merging an owner-approved PR to the `production` branch, and
-  a branch merge is an ordinary push that emits `deployment_status` for the
-  `Production` environment, so `post-deploy-smoke.yml` fires as-is. The old
-  concern (a dashboard "Promote to Production" possibly emitting a different or no
-  `deployment_status`) does not apply to the PR-merge model
-  ([deploy-promotion.md](deploy-promotion.md) §b step 6).
+- Post-deploy production smoke automation is external to this repository.
+  `smoke:remote` remains the verification primitive and requires caller-supplied
+  `BASE_URL` and `EXPECTED_SHA`.
 
 ## Optional second reviewer (shipped 2026-07-26)
 
@@ -133,4 +129,4 @@ A1-S4 (magic-link email provider, social OAuth credentials) and A1-S5
 is what remains, and only the live verification depends on it).
 **F1 (AI-reviewer gate) is decided and built** — the
 fail-closed `ai-review` workflow ships with `CLAUDE_CODE_OAUTH_TOKEN_1`; see
-[../demo/README.md](../demo/README.md) §Operating hygiene for agent-driven repos.
+[../README.md](../README.md) §Operating hygiene for agent-driven repos.

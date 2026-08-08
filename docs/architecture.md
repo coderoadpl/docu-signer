@@ -2,7 +2,7 @@
 
 Normative reference for agentproofarch. The [PRD](prd-agentproofarch-foundation.md)
 §3 is the original source; this document is its distilled, implementation-facing
-form. The `demo/` folder implements it.
+form. The repository root implements it.
 
 ## The promise
 
@@ -44,15 +44,13 @@ never carries silent gaps.
   against a real database and drives health → sign-in → todos through the
   CLI, asserting taxonomy exit codes. Static-green is not done; the app must
   actually run.
-- **Two first-class deploy targets** from the same commit: Vercel (serverless +
-  Neon) and Docker self-host (Node + Postgres + Caddy). **Both are built.** Vercel
-  is live today; the Docker/Caddy packaging (`Dockerfile`, `docker-compose.prod.yml`,
-  `Caddyfile`, `docker-entrypoint.sh`) now ships in the tree (US-022, DECIDE A2),
-  and Caddy on-demand TLS is wired to an internal domain-check endpoint proven by
-  unit + real-Postgres integration tests (US-021). The Vercel Domains API adapter
-  (US-020) ships too — per-tenant hosts attached to the Vercel project over the
-  REST API, offline-tested against a stubbed `fetch`, with live verification
-  pending the owner's `VERCEL_TOKEN`. **Vendor packages are contained**: `@vercel/*` and
+- **The Vercel deploy target is built** with serverless functions and Neon.
+  The caddy provisioner and internal domain-check endpoint remain runtime
+  capabilities for externally packaged Node deployments, but this repository
+  does not ship or gate a self-host deployment package. The Vercel Domains API
+  adapter (US-020) ships too — per-tenant hosts attached to the Vercel project
+  over the REST API, offline-tested against a stubbed `fetch`, with live
+  verification pending the owner's `VERCEL_TOKEN`. **Vendor packages are contained**: `@vercel/*` and
   `@neondatabase/*` may be imported only inside `adapters/` and platform entry
   files (lint-enforced). This is dependency containment, not a ban on the
   vendor's *name* — the bare platform-detection string `VERCEL` is legitimately
@@ -450,11 +448,11 @@ machine, and verdict logic duplicated outside the oracle.
 **Demo exemplars — the two living boards.** Two boards over the same
 tasks subdomain, the living proof that domain ≠ feature (one subdomain,
 several islands): the **personal board**
-(`demo/apps/web/src/features/board/`; free card movement, optimistic moves
+(`apps/web/src/features/board/`; free card movement, optimistic moves
 + rollback + undo) exercises rung 2 — an `@xstate/store` island store; the
-**team board** (`demo/apps/web/src/features/team-board/`; WIP limits + an
-enforced status path from the `demo/core/domain/team-board.ts` transition
-table, which `demo/core/server/usecases/cards.ts` enforces on mutation)
+**team board** (`apps/web/src/features/team-board/`; WIP limits + an
+enforced status path from the `core/domain/team-board.ts` transition
+table, which `core/server/usecases/cards.ts` enforces on mutation)
 exercises rung 3 — the table-derived statechart, consulted as an oracle by
 the island's store and view. Both satisfy the spike-learnings requirements
 recorded in ADR-0005: fail-loud transitions, `toIndex` clamped before the
@@ -1100,7 +1098,7 @@ revalidation (public caching busts by content-version key).
 
 ## Ports (complete list)
 
-The list below is generated from `demo/core/server/ports.ts` (plus the one
+The list below is generated from `core/server/ports.ts` (plus the one
 client port in `core/client`). It is the *built* set — keep it in sync with the
 code.
 
@@ -1280,43 +1278,24 @@ decision).
 sender identity, image processing/thumbnailing, virus scanning, CDN cache policy —
 all app-domain, decided per product.
 
-## Deployment matrix
+## Deployment
 
-Both columns are built (DECIDE A2, 2026-07-20). Vercel is live today; the Docker
-self-host packaging now ships in the tree — `Dockerfile` (multi-stage: SPA +
-tsc-compiled server, prod-only deps), `docker-compose.prod.yml` (`postgres:16` +
-app + an `edge`-profiled Caddy; migrations run on startup via
-`docker-entrypoint.sh`; healthchecks throughout) and `Caddyfile` (on-demand TLS).
-The same commit runs on either target, and a dedicated CI job (`selfhost.yml`)
-proves it: it builds the image, boots the compose stack, and drives the same
-smoke CLI suite the Vercel post-deploy gate runs — against the container. Both
-targets now provision tenant domains through their own `DomainPort` adapter
-(`DOMAIN_PROVISIONER=vercel` / `caddy`); the Vercel one awaits its first live run
-against the real API (pending the owner's `VERCEL_TOKEN`).
+Vercel is the packaged target: `vercel.json` and `api/index.ts` provide the
+serverless entry, Neon uses `DB_DRIVER=neon-http`, and tenant domains use
+`DOMAIN_PROVISIONER=vercel` with the Vercel API credentials. The Node entry,
+node-postgres driver, caddy provisioner, and internal domain-check app remain
+available for an external deployment package. `DOMAIN_PROVISIONER=noop` remains
+the default. The required CI set is `check`, `smoke`, and `e2e`; `visual` is
+advisory and `ai-review` is separately secret-gated.
 
-| | Vercel | Docker self-host |
-|---|---|---|
-| API | Hono handler as a function | same Hono app in a Node container |
-| DB | Neon, `DB_DRIVER=neon-http` | `postgres:16`, `DB_DRIVER=node-postgres` |
-| Web | static SPA build | served by the same Node process |
-| Server runtime | bundled function | tsc-compiled JS, prod-only deps, non-root, `HEALTHCHECK` on `/api/health/live` |
-| Migrations | build step (`vercel-build`) | `docker-entrypoint.sh` on startup (idempotent) |
-| TLS for tenant domains | per-host attach over the Vercel Domains API, HTTP-01 cert per host (US-020, built; live run pending `VERCEL_TOKEN`) | Caddy `on_demand_tls` + internal domain-check endpoint (built) |
-| Domain provisioner env | `DOMAIN_PROVISIONER=vercel` + `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` (+ `VERCEL_TEAM_ID`), selected explicitly — boot refuses if the block is incomplete | `DOMAIN_PROVISIONER=caddy` + `SELF_HOST_TARGET_CNAME`/`_IP` |
-| Packaging | `vercel.json` + `api/index.ts` | `Dockerfile` + `docker-compose.prod.yml` + `Caddyfile` |
-| CI proof | `post-deploy-smoke.yml` (smoke the live deploy) | `selfhost.yml` (build image → boot compose → smoke the container) |
+Vercel is invocation-only: no resident process, so no queue workers,
+schedulers, websockets or long-running jobs. A product that needs a resident
+process must supply and verify its own long-lived Node packaging.
 
-Vercel is the default because it is the simplest for most applications — the
-same reasoning that makes TanStack Query the default over Effect. It is
-invocation-only: no resident process, so no queue workers, schedulers,
-websockets or long-running jobs. The Docker image is the full-runtime escape
-hatch from the same commit — meant to run anywhere (VPS, Railway, Fly.io,
-Kubernetes); anything that needs a resident process lives on that target.
+## Caddy custom domains and TLS runtime (US-021)
 
-## Self-host custom domains and TLS (US-021)
-
-On the Docker target a tenant custom domain gets a real certificate with **zero
-per-tenant config** through Caddy's on-demand TLS. The flow is a single question
+An externally packaged Caddy deployment can issue a tenant certificate with
+zero per-tenant config through on-demand TLS. The flow is a single question
 Caddy asks the app before it mints a cert:
 
 ```
@@ -1333,12 +1312,12 @@ Caddy  ── GET http://app:47101/internal/domain-check?domain=shop.acme.com �
 Two properties make this safe:
 
 - **The ask endpoint is unreachable from the public internet.** It is served by a
-  *separate* Hono app (`apps/server/src/internal-app.ts`), mounted only by the
-  self-host entry (`entry.node.ts`) on its own port (`INTERNAL_PORT`, 47101). In
-  `docker-compose.prod.yml` that port is bound only on the container network and
-  is **never published** — the public app on `:47100` does not serve `/internal/*`
-  at all. Network-internal isolation beats path-obscurity: even a public routing
-  mistake cannot expose it, because it does not run in the public app.
+  *separate* Hono app (`apps/server/src/internal-app.ts`), mounted by the Node
+  entry (`entry.node.ts`) on its own port (`INTERNAL_PORT`, 47101). External
+  deployment packaging must keep that port private — the public app on `:47100`
+  does not serve `/internal/*` at all. Network-internal isolation beats
+  path-obscurity: even a public routing mistake cannot expose it, because it does
+  not run in the public app.
 - **It answers 200 only for a verified domain.** The handler returns 200 iff the
   host exists and is `verified` in `tenant_domains`; every other case is 404, so
   Caddy will not obtain certificates for domains no tenant has proven. Proven by
@@ -1347,9 +1326,9 @@ Two properties make this safe:
 
 | concern | mechanism | where |
 |---|---|---|
-| Cert issuance | Caddy `on_demand_tls { ask }` → app | `Caddyfile` |
+| Cert issuance | Caddy `on_demand_tls { ask }` → app | external deployment configuration |
 | Issue/refuse decision | `GET /internal/domain-check?domain=` → 200/404 | `apps/server/src/internal-app.ts` |
-| Endpoint isolation | separate app on `INTERNAL_PORT`, never published | `entry.node.ts`, `docker-compose.prod.yml` |
+| Endpoint isolation | separate app on `INTERNAL_PORT`, never published | `entry.node.ts` + external network policy |
 | DNS precondition (verify UI) | `caddy` `DomainPort.check` resolves domain → `SELF_HOST_TARGET_CNAME`/`_IP` | `adapters/domain-provisioning/caddy.ts` |
 | Provisioner selection | `DOMAIN_PROVISIONER=caddy` (self-host) / `vercel` (Vercel target) / `noop` (default) | `apps/server/src/composition.ts` |
 
@@ -1397,8 +1376,8 @@ no identity — Admin included — merges past them.
 
 | Ruleset | Branch | Enforces |
 |---|---|---|
-| `production-protection` | `production` | require a PR + **1 approval**, stale approvals dismissed on push, last pusher's approval required; merge method **Merge only**; required status checks `check` / `smoke` / `e2e` / `docker-smoke`; block force-push; restrict deletions; empty bypass |
-| `main-gates` | `main` | require a PR + **0 approvals**; merge method **Merge only**; the same four required status checks **plus `ai-review`** (the fail-closed doctrine review) **and "require branches up to date"** (the concurrent-change / F2 guard); block force-push; restrict deletions; empty bypass |
+| `production-protection` | `production` | require a PR + **1 approval**, stale approvals dismissed on push, last pusher's approval required; merge method **Merge only**; required status checks `check` / `smoke` / `e2e`; block force-push; restrict deletions; empty bypass |
+| `main-gates` | `main` | require a PR + **0 approvals**; merge method **Merge only**; the same three required status checks **plus `ai-review`** (the fail-closed doctrine review) **and "require branches up to date"** (the concurrent-change / F2 guard); block force-push; restrict deletions; empty bypass |
 
 The `visual` job (pixel comparison,
 [ADR-0008](decisions/0008-visual-regression.md)) is deliberately **absent** from
@@ -1589,17 +1568,9 @@ production.
   and exposes only JWKS **verification** (a leaked verification key forges
   nothing). Managed-IdP migration is a **Together-scope** item.
 
-**Demo — current state (honest).** The demo runs the topology above: Vercel
-Production Branch Tracking is set to `production`, and the `production-protection`
-and `main-gates` rulesets are in place with empty bypass lists. Agents act as
-`chomamateusz-agent` (Write, not Admin); the `main → production` release PR is
-owner-approved. The one item still **in progress** is the wildcard base domain:
-the `agentproofarch.eu.org` registration + NS delegation to Vercel is pending
-approval, so until it lands the deployed web is single-tenant on `*.vercel.app`
-and multi-tenancy is CLI-only via `X-Tenant`. Because a merge to `production` is
-an ordinary branch push, it emits the normal `deployment_status` for the
-`Production` environment, so `post-deploy-smoke.yml` fires as-is — the
-dashboard-promote trigger caveat that the old model carried no longer applies.
+**Repository scope.** The application exposes the deploy attestation and remote
+smoke capabilities described here. Concrete Vercel branch tracking, rulesets,
+domains, and deployment-trigger automation are repository-owner configuration.
 
 **Per-app deployment specifics live with the app.** This section is the
 foundation's recommended topology; an individual application's concrete
@@ -1631,10 +1602,9 @@ header assertions · **REVIEW+AI**: flag any change pointing preview
 provisioning at the production branch, and any erasure-related change that
 ignores branches.
 
-**Production smoke-account doctrine.** `smoke:remote` runs against **live
-production** on every successful deploy ([ADR-0004](decisions/0004-no-exceptions-enforcement.md)),
-so it must be safe to run repeatedly and forever without corrupting the tenant it
-touches:
+**Production smoke-account doctrine.** When `smoke:remote` runs against **live
+production** ([ADR-0004](decisions/0004-no-exceptions-enforcement.md)), it must
+be safe to run repeatedly without corrupting the tenant it touches:
 
 - **A dedicated canary tenant, never a real customer.** The run signs in as a
   ring-fenced smoke account in its own tenant (default slug `acme` for local/dev;
@@ -1648,9 +1618,8 @@ touches:
   `TEAM_WIP_LIMITS`), and the team card walks the full legal chain
   `todo→in-dev→review→done`. So repeated runs never accumulate in the bounded
   `in-dev`/`review` columns and can never hit a WIP limit that would turn the
-  deploy gate false-red. A per-environment `concurrency` group
-  (`post-deploy-smoke.yml`, `cancel-in-progress: false`) serializes runs so
-  overlapping deploys don't race the `before + 1` assertions.
+  verification false-red. Callers must serialize runs that share a canary so
+  overlapping executions do not race the `before + 1` assertions.
 - **Credentials via CI secrets; forks override the defaults.** `SMOKE_EMAIL` /
   `SMOKE_PASSWORD` / `SMOKE_TENANT` / `BASE_URL` come from repository secrets in
   CI, not the repo. The script's baked-in defaults are the local canary only; a
@@ -1679,10 +1648,10 @@ platform boundary (§Layers). Unset (local dev) it reports `unknown`.
   inline without the non-200 gate. New callers use `/live` or `/ready`; this
   endpoint reports readiness semantics but does not gate on them.
 
-**Attestation gate.** `smoke:remote` reads `EXPECTED_SHA` (the deployment
-event's SHA, passed by `post-deploy-smoke.yml`) and asserts `health.sha ===
-EXPECTED_SHA`, closing the "smoke verified the wrong deployment" class (a stale
-alias, a promotion that didn't land). Local `smoke` omits it (`unknown`).
+**Attestation gate.** `smoke:remote` reads caller-supplied `EXPECTED_SHA` and
+asserts `health.sha === EXPECTED_SHA`, closing the "smoke verified the wrong
+deployment" class (a stale alias, a promotion that didn't land). Local `smoke`
+omits it (`unknown`).
 
 Enforcement — **TYPE**: the three response shapes are zod schemas in
 `core/contract` (`healthLive`/`healthReady`/`healthOutputSchema`), and `core/client`
@@ -1901,12 +1870,12 @@ path. Full policy: [observability.md](observability.md).
 
 ## Foundation evolution (consuming the foundation)
 
-How a real product is born from this repo and stays *on* the foundation. `demo/`
-is the reference implementation; a product is a copy of it that grows its own
+How a real product is born from this repo and stays *on* the foundation. The
+repository root is the reference implementation; a product is a copy that grows its own
 domain. The **enforcement configuration — not the code — is the portable
 artifact** that keeps the copy "agentproofarch".
 
-**Consumption model** (NORMATIVE NOW): copy `demo/` (its git history is not
+**Consumption model** (NORMATIVE NOW): copy the repository root (its git history is not
 inherited) and write a `FOUNDATION.md` at the app root recording the upstream repo
 URL, the forked commit SHA, the fork date and the foundation-owned paths below.
 Provenance is one cheap file; a foundation update is then a mechanical
@@ -1947,7 +1916,7 @@ the gates.
   copied read-mostly and edited only to *record* a deliberate divergence (doc-lint
   forces this when a config changes); app-specific docs and ADRs live in the app's
   own tree and numbering, never by mutating foundation docs in place.
-- **`demo/` stays exemplary** (NORMATIVE NOW): it is the fixture the gates run
+- **`` stays exemplary** (NORMATIVE NOW): it is the fixture the gates run
   against and the thing every product forks from, so it carries only the walking
   skeleton (auth, tenants, one tasks subdomain — todos plus the two exemplar
   boards — end-to-end) — a change that would not generalise to every app on the

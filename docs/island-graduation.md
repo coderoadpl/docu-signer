@@ -1,9 +1,9 @@
 # How an island core graduates
 
 This guide is read off the repo's two living boards, not from theory: the
-**personal board** (`demo/apps/web/src/features/board/`, rung 2 — an
+**personal board** (`apps/web/src/features/board/`, rung 2 — an
 `@xstate/store` island store) and the **team board**
-(`demo/apps/web/src/features/team-board/`, rung 3 — a statechart derived
+(`apps/web/src/features/team-board/`, rung 3 — a statechart derived
 from the `core/domain` transition table). Same tasks subdomain, same seam,
 one rung apart — the diff between the two file trees *is* the graduation.
 The rules being illustrated are normative in
@@ -33,11 +33,11 @@ transition legality rules**. Restated against these two file trees:
 
 The trigger decides the rung; ADR-0005 §Decision 9 decides *where the
 rules live*. Transition legality here is a business rule, so it does not
-graduate *into the island* — it moves **down** into `demo/core/domain/`,
+graduate *into the island* — it moves **down** into `core/domain/`,
 and the island (like the server) only derives from it. Client-only
-enforcement would be cosmetics: `demo/apps/cli` walks straight past the
+enforcement would be cosmetics: `apps/cli` walks straight past the
 web UI, which is why the same table gates
-`demo/core/server/usecases/cards.ts`. A rung-3 machine whose guards exist
+`core/server/usecases/cards.ts`. A rung-3 machine whose guards exist
 only client-side is a smell, not a graduation.
 
 ## The diff anatomy
@@ -141,7 +141,7 @@ reaches the gateway. (The team board also trades the personal board's
 consequence: its demo point is "why was this refused", the sibling's is
 "take it back".)
 
-**The rules moved to `core/domain`.** `demo/core/domain/team-board.ts`
+**The rules moved to `core/domain`.** `core/domain/team-board.ts`
 holds the whole business surface as plain data + pure predicates:
 `TEAM_BOARD_COLUMNS`, `TEAM_WIP_LIMITS`, `guards`, and
 

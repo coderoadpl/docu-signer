@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const demoRoot = join(import.meta.dirname, '..');
-const architecture = readFileSync(join(demoRoot, '..', 'docs', 'architecture.md'), 'utf8');
+const architecture = readFileSync(join(demoRoot, 'docs', 'architecture.md'), 'utf8');
 const portsSource = readFileSync(join(demoRoot, 'core', 'server', 'ports.ts'), 'utf8');
 
 const mustAtomicEntries = (): { interfaceName: string; method: string }[] => {

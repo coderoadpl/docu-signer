@@ -149,8 +149,8 @@ budgets.
 
 **Landed (2026-07-20):** all four defects above are closed and enforced.
 `eslint-plugin-react-hooks`, `eslint-plugin-react` and `eslint-plugin-jsx-a11y`
-are wired in `demo/eslint.config.js` (`react-hooks/exhaustive-deps` and
-`rules-of-hooks` at error, the jsx-a11y recommended set). `demo/vitest.config.ts`
+are wired in `eslint.config.js` (`react-hooks/exhaustive-deps` and
+`rules-of-hooks` at error, the jsx-a11y recommended set). `vitest.config.ts`
 now includes `**/*.test.tsx` and runs `apps/web` tests under a `jsdom`
 environment (with a `node` project for the pure cores). The root error surface
 ships as `apps/web/src/RootErrorFallback.tsx` + `components/ui/ErrorBoundary.tsx`

@@ -6,8 +6,8 @@ A concrete walkthrough of adding a real resource to the foundation. We'll add a
 The point isn't the notes; it's the *loop*: the scaffolder plants generated
 files, the type checker turns red, and every red error is the next wiring step.
 
-Run everything from `demo/`. If you haven't yet: `pnpm install --frozen-lockfile && pnpm run db:up &&
-pnpm run db:migrate && pnpm run db:seed` (and read [demo/CLAUDE.md](../demo/CLAUDE.md)
+Run everything from the repository root. If you haven't yet: `pnpm install --frozen-lockfile && pnpm run db:up &&
+pnpm run db:migrate && pnpm run db:seed` (and read [CLAUDE.md](../CLAUDE.md)
 for the layer rules — they're enforced, but knowing them makes this faster).
 
 ## 1. Scaffold
@@ -39,7 +39,7 @@ compiler, is what tells you you're done.
 
 **Why a ~400-line script and not Plop** (or any generator framework): a
 framework would add a dependency and its own template syntax for something
-`demo/scripts/new-resource.ts` does under full repo control with zero new
+`scripts/new-resource.ts` does under full repo control with zero new
 dependencies — templates are plain text files (`scripts/templates/*.tpl`)
 read at runtime, and the scaffolder's self-test renders every template and
 parses each output with the TypeScript compiler, so template rot is a failing
@@ -195,8 +195,8 @@ it runs.
 
 ## Where to go next
 
-- [demo/README.md](../demo/README.md) — the full skeleton tour and CLI reference.
-- [demo/CLAUDE.md](../demo/CLAUDE.md) — the enforced layer rules, in full.
+- [README.md](../README.md) — the full skeleton tour and CLI reference.
+- [CLAUDE.md](../CLAUDE.md) — the enforced layer rules, in full.
 - [docs/architecture.md](architecture.md) — why the seams are where they are.
 - [ADR-0004](decisions/0004-no-exceptions-enforcement.md) — how the gates can't
   be bypassed.

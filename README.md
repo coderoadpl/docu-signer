@@ -6,7 +6,7 @@ The architecture is defined in [docs/architecture.md](docs/architecture.md)
 this repo is the **walking skeleton**: auth, foundation-owned tenants (flat
 `owner`/`admin` grants — no organizations/teams concept), tenant resolution by
 domain, one tasks subdomain — todos plus the two exemplar boards (personal +
-team) — flowing through every layer, a full CLI and a web SPA. Live at
+team) — flowing through every layer, a full CLI and a web SPA. The upstream reference is live at
 <https://agentproofarch.vercel.app> (`demo@agentproofarch.dev` / `demo1234`).
 
 New here? Read [docs/first-feature.md](docs/first-feature.md) — it adds a
@@ -163,56 +163,14 @@ Per request: (1) exact custom-domain match in `tenant_domains`,
 tenant-scoped use-case takes `ctx.identity` and every repository call requires
 `tenantId`.
 
-## Deployment targets
+## Deployment
 
-Same commit, env only — live on Vercel today
-([ADR-0003](docs/decisions/0003-vercel-environments.md)):
-
-| | Vercel | Docker self-host |
-|---|---|---|
-| API | Hono handler as a function (`api/index.ts` via `@hono/node-server/vercel`) | Node container (`entry.node.ts`) |
-| DB | Neon, `DB_DRIVER=neon-http` | `postgres:16`, `DB_DRIVER=node-postgres` |
-| Web | static build | served by the same Node process |
-| Tenant domains | `DOMAIN_PROVISIONER=vercel` + `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` (+ `VERCEL_TEAM_ID`) — each host attached to the project, HTTP-01 cert per host | `DOMAIN_PROVISIONER=caddy` + `SELF_HOST_TARGET_CNAME`/`_IP` — Caddy on-demand TLS |
-
-Production = `main` → <https://agentproofarch.vercel.app>; staging is a
-long-lived branch; every PR gets a preview on an ephemeral Neon branch; each
-deploy is re-verified by `smoke:remote` in `post-deploy-smoke`. Web is
-single-tenant on `*.vercel.app` until a wildcard domain is attached (env, not
-code); API/CLI stay multi-tenant via `X-Tenant`.
-
-The Docker self-host target is **built** (US-021 + US-022, DECIDE A2): a
-multi-stage `Dockerfile` (SPA + tsc-compiled server, prod-only deps, non-root,
-`HEALTHCHECK`), `docker-compose.prod.yml` (`postgres:16` + app + an
-`edge`-profiled Caddy for on-demand TLS) and `docker-entrypoint.sh` (runs
-migrations on startup). A dedicated CI job (`selfhost.yml`) builds the image,
-boots the stack and runs the smoke CLI against the container on every push.
-Self-host issues TLS via Caddy and needs no platform API; the **Vercel** Domains
-API adapter (US-020, `DOMAIN_PROVISIONER=vercel`) is the other target's
-equivalent — it attaches each tenant host to the Vercel project, and is tested
-against a stubbed `fetch` only until the owner supplies `VERCEL_TOKEN`.
-
-### Self-host with Docker
-
-```bash
-cp .env.example .env     # set BETTER_AUTH_SECRET; for real TLS also set APP_BASE_URL
-                         # (https), APP_BASE_DOMAIN and SECURE_COOKIES=true
-docker compose -f docker-compose.prod.yml up -d --build
-#  -> postgres + app; the entrypoint migrates on startup, then serves API + SPA
-#     on http://localhost:47100. Add SEED_ON_START=true to .env for demo data.
-```
-
-Add the Caddy edge (on-demand TLS terminator, binds 80/443, needs `Caddyfile`)
-for a real domain:
-
-```bash
-docker compose -f docker-compose.prod.yml --profile edge up -d --build
-```
-
-Backup and disaster recovery for this target — the hourly k3s `pg_dump` CronJob
-against Neon, the encrypted offsite copy, and the cold-standby restore runbook —
-live in [`ops/backup/`](ops/backup/README.md). They are installed by hand on the
-owner's VPS and are not part of any CI job.
+The Vercel serverless target remains available through `vercel.json` and
+`api/index.ts`, with Neon selected by `DB_DRIVER=neon-http`. Tenant domains use
+the Vercel Domains API when `DOMAIN_PROVISIONER=vercel`. The caddy domain
+provisioner and internal domain-check runtime remain available behind
+`DOMAIN_PROVISIONER=caddy`, while the default remains `noop`. This fork does not
+ship a self-host deployment package or its CI gate.
 
 ## Operating hygiene for agent-driven repos
 

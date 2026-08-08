@@ -27,11 +27,11 @@ Do this once per Vercel project + GitHub repo.
    staging now.
 3. **GitHub → Settings → Rules → Rulesets. Create `production-protection`**
    targeting `production`: require a pull request, **1 required approval**, merge
-   method **Merge** only, required status checks **`check` / `smoke` / `e2e` /
-   `docker-smoke`**, block force-pushes, restrict deletions, and an **empty
+   method **Merge** only, required status checks **`check` / `smoke` / `e2e`**,
+   block force-pushes, restrict deletions, and an **empty
    bypass list** (no role, not even Admin, merges past it).
 4. **Create `main-gates`** targeting `main`: require a pull request, **0 required
-   approvals**, the same four required status checks **plus `ai-review`** (the
+   approvals**, the same three required status checks **plus `ai-review`** (the
    fail-closed doctrine review, added 2026-07-26) **and "require branches to
    be up to date before merging"** (the concurrent-change / F2 guard), block
    force-pushes, restrict deletions, empty bypass list.
@@ -59,8 +59,8 @@ PR may be delegated to an agent; **approval and merge are not.**
    runs **before** the merge/build by construction — do not approve because the
    gates are green. Gates prove the code *runs*; the diff review proves it is
    *the code you meant to ship*.
-3. **Confirm the four required checks on `production` are green on the PR**
-   (`check`, `smoke`, `e2e`, `docker-smoke`; `ai-review` gates `main`, not this
+3. **Confirm the three required checks on `production` are green on the PR**
+   (`check`, `smoke`, `e2e`; `ai-review` gates `main`, not this
    PR). The `production-protection` ruleset already blocks the
    merge until they pass; a check that "could not run" is red, not mergeable.
 4. **If the diff includes a migration, take a Neon snapshot / PITR point first.**
@@ -71,13 +71,10 @@ PR may be delegated to an agent; **approval and merge are not.**
 5. **Approve and merge the PR.** The approval is the release gate (the agent
    cannot self-approve its own PR, and no other identity can approve). Merging to
    `production` triggers the Production build against production env vars.
-6. **Verify the post-deploy SHA attestation.** Confirm production `/api/health`
-   now reports the merged commit's `sha`, and that `smoke:remote` ran green for
-   it (the `EXPECTED_SHA` equality in
-   [../.github/workflows/post-deploy-smoke.yml](../.github/workflows/post-deploy-smoke.yml)).
-   Because a `production` merge is an ordinary branch push, it emits the normal
-   `deployment_status` for the `Production` environment, so the workflow fires as
-   usual.
+6. **Verify the deploy SHA attestation.** Confirm production `/api/health`
+   reports the merged commit's `sha`, then run `smoke:remote` with
+   `EXPECTED_SHA` set to that commit. Deployment automation is external to this
+   repository.
 
 **Rollback** is a release in reverse: open and merge a PR that reverts
 `production` to the previous known-good SHA (or `git revert` the offending
@@ -114,20 +111,17 @@ Each is a property of the environment, not a rule an agent is asked to remember.
 4. **Passkey / 2FA on the Vercel login; sessions only on owner devices.** *WHY:*
    the login is the single gate to the secret store; phishing-resistant auth on it
    is the account-takeover defense.
-5. **Platform-independent DR.** Cold standby on the owner's VPS via the Docker
-   deploy target, an hourly `pg_dump` cron on the VPS, and Neon PITR. *WHY:* the
-   whole topology assumes Vercel + Neon; a total-platform loss (account
-   suspension, provider outage) must be recoverable off both — the same commit
-   deploys to Docker + Postgres, and the hourly dump bounds data loss independently
-   of Neon's own retention.
+5. **Platform-independent DR.** Maintain an externally owned recovery package
+   and Neon PITR. *WHY:* a total-platform loss must be recoverable independently
+   of the application repository and Neon's own retention.
 
 Operating-hygiene context for these lives in
-[../demo/README.md](../demo/README.md) §Operating hygiene for agent-driven repos.
+[../README.md](../README.md) §Operating hygiene for agent-driven repos.
 
 ## d. What agents may do
 
 **Everything on `main`, nothing that releases production.** Agents (acting as
-`chomamateusz-agent`, Write) branch, open PRs, merge to `main` once the four
+`chomamateusz-agent`, Write) branch, open PRs, merge to `main` once the three
 checks pass, dispatch workflows, and drive preview + staging deployments freely —
 that is the whole development environment. An agent may **open** the
 `main → production` release PR, but cannot approve it (no self-approval), cannot

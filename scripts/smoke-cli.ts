@@ -267,13 +267,6 @@ const assertPublicSurface = async (baseUrl: string, tenant: string): Promise<voi
     assert(parsed.ok, `${label}: expected an ok envelope, got an error.`);
     return parsed.data;
   };
-  // The Vercel CDN consumes the shared-cache directives at the edge and strips
-  // them from the client-visible header, so behind Vercel the literal helper
-  // string can never be observed. The platform-appropriate attestation is
-  // stronger: the stripped remainder must survive AND a repeat request must be
-  // served from the edge cache (x-vercel-cache HIT/STALE) — proof the CDN
-  // actually consumed the helper's directives. Direct-to-origin (local smoke,
-  // docker-smoke) keeps the literal equality.
   const assertPublicCache = async (
     res: Response,
     profile: Parameters<typeof publicCacheControl>[0],

@@ -44,7 +44,7 @@ fixed cost (Vercel Hobby + Neon Free), without fighting the platform.
    SPA. Previews therefore always test the PR's schema on a disposable
    branch. Staging/prod migrations are forward-only; destructive changes ship
    expand → contract across two deploys.
-4. **Entry**: `demo/api/index.ts` exports a node-style handler through
+4. **Entry**: `api/index.ts` exports a node-style handler through
    `@hono/node-server/vercel` (with `NODEJS_HELPERS=0`, see PRs #11/#15);
    `vercel.json` routes `/api/*` to the function and everything else to the
    static SPA build with an SPA fallback. Root directory = `demo`.

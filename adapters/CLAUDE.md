@@ -1,7 +1,7 @@
 # adapters/ — rules for agents
 
 The full doctrine lives in [`../CLAUDE.md`](../CLAUDE.md) and
-[`../../docs/architecture.md`](../../docs/architecture.md#layers) (§Layers is
+[`../docs/architecture.md`](../docs/architecture.md#layers) (§Layers is
 normative). This file is the one-screen distillation for anyone editing
 `adapters/`.
 
@@ -35,7 +35,7 @@ Concrete implementations of `core/server` ports: the database repositories
   `core/server`). No `any`. No `as` (except `as const`).
 - Parse external input with zod at the boundary before returning it to core.
 - New tables: `timestamptz` + `uuid` primary keys; add cursor pagination when a
-  list can grow (see [architecture §Data conventions](../../docs/architecture.md#data-conventions)).
+  list can grow (see [architecture §Data conventions](../docs/architecture.md#data-conventions)).
 - A thrown port promise is normalized once at the composition edge
   (`app.onError`), not caught inside the adapter.
 

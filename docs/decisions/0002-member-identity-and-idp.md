@@ -99,9 +99,9 @@ export (CSV/JSON incl. email) is a foundation capability.
   [provider-coupling-audit.md](../provider-coupling-audit.md) (docs first,
   code follows).
 
-  > **Landed (2026-07-20).** The P1 migration batch is complete: `demo/` now
+  > **Landed (2026-07-20).** The P1 migration batch is complete: `` now
   > ships foundation-owned `tenants`, `tenant_admins` and `members` tables (see
-  > `demo/adapters/db/app-schema.ts`), the organization plugin is gone, and no
+  > `adapters/db/app-schema.ts`), the organization plugin is gone, and no
   > provider organization/member table backs tenancy. This debt is resolved.
 - Together PRD FR-3 should be rephrased from "isolated member accounts" to
   "isolated member relationship ownership over shared authentication".

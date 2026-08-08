@@ -92,25 +92,22 @@ cells name a commissioned gate, not a shipped one.
 
 ## Consequences
 
-- Every PR is marked red until both gates pass, and every production deploy is
-  independently re-verified end-to-end. The two historical failure classes —
-  runtime-only breakage and stale local state — are both structurally caught.
+- Every PR is marked red until the required gates pass. The remote smoke script
+  supports explicit production verification with SHA attestation.
 - **Branch protection is now server-enforced.** The repository is **public**, so
   GitHub rulesets are available at no cost, and two are in force with **empty
   bypass lists**: `main-gates` on `main` (require a PR + the required status
-  checks `check` / `smoke` / `e2e` / `docker-smoke` / `ai-review` + "require
+  checks `check` / `smoke` / `e2e` / `ai-review` + "require
   branches up to date", 0 approvals, merge-commit only) and `production-protection` on
-  `production` (`check` / `smoke` / `e2e` / `docker-smoke` + **1 required
+  `production` (`check` / `smoke` / `e2e` + **1 required
   approval**, stale approvals dismissed on push, merge-commit only). A merge is therefore **blocked**
   on a failing or missing check, not merely marked red. This supersedes the
   earlier private-repo limitation, when the branch-protection API returned
   `403 "Upgrade to GitHub Pro"` and enforcement was discipline-only — going public
   was the resolution. Full topology in [architecture.md](../architecture.md)
   §Environments.
-- CI runs only on the canonical repo. The repo is public and therefore forkable;
-  every job is guarded with
-  `if: github.repository == 'chomamateusz/agentproofarch'` so a fork never spends
-  Actions minutes or fails on missing secrets/services.
+- CI has no canonical-repository guard, so the static, runtime, browser, and
+  visual jobs run wherever the workflows are enabled.
 - The `smoke` job needs a Postgres service container in CI, but no
   `docker compose`: `smoke.ts` creates and drops its own isolated
   `agentproofarch_smoke` database over the provided `DATABASE_URL`, so a bare
@@ -119,28 +116,12 @@ cells name a commissioned gate, not a shipped one.
   track the rules they guard), accepted as the price of making "you cannot
   silently disable a rule" a mechanical guarantee rather than a hope.
 
-## Amendment (2026-07-20): post-deploy-smoke scope and target URL
+## Remote smoke target
 
-Decision point 2 above described the narrowest form of the post-deploy gate.
-The shipped `.github/workflows/post-deploy-smoke.yml` and ADR-0003 agree on a
-broader behavior, recorded here so all three sources match:
-
-- **Both Production *and* Preview deployments are smoked**, not Production only.
-  The job runs on any `deployment_status` with `state == 'success'` whose
-  environment is `Production` or `Preview` (staging is deployed as a Preview),
-  so previews and staging are verified too — as ADR-0003 §1 states.
-- **The target URL depends on the environment, and is not always
-  `environment_url`.** A **Production** deploy drives the production **alias**
-  (`https://agentproofarch.vercel.app`, hardcoded in the workflow): the alias
-  is what users hit, it proves promotion/aliasing worked, and Better Auth only
-  trusts `APP_BASE_URL` as the CSRF origin. **Preview/staging** deploys drive
-  their own per-deployment `environment_url`, which their `VERCEL_URL`-derived
-  auth origin already trusts.
+- **The caller chooses Production or Preview.** Production verification drives
+  the user-facing alias; preview verification drives its deployment URL.
 - **Because it drives live production, `smoke:remote` obeys the production
   smoke-account doctrine** — a dedicated canary tenant, never `db:seed` against a
-  real database, credentials from CI secrets, forks override the defaults, and a
-  non-self-poisoning drive that parks every card in an unbounded column. The
-  doctrine lives in [architecture.md §Environments](../architecture.md#environments-vercel-target);
-  the workflow enforces its concurrency half with a per-environment
-  `concurrency` group (`cancel-in-progress: false`) so overlapping deploys can't
-  race the shared canary.
+  real database, caller-supplied credentials, and a non-self-poisoning drive that
+  parks every card in an unbounded column. The caller must serialize runs that
+  share a canary tenant.

@@ -2,7 +2,7 @@
 
 Date: 2026-07-25 · Status: accepted (owner-approved) · Builds on
 [ADR-0004](0004-no-exceptions-enforcement.md) (enforcement, not convention) and
-the flake doctrine (`demo/CLAUDE.md`: a flake is a P1 bug, never rerun-to-green).
+the flake doctrine (`CLAUDE.md`: a flake is a P1 bug, never rerun-to-green).
 
 ## Context
 
@@ -25,7 +25,7 @@ away, or not screenshotted at all.
    (`scripts/e2e-server.ts`) that drops, migrates and seeds an isolated database
    and serves the built bundle from `entry.node.ts`. Visual regression rides that
    harness: no new runtime, no new service, no new hosting decision. Baselines
-   are PNGs in `demo/visual/__screenshots__/`, reviewed in the pull request that
+   are PNGs in `visual/__screenshots__/`, reviewed in the pull request that
    changes them — the diff is the approval.
 
 2. **Baselines are rendered INSIDE CI (linux), never on a developer mac.**
@@ -47,13 +47,13 @@ away, or not screenshotted at all.
    partial artifact — and it is the determinism check in miniature.
 
 3. **A separate suite, structurally isolated from the required gates.** The specs
-   live in `demo/visual/` with their own `playwright.visual.config.ts`
-   (`pnpm run visual`), not in `demo/e2e/`. The required check `e2e` therefore
+   live in `visual/` with their own `playwright.visual.config.ts`
+   (`pnpm run visual`), not in `e2e/`. The required check `e2e` therefore
    cannot go red because a screenshot moved — the isolation is a directory, not a
    filter someone can forget to apply.
 
 4. **The check is NON-REQUIRED until the owner arms it.** The required checks
-   (architecture §Environments) are `check` / `smoke` / `e2e` / `docker-smoke`
+   (architecture §Environments) are `check` / `smoke` / `e2e`
    on both rulesets, plus `ai-review` on `main-gates` since 2026-07-26. The
    new `visual` job is deliberately not among them: it reports, it does not block.
    Arming it is a one-line ruleset edit by the owner, made only after the check

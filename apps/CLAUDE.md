@@ -1,7 +1,7 @@
 # apps/ — rules for agents
 
 The full doctrine lives in [`../CLAUDE.md`](../CLAUDE.md) and
-[`../../docs/architecture.md`](../../docs/architecture.md#layers) (§Layers and
+[`../docs/architecture.md`](../docs/architecture.md#layers) (§Layers and
 §Frontend are normative). This file is the one-screen distillation for anyone
 editing `apps/`.
 
@@ -31,7 +31,7 @@ logic lives here.
   map the `Result` to a response. No business rules in a route or a component.
 - Web features are islands — a feature's `core/` is pure TS (events in,
   selectors out); UI is presentational; the client is constructed only in
-  `web/src/api.ts` (see [architecture §Frontend](../../docs/architecture.md#frontend-appsweb)).
+  `web/src/api.ts` (see [architecture §Frontend](../docs/architecture.md#frontend-appsweb)).
 - Adding a resource walks the 12-step chain; start with
   `pnpm run new:resource -- <singular-name>` and finish every checklist item
   (missing CLI command / web route / server route still typecheck — the

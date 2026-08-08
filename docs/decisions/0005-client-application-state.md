@@ -238,9 +238,9 @@ repo; their conclusions and probe results are summarized in this ADR.
   requirements above.
 
   > **Landed (2026-07-20).** Both boards now exist in the tree
-  > (`demo/apps/web/src/features/board/` with its `core/` island store, and
-  > `demo/apps/web/src/features/team-board/` with its `core/` over the
-  > `demo/core/domain/team-board.ts` transition table). Every *other* demo
+  > (`apps/web/src/features/board/` with its `core/` island store, and
+  > `apps/web/src/features/team-board/` with its `core/` over the
+  > `core/domain/team-board.ts` transition table). Every *other* demo
   > feature (todos, auth) remains rung 1 and honestly so — none fires a
   > graduation trigger; the pre-existing features still carry no explicit
   > `core/` folder and gain one when first touched by real client state. New

@@ -1,7 +1,7 @@
 # core/ — rules for agents
 
 The full doctrine lives in [`../CLAUDE.md`](../CLAUDE.md) and
-[`../../docs/architecture.md`](../../docs/architecture.md#layers) (§Layers is
+[`../docs/architecture.md`](../docs/architecture.md#layers) (§Layers is
 normative). This file is the one-screen distillation for anyone editing `core/`.
 
 ## What this layer is
@@ -35,7 +35,7 @@ adapter and app is written against.
   status + exit code in `core/contract/http-status.ts` (exhaustive).
 - Every tenant-scoped use-case authorizes FIRST — its opening statement is the
   capability predicate (`authorize`/`authorizeTenant`, default-deny; see
-  [architecture §Authorization](../../docs/architecture.md#authorization)) —
+  [architecture §Authorization](../docs/architecture.md#authorization)) —
   before any repository access. A self-scoped read carrying no capability
   (e.g. `listMyTenants`) is the only allowlisted exception.
 - Every tenant-scoped use-case takes `ctx: { identity }` first.

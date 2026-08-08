@@ -1,6 +1,6 @@
 # agentproofarch — rules for agents
 
-Architecture spec: `../docs/prd-agentproofarch-foundation.md` (see also `../docs/architecture.md`) (§3 is normative).
+Architecture spec: `docs/prd-agentproofarch-foundation.md` (see also `docs/architecture.md`) (§3 is normative).
 
 ## The two gates
 
@@ -66,11 +66,11 @@ rejected.)
   its own CI job (`e2e`), never part of `check`.
 
 - `pnpm run visual` = the **pixel** check
-  ([ADR-0008](../docs/decisions/0008-visual-regression.md)): Playwright
+  ([ADR-0008](docs/decisions/0008-visual-regression.md)): Playwright
   `toHaveScreenshot()` over the same boot harness, in its own suite
   (`visual/`, `playwright.visual.config.ts`) so a moved screenshot can never
   redden `e2e`. It is **not a required check** — the required set is
-  `check`/`smoke`/`e2e`/`docker-smoke` (+ `ai-review` on `main-gates`), and
+  `check`/`smoke`/`e2e` (+ `ai-review` on `main-gates`), and
   `visual` stays out of it until the owner arms it. Baselines
   (`visual/__screenshots__/<platform>/`) are rendered by the linux CI runner via
   the `visual-baselines` workflow and committed; a mac run compares nothing
@@ -105,7 +105,7 @@ Per-layer one-screen summaries live beside the code — [`core/CLAUDE.md`](core/
   tenant-scoped repository method requires `tenantId`.
 - Every tenant-scoped use-case authorizes FIRST — its opening statement is the
   capability predicate (`authorize` / `authorizeTenant` from `core/server`,
-  default-deny; see `../docs/architecture.md` §Authorization) — before any
+  default-deny; see `docs/architecture.md` §Authorization) — before any
   repository access; a self-scoped read that carries no capability (e.g.
   `listMyTenants`) is the only exception and is a reasoned allowlist entry.
 
@@ -125,11 +125,11 @@ contract → port → use-case index → adapter schema → composition → serv
 → client → client queries → CLI → web binding → web route, in that order, with
 tests at the core layer.
 
-Client state follows the island-core model (`../docs/architecture.md`
+Client state follows the island-core model (`docs/architecture.md`
 §Client application state, ADR-0005): a feature's `core/` is pure TS —
 events in, selectors out — with lint-enforced purity; scaffold a new island
 with `pnpm run new:island -- <name>`. How a core graduates rungs is read off
-the two living boards in `../docs/island-graduation.md`.
+the two living boards in `docs/island-graduation.md`.
 
 Start every new resource with the scaffolder — it is the canonical entry point:
 `pnpm run new:resource -- <singular-name>` (e.g. `blog-post`). It generates the
