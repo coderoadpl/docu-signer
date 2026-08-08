@@ -71,30 +71,21 @@ describe('DocumentsPage', () => {
     );
     await renderPage();
 
-    expect(await screen.findByText('Umowa z Anną')).toBeInTheDocument();
+    expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
     await userEvent.type(
       screen.getByLabelText('Szukaj po tytule'),
       'Protokół',
     );
 
-    expect(await screen.findByText('Protokół odbioru')).toBeInTheDocument();
+    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
   });
 
-  it('filters and opens the create dialog from the empty state', async () => {
-    const seen = vi.fn();
+  it('shows one dominant create action and no tools for an empty archive', async () => {
     server.use(
-      http.get('/api/documents', ({ request }) => {
-        const params = new URL(request.url).searchParams;
-        seen({
-          docType: params.get('docType'),
-          person: params.get('person'),
-        });
-        return HttpResponse.json({
-          ok: true,
-          data: { documents: [] },
-        });
-      }),
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [] } }),
+      ),
     );
     await renderPage();
 
@@ -102,22 +93,9 @@ describe('DocumentsPage', () => {
       await screen.findByRole('heading', { name: 'Brak dokumentów' }),
     ).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Typ' }));
-    await userEvent.click(
-      await screen.findByRole('option', { name: 'Uchwała' }),
-    );
-    await userEvent.type(screen.getByLabelText('Osoba'), 'Anna');
-    await waitFor(() =>
-      expect(seen).toHaveBeenCalledWith({
-        docType: 'uchwala',
-        person: 'Anna',
-      }),
-    );
-
-    const emptyStateCta = screen
-      .getAllByRole('button', { name: 'Dodaj dokument' })
-      .at(-1);
-    if (!emptyStateCta) throw new Error('Missing empty-state CTA');
+    expect(screen.queryByLabelText('Szukaj po tytule')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Eksportuj zaznaczone/ })).not.toBeInTheDocument();
+    const emptyStateCta = screen.getByRole('button', { name: 'Dodaj dokument' });
     await userEvent.click(emptyStateCta);
     const dialog = await screen.findByRole('dialog');
     await userEvent.click(
@@ -126,6 +104,30 @@ describe('DocumentsPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
     );
+  });
+
+  it('distinguishes filtered zero results and clears the filters', async () => {
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const text = new URL(request.url).searchParams.get('text');
+        return HttpResponse.json({
+          ok: true,
+          data: { documents: text ? [] : [document] },
+        });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
+    await userEvent.type(screen.getByLabelText('Szukaj po tytule'), 'brak');
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Brak wyników dla tych filtrów',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Dodaj pierwszy dokument do archiwum.')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Wyczyść filtry' }));
+    expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
   });
 
   it('surfaces a failed documents query and retries it', async () => {
@@ -154,7 +156,7 @@ describe('DocumentsPage', () => {
       screen.getByRole('button', { name: 'Spróbuj ponownie' }),
     );
 
-    expect(await screen.findByText('Umowa z Anną')).toBeInTheDocument();
+    expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
     expect(requests).toHaveBeenCalledTimes(2);
   });
 
@@ -178,16 +180,18 @@ describe('DocumentsPage', () => {
     );
     await renderPage();
 
-    await screen.findByText('Uchwała zarządu');
+    await screen.findAllByText('Uchwała zarządu');
     const emptyExport = screen.getByRole('button', {
       name: 'Eksportuj zaznaczone (0)',
     });
     expect(emptyExport).toBeDisabled();
-    await userEvent.click(
-      screen.getByRole('checkbox', {
+    const annaCheckbox = screen
+      .getAllByRole('checkbox', {
         name: 'Zaznacz dokument: Umowa z Anną',
-      }),
-    );
+      })
+      .at(0);
+    if (!annaCheckbox) throw new Error('Missing document checkbox');
+    await userEvent.click(annaCheckbox);
     expect(
       screen.getByRole('button', { name: 'Eksportuj zaznaczone (1)' }),
     ).toBeEnabled();
@@ -234,5 +238,35 @@ describe('DocumentsPage', () => {
     expect(router.state.location.pathname).toBe(
       `/app/documents/${DOCUMENT_ID}`,
     );
+  });
+
+  it('shows Polish inline validation and focuses the first invalid field', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [] } }),
+      ),
+    );
+    await renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Dodaj dokument' }),
+    );
+    const dialog = screen.getByRole('dialog');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
+    );
+
+    const title = within(dialog).getByRole('textbox', { name: 'Tytuł' });
+    expect(title).toHaveFocus();
+    expect(title).toHaveAccessibleDescription('Tytuł jest wymagany');
+
+    await userEvent.type(title, 'Nowy dokument');
+    const date = within(dialog).getByLabelText('Data dokumentu');
+    await userEvent.clear(date);
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
+    );
+    expect(date).toHaveFocus();
+    expect(date).toHaveAccessibleDescription('Data dokumentu jest wymagana');
   });
 });

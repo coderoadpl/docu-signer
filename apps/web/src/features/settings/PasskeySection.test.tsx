@@ -29,7 +29,7 @@ describe('PasskeySection', () => {
     renderWithProviders(<PasskeySection />);
 
     expect(await screen.findByText('MacBook Touch ID')).toBeInTheDocument();
-    expect(screen.getByText(/added/i)).toBeInTheDocument();
+    expect(screen.getByText(/Dodano/i)).toBeInTheDocument();
   });
 
   it('shows the empty state when no passkeys are registered', async () => {
@@ -37,7 +37,7 @@ describe('PasskeySection', () => {
 
     renderWithProviders(<PasskeySection />);
 
-    expect(await screen.findByText(/no passkeys registered yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Nie zarejestrowano jeszcze żadnych kluczy/i)).toBeInTheDocument();
   });
 
   it('removes a passkey behind an inline confirmation', async () => {
@@ -56,9 +56,9 @@ describe('PasskeySection', () => {
 
     renderWithProviders(<PasskeySection />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'remove' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'confirm remove' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Usuń' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Potwierdź usunięcie' }));
 
-    expect(await screen.findByText(/no passkeys registered yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Nie zarejestrowano jeszcze żadnych kluczy/i)).toBeInTheDocument();
   });
 });

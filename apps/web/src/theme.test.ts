@@ -1,15 +1,22 @@
-import { createTheme } from '@mui/material/styles';
+import { createTheme, getContrastRatio } from '@mui/material/styles';
 import { describe, expect, it } from 'vitest';
 
 import { createAppTheme } from './theme.js';
 
 describe('createAppTheme', () => {
   it('carries the tenant accent as the primary color', () => {
-    expect(createAppTheme(120).palette.primary.main).toBe('hsl(120 62% 42%)');
+    expect(createAppTheme(120).palette.primary.main).toBe('hsl(120, 62%, 36%)');
   });
 
   it('keeps the MUI default primary when no accent is provided', () => {
     expect(createAppTheme().palette.primary.main).toBe(createTheme().palette.primary.main);
+  });
+
+  it('picks contrast text meeting WCAG AA for any accent hue', () => {
+    for (let hue = 0; hue < 360; hue += 15) {
+      const { main, contrastText } = createAppTheme(hue).palette.primary;
+      expect(getContrastRatio(main, contrastText)).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it('uses the Material shape and scales down display headings', () => {

@@ -8,6 +8,13 @@ import { PasskeySection } from './PasskeySection.js';
 import { TwoFactorSection } from './TwoFactorSection.js';
 import { tenantUrl } from '../../lib/tenant.js';
 
+const roleLabel = (role: string | null): string =>
+  role === 'owner'
+    ? 'właściciel'
+    : role === 'admin'
+      ? 'administrator'
+      : 'członek';
+
 /**
  * Settings home (US-017): the current tenant and the caller's staff role (read
  * from `/api/me`), links into the staff and domain sub-settings, and the
@@ -23,11 +30,11 @@ export const SettingsPage = () => {
   return (
     <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', py: '2.5rem' }}>
       <Typography variant="h1" sx={{ mb: '1.5rem' }}>
-        Settings
+        Ustawienia
       </Typography>
 
       <Paper variant="outlined" sx={{ p: '1.25rem', mb: '1.5rem' }}>
-        <Typography variant="overline">current tenant</Typography>
+        <Typography variant="overline">Bieżąca firma</Typography>
         {tenant ? (
           <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.8rem', mt: '0.3rem' }}>
             <Typography variant="h2" component="p">
@@ -35,37 +42,37 @@ export const SettingsPage = () => {
             </Typography>
             <Typography variant="caption">{tenant.slug}</Typography>
             <Box sx={{ flex: 1 }} />
-            <Chip size="small" variant="outlined" label={tenant.staffRole ?? 'member'} />
+            <Chip size="small" variant="outlined" label={roleLabel(tenant.staffRole)} />
           </Stack>
         ) : (
           <Typography variant="body2" sx={{ mt: '0.3rem' }}>
-            no tenant selected on this host
+            Na tym adresie nie wybrano firmy
           </Typography>
         )}
         {isStaff ? (
           <Stack direction="row" useFlexGap sx={{ columnGap: '1.2rem', mt: '1rem' }}>
             <Link component={RouterLink} to="/app/settings/staff" variant="body2">
-              staff →
+              zespół →
             </Link>
             <Link component={RouterLink} to="/app/settings/domains" variant="body2">
-              domains →
+              domeny →
             </Link>
           </Stack>
         ) : null}
         {isStaff && !isOwner ? (
           <Alert severity="info" sx={{ mt: '1rem' }}>
-            You are an admin. Granting staff and changing domains are owner-only.
+            Jesteś administratorem. Nadawanie uprawnień i zmiana domen są dostępne tylko dla właściciela.
           </Alert>
         ) : null}
       </Paper>
 
       <Paper variant="outlined" sx={{ p: '1.25rem' }}>
-        <Typography variant="overline">your tenants</Typography>
+        <Typography variant="overline">Twoje firmy</Typography>
         <Stack useFlexGap spacing="0.4rem" sx={{ mt: '0.4rem' }}>
           {tenants.data?.tenants.map((m) => {
             const url = tenantUrl(m.tenant.slug);
             const active = m.tenant.slug === tenant?.slug;
-            const label = `${m.tenant.name} (${m.staffRole})${active ? ' — current' : ''}`;
+            const label = `${m.tenant.name} (${roleLabel(m.staffRole)})${active ? ' — bieżąca' : ''}`;
             return url === null || active ? (
               <Typography key={m.tenant.id} variant="body2" aria-current={active}>
                 {label}
@@ -79,7 +86,7 @@ export const SettingsPage = () => {
         </Stack>
         <Divider sx={{ my: '1.2rem' }} />
         <Typography variant="overline" sx={{ display: 'block', mb: '0.6rem' }}>
-          create a new tenant
+          Utwórz nową firmę
         </Typography>
         <CreateTenantForm />
       </Paper>

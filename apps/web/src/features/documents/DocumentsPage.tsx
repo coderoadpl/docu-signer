@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
+  Card,
+  CardActionArea,
+  CardContent,
   Checkbox,
   Chip,
   FormControl,
@@ -28,6 +31,7 @@ import type { DocumentType } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
+import { formatPolishDate } from '../../lib/format-date.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
   DOCUMENT_TYPE_LABELS,
@@ -82,6 +86,7 @@ export const DocumentsPage = () => {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [archiveHasDocuments, setArchiveHasDocuments] = useState(false);
   const [filters, setFilters] = useState<DocumentFilters>({
     text: '',
     docType: '',
@@ -108,6 +113,21 @@ export const DocumentsPage = () => {
 
   const updateFilter = (name: keyof DocumentFilters, value: string) =>
     setFilters((current) => ({ ...current, [name]: value }));
+  const filtersActive = Object.values(filters).some((value) => value.length > 0);
+  const visibleDocuments = documents.data?.documents ?? [];
+
+  useEffect(() => {
+    if (visibleDocuments.length > 0) setArchiveHasDocuments(true);
+  }, [visibleDocuments.length]);
+
+  const clearFilters = () =>
+    setFilters({
+      text: '',
+      docType: '',
+      person: '',
+      dateFrom: '',
+      dateTo: '',
+    });
 
   return (
     <PageContainer>
@@ -119,12 +139,14 @@ export const DocumentsPage = () => {
           <Typography variant="overline">Archiwum</Typography>
           <Typography variant="h1">Dokumenty</Typography>
         </Box>
-        <Button variant="contained" onClick={() => setCreateOpen(true)}>
-          Dodaj dokument
-        </Button>
+        {archiveHasDocuments ? (
+          <Button variant="contained" onClick={() => setCreateOpen(true)}>
+            Dodaj dokument
+          </Button>
+        ) : null}
       </Stack>
 
-      <Paper sx={{ mt: 4, p: 2 }}>
+      {archiveHasDocuments ? <Paper sx={{ mt: 4, p: 2 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} sx={{ gap: 2 }}>
           <TextField
             label="Szukaj po tytule"
@@ -169,9 +191,9 @@ export const DocumentsPage = () => {
             slotProps={{ inputLabel: { shrink: true } }}
           />
         </Stack>
-      </Paper>
+      </Paper> : null}
 
-      <Stack
+      {archiveHasDocuments ? <Stack
         direction="row"
         sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end' }}
       >
@@ -182,9 +204,9 @@ export const DocumentsPage = () => {
         >
           Eksportuj zaznaczone ({selectedIds.length})
         </Button>
-      </Stack>
+      </Stack> : null}
       {exportDocuments.isError ? (
-        <Alert sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert>
+        <Alert severity="error" sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert>
       ) : null}
 
       {documents.isPending ? (
@@ -206,7 +228,25 @@ export const DocumentsPage = () => {
           />
         </Box>
       ) : null}
-      {documents.data?.documents.length === 0 ? (
+      {visibleDocuments.length === 0 &&
+      filtersActive &&
+      archiveHasDocuments &&
+      documents.isSuccess ? (
+        <Box sx={{ mt: 4 }}>
+          <StatusView
+            state={{
+              kind: 'empty',
+              title: 'Brak wyników dla tych filtrów',
+              action: (
+                <Button variant="outlined" onClick={clearFilters}>
+                  Wyczyść filtry
+                </Button>
+              ),
+            }}
+          />
+        </Box>
+      ) : null}
+      {visibleDocuments.length === 0 && !filtersActive && documents.isSuccess ? (
         <Box sx={{ mt: 4 }}>
           <StatusView
             state={{
@@ -222,8 +262,50 @@ export const DocumentsPage = () => {
           />
         </Box>
       ) : null}
-      {documents.data?.documents.length ? (
-        <TableContainer component={Paper} sx={{ mt: 4 }}>
+      {visibleDocuments.length > 0 ? (
+        <>
+        <Stack sx={{ display: { xs: 'flex', sm: 'none' }, mt: 4, gap: 2 }}>
+          {visibleDocuments.map((document) => (
+            <Card key={document.id} variant="outlined">
+              <Stack direction="row" sx={{ alignItems: 'center' }}>
+                <Checkbox
+                  slotProps={{
+                    input: {
+                      'aria-label': `Zaznacz dokument: ${document.title}`,
+                    },
+                  }}
+                  checked={selectedIds.includes(document.id)}
+                  onChange={(event) =>
+                    setSelectedIds((current) =>
+                      event.target.checked
+                        ? [...current, document.id]
+                        : current.filter((id) => id !== document.id),
+                    )
+                  }
+                />
+                <CardActionArea
+                  onClick={() =>
+                    void navigate({
+                      to: '/app/documents/$id',
+                      params: { id: document.id },
+                    })
+                  }
+                >
+                  <CardContent>
+                    <Typography variant="h2">{document.title}</Typography>
+                    <Typography variant="body2" sx={{ mt: 1 }}>
+                      {document.person ?? 'Bez przypisanej osoby'}
+                    </Typography>
+                    <Typography variant="body2">
+                      {formatPolishDate(document.documentDate)} · Pliki: {document.files.length}
+                    </Typography>
+                  </CardContent>
+                </CardActionArea>
+              </Stack>
+            </Card>
+          ))}
+        </Stack>
+        <TableContainer component={Paper} sx={{ display: { xs: 'none', sm: 'block' }, mt: 4 }}>
           <Table>
             <TableHead>
               <TableRow>
@@ -232,19 +314,19 @@ export const DocumentsPage = () => {
                     slotProps={{
                       input: { 'aria-label': 'Zaznacz wszystkie dokumenty' },
                     }}
-                    checked={documents.data.documents.every((document) =>
+                    checked={visibleDocuments.every((document) =>
                       selectedIds.includes(document.id),
                     )}
                     indeterminate={
                       selectedIds.length > 0 &&
-                      !documents.data.documents.every((document) =>
+                      !visibleDocuments.every((document) =>
                         selectedIds.includes(document.id),
                       )
                     }
                     onChange={(event) =>
                       setSelectedIds(
                         event.target.checked
-                          ? documents.data.documents.map((document) => document.id)
+                          ? visibleDocuments.map((document) => document.id)
                           : [],
                       )
                     }
@@ -258,7 +340,7 @@ export const DocumentsPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {documents.data.documents.map((document) => (
+              {visibleDocuments.map((document) => (
                 <TableRow
                   key={document.id}
                   hover
@@ -290,7 +372,7 @@ export const DocumentsPage = () => {
                       }
                     />
                   </TableCell>
-                  <TableCell>{document.documentDate}</TableCell>
+                  <TableCell>{formatPolishDate(document.documentDate)}</TableCell>
                   <TableCell>{document.title}</TableCell>
                   <TableCell>
                     <Chip
@@ -307,6 +389,7 @@ export const DocumentsPage = () => {
             </TableBody>
           </Table>
         </TableContainer>
+        </>
       ) : null}
 
       <DocumentFormDialog

@@ -73,8 +73,8 @@ describe('TodosPage', () => {
     expect(await screen.findByText('first entry')).toBeInTheDocument();
     expect(screen.queryByText('second entry')).not.toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText('New todo title'), 'second entry');
-    await userEvent.click(screen.getByRole('button', { name: /add/i }));
+    await userEvent.type(screen.getByLabelText('Tytuł nowego wpisu'), 'second entry');
+    await userEvent.click(screen.getByRole('button', { name: /Dodaj/i }));
 
     expect(await screen.findByText('second entry')).toBeInTheDocument();
   });

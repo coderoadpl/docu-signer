@@ -38,23 +38,23 @@ export const CreateTenantForm = ({ onCreated }: { onCreated?: (slug: string) => 
     >
       <Stack useFlexGap spacing="0.75rem">
         <FormControl fullWidth>
-          <FormLabel htmlFor="create-tenant-name">tenant name</FormLabel>
+          <FormLabel htmlFor="create-tenant-name">Nazwa firmy</FormLabel>
           <OutlinedInput
             id="create-tenant-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Acme Sp. z o.o."
-            inputProps={{ 'aria-label': 'New tenant name' }}
+            inputProps={{ 'aria-label': 'Nazwa nowej firmy' }}
           />
         </FormControl>
         <Typography variant="caption" data-testid="slug-preview">
-          slug: <strong>{slug || '—'}</strong>
+          identyfikator: <strong>{slug || '—'}</strong>
         </Typography>
         <Button type="submit" variant="contained" disabled={create.isPending || slug.length === 0}>
-          {create.isPending ? 'creating…' : 'create tenant'}
+          {create.isPending ? 'Tworzenie…' : 'Utwórz firmę'}
         </Button>
       </Stack>
-      {create.isError ? <Alert sx={{ mt: '0.6rem' }}>{create.error.message}</Alert> : null}
+      {create.isError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{create.error.message}</Alert> : null}
     </Box>
   );
 };

@@ -30,7 +30,7 @@ const roster = {
 
 const enabledRevoke = (): HTMLElement => {
   const button = screen
-    .getAllByRole('button', { name: 'revoke' })
+    .getAllByRole('button', { name: 'Odbierz' })
     .find((candidate) => !candidate.hasAttribute('disabled'));
   if (!button) throw new Error('no enabled revoke button');
   return button;
@@ -65,7 +65,7 @@ describe('StaffSettingsPage', () => {
     const dialog = await screen.findByRole('dialog');
     expect(revokeCalls).toBe(0);
 
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Revoke' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Odbierz' }));
     await screen.findByText('admin@acme.dev');
     expect(revokeCalls).toBe(1);
   });
@@ -84,7 +84,7 @@ describe('StaffSettingsPage', () => {
     await screen.findByText('admin@acme.dev');
     await userEvent.click(enabledRevoke());
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Anuluj' }));
     expect(revokeCalls).toBe(0);
   });
 
@@ -103,8 +103,8 @@ describe('StaffSettingsPage', () => {
     );
 
     await renderStaff();
-    await userEvent.type(await screen.findByLabelText('Grant admin email'), 'new@acme.dev');
-    await userEvent.click(screen.getByRole('button', { name: 'grant ↵' }));
+    await userEvent.type(await screen.findByLabelText('E-mail nowego administratora'), 'new@acme.dev');
+    await userEvent.click(screen.getByRole('button', { name: 'Nadaj ↵' }));
 
     await screen.findByText('admin@acme.dev');
     expect(granted).toBe('new@acme.dev');
@@ -122,8 +122,8 @@ describe('StaffSettingsPage', () => {
     );
 
     await renderStaff();
-    await userEvent.type(await screen.findByLabelText('Grant admin email'), 'ghost@acme.dev');
-    await userEvent.click(screen.getByRole('button', { name: 'grant ↵' }));
+    await userEvent.type(await screen.findByLabelText('E-mail nowego administratora'), 'ghost@acme.dev');
+    await userEvent.click(screen.getByRole('button', { name: 'Nadaj ↵' }));
 
     expect(await screen.findByText(/must register first/)).toBeInTheDocument();
   });
@@ -134,7 +134,7 @@ describe('StaffSettingsPage', () => {
 
     await renderStaff(meAdmin);
     expect(await screen.findByText('admin@acme.dev')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'revoke' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Grant admin email')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Odbierz' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('E-mail nowego administratora')).not.toBeInTheDocument();
   });
 });

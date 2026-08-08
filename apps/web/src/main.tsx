@@ -1,17 +1,19 @@
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CssBaseline, ThemeProvider } from '@mui/material';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import {
   createRootRoute,
   createRoute,
   createRouter,
+  Navigate,
   Outlet,
   redirect,
   RouterProvider,
 } from '@tanstack/react-router';
 
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
+import { actions } from './api.js';
 import { AppLayout } from './AppLayout.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
@@ -22,6 +24,7 @@ import { DocumentDetailRoute } from './routes/document-detail.js';
 import { DocumentsRoute } from './routes/documents.js';
 import { LoginRoute } from './routes/login.js';
 import { MembersRoute } from './routes/members.js';
+import { NotFoundRoute } from './routes/not-found.js';
 import { RegisterRoute } from './routes/register.js';
 import { DomainsRoute } from './routes/settings-domains.js';
 import { StaffSettingsRoute } from './routes/settings-staff.js';
@@ -66,10 +69,23 @@ const appLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/app',
   component: AppLayout,
+  notFoundComponent: NotFoundRoute,
 });
+const AppIndexRedirect = () => {
+  const me = useQuery(actions.me);
+  if (me.isPending) return null;
+  const staffRole = me.data?.tenant?.staffRole ?? null;
+  return <Navigate to={staffRole ? '/app/documents' : '/app/ledger'} replace />;
+};
+
 const appIndexRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/',
+  component: AppIndexRedirect,
+});
+const ledgerRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: 'ledger',
   component: TodosRoute,
 });
 const boardRoute = createRoute({
@@ -120,6 +136,7 @@ const router = createRouter({
     registerRoute,
     appLayoutRoute.addChildren([
       appIndexRoute,
+      ledgerRoute,
       boardRoute,
       teamBoardRoute,
       membersRoute,

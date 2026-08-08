@@ -23,11 +23,12 @@ const meAcme = {
 const acme = { tenant: { id: 't1', slug: 'acme', name: 'Acme Inc' }, staffRole: 'owner' };
 const globex = { tenant: { id: 't2', slug: 'globex', name: 'Globex Inc' }, staffRole: 'admin' };
 
-const renderApp = async (initial = '/app') => {
+const renderApp = async (initial = '/app/documents') => {
   const rootRoute = createRootRoute({});
   const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: '/login', component: () => <p>login page</p> });
   const layout = createRoute({ getParentRoute: () => rootRoute, path: '/app', component: AppLayout });
-  const index = createRoute({ getParentRoute: () => layout, path: '/', component: () => <p>ledger content</p> });
+  const index = createRoute({ getParentRoute: () => layout, path: '/', component: () => <p>home content</p> });
+  const ledger = createRoute({ getParentRoute: () => layout, path: 'ledger', component: () => <p>ledger content</p> });
   const settings = createRoute({ getParentRoute: () => layout, path: 'settings', component: () => <p>settings page</p> });
   const board = createRoute({ getParentRoute: () => layout, path: 'board', component: () => <p>board page</p> });
   const teamBoard = createRoute({ getParentRoute: () => layout, path: 'team-board', component: () => <p>team page</p> });
@@ -36,7 +37,7 @@ const renderApp = async (initial = '/app') => {
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       loginRoute,
-      layout.addChildren([index, settings, board, teamBoard, members, documents]),
+      layout.addChildren([index, ledger, settings, board, teamBoard, members, documents]),
     ]),
     history: createMemoryHistory({ initialEntries: [initial] }),
   });
@@ -53,11 +54,11 @@ describe('AppLayout', () => {
 
     await renderApp();
 
-    expect(await screen.findByText('ledger content')).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'ledger' })).toHaveClass('active');
-    expect(screen.getByRole('link', { name: 'Dokumenty' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Switch tenant' }));
+    expect(await screen.findByText('documents page')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Główna nawigacja' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dokumenty' })).toHaveClass('active');
+    expect(screen.getByRole('link', { name: 'Rejestr' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Zmień firmę' }));
     expect(await screen.findByText('Globex Inc')).toBeInTheDocument();
   });
 
@@ -69,8 +70,8 @@ describe('AppLayout', () => {
 
     await renderApp();
 
-    expect(await screen.findByLabelText('New tenant name')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'create tenant' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('Nazwa nowej firmy')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Utwórz firmę' })).toBeInTheDocument();
     expect(screen.queryByText('ledger content')).not.toBeInTheDocument();
   });
 
@@ -84,7 +85,7 @@ describe('AppLayout', () => {
 
     await renderApp();
 
-    expect(await screen.findByLabelText('New tenant name')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Nazwa nowej firmy')).toBeInTheDocument();
   });
 
   it('onboarding lists my existing tenants as switch links', async () => {
@@ -108,7 +109,7 @@ describe('AppLayout', () => {
     await renderApp();
 
     expect(await screen.findByText('boom')).toBeInTheDocument();
-    expect(screen.queryByLabelText('New tenant name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nazwa nowej firmy')).not.toBeInTheDocument();
   });
 
   it('redirects an anonymous visitor to /login', async () => {

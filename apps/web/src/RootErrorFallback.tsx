@@ -5,29 +5,29 @@ import { ApiError } from '#core/client/index.js';
 import { activeTraceId } from './observability.js';
 
 const headingFor = (error: unknown): string => {
-  if (!(error instanceof ApiError)) return 'Something went wrong';
+  if (!(error instanceof ApiError)) return 'Wystąpił błąd';
   switch (error.appError.code) {
     case 'unauthorized':
-      return 'Your session has ended';
+      return 'Sesja wygasła';
     case 'forbidden':
-      return 'You do not have access';
+      return 'Nie masz dostępu';
     case 'not_found':
-      return 'Nothing here';
+      return 'Nie znaleziono zasobu';
     case 'tenant_not_found':
-      return 'Unknown tenant';
+      return 'Nieznana firma';
     case 'validation':
-      return 'That request was invalid';
+      return 'Żądanie jest nieprawidłowe';
     case 'conflict':
-      return 'A conflicting change happened';
+      return 'Wystąpił konflikt zmian';
     case 'unavailable':
-      return 'The service is temporarily unavailable';
+      return 'Usługa jest tymczasowo niedostępna';
     case 'internal':
-      return 'Something went wrong';
+      return 'Wystąpił błąd';
   }
 };
 
 const detailFor = (error: unknown): string =>
-  error instanceof ApiError ? error.appError.message : 'An unexpected error interrupted the page.';
+  error instanceof ApiError ? error.appError.message : 'Nieoczekiwany błąd przerwał działanie strony.';
 
 interface RootErrorFallbackProps {
   error: unknown;
@@ -54,11 +54,11 @@ export const RootErrorFallback = ({ error, traceId }: RootErrorFallbackProps) =>
       </Typography>
       {traceId === undefined ? null : (
         <Typography variant="caption" component="p" sx={{ mb: '1.4rem' }}>
-          Trace ID: <code>{traceId}</code>
+          Identyfikator śledzenia: <code>{traceId}</code>
         </Typography>
       )}
       <Button variant="contained" fullWidth onClick={() => window.location.reload()}>
-        reload
+        Odśwież stronę
       </Button>
     </Paper>
   </Box>

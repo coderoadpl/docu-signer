@@ -35,8 +35,8 @@ describe('DomainsPage', () => {
     await renderDomains();
 
     expect(await screen.findByText('shop.acme.com')).toBeInTheDocument();
-    expect(screen.getByText('pending')).toBeInTheDocument();
-    expect(screen.getByText(/CNAME record pointing your domain at apps\.example\.com/)).toBeInTheDocument();
+    expect(screen.getByText('oczekuje')).toBeInTheDocument();
+    expect(screen.getByText(/rekord CNAME wskazujący domenę na apps\.example\.com/)).toBeInTheDocument();
   });
 
   it('shows the empty state and an A-record instruction when the target is an IP', async () => {
@@ -48,8 +48,8 @@ describe('DomainsPage', () => {
 
     await renderDomains();
 
-    expect(await screen.findByText('— no custom domains yet —')).toBeInTheDocument();
-    expect(screen.getByText(/A record pointing your domain at 203\.0\.113\.10/)).toBeInTheDocument();
+    expect(await screen.findByText('— brak domen niestandardowych —')).toBeInTheDocument();
+    expect(screen.getByText(/rekord A wskazujący domenę na 203\.0\.113\.10/)).toBeInTheDocument();
   });
 
   it('falls back to generic guidance when no DNS target is configured', async () => {
@@ -61,7 +61,7 @@ describe('DomainsPage', () => {
 
     await renderDomains();
 
-    expect(await screen.findByText(/Point your domain at this deployment/)).toBeInTheDocument();
+    expect(await screen.findByText(/Skieruj domenę na tę instalację/)).toBeInTheDocument();
   });
 
   it('adds a domain through the add form', async () => {
@@ -76,10 +76,10 @@ describe('DomainsPage', () => {
     );
 
     await renderDomains();
-    await userEvent.type(await screen.findByLabelText('New domain'), 'shop.acme.com');
-    await userEvent.click(screen.getByRole('button', { name: 'add domain' }));
+    await userEvent.type(await screen.findByLabelText('Nowa domena'), 'shop.acme.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj domenę' }));
 
-    await screen.findByRole('button', { name: 'add domain' });
+    await screen.findByRole('button', { name: 'Dodaj domenę' });
     expect(added).toBe('shop.acme.com');
   });
 
@@ -98,7 +98,7 @@ describe('DomainsPage', () => {
     );
 
     await renderDomains();
-    await userEvent.click(await screen.findByRole('button', { name: 'check' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sprawdź' }));
     await screen.findByText('shop.acme.com');
     expect(checked).toBe('shop.acme.com');
   });
@@ -114,10 +114,10 @@ describe('DomainsPage', () => {
     );
 
     await renderDomains();
-    expect(await screen.findByText('verified')).toBeInTheDocument();
+    expect(await screen.findByText('zweryfikowana')).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText('New domain'), 'other.acme.com');
-    await userEvent.click(screen.getByRole('button', { name: 'add domain' }));
+    await userEvent.type(screen.getByLabelText('Nowa domena'), 'other.acme.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj domenę' }));
     expect(await screen.findByText('already attached')).toBeInTheDocument();
   });
 
@@ -132,11 +132,11 @@ describe('DomainsPage', () => {
     );
 
     await renderDomains();
-    await userEvent.click(await screen.findByRole('button', { name: 'remove' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Usuń' }));
     const dialog = await screen.findByRole('dialog');
     expect(removeCalls).toBe(0);
 
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Usuń' }));
     await screen.findByText('shop.acme.com');
     expect(removeCalls).toBe(1);
   });

@@ -38,20 +38,20 @@ describe('SettingsPage', () => {
   it('shows the current tenant, my role and the staff/domains links for staff', async () => {
     await renderSettings('owner');
     expect(await screen.findByText('Acme Inc')).toBeInTheDocument();
-    expect(screen.getByText('owner')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /staff/ })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /domains/ })).toBeInTheDocument();
+    expect(screen.getByText('właściciel')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /zespół/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /domeny/ })).toBeInTheDocument();
   });
 
   it('warns an admin that owner-only surfaces are restricted', async () => {
     await renderSettings('admin');
-    expect(await screen.findByText(/Granting staff and changing domains are owner-only/)).toBeInTheDocument();
+    expect(await screen.findByText(/Nadawanie uprawnień i zmiana domen/)).toBeInTheDocument();
   });
 
   it('hides the staff/domains links from a non-staff member', async () => {
     await renderSettings(null);
     expect(await screen.findByText('Acme Inc')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /staff/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /domains/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /zespół/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /domeny/ })).not.toBeInTheDocument();
   });
 });

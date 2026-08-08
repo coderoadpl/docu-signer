@@ -26,6 +26,7 @@ import type { DocumentFile, DocumentFileRole } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
+import { formatPolishDate } from '../../lib/format-date.js';
 import { FileDropZone, PdfPreview, PreviewImage } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
@@ -97,9 +98,7 @@ const FileRow = ({
     <ListItem>
       <ListItemText
         primary={file.fileName}
-        secondary={`${formatFileSize(file.sizeBytes)} · ${new Date(
-          file.createdAt,
-        ).toLocaleDateString('pl-PL')}`}
+        secondary={`${formatFileSize(file.sizeBytes)} · ${formatPolishDate(file.createdAt)}`}
       />
       <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}>
         <Link href={contentUrl} target="_blank" rel="noreferrer">
@@ -281,8 +280,9 @@ export const DocumentDetailPage = ({
   const deleteDocument = useMutation({
     ...actions.deleteDocument,
     onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.documentsInvalidates());
       await navigate({ to: '/app/documents' });
+      queryClient.removeQueries(actions.document(documentId));
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
     },
   });
   const deleteFile = useMutation({
@@ -368,7 +368,7 @@ export const DocumentDetailPage = ({
             />
           </Stack>
           <Typography sx={{ mt: 1 }}>
-            {document.documentDate} ·{' '}
+            {formatPolishDate(document.documentDate)} ·{' '}
             {document.person ?? 'Bez przypisanej osoby'}
           </Typography>
           {document.tags.length ? (

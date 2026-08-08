@@ -230,12 +230,15 @@ child through its `Outlet`. When the caller has no accessible tenant on the
 current host (the tenant-less apex, or a tenant domain they lack access to) the
 shell renders the **create-tenant onboarding** instead of a child, which is where
 a freshly-registered user lands (US-016) to create their first tenant (with its
-owner row). The ledger is `/app`; the boards are `/app/board` and
+owner row). `/app` is a role-aware redirect (staff land on `/app/documents`,
+members on `/app/ledger`); the ledger is `/app/ledger`; the document archive is
+`/app/documents`; the boards are `/app/board` and
 `/app/team-board`; `/app/members` is the staff customer roster; and settings live
 at `/app/settings` (current tenant + role, tenant switch/create), with
 `/app/settings/staff` (the FR-8 staff roster — grant-by-email and confirmed
 revoke, owner-only) and `/app/settings/domains` (US-019 custom domains) as
-sub-pages. Bare `/` redirects to `/app`.
+sub-pages. Unknown routes render a Polish not-found view inside the shell.
+Bare `/` redirects to `/app`.
 
 State rules:
 

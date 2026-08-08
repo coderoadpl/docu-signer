@@ -28,7 +28,7 @@ const signInWithPassword = async (page: Page): Promise<void> => {
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
+  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toContainText('Acme');
 };
 
 test('register a passkey in settings, then sign in with it (US-028a)', async ({ page }) => {
@@ -37,14 +37,14 @@ test('register a passkey in settings, then sign in with it (US-028a)', async ({ 
   await signInWithPassword(page);
   await page.goto('/app/settings');
   await page.locator('#passkey-name').fill('E2E Virtual Key');
-  await page.getByRole('button', { name: 'register a passkey' }).click();
+  await page.getByRole('button', { name: 'Zarejestruj klucz' }).click();
   await expect(page.getByText('E2E Virtual Key')).toBeVisible();
 
-  await page.getByRole('button', { name: 'sign out' }).click();
+  await page.getByRole('button', { name: 'Wyloguj się' }).click();
   await page.goto('/login');
 
   await page.getByRole('button', { name: 'Zaloguj się kluczem dostępu' }).click();
-  await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
+  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toContainText('Acme');
 
   const me = await page.request.get('/api/me');
   expect(me.ok()).toBeTruthy();

@@ -49,3 +49,4 @@ each.
   until SMTP exists in production.
 - A single Material theme and sidebar shell replace the upstream logbook look
   and top navigation (owner decision 2026-07-27).
+- The shell and system states are Polish-first, including upstream demo surfaces.

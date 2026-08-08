@@ -2,11 +2,23 @@ import type { ElementType } from 'react';
 import { Box, Typography } from '@mui/material';
 import { createTheme, styled, type Theme } from '@mui/material/styles';
 
-export const createAppTheme = (accentHue?: number): Theme =>
-  createTheme({
-    ...(accentHue === undefined
-      ? {}
-      : { palette: { primary: { main: `hsl(${accentHue} 62% 42%)` } } }),
+export const createAppTheme = (accentHue?: number): Theme => {
+  const base = createTheme({ palette: { contrastThreshold: 4.5 } });
+  const primaryMain = accentHue === undefined
+    ? base.palette.primary.main
+    : `hsl(${accentHue}, 62%, 36%)`;
+
+  return createTheme({
+    palette: {
+      primary: base.palette.augmentColor({
+        color: { main: primaryMain },
+        name: 'primary',
+      }),
+      secondary: base.palette.augmentColor({
+        color: { main: base.palette.secondary.main },
+        name: 'secondary',
+      }),
+    },
     typography: {
       h1: { fontSize: '2.125rem', fontWeight: 400 },
       h2: { fontSize: '1.25rem', fontWeight: 500 },
@@ -27,6 +39,7 @@ export const createAppTheme = (accentHue?: number): Theme =>
       },
     },
   });
+};
 
 type AsElement = { component?: ElementType };
 

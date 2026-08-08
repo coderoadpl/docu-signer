@@ -16,6 +16,14 @@ import { ApiError } from '#core/client/index.js';
 
 import { boardSelectors, send, subscribe, type BoardCard } from './index.web.js';
 
+const COLUMN_LABELS: Record<string, string> = {
+  todo: 'Do zrobienia',
+  doing: 'W toku',
+  done: 'Gotowe',
+};
+
+const columnLabel = (column: string): string => COLUMN_LABELS[column] ?? column;
+
 /**
  * Board view — talks ONLY to the island seam (the web composition index.web.ts):
  * it reads through `boardSelectors` and emits intents through `send`. It never
@@ -55,11 +63,11 @@ export const BoardPage = () => {
   return (
     <Container disableGutters sx={{ maxWidth: '60rem !important', px: '1.25rem', py: '3rem' }}>
       <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem', mb: '1.5rem' }}>
-        <Typography variant="h1">Board</Typography>
+        <Typography variant="h1">Tablica</Typography>
         <Box sx={{ flex: 1 }} />
         {canUndo ? (
           <Button variant="outlined" onClick={() => send({ type: 'undoRequested' })}>
-            undo
+            Cofnij
           </Button>
         ) : null}
         <Button
@@ -69,12 +77,12 @@ export const BoardPage = () => {
             void queryClient.invalidateQueries(boardSelectors.invalidates());
           }}
         >
-          refresh
+          Odśwież
         </Button>
       </Stack>
 
-      {cards.isPending ? <Typography>loading…</Typography> : null}
-      {cards.isError ? <Alert>{cards.error.message}</Alert> : null}
+      {cards.isPending ? <Typography>Ładowanie…</Typography> : null}
+      {cards.isError ? <Alert severity="error">{cards.error.message}</Alert> : null}
 
       <Stack direction="row" useFlexGap sx={{ gap: '1rem', alignItems: 'flex-start' }}>
         {columns.map((column, columnIndex) => {
@@ -85,11 +93,11 @@ export const BoardPage = () => {
               key={column}
               component="section"
               variant="outlined"
-              aria-label={column}
+              aria-label={columnLabel(column)}
               sx={{ flex: 1, p: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}
             >
               <Typography variant="overline" component="h2">
-                {column}
+                {columnLabel(column)}
               </Typography>
               <Stack useFlexGap sx={{ gap: '0.5rem' }}>
                 {board[column].map((card, cardIndex) => (
@@ -138,7 +146,7 @@ const CardRow = ({
   // an id the server may not know and rolls back. The seam refuses moves until
   // the op settles (same rule as the team board).
   const saving = card.pending;
-  const savingSuffix = saving ? ' (saving)' : '';
+  const savingSuffix = saving ? ' (zapisywanie)' : '';
   return (
   <Paper
     variant="outlined"
@@ -150,7 +158,7 @@ const CardRow = ({
     <Stack direction="row" useFlexGap sx={{ gap: '0.25rem' }}>
       <Button
         size="small"
-        aria-label={`Move ${card.title} left${savingSuffix}`}
+        aria-label={`Przenieś ${card.title} w lewo${savingSuffix}`}
         disabled={saving || leftColumn === undefined}
         onClick={() =>
           leftColumn === undefined
@@ -170,7 +178,7 @@ const CardRow = ({
       </Button>
       <Button
         size="small"
-        aria-label={`Move ${card.title} up${savingSuffix}`}
+        aria-label={`Przenieś ${card.title} w górę${savingSuffix}`}
         disabled={saving || cardIndex === 0}
         onClick={() =>
           send({
@@ -188,7 +196,7 @@ const CardRow = ({
       </Button>
       <Button
         size="small"
-        aria-label={`Move ${card.title} down${savingSuffix}`}
+        aria-label={`Przenieś ${card.title} w dół${savingSuffix}`}
         disabled={saving || cardIndex === columnCount - 1}
         onClick={() =>
           send({
@@ -206,7 +214,7 @@ const CardRow = ({
       </Button>
       <Button
         size="small"
-        aria-label={`Move ${card.title} right${savingSuffix}`}
+        aria-label={`Przenieś ${card.title} w prawo${savingSuffix}`}
         disabled={saving || rightColumn === undefined}
         onClick={() =>
           rightColumn === undefined
@@ -247,12 +255,12 @@ const AddCardForm = ({ column }: { column: string }) => {
       <InputBase
         value={title}
         onChange={(event) => setTitle(event.target.value)}
-        placeholder="new card…"
-        inputProps={{ 'aria-label': `New card in ${column}` }}
+        placeholder="Nowa karta…"
+        inputProps={{ 'aria-label': `Nowa karta w kolumnie ${columnLabel(column)}` }}
         sx={{ flex: 1, '& input': { p: '0.4rem 0.6rem' } }}
       />
       <Button type="submit" size="small" variant="contained">
-        add
+        Dodaj
       </Button>
     </Paper>
   );

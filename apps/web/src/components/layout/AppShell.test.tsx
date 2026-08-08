@@ -36,11 +36,11 @@ describe('AppShell', () => {
 
     expect(screen.getAllByRole('navigation')).toHaveLength(1);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Otwórz nawigację' }));
 
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByRole('navigation')).toBeInTheDocument();
-    await userEvent.keyboard('{Escape}');
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Zamknij nawigację' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getAllByRole('navigation')).toHaveLength(1);
   });

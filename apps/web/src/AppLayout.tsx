@@ -29,6 +29,15 @@ import { createAppTheme, TenantName, Wordmark } from './theme.js';
 const errorCodeOf = (error: unknown): string | null =>
   error instanceof ApiError ? error.appError.code : null;
 
+const ROLE_LABELS: Record<string, string> = {
+  owner: 'właściciel',
+  admin: 'administrator',
+  member: 'członek',
+};
+
+const roleLabel = (role: string | null): string =>
+  role === null ? 'członek' : (ROLE_LABELS[role] ?? role);
+
 const useSignOut = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -63,7 +72,7 @@ export const AppLayout = () => {
   if (me.isError || !me.data) {
     return (
       <Shell
-        state={{ kind: 'error', message: me.error?.message ?? 'Something went wrong' }}
+        state={{ kind: 'error', message: me.error?.message ?? 'Wystąpił nieoczekiwany błąd' }}
       />
     );
   }
@@ -92,32 +101,33 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
 
   const navigation = (
     <>
-      <ListItemButton
-        className="app-shell-nav-item"
-        component={RouterLink}
-        to="/app"
-        activeOptions={{ exact: true }}
-      >
-        <ListItemText primary="ledger" />
-      </ListItemButton>
-      <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/board">
-        <ListItemText primary="board" />
-      </ListItemButton>
-      <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/team-board">
-        <ListItemText primary="team board" />
-      </ListItemButton>
-      {tenant?.staffRole ? (
-        <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/members">
-          <ListItemText primary="members" />
-        </ListItemButton>
-      ) : null}
       {tenant?.staffRole ? (
         <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/documents">
           <ListItemText primary="Dokumenty" />
         </ListItemButton>
       ) : null}
+      <Divider sx={{ my: 1 }} />
+      <ListItemButton
+        className="app-shell-nav-item"
+        component={RouterLink}
+        to="/app/ledger"
+        activeOptions={{ exact: true }}
+      >
+        <ListItemText primary="Rejestr" />
+      </ListItemButton>
+      <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/board">
+        <ListItemText primary="Tablica" />
+      </ListItemButton>
+      <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/team-board">
+        <ListItemText primary="Tablica zespołu" />
+      </ListItemButton>
+      {tenant?.staffRole ? (
+        <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/members">
+          <ListItemText primary="Członkowie" />
+        </ListItemButton>
+      ) : null}
       <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/settings">
-        <ListItemText primary="settings" />
+        <ListItemText primary="Ustawienia" />
       </ListItemButton>
     </>
   );
@@ -149,7 +159,7 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
               <Chip
                 size="small"
                 variant="outlined"
-                label={tenant.staffRole}
+                label={roleLabel(tenant.staffRole)}
                 sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               />
             ) : null}
@@ -167,7 +177,7 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
             disabled={signOut.isPending}
             onClick={() => signOut.mutate()}
           >
-            sign out
+            Wyloguj się
           </Button>
         }
         navigation={navigation}
@@ -191,9 +201,9 @@ const TenantSwitcher = ({ activeSlug }: { activeSlug: string | null }) => {
         size="small"
         onClick={(event) => setAnchor(event.currentTarget)}
         aria-haspopup="menu"
-        aria-label="Switch tenant"
+        aria-label="Zmień firmę"
       >
-        {active ? active.tenant.name : (activeSlug ?? 'select tenant')} ▾
+        {active ? active.tenant.name : (activeSlug ?? 'wybierz firmę')} ▾
       </Button>
       <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
         {tenants.data?.tenants.map((membership) => {
@@ -207,13 +217,13 @@ const TenantSwitcher = ({ activeSlug }: { activeSlug: string | null }) => {
               onClick={() => setAnchor(null)}
             >
               <TenantName>{membership.tenant.name}</TenantName>
-              <Chip size="small" variant="outlined" label={membership.staffRole} sx={{ ml: '0.6rem' }} />
+              <Chip size="small" variant="outlined" label={roleLabel(membership.staffRole)} sx={{ ml: '0.6rem' }} />
             </MenuItem>
           );
         })}
         <Divider />
         <MenuItem component={RouterLink} to="/app/settings" onClick={() => setAnchor(null)}>
-          + create / manage tenants
+          + utwórz firmę / zarządzaj firmami
         </MenuItem>
       </Menu>
     </>
@@ -226,13 +236,13 @@ const Onboarding = () => {
   const tenantLinks =
     tenants.data && tenants.data.tenants.length > 0 ? (
       <Box sx={{ mb: '1.4rem' }}>
-        <Typography variant="overline">your tenants</Typography>
+        <Typography variant="overline">Twoje firmy</Typography>
         <Stack useFlexGap spacing="0.4rem" sx={{ mt: '0.4rem' }}>
           {tenants.data.tenants.map((membership) => {
             const url = tenantUrl(membership.tenant.slug);
             return url === null ? (
               <Typography key={membership.tenant.id} variant="body2">
-                {membership.tenant.name} — open via the CLI (--tenant {membership.tenant.slug})
+                {membership.tenant.name} — otwórz przez CLI (--tenant {membership.tenant.slug})
               </Typography>
             ) : (
               <Link key={membership.tenant.id} href={url} variant="body2">
@@ -255,7 +265,7 @@ const Onboarding = () => {
           disabled={signOut.isPending}
           onClick={() => signOut.mutate()}
         >
-          sign out
+          Wyloguj się
         </Button>
       }
     >
@@ -263,7 +273,7 @@ const Onboarding = () => {
         surface={false}
         state={{
           kind: 'empty',
-          title: 'no tenant here yet — create one to get started',
+          title: 'Nie ma tu jeszcze firmy — utwórz pierwszą',
           body: tenantLinks,
           action: <CreateTenantForm />,
         }}

@@ -6,10 +6,18 @@ const signIn = async (page: Page): Promise<void> => {
   await page.getByLabel('Adres e-mail').fill('demo@agentproofarch.dev');
   await page.getByLabel('Hasło').fill('demo1234');
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
+  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toContainText('Acme');
 };
 
-const column = (page: Page, name: string) => page.locator(`section[aria-label="${name}"]`);
+const COLUMN_LABELS: Record<string, string> = {
+  todo: 'Do zrobienia',
+  'in-dev': 'W realizacji',
+  review: 'Weryfikacja',
+  done: 'Gotowe',
+};
+
+const column = (page: Page, name: string) =>
+  page.locator(`section[aria-label="${COLUMN_LABELS[name] ?? name}"]`);
 
 // Card titles render as the only <p> elements inside a column section; filter to
 // this attempt's own cards so retries and parallel runs never interfere.
@@ -19,8 +27,8 @@ const titlesIn = async (page: Page, columnName: string, mine: string[]): Promise
 };
 
 const addCard = async (page: Page, title: string): Promise<void> => {
-  await column(page, 'todo').getByLabel('New card in todo').fill(title);
-  await column(page, 'todo').getByRole('button', { name: 'add' }).click();
+  await column(page, 'todo').getByLabel('Nowa karta w kolumnie Do zrobienia').fill(title);
+  await column(page, 'todo').getByRole('button', { name: 'Dodaj' }).click();
   await expect(column(page, 'todo').getByText(title)).toBeVisible();
 };
 
@@ -29,7 +37,9 @@ const settled = async (page: Page): Promise<void> => {
 };
 
 const moveTo = async (page: Page, title: string, target: string): Promise<void> => {
-  await page.getByRole('button', { name: `Move ${title} to ${target}` }).click();
+  await page.getByRole('button', {
+    name: `Przenieś ${title} do kolumny ${COLUMN_LABELS[target] ?? target}`,
+  }).click();
 };
 
 // The WIP counter reads "occupancy of limit" — the spec fills in-dev to its
@@ -37,7 +47,7 @@ const moveTo = async (page: Page, title: string, target: string): Promise<void> 
 // leftovers included), so the test is idempotent across retries.
 const inDevOccupancy = async (page: Page): Promise<number> => {
   const label = await column(page, 'in-dev')
-    .getByLabel(/in-dev work-in-progress/)
+    .getByLabel(/W realizacji: praca w toku/)
     .textContent();
   const occupancy = Number((label ?? '0/3').split('/')[0]);
   return Number.isNaN(occupancy) ? 0 : occupancy;
@@ -51,12 +61,12 @@ test('team board: entry column only, WIP guard blocks visibly and releases, lega
 
   await signIn(page);
   await page.goto('/app/team-board');
-  await expect(page.getByRole('heading', { name: 'Team board' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tablica zespołu' })).toBeVisible();
   await settled(page);
 
-  await expect(page.getByLabel('New card in todo')).toBeVisible();
-  await expect(page.getByLabel('New card in done')).toHaveCount(0);
-  await expect(page.getByLabel('New card in review')).toHaveCount(0);
+  await expect(page.getByLabel('Nowa karta w kolumnie Do zrobienia')).toBeVisible();
+  await expect(page.getByLabel('Nowa karta w kolumnie Gotowe')).toHaveCount(0);
+  await expect(page.getByLabel('Nowa karta w kolumnie Weryfikacja')).toHaveCount(0);
 
   const fillers: string[] = [];
   let occupancy = await inDevOccupancy(page);
@@ -72,11 +82,11 @@ test('team board: entry column only, WIP guard blocks visibly and releases, lega
   await settled(page);
 
   const blockedMove = page.getByRole('button', {
-    name: `Move ${walker} to in-dev (blocked: wip-limit)`,
+    name: `Przenieś ${walker} do kolumny W realizacji (zablokowane: limit pracy w toku)`,
   });
   await expect(blockedMove).toBeVisible();
   await expect(blockedMove).toBeDisabled();
-  await expect(column(page, 'todo').getByText('blocked: wip-limit').first()).toBeVisible();
+  await expect(column(page, 'todo').getByText('zablokowane: limit pracy w toku').first()).toBeVisible();
 
   // Free a slot: the guard releases and the same move becomes enabled. Any
   // in-dev card will do — prefer one of ours, fall back to a leftover.
@@ -84,7 +94,7 @@ test('team board: entry column only, WIP guard blocks visibly and releases, lega
   const leftover = await column(page, 'in-dev').locator('p').first().textContent();
   const toRelease = inDevMine[0] ?? leftover ?? '';
   await moveTo(page, toRelease, 'review');
-  await expect(page.getByRole('button', { name: `Move ${walker} to in-dev` })).toBeEnabled();
+  await expect(page.getByRole('button', { name: `Przenieś ${walker} do kolumny W realizacji` })).toBeEnabled();
   await moveTo(page, toRelease, 'done');
   await settled(page);
 
@@ -108,7 +118,7 @@ test('team board: entry column only, WIP guard blocks visibly and releases, lega
   // the verdicts survive, because `visited` history is recorded server-side.
   // The walker walked through in-dev, so moving back into review is allowed.
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Team board' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tablica zespołu' })).toBeVisible();
   await expect.poll(() => titlesIn(page, 'done', [walker])).toContain(walker);
-  await expect(page.getByRole('button', { name: `Move ${walker} to review` })).toBeEnabled();
+  await expect(page.getByRole('button', { name: `Przenieś ${walker} do kolumny Weryfikacja` })).toBeEnabled();
 });

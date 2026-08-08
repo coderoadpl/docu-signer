@@ -22,7 +22,7 @@ test('magic link signs in a provisioned member and binds them to the tenant', as
 
   await page.goto(link);
 
-  await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText(/acme/i);
+  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toContainText(/acme/i);
 
   const me = await page.request.get('/api/me');
   const meBody = await me.json();

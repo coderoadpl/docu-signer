@@ -44,7 +44,9 @@ describe('LoginPage', () => {
     await fillCredentials();
     await userEvent.click(screen.getByRole('button', { name: 'Zaloguj się' }));
 
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Nieprawidłowy adres e-mail lub hasło',
+    );
   });
 
   it('disables submit while the sign-in mutation is pending', async () => {

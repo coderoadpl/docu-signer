@@ -19,6 +19,22 @@ import type { Card, MoveVerdict, TeamColumn } from '#core/domain/index.js';
 
 import { send, subscribe, teamBoardSelectors, type TeamCard } from './index.web.js';
 
+const COLUMN_LABELS: Record<TeamColumn, string> = {
+  todo: 'Do zrobienia',
+  'in-dev': 'W realizacji',
+  review: 'Weryfikacja',
+  done: 'Gotowe',
+};
+
+const RULE_LABELS: Record<string, string> = {
+  'wip-limit': 'limit pracy w toku',
+  'done-only-from-review': 'ukończenie tylko po weryfikacji',
+  'review-requires-in-dev': 'weryfikacja wymaga realizacji',
+  'unknown-card': 'nieznana karta',
+};
+
+const ruleLabel = (rule: string): string => RULE_LABELS[rule] ?? rule;
+
 /**
  * Team board view — talks ONLY to the island seam (the web composition
  * index.web.ts): it reads through `teamBoardSelectors` and emits intents through
@@ -62,7 +78,7 @@ export const TeamBoardPage = () => {
   return (
     <Container disableGutters sx={{ maxWidth: '70rem !important', px: '1.25rem', py: '3rem' }}>
       <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem', mb: '1.5rem' }}>
-        <Typography variant="h1">Team board</Typography>
+        <Typography variant="h1">Tablica zespołu</Typography>
         <Box sx={{ flex: 1 }} />
         <Button
           variant="text"
@@ -71,15 +87,15 @@ export const TeamBoardPage = () => {
             void queryClient.invalidateQueries(teamBoardSelectors.invalidates());
           }}
         >
-          refresh
+          Odśwież
         </Button>
       </Stack>
 
-      {cards.isPending ? <Typography>loading…</Typography> : null}
+      {cards.isPending ? <Typography>Ładowanie…</Typography> : null}
       {cards.isError ? <Alert severity="error">{cards.error.message}</Alert> : null}
       {rejection ? (
         <Alert severity="warning" sx={{ mb: '1rem' }} role="status">
-          Move blocked by rule "{rejection.rule}".
+          Ruch zablokowany przez regułę „{ruleLabel(rejection.rule)}”.
         </Alert>
       ) : null}
 
@@ -93,18 +109,18 @@ export const TeamBoardPage = () => {
               key={column}
               component="section"
               variant="outlined"
-              aria-label={column}
+              aria-label={COLUMN_LABELS[column]}
               sx={{ flex: 1, p: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}
             >
               <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.5rem' }}>
                 <Typography variant="overline" component="h2">
-                  {column}
+                  {COLUMN_LABELS[column]}
                 </Typography>
                 <Box sx={{ flex: 1 }} />
                 <Typography
                   variant="caption"
                   color={over ? 'error' : 'text.secondary'}
-                  aria-label={`${column} work-in-progress ${occupancy}${limit === undefined ? '' : ` of ${limit}`}`}
+                  aria-label={`${COLUMN_LABELS[column]}: praca w toku ${occupancy}${limit === undefined ? '' : ` z ${limit}`}`}
                   sx={{ fontVariantNumeric: 'tabular-nums' }}
                 >
                   {limit === undefined ? occupancy : `${occupancy}/${limit}`}
@@ -159,10 +175,10 @@ const MoveButton = ({
   // rejection), then rolls back. The seam refuses moves until the op settles.
   const saving = !blocked && card.pending;
   const label = blocked
-    ? `Move ${card.title} to ${toColumn} (blocked: ${reason})`
+    ? `Przenieś ${card.title} do kolumny ${COLUMN_LABELS[toColumn]} (zablokowane: ${ruleLabel(reason ?? '')})`
     : saving
-      ? `Move ${card.title} to ${toColumn} (saving)`
-      : `Move ${card.title} to ${toColumn}`;
+      ? `Przenieś ${card.title} do kolumny ${COLUMN_LABELS[toColumn]} (zapisywanie)`
+      : `Przenieś ${card.title} do kolumny ${COLUMN_LABELS[toColumn]}`;
   const button = (
     <Button
       size="small"
@@ -178,11 +194,11 @@ const MoveButton = ({
         })
       }
     >
-      {direction} {toColumn}
+      {direction} {COLUMN_LABELS[toColumn]}
     </Button>
   );
   return blocked ? (
-    <Tooltip title={`blocked: ${reason}`}>
+    <Tooltip title={`zablokowane: ${ruleLabel(reason ?? '')}`}>
       <Box component="span">{button}</Box>
     </Tooltip>
   ) : (
@@ -224,7 +240,7 @@ const CardRow = ({
       </Stack>
       {blockedReasons.length > 0 ? (
         <Typography variant="caption" color="text.secondary">
-          blocked: {Array.from(new Set(blockedReasons)).join(', ')}
+          zablokowane: {Array.from(new Set(blockedReasons)).map(ruleLabel).join(', ')}
         </Typography>
       ) : null}
     </Paper>
@@ -249,12 +265,12 @@ const AddCardForm = ({ column }: { column: TeamColumn }) => {
       <InputBase
         value={title}
         onChange={(event) => setTitle(event.target.value)}
-        placeholder="new card…"
-        inputProps={{ 'aria-label': `New card in ${column}` }}
+        placeholder="Nowa karta…"
+        inputProps={{ 'aria-label': `Nowa karta w kolumnie ${COLUMN_LABELS[column]}` }}
         sx={{ flex: 1, '& input': { p: '0.4rem 0.6rem' } }}
       />
       <Button type="submit" size="small" variant="contained">
-        add
+        Dodaj
       </Button>
     </Paper>
   );

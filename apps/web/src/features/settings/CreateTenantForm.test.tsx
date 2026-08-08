@@ -13,7 +13,7 @@ const tenantBodySchema = z.object({ name: z.string(), slug: z.string() });
 describe('CreateTenantForm', () => {
   it('previews the canonical slug live as the name is typed (reusing the slug VO)', async () => {
     renderWithProviders(<CreateTenantForm />);
-    await userEvent.type(screen.getByLabelText('New tenant name'), 'Acme  Sp. z o.o.');
+    await userEvent.type(screen.getByLabelText('Nazwa nowej firmy'), 'Acme  Sp. z o.o.');
     expect(screen.getByTestId('slug-preview')).toHaveTextContent('acme-sp-z-o-o');
   });
 
@@ -30,10 +30,10 @@ describe('CreateTenantForm', () => {
 
     let onCreatedSlug: string | null = null;
     renderWithProviders(<CreateTenantForm onCreated={(slug) => (onCreatedSlug = slug)} />);
-    await userEvent.type(screen.getByLabelText('New tenant name'), 'Globex Corp');
-    await userEvent.click(screen.getByRole('button', { name: 'create tenant' }));
+    await userEvent.type(screen.getByLabelText('Nazwa nowej firmy'), 'Globex Corp');
+    await userEvent.click(screen.getByRole('button', { name: 'Utwórz firmę' }));
 
-    await screen.findByRole('button', { name: 'create tenant' });
+    await screen.findByRole('button', { name: 'Utwórz firmę' });
     expect(created).toEqual({ name: 'Globex Corp', slug: 'globex-corp' });
     expect(onCreatedSlug).toBe('globex-corp');
   });
@@ -46,8 +46,8 @@ describe('CreateTenantForm', () => {
     );
 
     renderWithProviders(<CreateTenantForm />);
-    await userEvent.type(screen.getByLabelText('New tenant name'), 'Globex');
-    await userEvent.click(screen.getByRole('button', { name: 'create tenant' }));
+    await userEvent.type(screen.getByLabelText('Nazwa nowej firmy'), 'Globex');
+    await userEvent.click(screen.getByRole('button', { name: 'Utwórz firmę' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('already exists');
   });

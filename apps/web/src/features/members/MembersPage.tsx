@@ -45,20 +45,20 @@ export const MembersPage = () => {
   return (
     <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', py: '3rem' }}>
       <Stack direction="row" sx={{ alignItems: 'baseline', columnGap: '1rem', mb: '1.5rem' }}>
-        <Typography variant="h1">Members</Typography>
-        <Typography variant="overline">end customers of this tenant</Typography>
+        <Typography variant="h1">Członkowie</Typography>
+        <Typography variant="overline">Klienci tej firmy</Typography>
       </Stack>
 
       {members.isPending ? (
         <Typography variant="h2" component="p" sx={{ py: 2 }}>
-          reading the roster…
+          Ładowanie listy…
         </Typography>
       ) : null}
-      {members.isError ? <Alert>{members.error.message}</Alert> : null}
+      {members.isError ? <Alert severity="error">{members.error.message}</Alert> : null}
       {members.data ? (
         members.data.members.length === 0 ? (
           <Typography variant="h2" component="p" sx={{ py: '24px' }}>
-            — no members yet —
+            — brak członków —
           </Typography>
         ) : (
           <List disablePadding>
@@ -89,26 +89,26 @@ export const MembersPage = () => {
         <InputBase
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="customer email…"
-          inputProps={{ 'aria-label': 'Member email', type: 'email' }}
+          placeholder="Adres e-mail klienta…"
+          inputProps={{ 'aria-label': 'Adres e-mail członka', type: 'email' }}
           sx={{ flex: '2 1 12rem', '& input': { p: '11px 0.9rem' } }}
         />
         <InputBase
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="display name (optional)…"
-          inputProps={{ 'aria-label': 'Member display name' }}
+          placeholder="Nazwa wyświetlana (opcjonalnie)…"
+          inputProps={{ 'aria-label': 'Nazwa wyświetlana członka' }}
           sx={{ flex: '1 1 8rem', '& input': { p: '11px 0.9rem' } }}
         />
         <Button type="submit" variant="contained" disabled={ensure.isPending}>
-          {ensure.isPending ? 'saving…' : 'ensure ↵'}
+          {ensure.isPending ? 'Zapisywanie…' : 'Dodaj ↵'}
         </Button>
       </Paper>
-      {ensure.isError ? <Alert sx={{ mt: '0.6rem' }}>{ensure.error.message}</Alert> : null}
+      {ensure.isError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{ensure.error.message}</Alert> : null}
 
       <Box sx={{ mt: '2rem' }}>
-        <Button component="a" href="/app" variant="text">
-          ← back to the ledger
+        <Button component="a" href="/app/ledger" variant="text">
+          ← Wróć do rejestru
         </Button>
       </Box>
     </Container>

@@ -21,9 +21,9 @@ const renderRegisterPage = async () => {
 describe('RegisterPage', () => {
   it('renders labeled registration inputs', async () => {
     await renderRegisterPage();
-    expect(screen.getByLabelText('name')).toBeInTheDocument();
-    expect(screen.getByLabelText('email')).toBeInTheDocument();
-    expect(screen.getByLabelText('password')).toBeInTheDocument();
+    expect(screen.getByLabelText('Imię i nazwisko')).toBeInTheDocument();
+    expect(screen.getByLabelText('Adres e-mail')).toBeInTheDocument();
+    expect(screen.getByLabelText('Hasło')).toBeInTheDocument();
   });
 
   it('surfaces per-field zod errors on an empty submit without calling the server', async () => {
@@ -36,23 +36,23 @@ describe('RegisterPage', () => {
     );
 
     await renderRegisterPage();
-    await userEvent.click(screen.getByRole('button', { name: 'create account' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Utwórz konto' }));
 
-    expect(await screen.findByText('Enter your name')).toBeInTheDocument();
-    expect(screen.getByText('Enter a valid email')).toBeInTheDocument();
-    expect(screen.getByText('Use at least 8 characters')).toBeInTheDocument();
+    expect(await screen.findByText('Wpisz imię i nazwisko')).toBeInTheDocument();
+    expect(screen.getByText('Wpisz prawidłowy adres e-mail')).toBeInTheDocument();
+    expect(screen.getByText('Hasło musi mieć co najmniej 8 znaków')).toBeInTheDocument();
     expect(calls).toBe(0);
   });
 
   it('flags a malformed email and a short password as field errors', async () => {
     await renderRegisterPage();
-    await userEvent.type(screen.getByLabelText('name'), 'Ada');
-    await userEvent.type(screen.getByLabelText('email'), 'not-an-email');
-    await userEvent.type(screen.getByLabelText('password'), 'short');
-    await userEvent.click(screen.getByRole('button', { name: 'create account' }));
+    await userEvent.type(screen.getByLabelText('Imię i nazwisko'), 'Ada');
+    await userEvent.type(screen.getByLabelText('Adres e-mail'), 'not-an-email');
+    await userEvent.type(screen.getByLabelText('Hasło'), 'short');
+    await userEvent.click(screen.getByRole('button', { name: 'Utwórz konto' }));
 
-    expect(await screen.findByText('Enter a valid email')).toBeInTheDocument();
-    expect(screen.getByText('Use at least 8 characters')).toBeInTheDocument();
+    expect(await screen.findByText('Wpisz prawidłowy adres e-mail')).toBeInTheDocument();
+    expect(screen.getByText('Hasło musi mieć co najmniej 8 znaków')).toBeInTheDocument();
   });
 
   it('shows a form-level alert when the server rejects a valid submission', async () => {
@@ -61,10 +61,10 @@ describe('RegisterPage', () => {
     );
 
     await renderRegisterPage();
-    await userEvent.type(screen.getByLabelText('name'), 'Ada');
-    await userEvent.type(screen.getByLabelText('email'), 'ada@example.com');
-    await userEvent.type(screen.getByLabelText('password'), 'strong-pass-1');
-    await userEvent.click(screen.getByRole('button', { name: 'create account' }));
+    await userEvent.type(screen.getByLabelText('Imię i nazwisko'), 'Ada');
+    await userEvent.type(screen.getByLabelText('Adres e-mail'), 'ada@example.com');
+    await userEvent.type(screen.getByLabelText('Hasło'), 'strong-pass-1');
+    await userEvent.click(screen.getByRole('button', { name: 'Utwórz konto' }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });

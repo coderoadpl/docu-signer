@@ -45,7 +45,7 @@ test('login page with a rejected sign-in', async ({ page }) => {
 
 test('register page', async ({ page }) => {
   await page.goto('/register');
-  await expect(page.getByRole('button', { name: 'create account' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Utwórz konto' })).toBeVisible();
 
   await expect(page).toHaveScreenshot('register.png', { fullPage: true });
 });
@@ -55,7 +55,7 @@ test('authenticated app bar chrome', async ({ page }) => {
   await submitSignIn(page);
 
   const chrome = page.getByRole('banner');
-  await expect(chrome.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme Sp. z o.o.');
+  await expect(chrome.getByRole('button', { name: 'Zmień firmę' })).toContainText('Acme Sp. z o.o.');
 
   await expect(chrome).toHaveScreenshot('app-shell-chrome.png');
 });
@@ -105,7 +105,7 @@ test('StatusView empty inside FocusCard', async ({ page }) => {
   });
   await submitSignIn(page);
   await expect(
-    page.getByRole('heading', { name: 'no tenant here yet — create one to get started' }),
+    page.getByRole('heading', { name: 'Nie ma tu jeszcze firmy — utwórz pierwszą' }),
   ).toBeVisible();
 
   await expect(page).toHaveScreenshot('layout-status-view-empty.png', { fullPage: true });
