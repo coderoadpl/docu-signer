@@ -43,10 +43,12 @@ green.
 
 2. **Post-deploy verification against real production.** A second workflow
    (`post-deploy-smoke`) listens for the `deployment_status` event and, when a
-   **Production** deployment reports **success**, checks out the deployed
-   commit and runs `pnpm run smoke:remote` against the production alias (via
-   the `BASE_URL` the script reads). Previews sit behind Vercel
-   Authentication and are not remotely smoked (see FOUNDATION.md).
+   **Production** deployment reports **success**, checks out trusted `main`,
+   rejects the event SHA unless it is an ancestor of `origin/main`, and runs
+   `pnpm run smoke:remote` from that trusted checkout against the production
+   alias (via the `BASE_URL` the script reads). `EXPECTED_SHA` separately
+   attests that the live deployment is the event SHA. Previews sit behind
+   Vercel Authentication and are not remotely smoked (see FOUNDATION.md).
    This is the only gate that exercises the actual platform contract that broke
    in #10–#15; it turns "deployed" into "deployed and verified working".
 

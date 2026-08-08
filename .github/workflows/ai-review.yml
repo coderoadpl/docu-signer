@@ -101,6 +101,15 @@ jobs:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out trusted review scripts
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .trusted-review
+          sparse-checkout: .github/scripts
+          persist-credentials: false
 
       - name: Detect available token slots
         id: preflight
@@ -132,7 +141,7 @@ jobs:
         env:
           RAW: ${{ steps.try1.outputs.structured_output }}
           TRY_OUTCOME: ${{ steps.try1.outcome }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/classify-review.sh"
 
       - name: Slot 1 failure reason
         # Every attempt writes the same execution-log path, so each slot's
@@ -141,14 +150,14 @@ jobs:
         continue-on-error: true
         env:
           EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/failure-reason.sh"
 
       - name: Detect cold-start (slot 1)
         id: cold1
         if: steps.classify1.outputs.outcome == 'infra'
         env:
           EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/detect-coldstart.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/detect-coldstart.sh"
 
       - name: AI review — token slot 1 (cold-start retry)
         id: try1r
@@ -167,14 +176,14 @@ jobs:
         env:
           RAW: ${{ steps.try1r.outputs.structured_output }}
           TRY_OUTCOME: ${{ steps.try1r.outcome }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/classify-review.sh"
 
       - name: Slot 1 retry failure reason
         if: steps.classify1r.outputs.outcome == 'infra'
         continue-on-error: true
         env:
           EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/failure-reason.sh"
 
       - name: AI review — token slot 2
         id: try2
@@ -195,14 +204,14 @@ jobs:
         env:
           RAW: ${{ steps.try2.outputs.structured_output }}
           TRY_OUTCOME: ${{ steps.try2.outcome }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/classify-review.sh"
 
       - name: Slot 2 failure reason
         if: steps.classify2.outputs.outcome == 'infra'
         continue-on-error: true
         env:
           EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/failure-reason.sh"
 
       - name: AI review — token slot 3
         id: try3
@@ -221,14 +230,14 @@ jobs:
         env:
           RAW: ${{ steps.try3.outputs.structured_output }}
           TRY_OUTCOME: ${{ steps.try3.outcome }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/classify-review.sh"
 
       - name: Slot 3 failure reason
         if: steps.classify3.outputs.outcome == 'infra'
         continue-on-error: true
         env:
           EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/failure-reason.sh"
 
       - name: Post verdict to PR
         if: always()
@@ -247,7 +256,7 @@ jobs:
           OUT3: ${{ steps.try3.outputs.structured_output }}
           EXEC_LOG: ${{ runner.temp }}/claude-execution-output.json
           MODEL_ARG: ${{ vars.AI_REVIEW_MODEL || 'sonnet' }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/post-review.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/post-review.sh"
 
       - name: Gate — fail-closed verdict
         if: always()
@@ -258,4 +267,4 @@ jobs:
           O1R: ${{ steps.classify1r.outputs.outcome }}
           O2: ${{ steps.classify2.outputs.outcome }}
           O3: ${{ steps.classify3.outputs.outcome }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/gate-review.sh"
+        run: bash "$GITHUB_WORKSPACE/.trusted-review/.github/scripts/gate-review.sh"

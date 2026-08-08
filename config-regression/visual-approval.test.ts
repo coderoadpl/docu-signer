@@ -53,7 +53,7 @@ describe('visual baseline publisher', () => {
   it('rejects commit mode on main and requires update mode on a branch', () => {
     const compact = visualBaselines.replace(/\s+/g, ' ');
     expect(compact).toContain("inputs.commit && (!inputs.update || github.ref_type != 'branch' || github.ref_name == 'main')");
-    expect(compact).toContain('git push origin "HEAD:refs/heads/${TARGET_REF}"');
+    expect(compact).toContain('push origin "HEAD:refs/heads/${TARGET_REF}"');
   });
 });
 

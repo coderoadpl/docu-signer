@@ -1471,9 +1471,11 @@ The fork’s review loop
 ([ADR-0013](decisions/0013-visual-review-loop.md), wired 2026-07-28) posts the
 baseline/actual/diff gallery into the pull request. An owner or explicitly
 configured approver may use `/approve-visuals` to re-render the exact reviewed
-SHA and commit the gated baselines onto that non-main PR branch. The advisory AI
-read is fail-open and never a gate. This fork has no ruleset or required-check
-arming for `visual`; the workflow rejects a write to `main` explicitly.
+SHA without a persisted credential; only the guarded commit step receives
+`GITHUB_TOKEN` and writes the gated baselines onto that non-main PR branch. The
+advisory AI read is fail-open and never a gate. This fork has no ruleset or
+required-check arming for `visual`; the workflow rejects a write to `main`
+explicitly.
 
 Agents have full `main` freedom (0 approvals, gated only by the four green checks
 and up-to-date-ness); `production` needs an approval the agent cannot supply for

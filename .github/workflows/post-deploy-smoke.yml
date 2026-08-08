@@ -22,7 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
         with:
-          ref: ${{ github.event.deployment.sha }}
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify deployment belongs to main
+        env:
+          DEPLOY_SHA: ${{ github.event.deployment.sha }}
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$DEPLOY_SHA" origin/main; then
+            echo "Production deployment SHA $DEPLOY_SHA is not an ancestor of origin/main." >&2
+            exit 1
+          fi
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           package_json_file: package.json
