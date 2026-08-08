@@ -55,8 +55,12 @@ pnpm --silent run cli --json whoami        # single JSON document on stdout
 pnpm --silent run cli logout                           # drops the stored token
 ```
 
-Full command set: `health`, `register`, `login`, `logout`, `whoami`,
-`tenant list|create|switch`, `todo list|add`, `card list|add|move`.
+Full command set (<!--count:cli-command-groups-->15<!--/count--> top-level groups):
+`health`, `register`, `login`, `login-link`, `logout`, `whoami`,
+`tenant list|create|switch`, `origin list|use`, `todo list|add`,
+`document list|show|add|upload|export`, `card list|add|move`,
+`member list|ensure|update|remove|export`, `staff list|grant|revoke`,
+`domain list|add|check|remove`, `public profile`.
 
 Every command supports `--json` and exits with a code mapped from the error
 taxonomy (`validation`=2, `unauthorized`=3, `forbidden`=4, `not_found`=5,
