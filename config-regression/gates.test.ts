@@ -19,9 +19,15 @@ const require = createRequire(import.meta.url);
 const token = `__aparch_probe_${process.pid}_${Date.now()}__`;
 const coreDir = join('core', 'domain', token);
 const featureDir = join('apps', 'web', 'src', 'features', token);
+const webDir = join('apps', 'web', 'src', token);
 const dcDir = join('core', 'domain', `${token}_dc`);
+const featureCoreDir = join('apps', 'web', 'src', 'features', `${token}_core`, 'core');
 
-const SWEEP_BASES = [join(demoRoot, 'core', 'domain'), join(demoRoot, 'apps', 'web', 'src', 'features')];
+const SWEEP_BASES = [
+  join(demoRoot, 'core', 'domain'),
+  join(demoRoot, 'apps', 'web', 'src'),
+  join(demoRoot, 'apps', 'web', 'src', 'features'),
+];
 
 const sweep = () => {
   for (const base of SWEEP_BASES) {
@@ -63,12 +69,25 @@ const fixtures = {
       "import { Box } from '@mui/material';\n" +
       "export const probe = () => <Box sx={{ color: 'red' }} />;\n",
   },
+  // setQueryData is banned app-wide (not only in features/): a probe OUTSIDE
+  // features/ proves the ban is not scoped to the feature tree.
+  setQueryDataOutsideFeatures: {
+    rel: join(webDir, 'set-query-data-probe.ts'),
+    content:
+      'export const write = (qc: { setQueryData: (k: unknown, v: unknown) => void }) =>\n' +
+      "  qc.setQueryData(['probe'], 1);\n",
+  },
 } satisfies Record<string, { rel: string; content: string }>;
 
-const dcFixture = {
-  rel: join(dcDir, 'react-probe.ts'),
-  content: "import 'react';\n",
-} satisfies { rel: string; content: string };
+const dcFixtures = [
+  // react in core/domain fires the framework ban.
+  { rel: join(dcDir, 'react-probe.ts'), content: "import 'react';\n" },
+  // A non-zod external in core/domain fires the allow-list rule (and NOT the
+  // framework deny-list, which does not list @tanstack/query-core).
+  { rel: join(dcDir, 'query-core-probe.ts'), content: "import '@tanstack/query-core';\n" },
+  // react inside an island core fires the depcruise purity mirror.
+  { rel: join(featureCoreDir, 'react-probe.ts'), content: "import 'react';\n" },
+] satisfies Array<{ rel: string; content: string }>;
 
 interface EslintMessage {
   ruleId: string | null;
@@ -97,7 +116,7 @@ beforeAll(() => {
 
   const allFixtures = Object.values(fixtures);
   const eslintTargets = allFixtures.map((fixture) => write(fixture.rel, fixture.content));
-  write(dcFixture.rel, dcFixture.content);
+  for (const fixture of dcFixtures) write(fixture.rel, fixture.content);
 
   const eslintBin = join(demoRoot, 'node_modules', '.bin', 'eslint');
   const eslintRun = spawnSync(eslintBin, ['--format', 'json', ...eslintTargets], {
@@ -115,7 +134,7 @@ beforeAll(() => {
   }
 
   const depBin = join(demoRoot, 'node_modules', '.bin', 'depcruise');
-  const depRun = spawnSync(depBin, ['--output-type', 'json', dcDir], {
+  const depRun = spawnSync(depBin, ['--output-type', 'json', dcDir, featureCoreDir], {
     cwd: demoRoot,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
@@ -124,12 +143,17 @@ beforeAll(() => {
     depRun.stdout,
   );
   for (const violation of depReport.summary.violations) depcruiseRules.add(violation.rule.name);
-}, 30_000);
+}, 60_000);
 
 afterAll(() => {
   rmSync(join(demoRoot, coreDir), { recursive: true, force: true });
   rmSync(join(demoRoot, featureDir), { recursive: true, force: true });
+  rmSync(join(demoRoot, webDir), { recursive: true, force: true });
   rmSync(join(demoRoot, dcDir), { recursive: true, force: true });
+  rmSync(join(demoRoot, 'apps', 'web', 'src', 'features', `${token}_core`), {
+    recursive: true,
+    force: true,
+  });
   sweep();
 });
 
@@ -167,11 +191,25 @@ describe('ESLint gate still rejects violations', () => {
     expect(message).toBeDefined();
     expect(message?.message).toContain('core-domain');
   });
+
+  it('bans queryClient.setQueryData OUTSIDE features/ (app-wide, not feature-scoped)', () => {
+    const message = findMessage('setQueryDataOutsideFeatures', 'no-restricted-syntax');
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('optimistic.ts');
+  });
 });
 
 describe('dependency-cruiser gate still rejects violations', () => {
   it('behavioral: react imported into core fires no-frameworks-in-core', () => {
     expect(depcruiseRules.has('no-frameworks-in-core')).toBe(true);
+  });
+
+  it('behavioral: a non-zod external in core/domain fires core-domain-only-zod (allow-list)', () => {
+    expect(depcruiseRules.has('core-domain-only-zod')).toBe(true);
+  });
+
+  it('behavioral: react in an island core fires island-core-is-framework-agnostic (depcruise mirror)', () => {
+    expect(depcruiseRules.has('island-core-is-framework-agnostic')).toBe(true);
   });
 
   it('structural: every guarded rule is present with severity error', () => {
@@ -183,10 +221,12 @@ describe('dependency-cruiser gate still rejects violations', () => {
       'no-circular',
       'no-frameworks-in-core',
       'core-domain-depends-on-nothing',
+      'core-domain-only-zod',
       'core-server-pure',
       'adapters-never-import-apps',
       'web-never-server-side',
       'web-features-are-islands',
+      'island-core-is-framework-agnostic',
       'vercel-and-neon-only-in-adapters',
     ]) {
       expect(byName.get(name)).toBe('error');

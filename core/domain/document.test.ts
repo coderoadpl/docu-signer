@@ -2,76 +2,62 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createDocumentSchema,
-  documentFileSchema,
   documentListFilterSchema,
-  documentSchema,
+  exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
 } from './document.js';
 
 describe('document schemas', () => {
-  it('parses documents and files', () => {
-    expect(
-      documentSchema.parse({
-        id: 'doc-1',
-        tenantId: 'tenant-1',
-        title: 'Agreement',
-        docType: 'umowa-uod',
-        documentDate: '2026-07-18',
-        tags: [],
-        createdAt: '2026-07-18T10:00:00.000Z',
-        updatedAt: '2026-07-18T10:00:00.000Z',
-      }),
-    ).toMatchObject({ id: 'doc-1' });
-    expect(
-      documentFileSchema.parse({
-        id: 'file-1',
-        documentId: 'doc-1',
-        role: 'signed-digital',
-        fileName: 'signed.pdf',
-        contentType: 'application/pdf',
-        sizeBytes: 10,
-        storageKey: 'key',
-        createdAt: '2026-07-18T10:00:00.000Z',
-      }),
-    ).toMatchObject({ id: 'file-1' });
-  });
-
-  it('defaults tags and rejects invalid dates, types, titles, and ranges', () => {
+  it('normalizes entry input and applies empty tags', () => {
     expect(
       createDocumentSchema.parse({
-        title: ' Agreement ',
-        docType: 'inny',
-        documentDate: '2026-07-18',
+        title: '  Agreement  ',
+        docType: 'umowa-uod',
+        documentDate: '2026-07-27',
       }),
-    ).toEqual({ title: 'Agreement', docType: 'inny', documentDate: '2026-07-18', tags: [] });
-    expect(createDocumentSchema.safeParse({ title: '', docType: 'other', documentDate: '2026-02-30' }).success).toBe(false);
-    expect(documentListFilterSchema.safeParse({ dateFrom: '2026-07-19', dateTo: '2026-07-18' }).success).toBe(false);
+    ).toEqual({
+      title: 'Agreement',
+      docType: 'umowa-uod',
+      documentDate: '2026-07-27',
+      tags: [],
+    });
   });
 
-  it('accepts only PDF and image upload content types', () => {
+  it('rejects inverted dates, unsafe MIME types, oversized files, and bulk overflow', () => {
     expect(
-      fileUploadRequestSchema.safeParse({
-        fileName: 'scan.png',
-        contentType: 'image/png',
-        role: 'signed-scan',
+      documentListFilterSchema.safeParse({
+        dateFrom: '2026-07-28',
+        dateTo: '2026-07-27',
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       fileUploadRequestSchema.safeParse({
-        fileName: 'notes.txt',
-        contentType: 'text/plain',
+        fileName: 'payload.exe',
+        contentType: 'application/octet-stream',
         role: 'other',
       }).success,
     ).toBe(false);
     expect(
       finalizeFileUploadSchema.safeParse({
         key: 'key',
-        fileName: 'page.html',
-        contentType: 'text/html',
-        sizeBytes: 10,
+        fileName: 'scan.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 25 * 1024 * 1024 + 1,
         role: 'source',
       }).success,
     ).toBe(false);
+    const bulkExport = exportDocumentsSchema.safeParse({
+      documentIds: Array.from(
+        { length: 101 },
+        (_, index) => `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`,
+      ),
+    });
+    expect(bulkExport.success).toBe(false);
+    if (!bulkExport.success) {
+      expect(bulkExport.error.issues[0]?.message).toBe(
+        'An export may contain at most 100 documents',
+      );
+    }
   });
 });

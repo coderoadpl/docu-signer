@@ -1,7 +1,14 @@
 import { BlobNotFoundError, del, get, head, put } from '@vercel/blob';
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 
-import { err, internal, ok, type AppError, type Result } from '#core/domain/index.js';
+import {
+  err,
+  internal,
+  MAX_DOCUMENT_FILE_BYTES,
+  ok,
+  type AppError,
+  type Result,
+} from '#core/domain/index.js';
 import type { StoragePort } from '#core/server/index.js';
 
 const storageResult = async <T>(operation: () => Promise<T>): Promise<Result<T, AppError>> => {
@@ -15,7 +22,12 @@ const storageResult = async <T>(operation: () => Promise<T>): Promise<Result<T, 
 export const createVercelBlobStorage = (token: string): StoragePort => ({
   put: async (key, bytes, contentType) =>
     storageResult(async () => {
-      await put(key, Buffer.from(bytes), { access: 'private', contentType, addRandomSuffix: false, token });
+      await put(key, Buffer.from(bytes), {
+        access: 'private',
+        contentType,
+        addRandomSuffix: false,
+        token,
+      });
     }),
   get: async (key) =>
     storageResult(async () => {
@@ -28,8 +40,9 @@ export const createVercelBlobStorage = (token: string): StoragePort => ({
       await head(key, { token });
       return ok(true);
     } catch (cause) {
-      if (cause instanceof BlobNotFoundError) return ok(false);
-      return err(internal(`Blob storage operation failed: ${String(cause)}`));
+      return cause instanceof BlobNotFoundError
+        ? ok(false)
+        : err(internal(`Blob storage operation failed: ${String(cause)}`));
     }
   },
   delete: async (key) =>
@@ -42,12 +55,12 @@ export const createVercelBlobStorage = (token: string): StoragePort => ({
         token,
         pathname: key,
         allowedContentTypes: [contentType],
+        maximumSizeInBytes: MAX_DOCUMENT_FILE_BYTES,
         addRandomSuffix: false,
         allowOverwrite: false,
       });
-      const tokenMatch = /^vercel_blob_client_([^_]+)_.+$/.exec(clientToken);
-      if (!tokenMatch?.[1]) throw new Error('Invalid client upload token');
-      const storeId = tokenMatch[1];
+      const storeId = /^vercel_blob_client_([^_]+)_.+$/.exec(clientToken)?.[1];
+      if (!storeId) throw new Error('Invalid client upload token');
       return {
         url: `https://vercel.com/api/blob/?pathname=${encodeURIComponent(key)}`,
         method: 'PUT' as const,

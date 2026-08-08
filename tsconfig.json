@@ -10,12 +10,13 @@
     "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true,
     "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["core", "adapters", "apps", "api", "scripts", "config-regression", "e2e", "*.config.ts", ".dependency-cruiser.cjs"],
+  "include": ["core", "adapters", "apps", "api", "scripts", "config-regression", "e2e", "visual", "*.config.ts", ".dependency-cruiser.cjs"],
   "exclude": ["node_modules", "dist"]
 }

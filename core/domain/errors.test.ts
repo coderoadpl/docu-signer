@@ -8,6 +8,7 @@ import {
   notFound,
   tenantNotFound,
   unauthorized,
+  unavailable,
   validation,
 } from './errors.js';
 
@@ -67,6 +68,11 @@ describe('error constructors', () => {
     expect(internal()).toEqual({ code: 'internal', message: 'Internal error' });
     expect(internal('kaboom')).toEqual({ code: 'internal', message: 'kaboom' });
   });
+
+  it('unavailable uses default and custom messages', () => {
+    expect(unavailable()).toEqual({ code: 'unavailable', message: 'Service unavailable' });
+    expect(unavailable('db down')).toEqual({ code: 'unavailable', message: 'db down' });
+  });
 });
 
 describe('ERROR_CODES taxonomy', () => {
@@ -77,6 +83,7 @@ describe('ERROR_CODES taxonomy', () => {
     validation: () => validation('x'),
     conflict: () => appError('conflict', 'x'),
     tenant_not_found: tenantNotFound,
+    unavailable,
     internal,
   };
 

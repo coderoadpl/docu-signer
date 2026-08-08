@@ -6,7 +6,6 @@ import {
   ok,
   type Document,
   type DocumentFile,
-  type DocumentListFilter,
   type Identity,
 } from '#core/domain/index.js';
 
@@ -16,9 +15,9 @@ import {
   deleteDocument,
   exportDocuments,
   finalizeFileUpload,
+  getDocument,
   getFileContent,
   getFileExport,
-  getDocument,
   listDocuments,
   removeFile,
   requestFileUpload,
@@ -26,589 +25,567 @@ import {
   updateDocument,
 } from './documents.js';
 
-const identity = (tenantId: string | null): Identity => ({
+const documentId = '11111111-1111-4111-8111-111111111111';
+const fileId = '22222222-2222-4222-8222-222222222222';
+const uploadId = '33333333-3333-4333-8333-333333333333';
+
+const staff = (tenantId: string | null, role: 'owner' | 'admin' = 'owner'): Identity => ({
   userId: 'u1',
   email: 'demo@example.com',
   name: 'Demo',
   tenantId,
-  tenantSlug: tenantId ? 'default' : null,
-  tenantName: tenantId ? 'Default' : null,
-  staffRole: tenantId ? 'owner' : null,
+  tenantSlug: tenantId ? 'acme' : null,
+  tenantName: tenantId ? 'Acme Inc' : null,
+  staffRole: tenantId ? role : null,
   memberId: null,
 });
 
-const document = (id: string, tenantId = 't-default'): Document => ({
-  id,
+const member: Identity = {
+  userId: 'u2',
+  email: 'member@example.com',
+  name: 'Member',
+  tenantId: 'tenant-acme',
+  tenantSlug: 'acme',
+  tenantName: 'Acme Inc',
+  staffRole: null,
+  memberId: 'member-1',
+};
+
+const documentRow = (tenantId = 'tenant-acme'): Document => ({
+  id: documentId,
   tenantId,
-  title: `Title ${id}`,
-  docType: 'uchwala',
-  documentDate: '2026-07-18',
-  tags: [],
-  createdAt: '2026-07-18T10:00:00.000Z',
-  updatedAt: '2026-07-18T10:00:00.000Z',
+  title: 'Agreement',
+  docType: 'umowa-uod',
+  documentDate: '2026-07-01',
+  person: null,
+  tags: ['contract'],
+  createdAt: '2026-07-01T10:00:00.000Z',
+  updatedAt: '2026-07-01T10:00:00.000Z',
 });
 
-const fakeRepository = (initial: Document[] = []) => {
-  const documents = [...initial];
-  const files: DocumentFile[] = [];
+const fileRow = (): DocumentFile => ({
+  id: fileId,
+  documentId,
+  role: 'source',
+  fileName: 'agreement.pdf',
+  contentType: 'application/pdf',
+  sizeBytes: 3,
+  storageKey: `documents/tenant-acme/${documentId}/${uploadId}`,
+  createdAt: '2026-07-01T10:00:00.000Z',
+});
+
+const fake = (initialDocuments: Document[] = [], initialFiles: DocumentFile[] = []) => {
+  const documents = [...initialDocuments];
+  const files = [...initialFiles];
+  const blobs = new Map<string, Uint8Array>();
+  for (const file of files) blobs.set(file.storageKey, new Uint8Array([1, 2, 3]));
+
   const repo: DocumentRepository = {
-    listByTenant: async (tenantId, filter) =>
-      ok(
-        documents
-          .filter((row) => row.tenantId === tenantId)
-          .filter((row) => !filter.docType || row.docType === filter.docType)
-          .filter((row) => !filter.person || row.person === filter.person)
-          .filter((row) => !filter.text || row.title.toLowerCase().includes(filter.text.toLowerCase()))
-          .filter((row) => !filter.dateFrom || row.documentDate >= filter.dateFrom)
-          .filter((row) => !filter.dateTo || row.documentDate <= filter.dateTo)
-          .sort((left, right) => right.documentDate.localeCompare(left.documentDate)),
+    listByTenant: async (tenantId) =>
+      documents.filter((document) => document.tenantId === tenantId),
+    findById: async (tenantId, id) =>
+      documents.find((document) => document.tenantId === tenantId && document.id === id) ?? null,
+    listFiles: async (tenantId, id) =>
+      files.filter(
+        (file) =>
+          file.documentId === id &&
+          documents.some(
+            (document) => document.id === id && document.tenantId === tenantId,
+          ),
       ),
-    findById: async (tenantId, documentId) =>
-      ok(documents.find((row) => row.tenantId === tenantId && row.id === documentId) ?? null),
-    listFiles: async (tenantId, documentId) =>
-      ok(
-        documents.some((row) => row.tenantId === tenantId && row.id === documentId)
-          ? files.filter((file) => file.documentId === documentId)
-          : [],
-      ),
-    listFilesForDocuments: async (tenantId, documentIds) =>
-      ok(
-        files.filter(
-          (file) =>
-            documentIds.includes(file.documentId) &&
-            documents.some(
-              (row) => row.tenantId === tenantId && row.id === file.documentId,
-            ),
-        ),
+    listFilesForDocuments: async (tenantId, ids) =>
+      files.filter(
+        (file) =>
+          ids.includes(file.documentId) &&
+          documents.some(
+            (document) =>
+              document.id === file.documentId && document.tenantId === tenantId,
+          ),
       ),
     create: async (input) => {
-      const created = {
+      const created: Document = {
         ...input,
-        createdAt: '2026-07-18T10:00:00.000Z',
-        updatedAt: '2026-07-18T10:00:00.000Z',
+        createdAt: '2026-07-01T10:00:00.000Z',
+        updatedAt: '2026-07-01T10:00:00.000Z',
       };
       documents.push(created);
-      return ok(created);
+      return created;
     },
-    update: async (tenantId, documentId, input) => {
-      const index = documents.findIndex((row) => row.tenantId === tenantId && row.id === documentId);
+    update: async (tenantId, id, input) => {
+      const index = documents.findIndex(
+        (document) => document.tenantId === tenantId && document.id === id,
+      );
       const current = documents[index];
-      if (!current) return ok(null);
-      const updated = { ...current, ...input, updatedAt: '2026-07-19T10:00:00.000Z' };
+      if (!current) return null;
+      const updated = { ...current, ...input, updatedAt: '2026-07-02T10:00:00.000Z' };
       documents[index] = updated;
-      return ok(updated);
+      return updated;
     },
-    delete: async (tenantId, documentId) => {
-      const index = documents.findIndex((row) => row.tenantId === tenantId && row.id === documentId);
-      if (index < 0) return ok(false);
+    delete: async (tenantId, id) => {
+      const index = documents.findIndex(
+        (document) => document.tenantId === tenantId && document.id === id,
+      );
+      if (index < 0) return false;
       documents.splice(index, 1);
-      return ok(true);
+      return true;
     },
     createFile: async (tenantId, input) => {
-      if (!documents.some((row) => row.tenantId === tenantId && row.id === input.documentId)) {
-        return ok(null);
+      if (
+        !documents.some(
+          (document) =>
+            document.id === input.documentId && document.tenantId === tenantId,
+        )
+      ) {
+        return null;
       }
-      const created = { ...input, createdAt: '2026-07-18T10:00:00.000Z' };
+      const created: DocumentFile = {
+        ...input,
+        createdAt: '2026-07-01T10:00:00.000Z',
+      };
       files.push(created);
-      return ok(created);
+      return created;
     },
-    findFile: async (tenantId, documentId, fileId) =>
-      ok(
-        documents.some((row) => row.tenantId === tenantId && row.id === documentId)
-          ? files.find((file) => file.documentId === documentId && file.id === fileId) ?? null
-          : null,
-      ),
-    deleteFile: async (tenantId, documentId, fileId) => {
-      if (!documents.some((row) => row.tenantId === tenantId && row.id === documentId)) return ok(false);
-      const index = files.findIndex((file) => file.documentId === documentId && file.id === fileId);
-      if (index < 0) return ok(false);
+    findFile: async (tenantId, id, idOfFile) =>
+      files.find(
+        (file) =>
+          file.id === idOfFile &&
+          file.documentId === id &&
+          documents.some(
+            (document) => document.id === id && document.tenantId === tenantId,
+          ),
+      ) ?? null,
+    deleteFile: async (tenantId, id, idOfFile) => {
+      const index = files.findIndex(
+        (file) =>
+          file.id === idOfFile &&
+          file.documentId === id &&
+          documents.some(
+            (document) => document.id === id && document.tenantId === tenantId,
+          ),
+      );
+      if (index < 0) return false;
       files.splice(index, 1);
-      return ok(true);
+      return true;
     },
   };
-  return { repo, documents, files };
-};
 
-const fakeStorage = (direct = false) => {
-  const objects = new Map<string, Uint8Array>();
   const storage: StoragePort = {
     put: async (key, bytes) => {
-      objects.set(key, bytes);
+      blobs.set(key, bytes);
       return ok(undefined);
     },
-    get: async (key) => ok(objects.get(key) ?? null),
-    exists: async (key) => ok(objects.has(key)),
+    get: async (key) => ok(blobs.get(key) ?? null),
+    exists: async (key) => ok(blobs.has(key)),
     delete: async (key) => {
-      objects.delete(key);
+      blobs.delete(key);
       return ok(undefined);
     },
-    createUploadUrl: async () =>
-      ok(direct ? { url: 'https://upload.example', method: 'PUT', headers: { authorization: 'token' } } : null),
+    createUploadUrl: async () => ok(null),
   };
-  return { storage, objects };
+
+  const ids = [documentId, uploadId, fileId];
+  return {
+    deps: {
+      documents: repo,
+      storage,
+      ids: { nextId: () => ids.shift() ?? fileId },
+    },
+    documents,
+    files,
+    blobs,
+  };
 };
 
-const deps = (repo: DocumentRepository, storage: StoragePort, ids: string[] = ['document-1']) => ({
-  documents: repo,
-  storage,
-  ids: { nextId: () => ids.shift() ?? 'generated-id' },
-});
+const ctx = (identity: Identity) => ({ identity, tenantCreationMode: 'open' as const });
 
 const createInput = {
   title: 'Agreement',
   docType: 'umowa-uod' as const,
-  documentDate: '2026-07-18',
+  documentDate: '2026-07-01',
+  tags: ['contract'],
 };
 
 describe('documents use-cases', () => {
-  it('creates with tenant scope and default tags', async () => {
-    const repository = fakeRepository();
-    const storage = fakeStorage();
-    const result = await createDocument(
-      { identity: identity('t-default') },
-      createInput,
-      deps(repository.repo, storage.storage),
-    );
-    expect(result).toMatchObject({
-      ok: true,
-      value: { id: 'document-1', tenantId: 't-default', tags: [], title: 'Agreement' },
-    });
-  });
-
-  it('validates create and all use-cases require a tenant', async () => {
-    const repository = fakeRepository();
-    const storage = fakeStorage();
-    const usecaseDeps = deps(repository.repo, storage.storage);
-    const invalid = await createDocument(
-      { identity: identity('t-default') },
-      { ...createInput, title: '' },
-      usecaseDeps,
-    );
-    expect(invalid).toMatchObject({ ok: false, error: { code: 'validation' } });
-
-    const ctx = { identity: identity(null) };
-    const results = await Promise.all([
-      createDocument(ctx, createInput, usecaseDeps),
-      listDocuments(ctx, {}, usecaseDeps),
-      getDocument(ctx, 'doc-1', usecaseDeps),
-      updateDocument(ctx, 'doc-1', createInput, usecaseDeps),
-      deleteDocument(ctx, 'doc-1', usecaseDeps),
-      requestFileUpload(ctx, 'doc-1', { fileName: 'a.pdf', contentType: 'application/pdf', role: 'source' }, usecaseDeps),
-      finalizeFileUpload(ctx, 'doc-1', { key: 'x', fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 1, role: 'source' }, usecaseDeps),
-      getFileContent(ctx, 'doc-1', 'file-1', usecaseDeps),
-      getFileExport(ctx, 'doc-1', 'file-1', usecaseDeps),
-      exportDocuments(ctx, { documentIds: ['doc-1'] }, usecaseDeps),
-      removeFile(ctx, 'doc-1', 'file-1', usecaseDeps),
-    ]);
-    expect(results.every((result) => !result.ok && result.error.code === 'tenant_not_found')).toBe(true);
-  });
-
-  it('filters and sorts the tenant list without leaking another tenant', async () => {
-    const first = { ...document('one'), title: 'Board resolution', documentDate: '2026-01-02', person: 'Ada' };
-    const second = { ...document('two'), title: 'Older resolution', documentDate: '2026-01-01', person: 'Ada' };
-    const repository = fakeRepository([second, document('other', 't-other'), first]);
-    const listFilesForDocuments = repository.repo.listFilesForDocuments;
-    let listedDocumentIds: string[] = [];
-    repository.repo.listFilesForDocuments = async (tenantId, documentIds) => {
-      listedDocumentIds = documentIds;
-      return listFilesForDocuments(tenantId, documentIds);
-    };
-    const storage = fakeStorage();
-    const filter: DocumentListFilter = { docType: 'uchwala', person: 'Ada', text: 'resolution' };
-    const result = await listDocuments(
-      { identity: identity('t-default') },
-      filter,
-      deps(repository.repo, storage.storage),
-    );
-    expect(result.ok && result.value.map((row) => row.id)).toEqual(['one', 'two']);
-    expect(listedDocumentIds).toEqual(['one', 'two']);
-  });
-
-  it('reads files, updates, deletes, and maps missing rows to not_found', async () => {
-    const repository = fakeRepository([document('doc-1')]);
-    repository.files.push({
-      id: 'file-1',
-      documentId: 'doc-1',
-      role: 'source',
-      fileName: 'source.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 12,
-      storageKey: 'key',
-      createdAt: '2026-07-18T10:00:00.000Z',
-    });
-    const storage = fakeStorage();
-    const usecaseDeps = deps(repository.repo, storage.storage);
-    const read = await getDocument({ identity: identity('t-default') }, 'doc-1', usecaseDeps);
-    expect(read).toMatchObject({ ok: true, value: { files: [{ id: 'file-1' }] } });
-    const updated = await updateDocument(
-      { identity: identity('t-default') },
-      'doc-1',
-      { ...createInput, title: 'Updated', tags: ['signed'] },
-      usecaseDeps,
-    );
-    expect(updated).toMatchObject({ ok: true, value: { title: 'Updated', tags: ['signed'] } });
-    expect(await deleteDocument({ identity: identity('t-default') }, 'doc-1', usecaseDeps)).toEqual(ok(undefined));
-    expect(await getDocument({ identity: identity('t-default') }, 'doc-1', usecaseDeps)).toMatchObject({
+  it('authorizes before repository access and keeps the aggregate staff-only', async () => {
+    const state = fake();
+    expect(await listDocuments(ctx(staff(null)), {}, state.deps)).toMatchObject({
       ok: false,
-      error: { code: 'not_found' },
+      error: { code: 'forbidden' },
+    });
+    expect(await createDocument(ctx(member), createInput, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(state.documents).toHaveLength(0);
+  });
+
+  it('denies every document operation to a member before touching its ports', async () => {
+    const state = fake([documentRow()], [fileRow()]);
+    const input = {
+      fileName: 'scan.pdf',
+      contentType: 'application/pdf',
+      role: 'source' as const,
+    };
+    const calls = [
+      getDocument(ctx(member), documentId, state.deps),
+      updateDocument(ctx(member), documentId, createInput, state.deps),
+      deleteDocument(ctx(member), documentId, state.deps),
+      requestFileUpload(ctx(member), documentId, input, state.deps),
+      finalizeFileUpload(
+        ctx(member),
+        documentId,
+        {
+          key: fileRow().storageKey,
+          ...input,
+          sizeBytes: 3,
+        },
+        state.deps,
+      ),
+      serverUpload(
+        ctx(member),
+        documentId,
+        { ...input, bytes: new Uint8Array([1]) },
+        state.deps,
+      ),
+      removeFile(ctx(member), documentId, fileId, state.deps),
+      getFileContent(ctx(member), documentId, fileId, state.deps),
+      getFileExport(ctx(member), documentId, fileId, state.deps),
+      exportDocuments(ctx(member), { documentIds: [documentId] }, state.deps),
+    ];
+    for (const result of await Promise.all(calls)) {
+      expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    }
+  });
+
+  it('creates, filters by tenant, reads, updates and deletes an entry', async () => {
+    const state = fake([documentRow('tenant-other')]);
+    const created = await createDocument(ctx(staff('tenant-acme')), createInput, state.deps);
+    expect(created).toMatchObject({ ok: true, value: { tenantId: 'tenant-acme' } });
+    const listed = await listDocuments(ctx(staff('tenant-acme')), {}, state.deps);
+    expect(listed.ok && listed.value.map((document) => document.id)).toEqual([documentId]);
+    expect(await getDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
+      ok: true,
+      value: { title: 'Agreement', files: [] },
+    });
+    expect(
+      await updateDocument(
+        ctx(staff('tenant-acme', 'admin')),
+        documentId,
+        { ...createInput, title: 'Updated' },
+        state.deps,
+      ),
+    ).toMatchObject({ ok: true, value: { title: 'Updated' } });
+    expect(await deleteDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toEqual({
+      ok: true,
+      value: undefined,
     });
   });
 
-  it('reads tenant-owned file content with its metadata', async () => {
-    const repository = fakeRepository([document('doc-1')]);
-    repository.files.push({
-      id: 'file-1',
-      documentId: 'doc-1',
-      role: 'source',
-      fileName: 'źródło.pdf',
+  it('validates document input and filters before repository access', async () => {
+    const state = fake();
+    expect(
+      await createDocument(
+        ctx(staff('tenant-acme')),
+        { ...createInput, title: ' ' },
+        state.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(
+      await listDocuments(
+        ctx(staff('tenant-acme')),
+        { dateFrom: '2026-08-01', dateTo: '2026-07-01' },
+        state.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('requests, stores, finalizes, reads and removes a server upload', async () => {
+    const state = fake([documentRow()]);
+    const input = {
+      fileName: 'agreement.pdf',
       contentType: 'application/pdf',
-      sizeBytes: 3,
-      storageKey: 'content-key',
-      createdAt: '2026-07-18T10:00:00.000Z',
-    });
-    const storage = fakeStorage();
-    storage.objects.set('content-key', new Uint8Array([1, 2, 3]));
-    const result = await getFileContent(
-      { identity: identity('t-default') },
-      'doc-1',
-      'file-1',
-      deps(repository.repo, storage.storage),
+      role: 'source' as const,
+    };
+    expect(
+      await requestFileUpload(ctx(staff('tenant-acme')), documentId, input, state.deps),
+    ).toMatchObject({ ok: true, value: { kind: 'server' } });
+    const uploaded = await serverUpload(
+      ctx(staff('tenant-acme')),
+      documentId,
+      { ...input, bytes: new Uint8Array([1, 2, 3]) },
+      state.deps,
     );
-    expect(result).toEqual(
-      ok({ bytes: new Uint8Array([1, 2, 3]), contentType: 'application/pdf', fileName: 'źródło.pdf' }),
-    );
+    expect(uploaded).toMatchObject({ ok: true, value: { fileName: 'agreement.pdf' } });
+    if (!uploaded.ok) return;
     expect(
       await getFileContent(
-        { identity: identity('t-default') },
-        'doc-1',
-        'missing',
-        deps(repository.repo, storage.storage),
+        ctx(staff('tenant-acme')),
+        documentId,
+        uploaded.value.id,
+        state.deps,
       ),
-    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    ).toMatchObject({ ok: true, value: { contentType: 'application/pdf' } });
+    expect(
+      await removeFile(
+        ctx(staff('tenant-acme')),
+        documentId,
+        uploaded.value.id,
+        state.deps,
+      ),
+    ).toEqual({ ok: true, value: undefined });
   });
 
-  it('collects tenant-owned exports and skips foreign or missing ids', async () => {
-    const repository = fakeRepository([document('doc-1'), document('foreign', 't-other')]);
-    repository.files.push({
-      id: 'file-1',
-      documentId: 'doc-1',
-      role: 'source',
-      fileName: 'source.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 3,
-      storageKey: 'content-key',
-      createdAt: '2026-07-18T10:00:00.000Z',
-    });
-    const storage = fakeStorage();
-    storage.objects.set('content-key', new Uint8Array([1, 2, 3]));
-    const usecaseDeps = deps(repository.repo, storage.storage);
-
-    const single = await getFileExport(
-      { identity: identity('t-default') },
-      'doc-1',
-      'file-1',
-      usecaseDeps,
-    );
-    expect(single).toMatchObject({
-      ok: true,
-      value: { document: { id: 'doc-1' }, file: { id: 'file-1' }, bytes: new Uint8Array([1, 2, 3]) },
-    });
-
-    const bulk = await exportDocuments(
-      { identity: identity('t-default') },
-      { documentIds: ['doc-1', 'foreign', 'missing'] },
-      usecaseDeps,
-    );
-    expect(bulk).toMatchObject({
-      ok: true,
-      value: [{ document: { id: 'doc-1' }, files: [{ file: { id: 'file-1' } }] }],
-    });
+  it('finalizes only tenant-owned existing storage keys and exports stored files', async () => {
+    const state = fake([documentRow()], [fileRow()]);
     expect(
-      await exportDocuments(
-        { identity: identity('t-default') },
-        { documentIds: ['foreign', 'missing'] },
-        usecaseDeps,
-      ),
-    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
-  });
-
-  it('validates bulk export size and reports missing export content', async () => {
-    const repository = fakeRepository([document('doc-1')]);
-    repository.files.push({
-      id: 'file-1',
-      documentId: 'doc-1',
-      role: 'source',
-      fileName: 'source.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 3,
-      storageKey: 'missing-key',
-      createdAt: '2026-07-18T10:00:00.000Z',
-    });
-    const storage = fakeStorage();
-    const usecaseDeps = deps(repository.repo, storage.storage);
-
-    expect(
-      await exportDocuments(
-        { identity: identity('t-default') },
-        { documentIds: Array.from({ length: 101 }, (_, index) => `doc-${index}`) },
-        usecaseDeps,
+      await finalizeFileUpload(
+        ctx(staff('tenant-acme')),
+        documentId,
+        {
+          key: 'documents/tenant-other/invalid',
+          fileName: 'x.pdf',
+          contentType: 'application/pdf',
+          sizeBytes: 1,
+          role: 'other',
+        },
+        state.deps,
       ),
     ).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(
       await exportDocuments(
-        { identity: identity('t-default') },
-        { documentIds: ['doc-1'] },
-        usecaseDeps,
+        ctx(staff('tenant-acme')),
+        { documentIds: [documentId] },
+        state.deps,
+      ),
+    ).toMatchObject({
+      ok: true,
+      value: [{ document: { id: documentId }, files: [{ file: { id: fileId } }] }],
+    });
+  });
+
+  it('returns not_found for unknown entries, files and exports', async () => {
+    const state = fake();
+    expect(await getDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+    expect(
+      await getFileContent(ctx(staff('tenant-acme')), documentId, fileId, state.deps),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(
+      await exportDocuments(
+        ctx(staff('tenant-acme')),
+        { documentIds: [documentId] },
+        state.deps,
       ),
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
-  it('propagates repository and storage failures through exports', async () => {
-    const repository = fakeRepository([document('doc-1')]);
-    repository.files.push({
-      id: 'file-1',
-      documentId: 'doc-1',
-      role: 'source',
-      fileName: 'source.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 3,
-      storageKey: 'content-key',
-      createdAt: '2026-07-18T10:00:00.000Z',
+  it('rejects a bulk export containing more than 100 files', async () => {
+    const files = Array.from({ length: 101 }, (_, index): DocumentFile => {
+      const id = `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`;
+      return {
+        ...fileRow(),
+        id,
+        storageKey: `documents/tenant-acme/${documentId}/${id}`,
+      };
     });
-    const storage = fakeStorage();
-    const ctx = { identity: identity('t-default') };
-
+    const state = fake([documentRow()], files);
     expect(
-      await getFileExport(ctx, 'doc-1', 'file-1', deps(repository.repo, storage.storage)),
-    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
-
-    expect(
-      await getFileExport(ctx, 'doc-1', 'absent-file', deps(repository.repo, storage.storage)),
-    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(
-      await getFileContent(ctx, 'doc-1', 'file-1', deps(repository.repo, storage.storage)),
-    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
-
-    const failingStorage: StoragePort = {
-      ...storage.storage,
-      get: async () => err(internal('storage down')),
-    };
-    expect(
-      await getFileContent(ctx, 'doc-1', 'file-1', deps(repository.repo, failingStorage)),
-    ).toMatchObject({ ok: false, error: { code: 'internal' } });
-    expect(
-      await getFileExport(ctx, 'doc-1', 'file-1', deps(repository.repo, failingStorage)),
-    ).toMatchObject({ ok: false, error: { code: 'internal' } });
-    expect(
-      await exportDocuments(ctx, { documentIds: ['doc-1'] }, deps(repository.repo, failingStorage)),
-    ).toMatchObject({ ok: false, error: { code: 'internal' } });
-
-    const findFileFails: DocumentRepository = {
-      ...repository.repo,
-      findFile: async () => err(internal('db down')),
-    };
-    expect(
-      await getFileExport(ctx, 'doc-1', 'file-1', deps(findFileFails, storage.storage)),
-    ).toMatchObject({ ok: false, error: { code: 'internal' } });
-
-    const findByIdFails: DocumentRepository = {
-      ...repository.repo,
-      findById: async () => err(internal('db down')),
-    };
-    expect(
-      await exportDocuments(ctx, { documentIds: ['doc-1'] }, deps(findByIdFails, storage.storage)),
-    ).toMatchObject({ ok: false, error: { code: 'internal' } });
-
-    const listFilesFails: DocumentRepository = {
-      ...repository.repo,
-      listFiles: async () => err(internal('db down')),
-    };
-    expect(
-      await exportDocuments(ctx, { documentIds: ['doc-1'] }, deps(listFilesFails, storage.storage)),
-    ).toMatchObject({ ok: false, error: { code: 'internal' } });
+      await exportDocuments(
+        ctx(staff('tenant-acme')),
+        { documentIds: [documentId] },
+        state.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it('returns direct and server upload targets and finalizes tenant-owned keys', async () => {
-    const repository = fakeRepository([document('doc-1')]);
-    const directStorage = fakeStorage(true);
-    const direct = await requestFileUpload(
-      { identity: identity('t-default') },
-      'doc-1',
-      { fileName: 'a.pdf', contentType: 'application/pdf', role: 'source' },
-      deps(repository.repo, directStorage.storage, ['file-key']),
-    );
-    expect(direct).toMatchObject({ ok: true, value: { kind: 'direct', key: 'documents/t-default/doc-1/file-key' } });
+  it('lets repository failures reject for normalization at the composition edge', async () => {
+    const state = fake([documentRow()], [fileRow()]);
+    const failure = new Error('failed port');
+    const failedRepo: DocumentRepository = {
+      ...state.deps.documents,
+      listByTenant: async () => Promise.reject(failure),
+      findById: async () => Promise.reject(failure),
+      update: async () => Promise.reject(failure),
+      findFile: async () => Promise.reject(failure),
+    };
+    const failedDeps = { ...state.deps, documents: failedRepo };
+    await expect(listDocuments(ctx(staff('tenant-acme')), {}, failedDeps)).rejects.toBe(failure);
+    await expect(
+      getDocument(ctx(staff('tenant-acme')), documentId, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      updateDocument(ctx(staff('tenant-acme')), documentId, createInput, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      requestFileUpload(
+        ctx(staff('tenant-acme')),
+        documentId,
+        {
+          fileName: 'scan.pdf',
+          contentType: 'application/pdf',
+          role: 'source',
+        },
+        failedDeps,
+      ),
+    ).rejects.toBe(failure);
+    await expect(
+      removeFile(ctx(staff('tenant-acme')), documentId, fileId, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      getFileContent(ctx(staff('tenant-acme')), documentId, fileId, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      getFileExport(ctx(staff('tenant-acme')), documentId, fileId, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      exportDocuments(
+        ctx(staff('tenant-acme')),
+        { documentIds: [documentId] },
+        failedDeps,
+      ),
+    ).rejects.toBe(failure);
+  });
 
-    const localStorage = fakeStorage();
-    const local = await requestFileUpload(
-      { identity: identity('t-default') },
-      'doc-1',
-      { fileName: 'a.pdf', contentType: 'application/pdf', role: 'source' },
-      deps(repository.repo, localStorage.storage, ['local-key']),
-    );
-    expect(local).toMatchObject({ ok: true, value: { kind: 'server' } });
+  it('covers direct-upload and missing-storage outcomes', async () => {
+    const state = fake([documentRow()], [fileRow()]);
+    const directStorage: StoragePort = {
+      ...state.deps.storage,
+      createUploadUrl: async () =>
+        ok({
+          url: 'https://uploads.example.test',
+          method: 'PUT',
+          headers: { authorization: 'Bearer token' },
+        }),
+    };
+    expect(
+      await requestFileUpload(
+        ctx(staff('tenant-acme')),
+        documentId,
+        {
+          fileName: 'scan.pdf',
+          contentType: 'application/pdf',
+          role: 'source',
+        },
+        { ...state.deps, storage: directStorage },
+      ),
+    ).toMatchObject({ ok: true, value: { kind: 'direct' } });
 
-    localStorage.objects.set(
-      'documents/t-default/doc-1/direct-key',
-      new Uint8Array([1, 2, 3]),
-    );
-
-    const finalized = await finalizeFileUpload(
-      { identity: identity('t-default') },
-      'doc-1',
-      {
-        key: 'documents/t-default/doc-1/direct-key',
-        fileName: 'a.pdf',
-        contentType: 'application/pdf',
-        sizeBytes: 3,
-        role: 'source',
-      },
-      deps(repository.repo, localStorage.storage, ['file-1']),
-    );
-    expect(finalized).toMatchObject({ ok: true, value: { id: 'file-1', sizeBytes: 3 } });
-
-    const missingObject = await finalizeFileUpload(
-      { identity: identity('t-default') },
-      'doc-1',
-      {
-        key: 'documents/t-default/doc-1/missing',
-        fileName: 'missing.pdf',
-        contentType: 'application/pdf',
-        sizeBytes: 3,
-        role: 'source',
-      },
-      deps(repository.repo, localStorage.storage, ['file-2']),
-    );
-    expect(missingObject).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(repository.files).toHaveLength(1);
-
-    localStorage.storage.exists = async () => err(internal('stat failed'));
+    const missingStorage: StoragePort = {
+      ...state.deps.storage,
+      exists: async () => ok(false),
+      get: async () => ok(null),
+    };
     expect(
       await finalizeFileUpload(
-        { identity: identity('t-default') },
-        'doc-1',
+        ctx(staff('tenant-acme')),
+        documentId,
         {
-          key: 'documents/t-default/doc-1/unavailable',
-          fileName: 'unavailable.pdf',
+          key: fileRow().storageKey,
+          fileName: 'scan.pdf',
           contentType: 'application/pdf',
           sizeBytes: 3,
           role: 'source',
         },
-        deps(repository.repo, localStorage.storage),
+        { ...state.deps, storage: missingStorage },
       ),
-    ).toEqual(err(internal('stat failed')));
-    const invalidKey = await finalizeFileUpload(
-      { identity: identity('t-default') },
-      'doc-1',
-      { key: 'documents/t-other/doc-1/x', fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 1, role: 'other' },
-      deps(repository.repo, localStorage.storage),
-    );
-    expect(invalidKey).toMatchObject({ ok: false, error: { code: 'validation' } });
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(
+      await getFileContent(
+        ctx(staff('tenant-acme')),
+        documentId,
+        fileId,
+        { ...state.deps, storage: missingStorage },
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(
+      await getFileExport(
+        ctx(staff('tenant-acme')),
+        documentId,
+        fileId,
+        { ...state.deps, storage: missingStorage },
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
-  it('uploads through storage and removes the blob before its row', async () => {
-    const repository = fakeRepository([document('doc-1')]);
-    const storage = fakeStorage();
-    const uploaded = await serverUpload(
-      { identity: identity('t-default') },
-      'doc-1',
-      { fileName: 'a.pdf', contentType: 'application/pdf', role: 'signed-scan', bytes: new Uint8Array([1, 2, 3]) },
-      deps(repository.repo, storage.storage, ['storage-id', 'file-id']),
-    );
-    expect(uploaded).toMatchObject({ ok: true, value: { id: 'file-id', sizeBytes: 3 } });
-    const key = 'documents/t-default/doc-1/storage-id';
-    expect(storage.objects.has(key)).toBe(true);
-    expect(await removeFile({ identity: identity('t-default') }, 'doc-1', 'file-id', deps(repository.repo, storage.storage))).toEqual(ok(undefined));
-    expect(storage.objects.has(key)).toBe(false);
-    expect(repository.files).toHaveLength(0);
-  });
+  it('propagates delete and upload failures and reports vanished rows', async () => {
+    const state = fake([documentRow()], [fileRow()]);
+    const failure = err(internal('failed port'));
+    await expect(
+      deleteDocument(
+        ctx(staff('tenant-acme')),
+        documentId,
+        {
+          ...state.deps,
+          documents: {
+            ...state.deps.documents,
+            listFiles: async () => Promise.reject(new Error('failed port')),
+          },
+        },
+      ),
+    ).rejects.toThrow('failed port');
+    expect(
+      await deleteDocument(
+        ctx(staff('tenant-acme')),
+        documentId,
+        {
+          ...state.deps,
+          storage: { ...state.deps.storage, delete: async () => failure },
+        },
+      ),
+    ).toEqual(failure);
+    await expect(
+      deleteDocument(
+        ctx(staff('tenant-acme')),
+        documentId,
+        {
+          ...state.deps,
+          documents: {
+            ...state.deps.documents,
+            delete: async () => Promise.reject(new Error('failed port')),
+          },
+        },
+      ),
+    ).rejects.toThrow('failed port');
+    expect(
+      await deleteDocument(
+        ctx(staff('tenant-acme')),
+        documentId,
+        {
+          ...state.deps,
+          documents: { ...state.deps.documents, delete: async () => false },
+        },
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
 
-  it('propagates adapter failures as Results', async () => {
-    const repository = fakeRepository([document('doc-1')]);
-    repository.repo.findById = async () => ({ ok: false, error: internal('database unavailable') });
-    const storage = fakeStorage();
-    const result = await getDocument(
-      { identity: identity('t-default') },
-      'doc-1',
-      deps(repository.repo, storage.storage),
-    );
-    expect(result).toEqual({ ok: false, error: internal('database unavailable') });
-  });
-
-  it('maps validation, missing rows, and storage failures without throwing', async () => {
-    const ctx = { identity: identity('t-default') };
-    const repository = fakeRepository([document('doc-1')]);
-    const storage = fakeStorage();
-    const usecaseDeps = deps(repository.repo, storage.storage, ['key-1', 'file-1']);
-
-    expect(await listDocuments(ctx, { dateFrom: '2026-07-19', dateTo: '2026-07-18' }, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(await updateDocument(ctx, 'doc-1', { ...createInput, title: '' }, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(await requestFileUpload(ctx, 'doc-1', { fileName: '', contentType: 'x', role: 'other' }, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(await finalizeFileUpload(ctx, 'doc-1', { key: 'x', fileName: 'x', contentType: 'x', sizeBytes: -1, role: 'other' }, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(await updateDocument(ctx, 'missing', createInput, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(await deleteDocument(ctx, 'missing', usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(await requestFileUpload(ctx, 'missing', { fileName: 'x.pdf', contentType: 'application/pdf', role: 'other' }, usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(await removeFile(ctx, 'doc-1', 'missing', usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
-
-    storage.storage.createUploadUrl = async () => err(internal('target failed'));
-    expect(await requestFileUpload(ctx, 'doc-1', { fileName: 'x.pdf', contentType: 'application/pdf', role: 'other' }, usecaseDeps)).toEqual(err(internal('target failed')));
-    storage.storage.createUploadUrl = async () => ok(null);
-    storage.storage.put = async () => err(internal('put failed'));
-    expect(await serverUpload(ctx, 'doc-1', { fileName: 'x.pdf', contentType: 'application/pdf', role: 'other', bytes: new Uint8Array([1]) }, usecaseDeps)).toEqual(err(internal('put failed')));
-  });
-
-  it('cleans up a server upload when finalization fails and propagates removal failures', async () => {
-    const ctx = { identity: identity('t-default') };
-    const repository = fakeRepository([document('doc-1')]);
-    const storage = fakeStorage();
-    repository.repo.createFile = async () => err(internal('insert failed'));
-    const uploadDeps = deps(repository.repo, storage.storage, ['storage-id']);
-    expect(await serverUpload(ctx, 'doc-1', { fileName: 'x.pdf', contentType: 'application/pdf', role: 'other', bytes: new Uint8Array([1]) }, uploadDeps)).toEqual(err(internal('insert failed')));
-    expect(storage.objects.size).toBe(0);
-
-    repository.files.push({
-      id: 'file-1',
-      documentId: 'doc-1',
-      role: 'other',
-      fileName: 'x',
-      contentType: 'x',
-      sizeBytes: 1,
-      storageKey: 'key',
-      createdAt: '2026-07-18T00:00:00.000Z',
-    });
-    storage.storage.delete = async () => err(internal('delete failed'));
-    expect(await removeFile(ctx, 'doc-1', 'file-1', uploadDeps)).toEqual(err(internal('delete failed')));
-  });
-
-  it('propagates repository failures and deletion races', async () => {
-    const ctx = { identity: identity('t-default') };
-    const repository = fakeRepository([document('doc-1')]);
-    const storage = fakeStorage();
-    const usecaseDeps = deps(repository.repo, storage.storage);
-
-    repository.repo.listFiles = async () => err(internal('list files failed'));
-    expect(await getDocument(ctx, 'doc-1', usecaseDeps)).toEqual(err(internal('list files failed')));
-    expect(await deleteDocument(ctx, 'doc-1', usecaseDeps)).toEqual(err(internal('list files failed')));
-
-    repository.repo.listFiles = async () => ok([]);
-    repository.repo.delete = async () => ok(false);
-    expect(await deleteDocument(ctx, 'doc-1', usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
-
-    repository.repo.findFile = async () => err(internal('find file failed'));
-    expect(await removeFile(ctx, 'doc-1', 'file-1', usecaseDeps)).toEqual(err(internal('find file failed')));
-    repository.repo.findFile = async () => ok({
-      id: 'file-1',
-      documentId: 'doc-1',
-      role: 'other',
-      fileName: 'x',
-      contentType: 'x',
-      sizeBytes: 1,
-      storageKey: 'key',
-      createdAt: '2026-07-18T00:00:00.000Z',
-    });
-    repository.repo.deleteFile = async () => err(internal('delete row failed'));
-    expect(await removeFile(ctx, 'doc-1', 'file-1', usecaseDeps)).toEqual(err(internal('delete row failed')));
-    repository.repo.deleteFile = async () => ok(false);
-    expect(await removeFile(ctx, 'doc-1', 'file-1', usecaseDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    const input = {
+      fileName: 'scan.pdf',
+      contentType: 'application/pdf',
+      role: 'source' as const,
+      bytes: new Uint8Array([1]),
+    };
+    expect(
+      await serverUpload(
+        ctx(staff('tenant-acme')),
+        documentId,
+        input,
+        {
+          ...state.deps,
+          storage: { ...state.deps.storage, put: async () => failure },
+        },
+      ),
+    ).toEqual(failure);
+    expect(
+      await serverUpload(
+        ctx(staff('tenant-acme')),
+        documentId,
+        input,
+        {
+          ...state.deps,
+          documents: { ...state.deps.documents, createFile: async () => null },
+        },
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 });

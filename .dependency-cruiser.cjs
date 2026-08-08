@@ -32,6 +32,9 @@ module.exports = {
       from: { path: '^adapters' },
       to: { path: '^apps' },
     },
+    // `adapters/domain-provisioning` below is reserved for US-009 (DomainPort);
+    // the directory does not exist yet — the ban is pre-wired so it holds from
+    // the day the adapter lands.
     {
       name: 'web-never-server-side',
       severity: 'error',
@@ -47,8 +50,9 @@ module.exports = {
     {
       name: 'vercel-and-neon-only-in-adapters',
       severity: 'error',
-      comment: 'Zero platform lock-in in core and apps (PRD: Goals)',
-      from: { pathNot: '^(adapters|apps/server/src/entry\\.vercel\\.ts|api/index\\.ts)' },
+      comment:
+        'Zero platform lock-in in core and apps (PRD: Goals). api/index.ts is the sanctioned exemption: it is the Vercel platform entry (PRD §0 Errata).',
+      from: { pathNot: '^(adapters|api/index\\.ts)' },
       to: { path: 'node_modules/(@vercel|@neondatabase)' },
     },
     {
@@ -56,6 +60,48 @@ module.exports = {
       severity: 'error',
       from: { path: '^core' },
       to: { path: 'node_modules/(hono|react|react-dom|drizzle-orm|better-auth|pg|commander)(/|$)' },
+    },
+    {
+      name: 'auth-provider-sdk-only-in-adapters-auth',
+      severity: 'error',
+      comment:
+        'US-028a grep-proof: the auth provider SDK — better-auth, its plugins (magic-link, two-factor), the client plugins, and any @better-auth/* package — is imported ONLY in adapters/auth, so no provider name leaks into core, apps or other adapters.',
+      from: { pathNot: '^adapters/auth' },
+      to: { path: 'node_modules/(better-auth|@better-auth)(/|$)' },
+    },
+    {
+      name: 'smtp-sdk-only-in-adapters-email',
+      severity: 'error',
+      comment:
+        'Every email-vendor SDK (the nodemailer SMTP client and the Amazon SES v2 SDK) lives only behind the EmailPort in adapters/email — no vendor name leaks into core, apps or other adapters.',
+      from: { pathNot: '^adapters/email' },
+      to: { path: 'node_modules/(nodemailer|@aws-sdk)(/|$)' },
+    },
+    {
+      name: 'core-domain-only-zod',
+      severity: 'error',
+      comment:
+        'core/domain depends on zod ONLY — an allow-list, not a deny-list: no other external package may enter (PRD §3.1). Test files are exempt (vitest).',
+      from: { path: '^core/domain', pathNot: '\\.(test|spec)\\.[jt]sx?$' },
+      to: { path: 'node_modules', pathNot: 'node_modules/zod(/|$)' },
+    },
+    {
+      name: 'island-core-is-framework-agnostic',
+      severity: 'error',
+      comment:
+        'island cores (features/*/core) stay pure TS: no react/react-dom/@tanstack/react-query or their store React bindings — a depcruise mirror of the ESLint island-core ban, wired now that real cores exist (ADR-0005, frontend-lint-plan Phase 5).',
+      from: { path: '^apps/web/src/features/[^/]+/core/' },
+      to: {
+        path: 'node_modules/(react|react-dom|@tanstack/react-query|@xstate/store/react|@xstate/react)(/|$)',
+      },
+    },
+    {
+      name: 'island-core-is-portable',
+      severity: 'error',
+      comment:
+        'island cores (features/*/core) import no web composition: not api.ts, not a sibling feature, not any apps/web path outside their own core — the gateway + bound descriptors are injected in features/<name>/index.web.ts. A depcruise mirror of the ESLint parent-import ban, so the core typechecks without DOM and runs in plain node (ADR-0005 §Pure-TS cores).',
+      from: { path: '^apps/web/src/features/([^/]+)/core/' },
+      to: { path: '^apps/web/src/', pathNot: '^apps/web/src/features/$1/core/' },
     },
     {
       name: 'web-ui-is-presentational',

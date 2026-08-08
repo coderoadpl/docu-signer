@@ -1,3 +1,4 @@
+import { ApiError } from '#core/client/index.js';
 import type {
   CreateDocument,
   DocumentFile,
@@ -6,7 +7,6 @@ import type {
   DocumentType,
   UpdateDocument,
 } from '#core/domain/index.js';
-import { ApiError } from '#core/client/index.js';
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   'umowa-uod': 'Umowa UoD',
@@ -46,7 +46,9 @@ export const emptyDocumentForm = (): DocumentFormValues => ({
   tags: '',
 });
 
-export const toDocumentInput = (values: DocumentFormValues): CreateDocument | UpdateDocument => ({
+export const toDocumentInput = (
+  values: DocumentFormValues,
+): CreateDocument | UpdateDocument => ({
   title: values.title.trim(),
   docType: values.docType,
   documentDate: values.documentDate,
@@ -71,7 +73,9 @@ export const toDocumentFilter = (values: {
   ...(values.dateTo ? { dateTo: values.dateTo } : {}),
 });
 
-export const filesByRole = (files: DocumentFile[]): Record<DocumentFileRole, DocumentFile[]> => ({
+export const filesByRole = (
+  files: DocumentFile[],
+): Record<DocumentFileRole, DocumentFile[]> => ({
   source: files.filter((file) => file.role === 'source'),
   'signed-scan': files.filter((file) => file.role === 'signed-scan'),
   'signed-digital': files.filter((file) => file.role === 'signed-digital'),
@@ -93,6 +97,7 @@ export const uploadErrorMessage = (error: unknown): string => {
       validation: 'Plik ma nieprawidłowe dane.',
       conflict: 'Ten plik jest w konflikcie z istniejącymi danymi.',
       tenant_not_found: 'Nie wybrano organizacji.',
+      unavailable: 'Magazyn plików jest chwilowo niedostępny.',
       internal: 'Nie udało się wgrać pliku. Spróbuj ponownie.',
     };
     return messages[error.appError.code];

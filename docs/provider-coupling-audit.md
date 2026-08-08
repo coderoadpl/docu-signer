@@ -26,7 +26,14 @@ Verified clean (no action): tenant resolution never uses the provider's
 provider imports (lint-enforced); DB drivers and domain provisioning sit
 behind ports; cookie configuration lives in the adapter.
 
-The P1 batch is one migration PR against `demo/`: strip the organization
+The P1 batch is one migration PR against ``: strip the organization
 plugin, add `tenants`/`tenant_admins`/`members` tables, re-point FKs, swap the
 membership reader implementation, rebind CLI auth through the client port,
 make `trustedOrigins` dynamic, regenerate the auth schema, update the seed.
+
+> **Landed (2026-07-20).** The P1 batch is complete. `` ships
+> foundation-owned `tenants`, `tenant_admins` and `members` tables
+> (`adapters/db/app-schema.ts`), the Better Auth organization plugin is
+> removed, tenancy no longer touches any provider organization/member table,
+> and the CLI authenticates through the client port. The remaining P2 items
+> (documentation/lint, e.g. the `api/auth` string ban) are tracked separately.

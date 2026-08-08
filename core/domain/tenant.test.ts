@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  memberSchema,
   membershipSchema,
+  publicTenantProfileSchema,
+  tenantContentVersion,
   tenantDomainSchema,
   tenantSchema,
 } from './tenant.js';
@@ -35,29 +36,6 @@ describe('membershipSchema', () => {
   });
 });
 
-describe('memberSchema', () => {
-  const valid = {
-    id: 'm1',
-    tenantId: 't1',
-    userId: 'u1',
-    email: 'a@b.com',
-    displayName: 'Ada',
-    createdAt: '2026-07-03T00:00:00.000Z',
-  };
-
-  it('parses a valid member', () => {
-    expect(memberSchema.parse(valid)).toEqual(valid);
-  });
-
-  it('accepts a null displayName', () => {
-    expect(memberSchema.parse({ ...valid, displayName: null }).displayName).toBeNull();
-  });
-
-  it('rejects a numeric displayName', () => {
-    expect(memberSchema.safeParse({ ...valid, displayName: 5 }).success).toBe(false);
-  });
-});
-
 describe('tenantDomainSchema', () => {
   const valid = {
     id: 'd1',
@@ -81,5 +59,53 @@ describe('tenantDomainSchema', () => {
 
   it('rejects a non-boolean verified', () => {
     expect(tenantDomainSchema.safeParse({ ...valid, verified: 'yes' }).success).toBe(false);
+  });
+});
+
+describe('publicTenantProfileSchema', () => {
+  it('parses a profile carrying only the safe public fields', () => {
+    const valid = { slug: 'acme', displayName: 'Acme Inc', contentVersion: 'abc123' };
+    expect(publicTenantProfileSchema.parse(valid)).toEqual(valid);
+  });
+
+  it('strips any unsafe field that slips in (id, email, members)', () => {
+    const parsed = publicTenantProfileSchema.parse({
+      slug: 'acme',
+      displayName: 'Acme Inc',
+      contentVersion: 'abc123',
+      id: 'tenant-secret',
+      email: 'owner@acme.test',
+    });
+    expect(parsed).toEqual({ slug: 'acme', displayName: 'Acme Inc', contentVersion: 'abc123' });
+    expect('id' in parsed).toBe(false);
+  });
+});
+
+describe('tenantContentVersion', () => {
+  it('is deterministic for the same visible content', () => {
+    const input = { slug: 'acme', name: 'Acme Inc' };
+    expect(tenantContentVersion(input)).toBe(tenantContentVersion(input));
+  });
+
+  it('changes when the display name changes (a rename busts the cache key)', () => {
+    expect(tenantContentVersion({ slug: 'acme', name: 'Acme Inc' })).not.toBe(
+      tenantContentVersion({ slug: 'acme', name: 'Acme LLC' }),
+    );
+  });
+
+  it('changes when the slug changes', () => {
+    expect(tenantContentVersion({ slug: 'acme', name: 'Acme Inc' })).not.toBe(
+      tenantContentVersion({ slug: 'globex', name: 'Acme Inc' }),
+    );
+  });
+
+  it('does not collide across the slug/name boundary', () => {
+    expect(tenantContentVersion({ slug: 'ab', name: 'c' })).not.toBe(
+      tenantContentVersion({ slug: 'a', name: 'bc' }),
+    );
+  });
+
+  it('emits a URL-safe base36 token', () => {
+    expect(tenantContentVersion({ slug: 'acme', name: 'Acme Inc' })).toMatch(/^[a-z0-9]+$/);
   });
 });

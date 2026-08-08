@@ -25,8 +25,8 @@ export const distFreshnessWarning = (webDistDir: string, repoRoot: string): stri
   if (!existsSync(join(webDistDir, 'index.html'))) {
     return (
       `WEB_DIST_DIR (${webDistDir}) has no built bundle. ` +
-      'The canonical dev flow for frontend work is `npm run dev:web` (Vite, hot reload); ' +
-      'to serve a real bundle from this server, run `npm run build:web` first.'
+      'The canonical dev flow for frontend work is `pnpm run dev:web` (Vite, hot reload); ' +
+      'to serve a real bundle from this server, run `pnpm run build:web` first.'
     );
   }
   const sourceRoots = SOURCE_ROOTS.map((root) => join(repoRoot, root)).filter(existsSync);
@@ -40,7 +40,7 @@ export const distFreshnessWarning = (webDistDir: string, repoRoot: string): stri
     `(newest source change is ~${behindMinutes} min newer than the build). ` +
     'You are serving an OUT-OF-DATE frontend — if the contract changed, every page ' +
     'will fail with "response does not match the contract". ' +
-    'Run `npm run build:web`, or do frontend work through `npm run dev:web` instead.'
+    'Run `pnpm run build:web`, or do frontend work through `pnpm run dev:web` instead.'
   );
 };
 

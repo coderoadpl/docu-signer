@@ -3,19 +3,20 @@ import {
   Alert,
   Box,
   Button,
+  Divider,
   FormControl,
   FormLabel,
   OutlinedInput,
   Paper,
   Stack,
 } from '@mui/material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
-import { Eyebrow, Wordmark } from '../../theme.js';
+import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -23,11 +24,30 @@ export const LoginPage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const config = useQuery(actions.config);
+
   const signIn = useMutation({
     ...actions.signIn,
     onSuccess: async () => {
       await queryClient.invalidateQueries();
-      await navigate({ to: '/' });
+      await navigate({ to: '/app' });
+    },
+  });
+
+  const magicLink = useMutation(actions.requestMagicLink);
+
+  const passkey = useMutation({
+    ...actions.signInPasskey,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries();
+      await navigate({ to: '/app' });
+    },
+  });
+
+  const google = useMutation({
+    ...actions.signInSocial,
+    onSuccess: (result) => {
+      if (result.url) window.location.assign(result.url);
     },
   });
 
@@ -52,14 +72,14 @@ export const LoginPage = () => {
         }}
       >
         <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          podpisy
+          Podpisy
         </Wordmark>
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          logowanie
+          Logowanie · {window.location.hostname}
         </Eyebrow>
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
-            <FormLabel htmlFor="login-email">email</FormLabel>
+            <FormLabel htmlFor="login-email">Adres e-mail</FormLabel>
             <OutlinedInput
               id="login-email"
               type="email"
@@ -70,7 +90,7 @@ export const LoginPage = () => {
             />
           </FormControl>
           <FormControl fullWidth>
-            <FormLabel htmlFor="login-password">password</FormLabel>
+            <FormLabel htmlFor="login-password">Hasło</FormLabel>
             <OutlinedInput
               id="login-password"
               type="password"
@@ -87,14 +107,63 @@ export const LoginPage = () => {
             disabled={signIn.isPending}
             sx={{ mt: '0.4rem' }}
           >
-            {signIn.isPending ? 'signing in…' : 'sign in'}
+            {signIn.isPending ? 'Logowanie…' : 'Zaloguj się'}
           </Button>
+          <Button
+            type="button"
+            variant="outlined"
+            fullWidth
+            disabled={magicLink.isPending || email.length === 0}
+            onClick={() => magicLink.mutate({ email, callbackURL: `${window.location.origin}/app` })}
+          >
+            {magicLink.isPending
+              ? 'Wysyłanie linku…'
+              : 'Wyślij link do logowania'}
+          </Button>
+          <Button
+            type="button"
+            variant="outlined"
+            fullWidth
+            disabled={passkey.isPending}
+            onClick={() => passkey.mutate()}
+          >
+            {passkey.isPending
+              ? 'Oczekiwanie na klucz…'
+              : 'Zaloguj się kluczem dostępu'}
+          </Button>
+          {config.data?.googleEnabled ? (
+            <Button
+              type="button"
+              variant="outlined"
+              fullWidth
+              disabled={google.isPending}
+              onClick={() => google.mutate({ provider: 'google', callbackURL: `${window.location.origin}/app` })}
+            >
+              Zaloguj się przez Google
+            </Button>
+          ) : null}
         </Stack>
+        {magicLink.isSuccess ? (
+          <Alert severity="success" sx={{ mt: '0.6rem' }}>
+            Sprawdź skrzynkę e-mail. W środowisku deweloperskim wiadomość
+            znajdziesz w Mailpit.
+          </Alert>
+        ) : null}
         {signIn.isError ? (
           <Alert sx={{ mt: '0.6rem' }}>
             {signIn.error instanceof ApiError ? signIn.error.appError.message : signIn.error.message}
           </Alert>
         ) : null}
+        {passkey.isError ? (
+          <Alert sx={{ mt: '0.6rem' }}>
+            {passkey.error instanceof ApiError ? passkey.error.appError.message : passkey.error.message}
+          </Alert>
+        ) : null}
+        <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
+        <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
+          konto demonstracyjne: <DemoValue>demo@agentproofarch.dev</DemoValue> /{' '}
+          <DemoValue>demo1234</DemoValue>
+        </FinePrint>
       </Paper>
     </Box>
   );

@@ -45,7 +45,13 @@ describe('document view logic', () => {
 
   it('omits blank filters and groups files by role', () => {
     expect(
-      toDocumentFilter({ text: ' umowa ', docType: '', person: ' ', dateFrom: '', dateTo: '2026-12-31' }),
+      toDocumentFilter({
+        text: ' umowa ',
+        docType: '',
+        person: ' ',
+        dateFrom: '',
+        dateTo: '2026-12-31',
+      }),
     ).toEqual({ text: 'umowa', dateTo: '2026-12-31' });
     expect(
       toDocumentFilter({
@@ -55,10 +61,14 @@ describe('document view logic', () => {
         dateFrom: '2026-01-01',
         dateTo: '',
       }),
-    ).toEqual({ docType: 'uchwala', person: 'Anna', dateFrom: '2026-01-01' });
+    ).toEqual({
+      docType: 'uchwala',
+      person: 'Anna',
+      dateFrom: '2026-01-01',
+    });
     const file = {
-      id: 'f1',
-      documentId: 'd1',
+      id: '11111111-1111-4111-8111-111111111111',
+      documentId: '22222222-2222-4222-8222-222222222222',
       role: 'source' as const,
       fileName: 'a.pdf',
       contentType: 'application/pdf',
@@ -72,10 +82,17 @@ describe('document view logic', () => {
     expect(formatFileSize(10)).toBe('10 B');
   });
 
-  it('maps API Results to Polish upload messages', () => {
-    expect(uploadErrorMessage(new ApiError({ code: 'forbidden', message: 'Not allowed' }))).toBe(
-      'Nie masz uprawnień do wgrania tego pliku.',
-    );
+  it('maps API errors to Polish upload messages', () => {
+    expect(
+      uploadErrorMessage(
+        new ApiError({ code: 'forbidden', message: 'Not allowed' }),
+      ),
+    ).toBe('Nie masz uprawnień do wgrania tego pliku.');
+    expect(
+      uploadErrorMessage(
+        new ApiError({ code: 'unavailable', message: 'Storage unavailable' }),
+      ),
+    ).toBe('Magazyn plików jest chwilowo niedostępny.');
     expect(uploadErrorMessage(new Error('Błąd pliku'))).toBe('Błąd pliku');
     expect(uploadErrorMessage('unknown')).toBe('Nie udało się wgrać pliku.');
   });

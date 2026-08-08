@@ -62,6 +62,21 @@ interface DocumentFilters {
   dateTo: string;
 }
 
+const saveDownload = (download: {
+  bytes: Uint8Array;
+  contentType: string;
+  fileName: string;
+}) => {
+  const body = new ArrayBuffer(download.bytes.byteLength);
+  new Uint8Array(body).set(download.bytes);
+  const url = URL.createObjectURL(new Blob([body], { type: download.contentType }));
+  const link = window.document.createElement('a');
+  link.href = url;
+  link.download = download.fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
 export const DocumentsPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -80,29 +95,26 @@ export const DocumentsPage = () => {
     onSuccess: async ({ document }) => {
       setCreateOpen(false);
       await queryClient.invalidateQueries(actions.documentsInvalidates());
-      await navigate({ to: '/documents/$id', params: { id: document.id } });
+      await navigate({
+        to: '/app/documents/$id',
+        params: { id: document.id },
+      });
     },
   });
   const exportDocuments = useMutation({
     ...actions.exportDocuments,
-    onSuccess: (download) => {
-      const body = new ArrayBuffer(download.bytes.byteLength);
-      new Uint8Array(body).set(download.bytes);
-      const url = URL.createObjectURL(new Blob([body], { type: download.contentType }));
-      const link = window.document.createElement('a');
-      link.href = url;
-      link.download = download.fileName;
-      link.click();
-      URL.revokeObjectURL(url);
-    },
+    onSuccess: saveDownload,
   });
 
-  const updateFilter = (name: keyof typeof filters, value: string) =>
+  const updateFilter = (name: keyof DocumentFilters, value: string) =>
     setFilters((current) => ({ ...current, [name]: value }));
 
   return (
     <Container sx={{ maxWidth: '76rem !important', px: 2, py: 6 }}>
-      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+      <Stack
+        direction="row"
+        sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
+      >
         <Box>
           <Typography variant="overline">Archiwum</Typography>
           <Typography variant="h1">Dokumenty</Typography>
@@ -159,7 +171,10 @@ export const DocumentsPage = () => {
         </Stack>
       </Paper>
 
-      <Stack direction="row" sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end' }}>
+      <Stack
+        direction="row"
+        sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end' }}
+      >
         <Button
           variant="contained"
           disabled={selectedIds.length === 0 || exportDocuments.isPending}
@@ -168,15 +183,23 @@ export const DocumentsPage = () => {
           Eksportuj zaznaczone ({selectedIds.length})
         </Button>
       </Stack>
-      {exportDocuments.isError ? <Alert sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert> : null}
+      {exportDocuments.isError ? (
+        <Alert sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert>
+      ) : null}
 
-      {documents.isPending ? <Typography sx={{ mt: 4 }}>Ładowanie dokumentów…</Typography> : null}
-      {documents.isError ? <Alert sx={{ mt: 4 }}>{documents.error.message}</Alert> : null}
+      {documents.isPending ? (
+        <Typography sx={{ mt: 4 }}>Ładowanie dokumentów…</Typography>
+      ) : null}
+      {documents.isError ? (
+        <Alert sx={{ mt: 4 }}>{documents.error.message}</Alert>
+      ) : null}
       {documents.data?.documents.length === 0 ? (
         <Paper variant="outlined" sx={{ mt: 4, p: 4 }}>
           <EmptyState>
             <Typography variant="h2">Brak dokumentów</Typography>
-            <Typography sx={{ mt: 1, mb: 3 }}>Dodaj pierwszy dokument do archiwum.</Typography>
+            <Typography sx={{ mt: 1, mb: 3 }}>
+              Dodaj pierwszy dokument do archiwum.
+            </Typography>
             <Button variant="contained" onClick={() => setCreateOpen(true)}>
               Dodaj dokument
             </Button>
@@ -190,14 +213,24 @@ export const DocumentsPage = () => {
               <TableRow>
                 <TableCell padding="checkbox">
                   <Checkbox
-                    slotProps={{ input: { 'aria-label': 'Zaznacz wszystkie dokumenty' } }}
-                    checked={documents.data.documents.every((document) => selectedIds.includes(document.id))}
+                    slotProps={{
+                      input: { 'aria-label': 'Zaznacz wszystkie dokumenty' },
+                    }}
+                    checked={documents.data.documents.every((document) =>
+                      selectedIds.includes(document.id),
+                    )}
                     indeterminate={
                       selectedIds.length > 0 &&
-                      !documents.data.documents.every((document) => selectedIds.includes(document.id))
+                      !documents.data.documents.every((document) =>
+                        selectedIds.includes(document.id),
+                      )
                     }
                     onChange={(event) =>
-                      setSelectedIds(event.target.checked ? documents.data.documents.map((document) => document.id) : [])
+                      setSelectedIds(
+                        event.target.checked
+                          ? documents.data.documents.map((document) => document.id)
+                          : [],
+                      )
                     }
                   />
                 </TableCell>
@@ -213,12 +246,24 @@ export const DocumentsPage = () => {
                 <TableRow
                   key={document.id}
                   hover
-                  onClick={() => void navigate({ to: '/documents/$id', params: { id: document.id } })}
+                  onClick={() =>
+                    void navigate({
+                      to: '/app/documents/$id',
+                      params: { id: document.id },
+                    })
+                  }
                   sx={{ cursor: 'pointer' }}
                 >
-                  <TableCell padding="checkbox" onClick={(event) => event.stopPropagation()}>
+                  <TableCell
+                    padding="checkbox"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <Checkbox
-                      slotProps={{ input: { 'aria-label': `Zaznacz dokument: ${document.title}` } }}
+                      slotProps={{
+                        input: {
+                          'aria-label': `Zaznacz dokument: ${document.title}`,
+                        },
+                      }}
                       checked={selectedIds.includes(document.id)}
                       onChange={(event) =>
                         setSelectedIds((current) =>
@@ -232,7 +277,10 @@ export const DocumentsPage = () => {
                   <TableCell>{document.documentDate}</TableCell>
                   <TableCell>{document.title}</TableCell>
                   <TableCell>
-                    <Chip variant="outlined" label={DOCUMENT_TYPE_LABELS[document.docType]} />
+                    <Chip
+                      variant="outlined"
+                      label={DOCUMENT_TYPE_LABELS[document.docType]}
+                    />
                   </TableCell>
                   <TableCell>{document.person ?? '—'}</TableCell>
                   <TableCell>

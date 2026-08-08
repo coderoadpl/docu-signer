@@ -3,12 +3,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Resource scaffolder — the mechanical form of the 8-step "adding a resource"
- * chain in demo/CLAUDE.md. It GENERATES the files a resource owns outright and
+ * Resource scaffolder — the mechanical form of the 12-step "adding a resource"
+ * chain in CLAUDE.md. It GENERATES the files a resource owns outright and
  * prints an ordered checklist for the shared files that must be EDITED by hand,
  * each with its anchor line and a ready-to-paste snippet. Generated edits to
  * shared files rot; the type system is left to enforce completion instead, so
- * `npm run check` stays RED until every checklist step is wired.
+ * `pnpm run check` stays RED through the type-forced steps. Three steps are not
+ * type-forced (server-route registration against API_PATHS, CLI command,
+ * web-route registration) — the printed checklist, not the compiler,
+ * guarantees those.
  */
 
 export interface ResourceNames {
@@ -105,6 +108,14 @@ const render = (template: string, names: ResourceNames): string => {
   return output;
 };
 
+/**
+ * Read a template from scripts/templates and substitute every name token.
+ * Exported so sibling scaffolders (new-island) reuse one render + token set
+ * instead of re-implementing the placeholder machinery.
+ */
+export const renderTemplateFile = (templateFile: string, names: ResourceNames): string =>
+  render(readFileSync(join(TEMPLATES_DIR, templateFile), 'utf8'), names);
+
 export interface GeneratedFile {
   /** Path relative to the repo/output root. */
   path: string;
@@ -114,7 +125,7 @@ export interface GeneratedFile {
 const planFiles = (names: ResourceNames): GeneratedFile[] => {
   const fromTemplate = (templateFile: string, path: string): GeneratedFile => ({
     path,
-    contents: render(readFileSync(join(TEMPLATES_DIR, templateFile), 'utf8'), names),
+    contents: renderTemplateFile(templateFile, names),
   });
   return [
     fromTemplate('domain.ts.tpl', `core/domain/${names.singularKebab}.ts`),
@@ -181,8 +192,12 @@ Scaffolded resource "${n.singularKebab}". Generated files (owned by this resourc
 ${generated}
 
 These GENERATED files already participate in typecheck and import symbols that do
-not exist yet, so \`npm run check\` will stay RED until every step below is wired.
-Work top to bottom — this is the 8-step chain from demo/CLAUDE.md:
+not exist yet, so \`pnpm run check\` will stay RED through the type-forced steps
+below. Three steps are NOT type-forced — the server route registration (7,
+wired by hand against API_PATHS with no parity check), the CLI command (10)
+and the web route registration (12) all typecheck while unwired — so finish
+the whole list; the checklist, not the compiler, guarantees those three.
+Work top to bottom — this is the 12-step chain from CLAUDE.md:
 
 1. DOMAIN — core/domain/index.ts
    anchor:  export * from './todo.js';
@@ -218,10 +233,28 @@ Work top to bottom — this is the 8-step chain from demo/CLAUDE.md:
          }
 
 4. USE-CASE INDEX — core/server/index.ts
-   anchor:  export * from './usecases/todos.js';
-   add:     export * from './usecases/${n.pluralKebab}.js';
-   (The use-case + its test skeleton are already generated. Fill in the TODO
-    cases in core/server/usecases/${n.pluralKebab}.test.ts before wiring the UI.)
+   4a. anchor:  export * from './usecases/todos.js';
+       add:     export * from './usecases/${n.pluralKebab}.js';
+   4b. AUTHORIZATION — core/domain/authorization.ts
+       The generated use-cases call authorizeTenant(ctx, '${n.singularKebab}:read' |
+       '${n.singularKebab}:write'). Those capabilities are not in the Capability
+       union yet, so \`check\` stays RED (type-forced) until you name them and
+       decide their grants — default-deny, no wildcard.
+       anchor:  'todo:read',                 (the CAPABILITIES array)
+       add:     '${n.singularKebab}:read',
+                '${n.singularKebab}:write',
+       anchor:  'todo:read': ['owner', 'admin', 'member'],   (the GRANTS table)
+       add:     '${n.singularKebab}:read': ['owner', 'admin', 'member'],
+                '${n.singularKebab}:write': ['owner', 'admin', 'member'],
+       Baseline above = collaborative (staff owner+admin + member read+write),
+       matching the generated tests. For a staff-only aggregate, grant only
+       ['owner', 'admin'] and flip the member test in the generated test file to
+       assert a 'forbidden' denial. (owner and admin are distinct principals since
+       FR-8; an owner-only aggregate would grant just ['owner'].)
+   (The use-case + its test skeleton are already generated. The three authorization
+    outcomes — staff allowed, member per policy, tenant-less denied — ship as REAL
+    tests (RED until wired); turn the remaining it.todo(...) cases in
+    core/server/usecases/${n.pluralKebab}.test.ts into real tests before wiring the UI.)
 
 5. ADAPTER SCHEMA — adapters/db/app-schema.ts
    anchor:  export const todos = pgTable(
@@ -240,7 +273,7 @@ Work top to bottom — this is the 8-step chain from demo/CLAUDE.md:
        (table) => [index('${n.pluralSnake}_tenantId_idx').on(table.tenantId)],
      );
    Then generate + apply the migration:
-     npm run db:generate && npm run db:migrate
+     pnpm run db:generate && pnpm run db:migrate
    (The generated adapter repository — adapters/db/${n.pluralKebab}-repository.ts —
     is already written; it imports this table from ./schema.js.)
 
@@ -317,28 +350,32 @@ Work top to bottom — this is the 8-step chain from demo/CLAUDE.md:
          export const add${n.singularPascal}Invalidates = () => ({ queryKey: ${n.pluralCamel}Scopes.lists() });
 
 10. CLI — apps/cli/src/main.ts
-    anchor:  await program.parseAsync(process.argv);   (add the command group above it)
-    add:
-      const ${n.singularCamel} = program.command('${n.singularKebab}').description('${n.pluralPascal} in the active tenant');
+    10a. anchor:  todoCreateInputSchema,       (the '#core/contract/index.js' import)
+         add:     ${n.singularCamel}CreateInputSchema,
+    10b. anchor:  await program.parseAsync(process.argv);   (add the command group above the final parse block)
+         add:
+           const ${n.singularCamel} = program.command('${n.singularKebab}').description('${n.pluralPascal} in the active tenant');
 
-      ${n.singularCamel}.command('list').description('List ${n.pluralKebab}').action(async () => {
-        const ctx = cliCtx();
-        emit(await ctx.api.list${n.pluralPascal}(), ctx.json, (data) =>
-          data.${n.pluralCamel}.length === 0
-            ? 'no ${n.pluralKebab}'
-            : data.${n.pluralCamel}.map((row) => \`- \${row.title}  (\${row.id.slice(0, 8)})\`).join('\\n'),
-        );
-      });
+           ${n.singularCamel}.command('list').description('List ${n.pluralKebab}').action(async () => {
+             const ctx = cliCtx();
+             emit(await ctx.api.list${n.pluralPascal}(), ctx.json, (data) =>
+               data.${n.pluralCamel}.length === 0
+                 ? 'no ${n.pluralKebab}'
+                 : data.${n.pluralCamel}.map((row) => \`- \${row.title}  (\${row.id.slice(0, 8)})\`).join('\\n'),
+             );
+           });
 
-      ${n.singularCamel}
-        .command('add <title...>')
-        .description('Add a ${n.singularKebab}')
-        .action(async (titleWords: string[]) => {
-          const ctx = cliCtx();
-          emit(await ctx.api.add${n.singularPascal}({ title: titleWords.join(' ') }), ctx.json, (data) =>
-            \`added: \${data.${n.singularCamel}.title} (\${data.${n.singularCamel}.id.slice(0, 8)})\`,
-          );
-        });
+           ${n.singularCamel}
+             .command('add <title...>')
+             .description('Add a ${n.singularKebab}')
+             .action(async (titleWords: string[]) => {
+               const ctx = cliCtx();
+               const input = parseArgs(${n.singularCamel}CreateInputSchema, { title: titleWords.join(' ') }, ctx.json);
+               if (input === undefined) return;
+               emit(await ctx.api.add${n.singularPascal}(input), ctx.json, (data) =>
+                 \`added: \${data.${n.singularCamel}.title} (\${data.${n.singularCamel}.id.slice(0, 8)})\`,
+               );
+             });
 
 11. WEB BINDING — apps/web/src/api.ts
     11a. anchor:  todosQuery,        (the '#core/client/index.js' import)
@@ -364,8 +401,19 @@ Work top to bottom — this is the 8-step chain from demo/CLAUDE.md:
            });
          then extend addChildren([indexRoute, loginRoute, ${n.pluralCamel}Route]).
 
+RUNG-1 CORE — ADR-0005 (the events-in / selectors-out seam is uniform, no opt-outs)
+   The generated page (apps/web/src/features/${n.pluralKebab}/${n.pluralPascal}Page.tsx)
+   reads server state DIRECTLY through \`actions\` — a rung-0 starting point, like
+   the pre-existing todos page. That is deliberately coreless, NOT an exemption:
+   when this feature grows its own client state, give it the island seam with
+   \`pnpm run new:island -- ${n.singularKebab}\`, point that island's
+   \`${n.singularCamel}Selectors.list\` at this resource's \`actions.${n.pluralCamel}\`,
+   and read through the core instead of api.ts. new:resource owns the server/data
+   slice; new:island owns the client feature and its rung-1 seam. See
+   docs/decisions/0005-client-application-state.md.
+
 Verify (write core tests before wiring the UI):
-  npm run check && npm run smoke
+  pnpm run check && pnpm run smoke
 `;
 };
 
@@ -374,7 +422,7 @@ const runCli = (): void => {
   const dryRun = args.includes('--dry-run');
   const name = args.find((arg) => !arg.startsWith('--'));
   if (name === undefined) {
-    process.stderr.write('Usage: npm run new:resource -- <singular-name> [--dry-run]\n');
+    process.stderr.write('Usage: pnpm run new:resource -- <singular-name> [--dry-run]\n');
     process.exit(1);
   }
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');

@@ -7,6 +7,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   validation: 400,
   conflict: 409,
   tenant_not_found: 404,
+  unavailable: 503,
   internal: 500,
 };
 
@@ -17,5 +18,6 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   not_found: 5,
   conflict: 6,
   tenant_not_found: 7,
+  unavailable: 8,
   internal: 10,
 };

@@ -110,7 +110,63 @@ describe('generateResource', () => {
 
     expect(result.files[0]?.contents).toContain('export const blogPostSchema');
     expect(result.files[1]?.contents).toContain('export const listBlogPosts');
+    // The use-case names its capability — type-forced against the closed union.
+    expect(result.files[1]?.contents).toContain("authorizeTenant(ctx, 'blog-post:read')");
+    expect(result.files[1]?.contents).toContain("authorizeTenant(ctx, 'blog-post:write')");
     expect(result.files[3]?.contents).toContain('createBlogPostRepository');
+
+    // ADR-0005 no-opt-outs reconciliation: the generated page is honest about
+    // being a coreless rung-0 start and names the new:island graduation path.
+    const page = result.files.find((file) => file.path.endsWith('BlogPostsPage.tsx'))?.contents ?? '';
+    expect(page).toContain('ADR-0005');
+    expect(page).toContain('pnpm run new:island -- blog-post');
+  });
+
+  it('reconciles the two scaffolders: the checklist routes the rung-1 core through new:island', () => {
+    const { checklist } = generateResource({
+      name: 'diary-entry',
+      outDir: sandbox,
+      repoRoot: sandbox,
+      dryRun: true,
+    });
+    expect(checklist).toContain('RUNG-1 CORE');
+    expect(checklist).toContain('no opt-outs');
+    expect(checklist).toContain('pnpm run new:island -- diary-entry');
+    expect(checklist).toContain('diaryEntrySelectors.list');
+    expect(checklist).toContain('actions.diaryEntries');
+  });
+
+  it('ships the three authorization outcomes as REAL tests and the rest as visible it.todo entries', () => {
+    const { files } = generateResource({
+      name: 'memo',
+      outDir: sandbox,
+      repoRoot: sandbox,
+      dryRun: true,
+    });
+    const usecaseTest = files.find((file) => file.path.endsWith('memos.test.ts'))?.contents ?? '';
+    // The three default-deny outcomes ship as REAL tests (staff allowed, member
+    // per policy, tenant-less denied), never as it.todo stubs.
+    expect(usecaseTest).toContain('scopes listing to the tenant');
+    expect(usecaseTest).toContain('denies a tenant-less caller with forbidden');
+    expect(usecaseTest).toContain('allows a tenant member to read and write');
+    expect(usecaseTest).toContain('member }, deps(repo)');
+    expect(usecaseTest).not.toContain('decide the member policy');
+    expect(usecaseTest).toContain('it.todo(');
+    expect(usecaseTest).toContain("rejects blank/oversized input with 'validation'");
+    expect(usecaseTest).toContain("never returns another tenant's rows");
+    expect(usecaseTest).not.toMatch(/^\s*\/\/ TODO:/m);
+  });
+
+  it('routes the generated CLI add snippet through the parseArgs + zod funnel', () => {
+    const { checklist } = generateResource({
+      name: 'gadget',
+      outDir: sandbox,
+      repoRoot: sandbox,
+      dryRun: true,
+    });
+    expect(checklist).toContain('parseArgs(gadgetCreateInputSchema, { title: titleWords.join(\' \') }, ctx.json)');
+    expect(checklist).toContain('if (input === undefined) return;');
+    expect(checklist).toContain('add:     gadgetCreateInputSchema,');
   });
 
   it('emits a checklist that ends with the verification ritual and stays RED', () => {
@@ -120,10 +176,14 @@ describe('generateResource', () => {
       repoRoot: sandbox,
       dryRun: true,
     });
-    expect(checklist).toContain('npm run check` will stay RED');
+    expect(checklist).toContain('pnpm run check` will stay RED');
     expect(checklist).toContain('write core tests before wiring the UI');
-    expect(checklist).toContain('npm run check && npm run smoke');
+    expect(checklist).toContain('pnpm run check && pnpm run smoke');
     expect(checklist).toContain("path: '/api/gadgets'");
+    // The authorization step is part of the type-forced RED chain.
+    expect(checklist).toContain('AUTHORIZATION');
+    expect(checklist).toContain("'gadget:read'");
+    expect(checklist).toContain("'gadget:write'");
   });
 
   it('does not write files in dry-run mode', () => {

@@ -5,6 +5,7 @@ export const ERROR_CODES = [
   'validation',
   'conflict',
   'tenant_not_found',
+  'unavailable',
   'internal',
 ] as const;
 
@@ -31,5 +32,8 @@ export const validation = (message: string, details?: unknown): AppError =>
 
 export const tenantNotFound = (message = 'Unknown tenant'): AppError =>
   appError('tenant_not_found', message);
+
+export const unavailable = (message = 'Service unavailable'): AppError =>
+  appError('unavailable', message);
 
 export const internal = (message = 'Internal error'): AppError => appError('internal', message);

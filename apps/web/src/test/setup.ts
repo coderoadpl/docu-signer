@@ -1,9 +1,17 @@
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterAll, afterEach } from 'vitest';
 
 import { server } from './server.js';
+
+// `findBy*`/`waitFor` poll on their own 1s budget, independent of vitest's
+// per-test timeout. Under parallel CI CPU load a jsdom render+request settle
+// intermittently overran that 1s (audit C33 flake), so the page was still in
+// its loading state when the query gave up. 5s of polling headroom — still well
+// under the 15s per-test timeout — removes the flake without masking a genuinely
+// stuck test.
+configure({ asyncUtilTimeout: 5000 });
 
 /**
  * Start MSW at module scope, before any test file (and thus `api.ts`) is

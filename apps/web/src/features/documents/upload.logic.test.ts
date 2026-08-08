@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { uploadDocumentFile, type UploadTransport } from './upload.logic.js';
+import {
+  uploadDocumentFile,
+  type UploadTransport,
+} from './upload.logic.js';
 
 const file = {
   name: 'umowa.pdf',
@@ -16,7 +19,11 @@ describe('uploadDocumentFile', () => {
         upload: {
           kind: 'direct' as const,
           key: 'documents/t/d/f',
-          target: { url: 'https://upload.example', method: 'PUT' as const, headers: { token: 'x' } },
+          target: {
+            url: 'https://upload.example',
+            method: 'PUT' as const,
+            headers: { token: 'x' },
+          },
         },
       })),
       direct: vi.fn(async () => undefined),
@@ -44,7 +51,9 @@ describe('uploadDocumentFile', () => {
 
   it('uses the server fallback without finalizing separately', async () => {
     const transport: UploadTransport = {
-      request: vi.fn(async () => ({ upload: { kind: 'server' as const, key: 'documents/t/d/f' } })),
+      request: vi.fn(async () => ({
+        upload: { kind: 'server' as const, key: 'documents/t/d/f' },
+      })),
       direct: vi.fn(async () => undefined),
       finalize: vi.fn(async () => undefined),
       server: vi.fn(async () => undefined),
@@ -71,7 +80,11 @@ describe('uploadDocumentFile', () => {
       server: vi.fn(async () => undefined),
     };
     await expect(
-      uploadDocumentFile({ ...file, name: 'notes.txt', type: 'text/plain' }, 'other', transport),
+      uploadDocumentFile(
+        { ...file, name: 'notes.txt', type: 'text/plain' },
+        'other',
+        transport,
+      ),
     ).rejects.toThrow('Dozwolone są pliki PDF i obrazy.');
     expect(request).not.toHaveBeenCalled();
   });

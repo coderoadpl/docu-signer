@@ -16,7 +16,10 @@ const safeAscii = (value: string, fallback: string): string => {
   return safe || fallback;
 };
 
-const fileParts = (fileName: string, contentType: string): { base: string; extension: string } => {
+const fileParts = (
+  fileName: string,
+  contentType: string,
+): { base: string; extension: string } => {
   const lastDot = fileName.lastIndexOf('.');
   const hasExtension = lastDot > 0 && lastDot < fileName.length - 1;
   const base = hasExtension ? fileName.slice(0, lastDot) : fileName;
@@ -50,9 +53,10 @@ export const archiveEntries = async (
       const plainName = `${directory}/${file.role}--${base}.${extension}`;
       const count = usedNames.get(plainName) ?? 0;
       usedNames.set(plainName, count + 1);
-      const name = count === 0
-        ? plainName
-        : `${directory}/${file.role}--${base}--${count + 1}.${extension}`;
+      const name =
+        count === 0
+          ? plainName
+          : `${directory}/${file.role}--${base}--${count + 1}.${extension}`;
       entries.push({ name, bytes: await cleanExportBytes(bytes, file.contentType) });
     }
   }

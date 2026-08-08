@@ -19,8 +19,64 @@
     {
       "idx": 2,
       "version": "7",
-      "when": 1784375924779,
-      "tag": "0002_cool_speed",
+      "when": 1784488822906,
+      "tag": "0002_lonely_zodiak",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784493096776,
+      "tag": "0003_blushing_bloodstorm",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784599500950,
+      "tag": "0004_cheerful_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784640965090,
+      "tag": "0005_two_factor",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784647705061,
+      "tag": "0006_c3_check_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784648451105,
+      "tag": "0007_c4_backfill_checkpoints",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784665771502,
+      "tag": "0008_passkey",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785147659866,
+      "tag": "0009_old_quentin_quire",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785156850935,
+      "tag": "0010_warm_blackheart",
       "breakpoints": true
     }
   ]

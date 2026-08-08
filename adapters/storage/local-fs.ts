@@ -6,11 +6,14 @@ import type { StoragePort } from '#core/server/index.js';
 
 const filePath = (basePath: string, key: string): Result<string, AppError> => {
   const resolved = resolve(basePath, key);
-  const child = relative(basePath, resolved);
+  const child = relative(resolve(basePath), resolved);
   return child === '..' || child.startsWith(`..${sep}`) || child === ''
     ? err(internal('Invalid local storage key'))
     : ok(resolved);
 };
+
+const isMissing = (cause: unknown): boolean =>
+  cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 
 export const createLocalFsStorage = (basePath: string): StoragePort => ({
   put: async (key, bytes) => {
@@ -30,8 +33,9 @@ export const createLocalFsStorage = (basePath: string): StoragePort => ({
     try {
       return ok(new Uint8Array(await readFile(target.value)));
     } catch (cause) {
-      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return ok(null);
-      return err(internal(`Local storage read failed: ${String(cause)}`));
+      return isMissing(cause)
+        ? ok(null)
+        : err(internal(`Local storage read failed: ${String(cause)}`));
     }
   },
   exists: async (key) => {
@@ -40,8 +44,9 @@ export const createLocalFsStorage = (basePath: string): StoragePort => ({
     try {
       return ok((await stat(target.value)).isFile());
     } catch (cause) {
-      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return ok(false);
-      return err(internal(`Local storage stat failed: ${String(cause)}`));
+      return isMissing(cause)
+        ? ok(false)
+        : err(internal(`Local storage stat failed: ${String(cause)}`));
     }
   },
   delete: async (key) => {
@@ -51,8 +56,9 @@ export const createLocalFsStorage = (basePath: string): StoragePort => ({
       await unlink(target.value);
       return ok(undefined);
     } catch (cause) {
-      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return ok(undefined);
-      return err(internal(`Local storage delete failed: ${String(cause)}`));
+      return isMissing(cause)
+        ? ok(undefined)
+        : err(internal(`Local storage delete failed: ${String(cause)}`));
     }
   },
   createUploadUrl: async () => ok(null),

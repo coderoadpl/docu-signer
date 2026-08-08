@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 
-import { staffRoleSchema, type Membership, type StaffRole } from '#core/domain/index.js';
+import { memberSchema, staffRoleSchema, type Membership, type StaffRole } from '#core/domain/index.js';
 import type {
   HealthPort,
   TenantAccessReader,
@@ -36,6 +36,47 @@ export const createTenantDomainRepository = (db: Db): TenantDomainRepository => 
   },
   listVerifiedDomains: async () =>
     db.select().from(tenantDomains).where(eq(tenantDomains.verified, true)),
+  listByTenant: async (tenantId) =>
+    db
+      .select()
+      .from(tenantDomains)
+      .where(eq(tenantDomains.tenantId, tenantId))
+      .orderBy(asc(tenantDomains.domain)),
+  findAnyByDomain: async (domain) => {
+    const rows = await db
+      .select()
+      .from(tenantDomains)
+      .where(eq(tenantDomains.domain, domain))
+      .limit(1);
+    return rows[0] ?? null;
+  },
+  findByTenantAndDomain: async (tenantId, domain) => {
+    const rows = await db
+      .select()
+      .from(tenantDomains)
+      .where(and(eq(tenantDomains.tenantId, tenantId), eq(tenantDomains.domain, domain)))
+      .limit(1);
+    return rows[0] ?? null;
+  },
+  add: async (input) => {
+    await db.insert(tenantDomains).values(input);
+    return input;
+  },
+  setVerified: async (tenantId, domain, verified) => {
+    const rows = await db
+      .update(tenantDomains)
+      .set({ verified })
+      .where(and(eq(tenantDomains.tenantId, tenantId), eq(tenantDomains.domain, domain)))
+      .returning();
+    return rows[0] ?? null;
+  },
+  removeByTenantAndDomain: async (tenantId, domain) => {
+    const removed = await db
+      .delete(tenantDomains)
+      .where(and(eq(tenantDomains.tenantId, tenantId), eq(tenantDomains.domain, domain)))
+      .returning({ id: tenantDomains.id });
+    return removed.length;
+  },
 });
 
 export const createTenantRepository = (db: Db): TenantRepository => ({
@@ -47,17 +88,26 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
     return rows[0] ?? null;
   },
-  createTenant: async (input) => {
-    await db.insert(tenants).values(input);
-    return { id: input.id, slug: input.slug, name: input.name };
+  // MUST-ATOMIC (§Transactions): one single-statement CTE inserts the tenant and
+  // its founding owner grant in a single database round-trip, identical on
+  // node-postgres and neon-http (no multi-statement transaction needed). A tenant
+  // therefore never exists without an owner, even under a mid-operation failure.
+  createTenantWithOwner: async (input) => {
+    await db.execute(sql`
+      WITH new_tenant AS (
+        INSERT INTO tenants (id, slug, name, created_at)
+        VALUES (${input.tenant.id}, ${input.tenant.slug}, ${input.tenant.name}, ${input.tenant.createdAt})
+        RETURNING id
+      )
+      INSERT INTO tenant_admins (id, tenant_id, user_id, role)
+      SELECT ${input.ownerGrant.id}, id, ${input.ownerGrant.userId}, 'owner' FROM new_tenant
+    `);
+    return { id: input.tenant.id, slug: input.tenant.slug, name: input.tenant.name };
   },
-  createOwnerGrant: async (input) => {
-    await db.insert(tenantAdmins).values({
-      id: input.id,
-      tenantId: input.tenantId,
-      userId: input.userId,
-      role: input.staffRole,
-    });
+  // Tenant-scoped delete; admins/members/todos/cards/domains cascade via their
+  // ON DELETE CASCADE tenant FKs, so no explicit child deletes are needed.
+  deleteTenant: async (tenantId) => {
+    await db.delete(tenants).where(eq(tenants.id, tenantId));
   },
 });
 
@@ -108,7 +158,9 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
         .from(members)
         .where(and(eq(members.userId, userId), eq(members.tenantId, tenantId)))
         .limit(1);
-      return rows[0] ?? null;
+      // Parse at the boundary: the marketing_consents jsonb stores an untyped
+      // channel string that the domain schema narrows to MarketingChannel.
+      return rows[0] ? memberSchema.parse(rows[0]) : null;
     },
   };
 };

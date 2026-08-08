@@ -7,6 +7,11 @@ import { createDeps } from '../apps/server/src/composition.js';
 import { loadEnv } from '../apps/server/src/env.js';
 import { startServerObservability } from '../apps/server/src/observability.js';
 
+// Contain the vendor name at the platform boundary (architecture §Layers:
+// provider names live only in adapters and this platform entry). The app reads
+// the neutral APP_COMMIT_SHA; Vercel injects VERCEL_GIT_COMMIT_SHA per deploy.
+process.env.APP_COMMIT_SHA ??= process.env.VERCEL_GIT_COMMIT_SHA;
+
 const flush = startServerObservability();
 const app = buildApp(createDeps(loadEnv()));
 const handler = handle(app);

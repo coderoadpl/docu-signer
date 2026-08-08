@@ -33,7 +33,7 @@ export interface UploadTransport {
   server(input: FileUploadRequest & { bytes: Uint8Array }): Promise<unknown>;
 }
 
-export const isAcceptedDocumentFile = (file: Pick<UploadFile, 'type'>): boolean =>
+const isAcceptedDocumentFile = (file: Pick<UploadFile, 'type'>): boolean =>
   file.type === 'application/pdf' || file.type.startsWith('image/');
 
 export const uploadDocumentFile = async (
@@ -41,7 +41,9 @@ export const uploadDocumentFile = async (
   role: DocumentFileRole,
   transport: UploadTransport,
 ): Promise<void> => {
-  if (!isAcceptedDocumentFile(file)) throw new Error('Dozwolone są pliki PDF i obrazy.');
+  if (!isAcceptedDocumentFile(file)) {
+    throw new Error('Dozwolone są pliki PDF i obrazy.');
+  }
   const contentType = file.type || 'application/octet-stream';
   const request = { fileName: file.name, contentType, role };
   const requested = await transport.request(request);

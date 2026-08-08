@@ -19,6 +19,8 @@ const headingFor = (error: unknown): string => {
       return 'That request was invalid';
     case 'conflict':
       return 'A conflicting change happened';
+    case 'unavailable':
+      return 'The service is temporarily unavailable';
     case 'internal':
       return 'Something went wrong';
   }

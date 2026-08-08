@@ -1,5 +1,5 @@
 {
-  "id": "5843374a-ec4d-4759-8c2e-d7a5b758f066",
+  "id": "275ce6d3-deab-4b22-aac8-560b6d153ddf",
   "prevId": "d18e9c25-cb2a-463d-9ce2-639034c3dba6",
   "version": "7",
   "dialect": "postgresql",
@@ -404,100 +404,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.document_files": {
-      "name": "document_files",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "document_id": {
-          "name": "document_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_name": {
-          "name": "file_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "size_bytes": {
-          "name": "size_bytes",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "storage_key": {
-          "name": "storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "document_files_documentId_idx": {
-          "name": "document_files_documentId_idx",
-          "columns": [
-            {
-              "expression": "document_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "document_files_document_id_documents_id_fk": {
-          "name": "document_files_document_id_documents_id_fk",
-          "tableFrom": "document_files",
-          "tableTo": "documents",
-          "columnsFrom": [
-            "document_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.documents": {
-      "name": "documents",
+    "public.cards": {
+      "name": "cards",
       "schema": "",
       "columns": {
         "id": {
@@ -518,64 +426,28 @@
           "primaryKey": false,
           "notNull": true
         },
-        "doc_type": {
-          "name": "doc_type",
+        "column": {
+          "name": "column",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "document_date": {
-          "name": "document_date",
-          "type": "text",
+        "position": {
+          "name": "position",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
-        },
-        "person": {
-          "name": "person",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tags": {
-          "name": "tags",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp with time zone",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         }
       },
       "indexes": {
-        "documents_tenantId_idx": {
-          "name": "documents_tenantId_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "documents_tenant_documentDate_idx": {
-          "name": "documents_tenant_documentDate_idx",
+        "cards_tenant_column_idx": {
+          "name": "cards_tenant_column_idx",
           "columns": [
             {
               "expression": "tenant_id",
@@ -584,7 +456,13 @@
               "nulls": "last"
             },
             {
-              "expression": "document_date",
+              "expression": "column",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -597,9 +475,9 @@
         }
       },
       "foreignKeys": {
-        "documents_tenant_id_tenants_id_fk": {
-          "name": "documents_tenant_id_tenants_id_fk",
-          "tableFrom": "documents",
+        "cards_tenant_id_tenants_id_fk": {
+          "name": "cards_tenant_id_tenants_id_fk",
+          "tableFrom": "cards",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"

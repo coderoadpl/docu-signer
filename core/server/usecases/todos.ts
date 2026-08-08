@@ -2,7 +2,6 @@ import {
   err,
   newTodoSchema,
   ok,
-  tenantNotFound,
   validation,
   type AppError,
   type NewTodo,
@@ -10,6 +9,7 @@ import {
   type Todo,
 } from '#core/domain/index.js';
 
+import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { Clock, IdGenerator, TodoRepository } from '../ports.js';
 
@@ -20,8 +20,9 @@ export interface TodoDeps {
 }
 
 export const listTodos = async (ctx: Ctx, deps: TodoDeps): Promise<Result<Todo[], AppError>> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to list todos'));
-  return ok(await deps.todos.listByTenant(ctx.identity.tenantId));
+  const scope = authorizeTenant(ctx, 'todo:read');
+  if (!scope.ok) return scope;
+  return ok(await deps.todos.listByTenant(scope.value));
 };
 
 export const addTodo = async (
@@ -29,14 +30,15 @@ export const addTodo = async (
   input: NewTodo,
   deps: TodoDeps,
 ): Promise<Result<Todo, AppError>> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to add todos'));
+  const scope = authorizeTenant(ctx, 'todo:write');
+  if (!scope.ok) return scope;
 
   const parsed = newTodoSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid todo', parsed.error.flatten()));
 
   const todo: Todo = {
     id: deps.ids.nextId(),
-    tenantId: ctx.identity.tenantId,
+    tenantId: scope.value,
     title: parsed.data.title,
     createdBy: ctx.identity.userId,
     createdAt: deps.clock.nowIso(),

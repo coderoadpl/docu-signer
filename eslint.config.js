@@ -116,15 +116,34 @@ const DEVTOOLS_BAN = [
 
 const STATE_LIB_MESSAGE =
   'Global state libraries are banned: server state lives in TanStack Query, UI state stays local (React 19 / compiler).';
-const STATE_LIB_BANS = [
-  'redux',
-  '@reduxjs/toolkit',
-  'zustand',
-  'jotai',
-  'mobx',
-  'valtio',
-  'recoil',
-].map((name) => ({ name, message: STATE_LIB_MESSAGE }));
+const STATE_LIB_BANS = ['redux', '@reduxjs/toolkit', 'jotai', 'mobx', 'valtio', 'recoil'].map(
+  (name) => ({ name, message: STATE_LIB_MESSAGE }),
+);
+
+// zustand is NOT a demo dependency. @xstate/store is the chosen island-store
+// (rung 2, ADR-0005); zustand/vanilla is only an acceptable *substitute* for a
+// team that foresees no graduation to a statechart — like Vercel is the example
+// deploy target, not a mandate. The demo always uses the first choice, so every
+// zustand import is an error across apps/web (island cores included).
+const ZUSTAND_SUBSTITUTE_MESSAGE =
+  'zustand is not a demo dependency: @xstate/store is the island-store choice (rung 2). zustand/vanilla is only an acceptable substitute for a team that foresees no graduation to a statechart — see ADR-0005. The demo always uses the first choice; do not import zustand.';
+const ZUSTAND_BANS = ['zustand', 'zustand/vanilla', 'zustand/react'].map((name) => ({
+  name,
+  message: ZUSTAND_SUBSTITUTE_MESSAGE,
+}));
+
+// @xstate/store (rung 2) and xstate (rung 3 — the machine DERIVED from the
+// core/domain transition table) are confined to island cores: importable ONLY
+// inside apps/web/src/features/*/core/**. Everywhere else in apps/web — views,
+// routes, api.ts, main.tsx — is an error: the machine lives behind the seam;
+// views consume the core's selectors, never the store library directly. The
+// island-core config block below drops this pattern, which re-permits it there.
+const STORE_LIB_CONFINEMENT_MESSAGE =
+  '@xstate/store and xstate are confined to island cores (apps/web/src/features/*/core/**): the rung-2 store / rung-3 statechart lives behind the seam. Import the feature core selectors here and move machine code into core/**. (ADR-0005)';
+const STORE_LIB_CONFINEMENT_PATTERN = {
+  group: ['@xstate/store', '@xstate/store/*', 'xstate', 'xstate/*'],
+  message: STORE_LIB_CONFINEMENT_MESSAGE,
+};
 
 const QUERY_CLIENT_SINGLETON_PATTERN = {
   regex: 'query-client\\.js$',
@@ -132,14 +151,89 @@ const QUERY_CLIENT_SINGLETON_PATTERN = {
     'Do not import the QueryClient singleton: reach it via useQueryClient(). Only main.tsx wires it.',
 };
 
+const SET_QUERY_DATA_BAN = {
+  selector: 'MemberExpression[property.name="setQueryData"]',
+  message:
+    'queryClient.setQueryData is confined to an island core optimistic.ts (single-resource optimistic writes with rollback); everywhere else server collections refresh via invalidation.',
+};
+
+// Island-core bans forbid React and persistence, never the store library: the
+// machine behind the seam (rung 2 = @xstate/store, rung 3 = the XState machine
+// derived from the core/domain transition table — ADR-0005, decided) is what
+// lives here. `@xstate/store` and `xstate` are IMPORTABLE in island cores (the
+// STORE_LIB_CONFINEMENT_PATTERN below is scoped to the rest of apps/web); only
+// zustand (the substitute, not a dependency) and persist middleware are blocked.
+const ISLAND_CORE_PURITY =
+  'Island cores are pure TypeScript: no react, react-dom or @tanstack/react-query — the machine behind the seam (@xstate/store store or derived XState statechart) stays framework-agnostic; consume @tanstack/query-core descriptors, never the React binding.';
+const ISLAND_CORE_IMPORT_BANS = ['react', 'react-dom', '@tanstack/react-query'].map((name) => ({
+  name,
+  message: ISLAND_CORE_PURITY,
+}));
+
+const ISLAND_CORE_PERSIST_BAN = {
+  name: 'zustand/middleware',
+  importNames: ['persist', 'createJSONStorage'],
+  message:
+    'Persistence is banned in island cores: client state must die on reload (durable state lives on the server via TanStack Query). Do not import persist/createJSONStorage.',
+};
+
+// The vanilla @xstate/store store and the xstate machine are importable in an
+// island core, but their REACT bindings are not: `@xstate/store/react` /
+// `@xstate/react` pull React back into the pure core through the store, undoing
+// the framework-agnostic seam. The core exposes selectors; the view calls
+// `useSelector` against them. Without these bans the island-core override drops
+// the STORE_LIB_CONFINEMENT_PATTERN and would silently re-permit the React
+// binding (ADR-0005).
+const ISLAND_CORE_STORE_REACT_MESSAGE =
+  'Island cores stay framework-agnostic: import the vanilla @xstate/store store / xstate machine, never their React bindings (@xstate/store/react, @xstate/react). Expose selectors from the core; the view calls useSelector. (ADR-0005)';
+const ISLAND_CORE_STORE_REACT_BANS = ['@xstate/store/react', '@xstate/react'].map((name) => ({
+  name,
+  message: ISLAND_CORE_STORE_REACT_MESSAGE,
+}));
+const ISLAND_CORE_STORE_REACT_PATTERN = {
+  group: ['@xstate/store/react/*', '@xstate/react/*'],
+  message: ISLAND_CORE_STORE_REACT_MESSAGE,
+};
+
+// Island cores are portable, DOM-free modules — they must not reach out of their
+// own core directory. That bans api.ts (the web composition), a sibling feature
+// and any apps/web path outside the core: those imports drag web wiring into a
+// module that has to typecheck without DOM (tsconfig.islands.json) and run in
+// plain node. Every parent-relative specifier (`../…`) escapes the core, so the
+// whole class is banned; shared contracts come through the `#core/*` alias, and
+// the gateway + bound descriptors are INJECTED in features/<name>/index.web.ts.
+// Without this the `web-features`→`web-api` boundary (element-type granularity)
+// would silently re-permit a core importing api.ts (ADR-0005 §Pure-TS cores).
+const ISLAND_CORE_PORTABILITY_MESSAGE =
+  'Island cores are portable and DOM-free: no parent-relative import — not api.ts, a sibling feature, or any apps/web path outside this core. Inject the gateway + bound descriptors in features/<name>/index.web.ts and reach shared contracts via the #core/* alias. (ADR-0005 §Pure-TS cores)';
+const ISLAND_CORE_PORTABILITY_PATTERN = {
+  group: ['../*', '../**'],
+  message: ISLAND_CORE_PORTABILITY_MESSAGE,
+};
+
+const WEB_RESTRICTED_SYNTAX = [
+  AS_BAN,
+  AUTH_API_LITERAL_BAN,
+  ...REACT_API_BANS,
+  ...QUERY_HOOK_BANS,
+  NEW_QUERY_CLIENT_BAN,
+  QUERY_KEY_BAN,
+];
+
 /**
  * Layer boundaries (PRD §3.2). `boundaries/element-types` denies everything by
  * default; each rule below is an explicit permission. dependency-cruiser
- * double-checks the same graph plus vendor bans in `npm run depcruise`.
+ * double-checks the same graph plus vendor bans in `pnpm run depcruise`.
  */
 export default tseslint.config(
   {
     ignores: ['node_modules/**', 'dist/**', 'drizzle/**'],
+  },
+  {
+    // Suppression policy (frontend-lint-plan §Suppression policy): an
+    // `eslint-disable` that no longer suppresses anything is itself a lint
+    // error, so stale carve-outs cannot linger unnoticed.
+    linterOptions: { reportUnusedDisableDirectives: 'error' },
   },
   {
     files: ['**/*.js', '**/*.mjs'],
@@ -186,8 +280,9 @@ export default tseslint.config(
         { type: 'core-client', pattern: 'core/client/**', mode: 'full' },
         { type: 'adapter-db', pattern: 'adapters/db/**', mode: 'full' },
         { type: 'adapter-auth', pattern: 'adapters/auth/**', mode: 'full' },
+        // Reserved for US-009 (DomainPort): the directory does not exist yet;
+        // the element type is pre-wired so boundaries hold when the adapter lands.
         { type: 'adapter-domains', pattern: 'adapters/domain-provisioning/**', mode: 'full' },
-        { type: 'adapter-storage', pattern: 'adapters/storage/**', mode: 'full' },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'platform-entry', pattern: 'api/**', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
@@ -233,7 +328,7 @@ export default tseslint.config(
             { from: ['core-server'], allow: ['core-domain', 'core-server'] },
             { from: ['core-client'], allow: ['core-domain', 'core-contract', 'core-client'] },
             {
-              from: ['adapter-db', 'adapter-auth', 'adapter-domains', 'adapter-storage'],
+              from: ['adapter-db', 'adapter-auth', 'adapter-domains'],
               allow: [
                 'core-domain',
                 'core-server',
@@ -241,7 +336,6 @@ export default tseslint.config(
                 'adapter-db',
                 'adapter-auth',
                 'adapter-domains',
-                'adapter-storage',
               ],
             },
             {
@@ -253,7 +347,6 @@ export default tseslint.config(
                 'adapter-db',
                 'adapter-auth',
                 'adapter-domains',
-                'adapter-storage',
                 'app-server',
               ],
             },
@@ -306,7 +399,7 @@ export default tseslint.config(
             },
             {
               from: ['web-test'],
-              allow: ['web-test', 'web-theme'],
+              allow: ['web-test'],
             },
             {
               from: ['web-ui'],
@@ -405,21 +498,61 @@ export default tseslint.config(
           paths: [
             ...HTTP_IMPORT_BANS,
             ...STATE_LIB_BANS,
+            ...ZUSTAND_BANS,
             ...CLIENT_CONSTRUCTION_BANS,
             ...DEVTOOLS_BAN,
           ],
-          patterns: [QUERY_CLIENT_SINGLETON_PATTERN],
+          patterns: [QUERY_CLIENT_SINGLETON_PATTERN, STORE_LIB_CONFINEMENT_PATTERN],
         },
       ],
-      'no-restricted-syntax': [
+      // setQueryData is banned across all of apps/web (server collections
+      // refresh via invalidation); the sole carve-out is a feature's
+      // optimistic.ts, re-permitted in its own override below.
+      'no-restricted-syntax': ['error', ...WEB_RESTRICTED_SYNTAX, SET_QUERY_DATA_BAN],
+    },
+  },
+  {
+    // Island cores (`features/<name>/core/**`) are pure, framework-agnostic TS
+    // modules: events in, selectors out, the machine hidden behind the seam.
+    files: ['apps/web/src/features/*/core/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
         'error',
-        AS_BAN,
-        AUTH_API_LITERAL_BAN,
-        ...REACT_API_BANS,
-        ...QUERY_HOOK_BANS,
-        NEW_QUERY_CLIENT_BAN,
-        QUERY_KEY_BAN,
+        {
+          paths: [
+            ...HTTP_IMPORT_BANS,
+            ...STATE_LIB_BANS,
+            ...ZUSTAND_BANS,
+            ...CLIENT_CONSTRUCTION_BANS,
+            ...DEVTOOLS_BAN,
+            ...ISLAND_CORE_IMPORT_BANS,
+            ...ISLAND_CORE_STORE_REACT_BANS,
+            ISLAND_CORE_PERSIST_BAN,
+          ],
+          patterns: [
+            QUERY_CLIENT_SINGLETON_PATTERN,
+            ISLAND_CORE_STORE_REACT_PATTERN,
+            ISLAND_CORE_PORTABILITY_PATTERN,
+          ],
+        },
       ],
+    },
+  },
+  {
+    // An island's inbound event contract lives in core/events.ts; every event is
+    // named for what happened (intent suffix), never an imperative command.
+    files: ['apps/web/src/features/*/core/events.ts'],
+    rules: {
+      'agentproofarch/event-suffix-taxonomy': 'error',
+    },
+  },
+  {
+    // setQueryData is a single-resource optimistic-write escape hatch confined
+    // to a feature's optimistic.ts. The ban is app-wide (general apps/web block);
+    // this override drops it for optimistic.ts alone.
+    files: ['apps/web/src/features/**/optimistic.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', ...WEB_RESTRICTED_SYNTAX],
     },
   },
   {
@@ -431,6 +564,8 @@ export default tseslint.config(
   {
     files: ['apps/web/src/query-client.ts'],
     rules: {
+      // NEW_QUERY_CLIENT_BAN is dropped here (this is the sanctioned construction
+      // site); SET_QUERY_DATA_BAN stays so the app-wide ban has no hole.
       'no-restricted-syntax': [
         'error',
         AS_BAN,
@@ -438,6 +573,7 @@ export default tseslint.config(
         ...REACT_API_BANS,
         ...QUERY_HOOK_BANS,
         QUERY_KEY_BAN,
+        SET_QUERY_DATA_BAN,
       ],
     },
   },
@@ -447,8 +583,8 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
-          paths: [...HTTP_IMPORT_BANS, ...STATE_LIB_BANS, ...DEVTOOLS_BAN],
-          patterns: [QUERY_CLIENT_SINGLETON_PATTERN],
+          paths: [...HTTP_IMPORT_BANS, ...STATE_LIB_BANS, ...ZUSTAND_BANS, ...DEVTOOLS_BAN],
+          patterns: [QUERY_CLIENT_SINGLETON_PATTERN, STORE_LIB_CONFINEMENT_PATTERN],
         },
       ],
     },
@@ -458,7 +594,15 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { paths: [...HTTP_IMPORT_BANS, ...STATE_LIB_BANS, ...CLIENT_CONSTRUCTION_BANS] },
+        {
+          paths: [
+            ...HTTP_IMPORT_BANS,
+            ...STATE_LIB_BANS,
+            ...ZUSTAND_BANS,
+            ...CLIENT_CONSTRUCTION_BANS,
+          ],
+          patterns: [STORE_LIB_CONFINEMENT_PATTERN],
+        },
       ],
     },
   },

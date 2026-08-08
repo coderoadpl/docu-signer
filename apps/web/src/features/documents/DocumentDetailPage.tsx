@@ -25,7 +25,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { DocumentFile, DocumentFileRole } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { FileDropZone, PdfPreview } from '../../theme.js';
+import { FileDropZone, PdfPreview, PreviewImage } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
   DOCUMENT_TYPE_LABELS,
@@ -38,7 +38,12 @@ import {
 } from './documents.logic.js';
 import { uploadDocumentFile } from './upload.logic.js';
 
-const FILE_ROLES: DocumentFileRole[] = ['source', 'signed-scan', 'signed-digital', 'other'];
+const FILE_ROLES: DocumentFileRole[] = [
+  'source',
+  'signed-scan',
+  'signed-digital',
+  'other',
+];
 
 const ConfirmDialog = ({
   open,
@@ -64,7 +69,12 @@ const ConfirmDialog = ({
       <Button onClick={onCancel} disabled={pending}>
         Anuluj
       </Button>
-      <Button variant="contained" color="error" onClick={onConfirm} disabled={pending}>
+      <Button
+        variant="contained"
+        color="error"
+        onClick={onConfirm}
+        disabled={pending}
+      >
         Usuń
       </Button>
     </DialogActions>
@@ -80,13 +90,15 @@ const FileRow = ({
   file: DocumentFile;
   onDelete: (file: DocumentFile) => void;
 }) => {
-  const contentUrl = actions.fileContentUrl(documentId, file.id);
-  const exportUrl = actions.fileExportUrl(documentId, file.id);
+  const contentUrl = actions.documentFileContentUrl(documentId, file.id);
+  const exportUrl = actions.documentFileExportUrl(documentId, file.id);
   return (
     <ListItem>
       <ListItemText
         primary={file.fileName}
-        secondary={`${formatFileSize(file.sizeBytes)} · ${new Date(file.createdAt).toLocaleDateString('pl-PL')}`}
+        secondary={`${formatFileSize(file.sizeBytes)} · ${new Date(
+          file.createdAt,
+        ).toLocaleDateString('pl-PL')}`}
       />
       <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}>
         <Link href={contentUrl} target="_blank" rel="noreferrer">
@@ -104,41 +116,59 @@ const FileRow = ({
   );
 };
 
-const Preview = ({ documentId, files }: { documentId: string; files: DocumentFile[] }) => {
+const Preview = ({
+  documentId,
+  files,
+}: {
+  documentId: string;
+  files: DocumentFile[];
+}) => {
   const source = files.find((file) => file.role === 'source');
-  const signed = files.find((file) => file.role === 'signed-digital') ??
+  const signed =
+    files.find((file) => file.role === 'signed-digital') ??
     files.find((file) => file.role === 'signed-scan');
-  const previewFiles = source && signed ? [source, signed] : [source ?? signed ?? files[0]].filter(
-    (file): file is DocumentFile => Boolean(file),
-  );
+  const previewFiles = source && signed
+    ? [source, signed]
+    : [source ?? signed ?? files[0]].filter(
+        (file): file is DocumentFile => Boolean(file),
+      );
   if (!previewFiles.length) return null;
   return (
     <Box component="section" sx={{ mt: 5 }}>
       <Typography variant="h2" sx={{ mb: 2 }}>
         Podgląd
       </Typography>
-      <Stack direction={{ xs: 'column', md: previewFiles.length > 1 ? 'row' : 'column' }} sx={{ gap: 2 }}>
-        {previewFiles.map((file) => (
-          <Box key={file.id} sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="overline">{FILE_ROLE_LABELS[file.role]}</Typography>
-            {file.contentType.toLowerCase().startsWith('image/') ? (
-              <Box
-                component="img"
-                src={actions.fileContentUrl(documentId, file.id)}
-                alt={`Podgląd: ${file.fileName}`}
-                sx={{ display: 'block', width: '100%', maxHeight: '32rem', objectFit: 'contain' }}
-              />
-            ) : (
-              <PdfPreview
-                data={actions.fileContentUrl(documentId, file.id)}
-                type={file.contentType}
-                aria-label={`Podgląd: ${file.fileName}`}
-              >
-                <Link href={actions.fileContentUrl(documentId, file.id)}>Otwórz {file.fileName}</Link>
-              </PdfPreview>
-            )}
-          </Box>
-        ))}
+      <Stack
+        direction={{
+          xs: 'column',
+          md: previewFiles.length > 1 ? 'row' : 'column',
+        }}
+        sx={{ gap: 2 }}
+      >
+        {previewFiles.map((file) => {
+          const contentUrl = actions.documentFileContentUrl(documentId, file.id);
+          return (
+            <Box key={file.id} sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="overline">
+                {FILE_ROLE_LABELS[file.role]}
+              </Typography>
+              {file.contentType.toLowerCase().startsWith('image/') ? (
+                <PreviewImage
+                  src={contentUrl}
+                  alt={`Podgląd: ${file.fileName}`}
+                />
+              ) : (
+                <PdfPreview
+                  data={contentUrl}
+                  type={file.contentType}
+                  aria-label={`Podgląd: ${file.fileName}`}
+                >
+                  <Link href={contentUrl}>Otwórz {file.fileName}</Link>
+                </PdfPreview>
+              )}
+            </Box>
+          );
+        })}
       </Stack>
     </Box>
   );
@@ -166,7 +196,10 @@ const RoleFiles = ({
   };
   return (
     <Paper component="section" sx={{ p: 2 }}>
-      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+      <Stack
+        direction="row"
+        sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
+      >
         <Typography variant="h2">
           {FILE_ROLE_SYMBOLS[role]} {FILE_ROLE_LABELS[role]}
         </Typography>
@@ -191,14 +224,26 @@ const RoleFiles = ({
         }}
         sx={{ mt: 2, p: 2 }}
       >
-        <Typography variant="body2">Przeciągnij tutaj plik PDF lub obraz</Typography>
+        <Typography variant="body2">
+          Przeciągnij tutaj plik PDF lub obraz
+        </Typography>
       </FileDropZone>
-      {uploading ? <LinearProgress aria-label={`Wgrywanie: ${FILE_ROLE_LABELS[role]}`} sx={{ mt: 2 }} /> : null}
+      {uploading ? (
+        <LinearProgress
+          aria-label={`Wgrywanie: ${FILE_ROLE_LABELS[role]}`}
+          sx={{ mt: 2 }}
+        />
+      ) : null}
       {uploadError ? <Alert sx={{ mt: 2 }}>{uploadError}</Alert> : null}
       {files.length ? (
         <List disablePadding sx={{ mt: 1 }}>
           {files.map((file) => (
-            <FileRow key={file.id} documentId={documentId} file={file} onDelete={onDelete} />
+            <FileRow
+              key={file.id}
+              documentId={documentId}
+              file={file}
+              onDelete={onDelete}
+            />
           ))}
         </List>
       ) : (
@@ -210,7 +255,11 @@ const RoleFiles = ({
   );
 };
 
-export const DocumentDetailPage = ({ documentId }: { documentId: string }) => {
+export const DocumentDetailPage = ({
+  documentId,
+}: {
+  documentId: string;
+}) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
@@ -218,7 +267,9 @@ export const DocumentDetailPage = ({ documentId }: { documentId: string }) => {
   const [deleteDocumentOpen, setDeleteDocumentOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<DocumentFile>();
   const [uploadingRole, setUploadingRole] = useState<DocumentFileRole>();
-  const [uploadErrors, setUploadErrors] = useState<Partial<Record<DocumentFileRole, string>>>({});
+  const [uploadErrors, setUploadErrors] = useState<
+    Partial<Record<DocumentFileRole, string>>
+  >({});
   const updateDocument = useMutation({
     ...actions.updateDocument,
     onSuccess: async () => {
@@ -230,11 +281,11 @@ export const DocumentDetailPage = ({ documentId }: { documentId: string }) => {
     ...actions.deleteDocument,
     onSuccess: async () => {
       await queryClient.invalidateQueries(actions.documentsInvalidates());
-      await navigate({ to: '/documents' });
+      await navigate({ to: '/app/documents' });
     },
   });
-  const removeFile = useMutation({
-    ...actions.removeFile,
+  const deleteFile = useMutation({
+    ...actions.deleteDocumentFile,
     onSuccess: async () => {
       setFileToDelete(undefined);
       await queryClient.invalidateQueries(actions.documentsInvalidates());
@@ -243,7 +294,7 @@ export const DocumentDetailPage = ({ documentId }: { documentId: string }) => {
   const requestUpload = useMutation(actions.requestFileUpload);
   const directUpload = useMutation(actions.directFileUpload);
   const finalizeUpload = useMutation(actions.finalizeFileUpload);
-  const serverUpload = useMutation(actions.serverUpload);
+  const serverUpload = useMutation(actions.uploadDocumentFile);
 
   if (documentQuery.isPending) {
     return (
@@ -267,14 +318,20 @@ export const DocumentDetailPage = ({ documentId }: { documentId: string }) => {
     setUploadErrors((current) => ({ ...current, [role]: undefined }));
     try {
       await uploadDocumentFile(file, role, {
-        request: (input) => requestUpload.mutateAsync({ documentId, input }),
+        request: (input) =>
+          requestUpload.mutateAsync({ documentId, input }),
         direct: (input) => directUpload.mutateAsync(input),
-        finalize: (input) => finalizeUpload.mutateAsync({ documentId, input }),
-        server: (input) => serverUpload.mutateAsync({ documentId, input }),
+        finalize: (input) =>
+          finalizeUpload.mutateAsync({ documentId, input }),
+        server: (input) =>
+          serverUpload.mutateAsync({ documentId, input }),
       });
       await queryClient.invalidateQueries(actions.documentsInvalidates());
     } catch (error) {
-      setUploadErrors((current) => ({ ...current, [role]: uploadErrorMessage(error) }));
+      setUploadErrors((current) => ({
+        ...current,
+        [role]: uploadErrorMessage(error),
+      }));
     } finally {
       setUploadingRole(undefined);
     }
@@ -282,18 +339,33 @@ export const DocumentDetailPage = ({ documentId }: { documentId: string }) => {
 
   return (
     <Container sx={{ maxWidth: '76rem !important', px: 2, py: 6 }}>
-      <Button onClick={() => void navigate({ to: '/documents' })}>← Dokumenty</Button>
-      <Stack direction={{ xs: 'column', md: 'row' }} sx={{ mt: 3, gap: 3, justifyContent: 'space-between' }}>
+      <Button onClick={() => void navigate({ to: '/app/documents' })}>
+        ← Dokumenty
+      </Button>
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        sx={{ mt: 3, gap: 3, justifyContent: 'space-between' }}
+      >
         <Box>
-          <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Stack
+            direction="row"
+            sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
+          >
             <Typography variant="h1">{document.title}</Typography>
-            <Chip variant="outlined" label={DOCUMENT_TYPE_LABELS[document.docType]} />
+            <Chip
+              variant="outlined"
+              label={DOCUMENT_TYPE_LABELS[document.docType]}
+            />
           </Stack>
           <Typography sx={{ mt: 1 }}>
-            {document.documentDate} · {document.person ?? 'Bez przypisanej osoby'}
+            {document.documentDate} ·{' '}
+            {document.person ?? 'Bez przypisanej osoby'}
           </Typography>
           {document.tags.length ? (
-            <Stack direction="row" sx={{ mt: 1, gap: 1, flexWrap: 'wrap' }}>
+            <Stack
+              direction="row"
+              sx={{ mt: 1, gap: 1, flexWrap: 'wrap' }}
+            >
               {document.tags.map((tag) => (
                 <Chip key={tag} size="small" label={tag} />
               ))}
@@ -323,7 +395,9 @@ export const DocumentDetailPage = ({ documentId }: { documentId: string }) => {
             files={grouped[role]}
             uploading={uploadingRole === role}
             uploadError={uploadErrors[role]}
-            onUpload={(file, selectedRole) => void upload(file, selectedRole)}
+            onUpload={(file, selectedRole) =>
+              void upload(file, selectedRole)
+            }
             onDelete={setFileToDelete}
           />
         ))}
@@ -344,7 +418,12 @@ export const DocumentDetailPage = ({ documentId }: { documentId: string }) => {
         pending={updateDocument.isPending}
         error={updateDocument.error?.message}
         onClose={() => setEditOpen(false)}
-        onSubmit={(values) => updateDocument.mutate({ documentId, input: toDocumentInput(values) })}
+        onSubmit={(values) =>
+          updateDocument.mutate({
+            documentId,
+            input: toDocumentInput(values),
+          })
+        }
       />
       <ConfirmDialog
         open={deleteDocumentOpen}
@@ -358,10 +437,12 @@ export const DocumentDetailPage = ({ documentId }: { documentId: string }) => {
         open={Boolean(fileToDelete)}
         title="Usunąć plik?"
         text={`Plik „${fileToDelete?.fileName ?? ''}” zostanie trwale usunięty.`}
-        pending={removeFile.isPending}
+        pending={deleteFile.isPending}
         onCancel={() => setFileToDelete(undefined)}
         onConfirm={() => {
-          if (fileToDelete) removeFile.mutate({ documentId, fileId: fileToDelete.id });
+          if (fileToDelete) {
+            deleteFile.mutate({ documentId, fileId: fileToDelete.id });
+          }
         }}
       />
     </Container>

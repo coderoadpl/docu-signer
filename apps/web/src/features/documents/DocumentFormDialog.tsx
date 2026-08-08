@@ -41,7 +41,9 @@ export const DocumentFormDialog = ({
   onClose: () => void;
   onSubmit: (values: DocumentFormValues) => void;
 }) => {
-  const [values, setValues] = useState<DocumentFormValues>(initialValues ?? emptyDocumentForm());
+  const [values, setValues] = useState<DocumentFormValues>(
+    initialValues ?? emptyDocumentForm(),
+  );
 
   useEffect(() => {
     if (open) setValues(initialValues ?? emptyDocumentForm());
@@ -75,7 +77,9 @@ export const DocumentFormDialog = ({
               labelId="document-type-label"
               label="Typ"
               value={values.docType}
-              onChange={(event) => field('docType', documentTypeSchema.parse(event.target.value))}
+              onChange={(event) =>
+                field('docType', documentTypeSchema.parse(event.target.value))
+              }
             >
               {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
                 <MenuItem key={value} value={value}>
@@ -110,7 +114,12 @@ export const DocumentFormDialog = ({
         <Button onClick={onClose} disabled={pending}>
           Anuluj
         </Button>
-        <Button type="submit" form="document-form" variant="contained" disabled={pending}>
+        <Button
+          type="submit"
+          form="document-form"
+          variant="contained"
+          disabled={pending}
+        >
           {pending ? 'Zapisywanie…' : submitLabel}
         </Button>
       </DialogActions>

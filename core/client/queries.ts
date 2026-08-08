@@ -9,18 +9,29 @@ import type {
   QueryKey,
 } from '@tanstack/query-core';
 
-import type { TenantCreateInput } from '#core/contract/index.js';
 import type {
+  DomainAddInput,
+  DomainCheckInput,
+  DomainRemoveInput,
+  MemberEnsureInput,
+  StaffGrantInput,
+  StaffRevokeInput,
+  TenantCreateInput,
+} from '#core/contract/index.js';
+import type {
+  BoardId,
+  CardMove,
   CreateDocument,
   DocumentListFilter,
   ExportDocuments,
   FileUploadRequest,
   FinalizeFileUpload,
+  NewCard,
   NewTodo,
   UpdateDocument,
 } from '#core/domain/index.js';
 
-import type { AuthClientPort } from './auth-port.js';
+import type { AuthClientPort, AuthSessionResult, MagicLinkRequest, SocialSignInInput } from './auth-port.js';
 import {
   unwrap,
   type ApiClient,
@@ -94,6 +105,10 @@ export const tenantsScopes = {
   all: () => ['tenants'] as const,
 };
 
+/** Invalidation filters (constructed here, never inline in apps/web). */
+export const tenantsInvalidates = () => ({ queryKey: tenantsScopes.all() });
+export const meInvalidates = () => ({ queryKey: meScopes.all() });
+
 export const todosScopes = {
   all: () => ['todos'] as const,
   lists: () => ['todos', 'list'] as const,
@@ -107,9 +122,48 @@ export const documentsScopes = {
   detail: (documentId: string) => ['documents', 'detail', documentId] as const,
 };
 
+export const cardsScopes = {
+  all: () => ['cards'] as const,
+  lists: () => ['cards', 'list'] as const,
+  /** One board's list — a distinct cache entry so personal and team never mix. */
+  list: (board: BoardId) => ['cards', 'list', board] as const,
+};
+
+export const membersScopes = {
+  all: () => ['members'] as const,
+  lists: () => ['members', 'list'] as const,
+};
+
+export const staffScopes = {
+  all: () => ['staff'] as const,
+  lists: () => ['staff', 'list'] as const,
+};
+
+export const domainsScopes = {
+  all: () => ['domains'] as const,
+  lists: () => ['domains', 'list'] as const,
+};
+
 export const authScopes = {
   all: () => ['auth'] as const,
 };
+
+export const passkeysScopes = {
+  all: () => ['passkeys'] as const,
+};
+
+/** Register/remove change the roster, so both invalidate the passkey list scope. */
+export const passkeysInvalidates = () => ({ queryKey: passkeysScopes.all() });
+
+export const configScopes = {
+  all: () => ['config'] as const,
+};
+
+export const configQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: configScopes.all(),
+    call: ({ signal }) => api.config(signal),
+  });
 
 export const meQuery = (api: ApiClient) =>
   defineQuery({
@@ -189,11 +243,16 @@ export const finalizeFileUploadMutation = (api: ApiClient) =>
       api.finalizeFileUpload(documentId, input),
   });
 
-export const serverUploadMutation = (api: ApiClient) =>
+export const uploadDocumentFileMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...documentsScopes.all(), 'files', 'server-upload'],
-    call: ({ documentId, input }: { documentId: string; input: FileUploadRequest & { bytes: Uint8Array } }) =>
-      api.serverUpload(documentId, input),
+    call: ({
+      documentId,
+      input,
+    }: {
+      documentId: string;
+      input: FileUploadRequest & { bytes: Uint8Array };
+    }) => api.uploadDocumentFile(documentId, input),
   });
 
 export const directFileUploadMutation = (api: ApiClient) =>
@@ -202,11 +261,11 @@ export const directFileUploadMutation = (api: ApiClient) =>
     call: (input: DirectFileUploadInput) => api.directFileUpload(input),
   });
 
-export const removeFileMutation = (api: ApiClient) =>
+export const deleteDocumentFileMutation = (api: ApiClient) =>
   defineMutation({
-    mutationKey: [...documentsScopes.all(), 'files', 'remove'],
+    mutationKey: [...documentsScopes.all(), 'files', 'delete'],
     call: ({ documentId, fileId }: { documentId: string; fileId: string }) =>
-      api.removeFile(documentId, fileId),
+      api.deleteDocumentFile(documentId, fileId),
   });
 
 export const exportDocumentsMutation = (api: ApiClient) =>
@@ -216,6 +275,120 @@ export const exportDocumentsMutation = (api: ApiClient) =>
   });
 
 export const documentsInvalidates = () => ({ queryKey: documentsScopes.all() });
+
+export const cardsQuery = (api: ApiClient, board: BoardId = 'personal') =>
+  defineQuery({
+    queryKey: cardsScopes.list(board),
+    call: ({ signal }) => api.listCards(board, signal),
+  });
+
+export const addCardMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...cardsScopes.all(), 'create'],
+    call: (input: NewCard) => api.addCard(input),
+  });
+
+export const moveCardMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...cardsScopes.all(), 'move'],
+    call: (input: CardMove) => api.moveCard(input),
+  });
+
+/** Both card writes reorder the board, so both invalidate the list scope. */
+export const cardsInvalidates = () => ({ queryKey: cardsScopes.lists() });
+
+export const membersQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: membersScopes.lists(),
+    call: async ({ signal }) => {
+      const members = [];
+      let cursor: string | undefined;
+      while (true) {
+        const page = await api.listMembers(cursor === undefined ? {} : { cursor }, signal);
+        if (!page.ok) return page;
+        members.push(...page.value.items);
+        if (page.value.nextCursor === null) {
+          return {
+            ok: true,
+            value: { items: members, members, nextCursor: null },
+          };
+        }
+        cursor = page.value.nextCursor;
+      }
+    },
+  });
+
+export const ensureMemberMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'ensure'],
+    call: (input: MemberEnsureInput) => api.ensureMember(input),
+  });
+
+/** The invalidation filter `ensureMemberMutation` applies after it settles. */
+export const ensureMemberInvalidates = () => ({ queryKey: membersScopes.lists() });
+
+export const staffQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: staffScopes.lists(),
+    call: async ({ signal }) => {
+      const staff = [];
+      let cursor: string | undefined;
+      while (true) {
+        const page = await api.listStaff(cursor === undefined ? {} : { cursor }, signal);
+        if (!page.ok) return page;
+        staff.push(...page.value.items);
+        if (page.value.nextCursor === null) {
+          return {
+            ok: true,
+            value: { items: staff, staff, nextCursor: null },
+          };
+        }
+        cursor = page.value.nextCursor;
+      }
+    },
+  });
+
+export const grantStaffMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...staffScopes.all(), 'grant'],
+    call: (input: StaffGrantInput) => api.grantStaff(input),
+  });
+
+export const revokeStaffMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...staffScopes.all(), 'revoke'],
+    call: (input: StaffRevokeInput) => api.revokeStaff(input),
+  });
+
+/** Both staff writes change the roster, so both invalidate the staff list scope. */
+export const staffInvalidates = () => ({ queryKey: staffScopes.lists() });
+
+export const domainsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: domainsScopes.lists(),
+    call: ({ signal }) => api.listDomains(signal),
+  });
+
+export const addDomainMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...domainsScopes.all(), 'add'],
+    call: (input: DomainAddInput) => api.addDomain(input),
+  });
+
+export const checkDomainMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...domainsScopes.all(), 'check'],
+    call: (input: DomainCheckInput) => api.checkDomain(input),
+  });
+
+export const removeDomainMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...domainsScopes.all(), 'remove'],
+    call: (input: DomainRemoveInput) => api.removeDomain(input),
+  });
+
+/** Every domain write changes the roster, so all invalidate the domain list scope. */
+export const domainsInvalidates = () => ({ queryKey: domainsScopes.lists() });
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any
@@ -237,4 +410,59 @@ export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, 
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-out'],
     call: () => auth.signOut(),
+  });
+
+export const requestMagicLinkMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'magic-link'],
+    call: (input: MagicLinkRequest) => auth.requestMagicLink(input),
+  });
+
+export const signInSocialMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'social'],
+    call: (input: SocialSignInInput) => auth.signInSocial(input),
+  });
+
+export const enableTwoFactorMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'two-factor', 'enable'],
+    call: (input: { password: string }) => auth.enableTwoFactor(input),
+  });
+
+export const verifyTotpMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'two-factor', 'verify'],
+    call: (input: { code: string }) => auth.verifyTotp(input),
+  });
+
+export const disableTwoFactorMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'two-factor', 'disable'],
+    call: (input: { password: string }) => auth.disableTwoFactor(input),
+  });
+
+/** US-028a passkeys: the roster is a read; register/remove/sign-in are commands. */
+export const passkeysQuery = (auth: AuthClientPort) =>
+  defineQuery({
+    queryKey: passkeysScopes.all(),
+    call: () => auth.listPasskeys(),
+  });
+
+export const registerPasskeyMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...passkeysScopes.all(), 'register'],
+    call: (input: { name: string }) => auth.registerPasskey(input),
+  });
+
+export const removePasskeyMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...passkeysScopes.all(), 'remove'],
+    call: (input: { id: string }) => auth.removePasskey(input),
+  });
+
+export const signInPasskeyMutation = (auth: AuthClientPort): MutationDescriptor<AuthSessionResult, void> =>
+  defineMutation({
+    mutationKey: [...passkeysScopes.all(), 'sign-in'],
+    call: () => auth.signInPasskey(),
   });

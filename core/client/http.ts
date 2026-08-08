@@ -2,6 +2,10 @@ import { type z } from 'zod';
 
 import {
   API_ROUTES,
+  authConfigOutputSchema,
+  cardCreateOutputSchema,
+  cardMoveOutputSchema,
+  cardsListOutputSchema,
   documentCreateOutputSchema,
   documentDeleteOutputSchema,
   documentFileDeleteOutputSchema,
@@ -9,16 +13,44 @@ import {
   documentGetOutputSchema,
   documentListOutputSchema,
   documentUpdateOutputSchema,
+  domainAddOutputSchema,
+  domainCheckOutputSchema,
+  domainListOutputSchema,
+  domainRemoveOutputSchema,
   fileUploadRequestOutputSchema,
-  healthOutputSchema,
   looseEnvelopeSchema,
+  healthLiveOutputSchema,
+  healthOutputSchema,
+  healthReadyOutputSchema,
+  memberEnsureOutputSchema,
+  memberExportOutputSchema,
+  memberListOutputSchema,
+  memberRemoveOutputSchema,
+  memberUpdateOutputSchema,
   meOutputSchema,
+  PUBLIC_API_ROUTES,
+  publicTenantDiscoveryOutputSchema,
+  publicTenantDiscoveryPath,
+  publicTenantProfileOutputSchema,
+  publicTenantProfilePath,
+  staffGrantOutputSchema,
+  staffListOutputSchema,
+  staffRevokeOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
   todoCreateOutputSchema,
   todoListOutputSchema,
+  type DomainAddInput,
+  type DomainCheckInput,
+  type DomainRemoveInput,
   type HttpMethod,
+  type MemberEnsureInput,
+  type MemberRemoveInput,
+  type MemberUpdateInput,
+  type PaginationQuery,
   type ReadMethod,
+  type StaffGrantInput,
+  type StaffRevokeInput,
   type TenantCreateInput,
   type WriteMethod,
 } from '#core/contract/index.js';
@@ -27,11 +59,14 @@ import {
   internal,
   ok,
   type AppError,
+  type BoardId,
+  type CardMove,
   type CreateDocument,
   type DocumentListFilter,
   type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
+  type NewCard,
   type NewTodo,
   type Result,
   type UpdateDocument,
@@ -39,14 +74,28 @@ import {
 
 declare const HTTP_METHOD_BRAND: unique symbol;
 
+/**
+ * Phantom read/write tag on a call's result, driven by the contract's HTTP
+ * method. Optional and never assigned at runtime (zero cost, no `as`): a plain
+ * `Result` is assignable, yet a `'GET'`-tagged result is not assignable to a
+ * `'POST'`-tagged one, so `defineQuery`/`defineMutation` can reject mismatches.
+ */
 type Branded<T, M extends HttpMethod> = T & { readonly [HTTP_METHOD_BRAND]?: M };
 export type ReadResult<T> = Branded<Result<T, AppError>, ReadMethod>;
 export type WriteResult<T> = Branded<Result<T, AppError>, WriteMethod>;
 
 export interface ApiClientOptions {
+  /** '' for same-origin (web); absolute URL for CLI and other clients. */
   baseUrl: string;
   fetchImpl?: typeof fetch;
+  /** Extra headers per request: Authorization bearer token, X-Tenant, ... */
   headers?: () => Record<string, string>;
+  /**
+   * W3C `traceparent` for the currently active span, or `undefined` when no
+   * trace is active. Injected header-provider (bound in the composition root)
+   * rather than an in-core OTel dependency: keeps `core/client` framework- and
+   * SDK-free and makes propagation trivially testable by passing a stub.
+   */
   traceparent?: () => string | undefined;
 }
 
@@ -55,8 +104,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   method: M,
   path: string,
   outputSchema: S,
-  body?: BodyInit,
-  contentType?: string,
+  body?: unknown,
   signal?: AbortSignal,
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -66,11 +114,11 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     response = await fetchImpl(`${options.baseUrl}${path}`, {
       method,
       headers: {
-        ...(contentType === undefined ? {} : { 'content-type': contentType }),
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(traceparent === undefined ? {} : { traceparent }),
         ...options.headers?.(),
       },
-      body: body ?? null,
+      body: body === undefined ? null : JSON.stringify(body),
       credentials: 'include',
       signal: signal ?? null,
     });
@@ -86,54 +134,16 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   }
 
   const envelope = looseEnvelopeSchema.safeParse(payload);
-  if (!envelope.success) return err(internal(`Response from ${path} does not match the contract envelope`));
-  if (!envelope.data.ok) return err(envelope.data.error);
-  const data = outputSchema.safeParse(envelope.data.data);
-  return data.success
-    ? ok(data.data)
-    : err(internal(`Response data from ${path} does not match the contract`));
-};
-
-const jsonBody = (input: unknown): string => JSON.stringify(input);
-
-const binaryBody = (bytes: Uint8Array): ArrayBuffer => {
-  const body = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(body).set(bytes);
-  return body;
-};
-
-export interface DirectFileUploadInput {
-  url: string;
-  method: 'PUT';
-  headers: Record<string, string>;
-  bytes: Uint8Array;
-}
-
-export interface ExportDownload {
-  bytes: Uint8Array;
-  contentType: string;
-  fileName: string;
-}
-
-const directFileUpload = async (
-  options: ApiClientOptions,
-  input: DirectFileUploadInput,
-  signal?: AbortSignal,
-): Promise<WriteResult<void>> => {
-  const fetchImpl = options.fetchImpl ?? fetch;
-  try {
-    const response = await fetchImpl(input.url, {
-      method: input.method,
-      headers: input.headers,
-      body: binaryBody(input.bytes),
-      signal: signal ?? null,
-    });
-    return response.ok
-      ? ok(undefined)
-      : err(internal(`Direct upload failed (HTTP ${response.status})`));
-  } catch (cause) {
-    return err(internal(`Network error uploading file: ${String(cause)}`));
+  if (!envelope.success) {
+    return err(internal(`Response from ${path} does not match the contract envelope`));
   }
+  if (!envelope.data.ok) return err(envelope.data.error);
+
+  const data = outputSchema.safeParse(envelope.data.data);
+  if (!data.success) {
+    return err(internal(`Response data from ${path} does not match the contract`));
+  }
+  return ok(data.data);
 };
 
 const pathWith = (path: string, values: Record<string, string>): string => {
@@ -144,24 +154,83 @@ const pathWith = (path: string, values: Record<string, string>): string => {
   return resolved;
 };
 
-const downloadRequest = async (
+const queryString = (filter: DocumentListFilter): string => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filter)) {
+    if (value !== undefined) params.set(key, value);
+  }
+  const encoded = params.toString();
+  return encoded.length > 0 ? `?${encoded}` : '';
+};
+
+const paginationQueryString = (query: Partial<PaginationQuery>): string => {
+  const params = new URLSearchParams();
+  if (query.cursor !== undefined) params.set('cursor', query.cursor);
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  const encoded = params.toString();
+  return encoded.length > 0 ? `?${encoded}` : '';
+};
+
+const binaryBody = (bytes: Uint8Array): ArrayBuffer => {
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+  return body;
+};
+
+export interface ExportDownload {
+  bytes: Uint8Array;
+  contentType: string;
+  fileName: string;
+}
+
+export interface DirectFileUploadInput {
+  url: string;
+  method: 'PUT';
+  headers: Record<string, string>;
+  bytes: Uint8Array;
+}
+
+const directFileUpload = async (
   options: ApiClientOptions,
-  path: string,
-  input: ExportDocuments,
+  input: DirectFileUploadInput,
   signal?: AbortSignal,
-): Promise<WriteResult<ExportDownload>> => {
+): Promise<WriteResult<void>> => {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  let response: Response;
+  try {
+    response = await fetchImpl(input.url, {
+      method: input.method,
+      headers: input.headers,
+      body: binaryBody(input.bytes),
+      signal: signal ?? null,
+    });
+  } catch (cause) {
+    return err(internal(`Network error uploading ${input.url}: ${String(cause)}`));
+  }
+  return response.ok
+    ? ok(undefined)
+    : err(internal(`Upload to object storage failed (HTTP ${response.status})`));
+};
+
+const download = async <M extends HttpMethod>(
+  options: ApiClientOptions,
+  method: M,
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<Branded<Result<ExportDownload, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
   let response: Response;
   try {
     response = await fetchImpl(`${options.baseUrl}${path}`, {
-      method: API_ROUTES.documentsExport.method,
+      method,
       headers: {
-        'content-type': 'application/json',
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(traceparent === undefined ? {} : { traceparent }),
         ...options.headers?.(),
       },
-      body: jsonBody(input),
+      body: body === undefined ? null : JSON.stringify(body),
       credentials: 'include',
       signal: signal ?? null,
     });
@@ -177,75 +246,257 @@ const downloadRequest = async (
   }
   const disposition = response.headers.get('content-disposition') ?? '';
   const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const plainName = /filename="([^"]+)"/i.exec(disposition)?.[1];
   return ok({
     bytes: new Uint8Array(await response.arrayBuffer()),
     contentType: response.headers.get('content-type') ?? 'application/octet-stream',
-    fileName: encodedName ? decodeURIComponent(encodedName) : 'eksport-dokumentow.zip',
+    fileName: encodedName ? decodeURIComponent(encodedName) : (plainName ?? 'download.bin'),
   });
 };
 
-export const documentFileContentPath = (documentId: string, fileId: string): string =>
-  pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId });
-
-export const documentFileExportPath = (documentId: string, fileId: string): string =>
-  pathWith(API_ROUTES.documentFileExport.path, { documentId, fileId });
-
-const listPath = (filter: DocumentListFilter): string => {
-  const query = new URLSearchParams();
-  if (filter.docType) query.set('docType', filter.docType);
-  if (filter.person) query.set('person', filter.person);
-  if (filter.text) query.set('text', filter.text);
-  if (filter.dateFrom) query.set('dateFrom', filter.dateFrom);
-  if (filter.dateTo) query.set('dateTo', filter.dateTo);
-  const suffix = query.toString();
-  return suffix ? `${API_ROUTES.documents.path}?${suffix}` : API_ROUTES.documents.path;
-};
-
+/** The single typed gateway to the API. No client ever hand-writes HTTP. */
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, undefined, signal),
+    request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, signal),
+  healthLive: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.healthLive.method, API_ROUTES.healthLive.path, healthLiveOutputSchema, undefined, signal),
+  healthReady: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.healthReady.method, API_ROUTES.healthReady.path, healthReadyOutputSchema, undefined, signal),
+  config: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.config.method, API_ROUTES.config.path, authConfigOutputSchema, undefined, signal),
   me: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.me.method, API_ROUTES.me.path, meOutputSchema, undefined, undefined, signal),
+    request(options, API_ROUTES.me.method, API_ROUTES.me.path, meOutputSchema, undefined, signal),
   listTenants: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.tenants.method, API_ROUTES.tenants.path, tenantListOutputSchema, undefined, undefined, signal),
+    request(options, API_ROUTES.tenants.method, API_ROUTES.tenants.path, tenantListOutputSchema, undefined, signal),
   createTenant: (input: TenantCreateInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.tenantsCreate.method, API_ROUTES.tenantsCreate.path, tenantCreateOutputSchema, jsonBody(input), 'application/json', signal),
+    request(
+      options,
+      API_ROUTES.tenantsCreate.method,
+      API_ROUTES.tenantsCreate.path,
+      tenantCreateOutputSchema,
+      input,
+      signal,
+    ),
   listTodos: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.todos.method, API_ROUTES.todos.path, todoListOutputSchema, undefined, undefined, signal),
+    request(options, API_ROUTES.todos.method, API_ROUTES.todos.path, todoListOutputSchema, undefined, signal),
   addTodo: (input: NewTodo, signal?: AbortSignal) =>
-    request(options, API_ROUTES.todosCreate.method, API_ROUTES.todosCreate.path, todoCreateOutputSchema, jsonBody(input), 'application/json', signal),
+    request(options, API_ROUTES.todosCreate.method, API_ROUTES.todosCreate.path, todoCreateOutputSchema, input, signal),
   listDocuments: (filter: DocumentListFilter = {}, signal?: AbortSignal) =>
-    request(options, API_ROUTES.documents.method, listPath(filter), documentListOutputSchema, undefined, undefined, signal),
+    request(
+      options,
+      API_ROUTES.documents.method,
+      `${API_ROUTES.documents.path}${queryString(filter)}`,
+      documentListOutputSchema,
+      undefined,
+      signal,
+    ),
   createDocument: (input: CreateDocument, signal?: AbortSignal) =>
-    request(options, API_ROUTES.documentsCreate.method, API_ROUTES.documentsCreate.path, documentCreateOutputSchema, jsonBody(input), 'application/json', signal),
+    request(
+      options,
+      API_ROUTES.documentsCreate.method,
+      API_ROUTES.documentsCreate.path,
+      documentCreateOutputSchema,
+      input,
+      signal,
+    ),
   getDocument: (documentId: string, signal?: AbortSignal) =>
-    request(options, API_ROUTES.document.method, pathWith(API_ROUTES.document.path, { documentId }), documentGetOutputSchema, undefined, undefined, signal),
+    request(
+      options,
+      API_ROUTES.document.method,
+      pathWith(API_ROUTES.document.path, { documentId }),
+      documentGetOutputSchema,
+      undefined,
+      signal,
+    ),
   updateDocument: (documentId: string, input: UpdateDocument, signal?: AbortSignal) =>
-    request(options, API_ROUTES.documentUpdate.method, pathWith(API_ROUTES.documentUpdate.path, { documentId }), documentUpdateOutputSchema, jsonBody(input), 'application/json', signal),
+    request(
+      options,
+      API_ROUTES.documentUpdate.method,
+      pathWith(API_ROUTES.documentUpdate.path, { documentId }),
+      documentUpdateOutputSchema,
+      input,
+      signal,
+    ),
   deleteDocument: (documentId: string, signal?: AbortSignal) =>
-    request(options, API_ROUTES.documentDelete.method, pathWith(API_ROUTES.documentDelete.path, { documentId }), documentDeleteOutputSchema, undefined, undefined, signal),
+    request(
+      options,
+      API_ROUTES.documentDelete.method,
+      pathWith(API_ROUTES.documentDelete.path, { documentId }),
+      documentDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
   requestFileUpload: (documentId: string, input: FileUploadRequest, signal?: AbortSignal) =>
-    request(options, API_ROUTES.documentFileUploadRequest.method, pathWith(API_ROUTES.documentFileUploadRequest.path, { documentId }), fileUploadRequestOutputSchema, jsonBody(input), 'application/json', signal),
+    request(
+      options,
+      API_ROUTES.documentFileUploadRequest.method,
+      pathWith(API_ROUTES.documentFileUploadRequest.path, { documentId }),
+      fileUploadRequestOutputSchema,
+      input,
+      signal,
+    ),
   finalizeFileUpload: (documentId: string, input: FinalizeFileUpload, signal?: AbortSignal) =>
-    request(options, API_ROUTES.documentFileFinalize.method, pathWith(API_ROUTES.documentFileFinalize.path, { documentId }), documentFileOutputSchema, jsonBody(input), 'application/json', signal),
-  serverUpload: (documentId: string, input: FileUploadRequest & { bytes: Uint8Array }, signal?: AbortSignal) => {
-    const query = new URLSearchParams({ fileName: input.fileName, role: input.role });
-    return request(options, API_ROUTES.documentFileServerUpload.method, `${pathWith(API_ROUTES.documentFileServerUpload.path, { documentId })}?${query.toString()}`, documentFileOutputSchema, binaryBody(input.bytes), input.contentType, signal);
+    request(
+      options,
+      API_ROUTES.documentFileFinalize.method,
+      pathWith(API_ROUTES.documentFileFinalize.path, { documentId }),
+      documentFileOutputSchema,
+      input,
+      signal,
+    ),
+  uploadDocumentFile: async (
+    documentId: string,
+    input: FileUploadRequest & { bytes: Uint8Array },
+    signal?: AbortSignal,
+  ): Promise<WriteResult<z.output<typeof documentFileOutputSchema>>> => {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const traceparent = options.traceparent?.();
+    const path =
+      pathWith(API_ROUTES.documentFileServerUpload.path, { documentId }) +
+      `?fileName=${encodeURIComponent(input.fileName)}&role=${encodeURIComponent(input.role)}`;
+    let response: Response;
+    try {
+      response = await fetchImpl(`${options.baseUrl}${path}`, {
+        method: API_ROUTES.documentFileServerUpload.method,
+        headers: {
+          'content-type': input.contentType,
+          ...(traceparent === undefined ? {} : { traceparent }),
+          ...options.headers?.(),
+        },
+        body: binaryBody(input.bytes),
+        credentials: 'include',
+        signal: signal ?? null,
+      });
+    } catch (cause) {
+      return err(internal(`Network error calling ${path}: ${String(cause)}`));
+    }
+    const payload: unknown = await response.json().catch(() => null);
+    const envelope = looseEnvelopeSchema.safeParse(payload);
+    if (!envelope.success) return err(internal(`Response from ${path} does not match the contract envelope`));
+    if (!envelope.data.ok) return err(envelope.data.error);
+    const parsed = documentFileOutputSchema.safeParse(envelope.data.data);
+    return parsed.success ? ok(parsed.data) : err(internal(`Response data from ${path} does not match the contract`));
   },
-  removeFile: (documentId: string, fileId: string, signal?: AbortSignal) =>
-    request(options, API_ROUTES.documentFileDelete.method, pathWith(API_ROUTES.documentFileDelete.path, { documentId, fileId }), documentFileDeleteOutputSchema, undefined, undefined, signal),
-  fileContentUrl: (documentId: string, fileId: string) =>
-    `${options.baseUrl}${documentFileContentPath(documentId, fileId)}`,
-  fileExportUrl: (documentId: string, fileId: string) =>
-    `${options.baseUrl}${documentFileExportPath(documentId, fileId)}`,
+  deleteDocumentFile: (documentId: string, fileId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentFileDelete.method,
+      pathWith(API_ROUTES.documentFileDelete.path, { documentId, fileId }),
+      documentFileDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
+  downloadDocumentFile: (documentId: string, fileId: string, signal?: AbortSignal) =>
+    download(
+      options,
+      API_ROUTES.documentFileContent.method,
+      pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId }),
+      undefined,
+      signal,
+    ),
+  exportDocumentFile: (documentId: string, fileId: string, signal?: AbortSignal) =>
+    download(
+      options,
+      API_ROUTES.documentFileExport.method,
+      pathWith(API_ROUTES.documentFileExport.path, { documentId, fileId }),
+      undefined,
+      signal,
+    ),
   exportDocuments: (input: ExportDocuments, signal?: AbortSignal) =>
-    downloadRequest(options, API_ROUTES.documentsExport.path, input, signal),
+    download(
+      options,
+      API_ROUTES.documentsExport.method,
+      API_ROUTES.documentsExport.path,
+      input,
+      signal,
+    ),
+  documentFileContentUrl: (documentId: string, fileId: string) =>
+    `${options.baseUrl}${pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId })}`,
+  documentFileExportUrl: (documentId: string, fileId: string) =>
+    `${options.baseUrl}${pathWith(API_ROUTES.documentFileExport.path, { documentId, fileId })}`,
   directFileUpload: (input: DirectFileUploadInput, signal?: AbortSignal) =>
     directFileUpload(options, input, signal),
+  listCards: (board: BoardId = 'personal', signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.cards.method,
+      `${API_ROUTES.cards.path}?board=${encodeURIComponent(board)}`,
+      cardsListOutputSchema,
+      undefined,
+      signal,
+    ),
+  addCard: (input: NewCard, signal?: AbortSignal) =>
+    request(options, API_ROUTES.cardsCreate.method, API_ROUTES.cardsCreate.path, cardCreateOutputSchema, input, signal),
+  moveCard: (input: CardMove, signal?: AbortSignal) =>
+    request(options, API_ROUTES.cardsMove.method, API_ROUTES.cardsMove.path, cardMoveOutputSchema, input, signal),
+  listMembers: (query: Partial<PaginationQuery> = {}, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.members.method,
+      `${API_ROUTES.members.path}${paginationQueryString(query)}`,
+      memberListOutputSchema,
+      undefined,
+      signal,
+    ),
+  ensureMember: (input: MemberEnsureInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.membersEnsure.method, API_ROUTES.membersEnsure.path, memberEnsureOutputSchema, input, signal),
+  updateMember: (input: MemberUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.membersUpdate.method, API_ROUTES.membersUpdate.path, memberUpdateOutputSchema, input, signal),
+  removeMember: (input: MemberRemoveInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.membersRemove.method, API_ROUTES.membersRemove.path, memberRemoveOutputSchema, input, signal),
+  exportMember: (id: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.membersExport.method,
+      `${API_ROUTES.membersExport.path}?id=${encodeURIComponent(id)}`,
+      memberExportOutputSchema,
+      undefined,
+      signal,
+    ),
+  listStaff: (query: Partial<PaginationQuery> = {}, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.staff.method,
+      `${API_ROUTES.staff.path}${paginationQueryString(query)}`,
+      staffListOutputSchema,
+      undefined,
+      signal,
+    ),
+  grantStaff: (input: StaffGrantInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.staffGrant.method, API_ROUTES.staffGrant.path, staffGrantOutputSchema, input, signal),
+  revokeStaff: (input: StaffRevokeInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.staffRevoke.method, API_ROUTES.staffRevoke.path, staffRevokeOutputSchema, input, signal),
+  listDomains: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.domains.method, API_ROUTES.domains.path, domainListOutputSchema, undefined, signal),
+  addDomain: (input: DomainAddInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.domainsAdd.method, API_ROUTES.domainsAdd.path, domainAddOutputSchema, input, signal),
+  checkDomain: (input: DomainCheckInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.domainsCheck.method, API_ROUTES.domainsCheck.path, domainCheckOutputSchema, input, signal),
+  removeDomain: (input: DomainRemoveInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.domainsRemove.method, API_ROUTES.domainsRemove.path, domainRemoveOutputSchema, input, signal),
+  publicTenantDiscovery: (slug: string, signal?: AbortSignal) =>
+    request(
+      options,
+      PUBLIC_API_ROUTES.tenantDiscovery.method,
+      publicTenantDiscoveryPath(slug),
+      publicTenantDiscoveryOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicTenantProfile: (slug: string, version: string, signal?: AbortSignal) =>
+    request(
+      options,
+      PUBLIC_API_ROUTES.tenantProfile.method,
+      publicTenantProfilePath(slug, version),
+      publicTenantProfileOutputSchema,
+      undefined,
+      signal,
+    ),
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;
 
+/** For TanStack Query: converts a Result into value-or-throw at the query boundary. */
 export const unwrap = <T>(result: Result<T, AppError>): T => {
   if (!result.ok) throw new ApiError(result.error);
   return result.value;
