@@ -50,10 +50,7 @@ test('register page', async ({ page }) => {
   await expect(page).toHaveScreenshot('register.png', { fullPage: true });
 });
 
-// The seeded ledger rows share one createdAt, so their order is a database tie
-// and their rendered date is the day the seed ran: the list is not a stable
-// surface. The shell chrome around it is fully determined by the seed.
-test('authenticated app shell chrome', async ({ page }) => {
+test('authenticated app bar chrome', async ({ page }) => {
   await openLogin(page);
   await submitSignIn(page);
 

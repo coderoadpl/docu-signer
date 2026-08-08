@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Button, Chip, Divider, Link, Menu, MenuItem, Stack, ThemeProvider, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Chip,
+  Divider,
+  Link,
+  ListItemButton,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Stack,
+  ThemeProvider,
+  Typography,
+} from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link as RouterLink, Outlet, useNavigate } from '@tanstack/react-router';
 
@@ -11,8 +24,7 @@ import { FocusCard } from './components/layout/FocusCard.js';
 import { StatusView, type PageState } from './components/layout/StatusView.js';
 import { CreateTenantForm } from './features/settings/CreateTenantForm.js';
 import { tenantHue, tenantUrl } from './lib/tenant.js';
-import { useThemeMode } from './theme-mode.js';
-import { createThemeForMode, TenantName, Wordmark } from './theme.js';
+import { createAppTheme, TenantName, Wordmark } from './theme.js';
 
 const errorCodeOf = (error: unknown): string | null =>
   error instanceof ApiError ? error.appError.code : null;
@@ -74,35 +86,39 @@ interface ShellProps {
 }
 
 const Shell = ({ tenant = null, email, state }: ShellProps) => {
-  const { mode } = useThemeMode();
   const signOut = useSignOut();
   const slug = tenant?.slug ?? 'app';
-  const theme = useMemo(() => createThemeForMode(mode, tenantHue(slug)), [mode, slug]);
+  const theme = useMemo(() => createAppTheme(tenantHue(slug)), [slug]);
 
   const navigation = (
     <>
-      <Link component={RouterLink} to="/app" variant="body2">
-        ledger
-      </Link>
-      <Link component={RouterLink} to="/app/board" variant="body2">
-        board
-      </Link>
-      <Link component={RouterLink} to="/app/team-board" variant="body2">
-        team board
-      </Link>
+      <ListItemButton
+        className="app-shell-nav-item"
+        component={RouterLink}
+        to="/app"
+        activeOptions={{ exact: true }}
+      >
+        <ListItemText primary="ledger" />
+      </ListItemButton>
+      <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/board">
+        <ListItemText primary="board" />
+      </ListItemButton>
+      <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/team-board">
+        <ListItemText primary="team board" />
+      </ListItemButton>
       {tenant?.staffRole ? (
-        <Link component={RouterLink} to="/app/members" variant="body2">
-          members
-        </Link>
+        <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/members">
+          <ListItemText primary="members" />
+        </ListItemButton>
       ) : null}
       {tenant?.staffRole ? (
-        <Link component={RouterLink} to="/app/documents" variant="body2">
-          Dokumenty
-        </Link>
+        <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/documents">
+          <ListItemText primary="Dokumenty" />
+        </ListItemButton>
       ) : null}
-      <Link component={RouterLink} to="/app/settings" variant="body2">
-        settings
-      </Link>
+      <ListItemButton className="app-shell-nav-item" component={RouterLink} to="/app/settings">
+        <ListItemText primary="settings" />
+      </ListItemButton>
     </>
   );
 
@@ -114,11 +130,28 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
             <Wordmark variant="h2">Podpisy</Wordmark>
           </RouterLink>
         }
-        context={tenant === null ? null : <TenantSwitcher activeSlug={tenant.slug} />}
+        context={
+          tenant === null ? null : (
+            <Typography
+              variant="h6"
+              component="p"
+              noWrap
+              sx={{ display: { xs: 'none', sm: 'block' } }}
+            >
+              {tenant.name}
+            </Typography>
+          )
+        }
         meta={
           <>
+            {tenant === null ? null : <TenantSwitcher activeSlug={tenant.slug} />}
             {tenant?.staffRole ? (
-              <Chip size="small" variant="outlined" label={tenant.staffRole} />
+              <Chip
+                size="small"
+                variant="outlined"
+                label={tenant.staffRole}
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              />
             ) : null}
             {email === undefined ? null : (
               <Typography variant="caption" sx={{ display: { xs: 'none', sm: 'block' } }}>

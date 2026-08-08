@@ -54,6 +54,8 @@ describe('AppLayout', () => {
     await renderApp();
 
     expect(await screen.findByText('ledger content')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'ledger' })).toHaveClass('active');
     expect(screen.getByRole('link', { name: 'Dokumenty' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Switch tenant' }));
     expect(await screen.findByText('Globex Inc')).toBeInTheDocument();
