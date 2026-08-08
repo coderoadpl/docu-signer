@@ -102,7 +102,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`, dead
   links), and vitest with coverage across
-  **<!--count:test-files-->104<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->105<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → todos →
@@ -123,7 +123,7 @@ pnpm run test:integration   # repositories, against a real Postgres
 pnpm run e2e                # real Chromium over the real stack
 ```
 
-<!--count:config-regression-->56<!--/count--> config-regression probes guard the
+<!--count:config-regression-->59<!--/count--> config-regression probes guard the
 covered boundary and island-core rules — most feed a violating fixture and
 assert the gate still goes red, a few are structural rule-presence checks rather
 than fixture-feeding probes — so you can't silently delete one of those rules and
@@ -236,7 +236,9 @@ broad, note } }`.
   truth. `.github/scripts/classify-review.sh` maps each attempt to
   `pass | fail | infra`; `gate-review.sh` exits `0` **only** on a `PASS` and `1`
   on everything else. The model gets read-only tools and never sets the exit code
-  directly — the workflow does.
+  directly — the workflow does. These control scripts are loaded from the pull
+  request's base SHA in a separate checkout; the head checkout supplies only the
+  diff under review and cannot replace the classifier, poster or gate.
 - **Fail-closed.** There is exactly one green path: a positive `PASS`. A `FAIL`
   verdict, an infra failure (rate-limit / auth / network / the known
   `--json-schema` CLI hang, bounded by `timeout-minutes`) on every available

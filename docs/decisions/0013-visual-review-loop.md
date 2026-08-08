@@ -67,11 +67,13 @@ SHA observed during approval.
 The baseline workflow:
 
 1. rejects commit mode unless update mode is running on a non-`main` branch;
-2. checks out the approved exact SHA;
+2. checks out the approved exact SHA without persisting the write-capable
+   credential;
 3. re-renders and performs the second comparison that already guards artifact
-   publication;
+   publication while the selected code remains tokenless;
 4. stages only `visual/__screenshots__`;
-5. pushes to the dispatched branch name.
+5. exposes `GITHUB_TOKEN` only to the guarded commit step and pushes to the
+   dispatched branch name.
 
 If the branch tip moved after approval, the exact-SHA push is non-fast-forward
 and fails. The explicit `main` rejection substitutes for the upstream ruleset
