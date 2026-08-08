@@ -1,5 +1,19 @@
 # Foundation deltas
 
+## Provenance
+
+- Upstream: <https://github.com/chomamateusz/agentproofarch> (the `demo/`
+  subtree is this repo's root).
+- Forked commit: `32e2d34` (upstream main, 2026-07-27 — the wholesale
+  re-transplant in PR #2); the layout layer from upstream PR #86 (through
+  `cf247d1`) was ported on top the same day in PR #3.
+- Foundation-owned paths (per architecture.md §Consumption model):
+  `eslint.config.js`, `eslint-plugin-agentproofarch/`,
+  `.dependency-cruiser.cjs`, `tsconfig.json`, `scripts/doc-lint.ts`,
+  `scripts/smoke*.ts`, `config-regression/`, `core/` layering,
+  `.github/workflows/`. A foundation update is `git diff 32e2d34..upstream`
+  over those paths.
+
 This repo is a fork of the agentproofarch demo foundation, scaled for what it
 is: a non-commercial document archive for 2 trusted users (owner ruling
 2026-07-27). The structural rules hold in full — layer boundaries, lint gates,
@@ -15,6 +29,8 @@ each.
   target is Vercel + Neon + Blob only.
 - No branch rulesets — GitHub Free private repo; gate discipline is
   procedural (agent merges only on green checks and the owner's word).
+  architecture.md §Environments still describes the upstream ruleset wall —
+  read it as the substituted-for pattern, not this repo's state.
 - Remote post-deploy smoke runs on Production only — previews sit behind
   Vercel Authentication, whose SSO interstitial an unauthenticated smoke
   cannot pass; staging-by-preview verification is deliberately waived.

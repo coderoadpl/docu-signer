@@ -42,9 +42,10 @@ green.
 
 2. **Post-deploy verification against real production.** A second workflow
    (`post-deploy-smoke`) listens for the `deployment_status` event and, when a
-   **Production** or **Preview** deployment reports **success**, checks out the
-   deployed commit and runs `pnpm run smoke:remote` against the production
-   alias or the preview deployment URL (via the `BASE_URL` the script reads).
+   **Production** deployment reports **success**, checks out the deployed
+   commit and runs `pnpm run smoke:remote` against the production alias (via
+   the `BASE_URL` the script reads). Previews sit behind Vercel
+   Authentication and are not remotely smoked (see FOUNDATION.md).
    This is the only gate that exercises the actual platform contract that broke
    in #10–#15; it turns "deployed" into "deployed and verified working".
 
@@ -94,18 +95,12 @@ cells name a commissioned gate, not a shipped one.
 
 - Every PR is marked red until the required gates pass. The remote smoke script
   supports explicit production verification with SHA attestation.
-- **Branch protection is now server-enforced.** The repository is **public**, so
-  GitHub rulesets are available at no cost, and two are in force with **empty
-  bypass lists**: `main-gates` on `main` (require a PR + the required status
-  checks `check` / `smoke` / `e2e` / `ai-review` + "require
-  branches up to date", 0 approvals, merge-commit only) and `production-protection` on
-  `production` (`check` / `smoke` / `e2e` + **1 required
-  approval**, stale approvals dismissed on push, merge-commit only). A merge is therefore **blocked**
-  on a failing or missing check, not merely marked red. This supersedes the
-  earlier private-repo limitation, when the branch-protection API returned
-  `403 "Upgrade to GitHub Pro"` and enforcement was discipline-only — going public
-  was the resolution. Full topology in [architecture.md](../architecture.md)
-  §Environments.
+- **Branch protection is procedural here, not server-enforced.** This fork is
+  a **private** repository on GitHub Free, where rulesets are unavailable, and
+  the owner ruled against paying for them (FOUNDATION.md): merges happen only
+  on green checks and the owner's word. The upstream foundation's ruleset wall
+  (described in [architecture.md](../architecture.md) §Environments) records
+  the pattern this discipline substitutes for.
 - CI has no canonical-repository guard, so the static, runtime, browser, and
   visual jobs run wherever the workflows are enabled.
 - The `smoke` job needs a Postgres service container in CI, but no
@@ -118,8 +113,8 @@ cells name a commissioned gate, not a shipped one.
 
 ## Remote smoke target
 
-- **The caller chooses Production or Preview.** Production verification drives
-  the user-facing alias; preview verification drives its deployment URL.
+- **Production only.** Verification drives the user-facing alias; previews are
+  excluded (Vercel Authentication — see FOUNDATION.md).
 - **Because it drives live production, `smoke:remote` obeys the production
   smoke-account doctrine** — a dedicated canary tenant, never `db:seed` against a
   real database, caller-supplied credentials, and a non-self-poisoning drive that

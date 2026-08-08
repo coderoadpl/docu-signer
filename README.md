@@ -197,12 +197,12 @@ humans who own the platform; the architecture (`docs/architecture.md`
   mounts, and launching platform CLIs. A blocked command is enforcement; a
   documented "please don't" is not.
 - **Production release is an owner-approved PR gate.** Vercel Production Branch
-  Tracking points at the `production` branch, guarded by the
-  `production-protection` GitHub ruleset (require a PR + 1 approval, empty bypass).
-  An agent (a Write-not-Admin machine account) merges freely to `main` — which
-  builds a **preview/staging** deployment — but the production build is triggered
-  only by a `main → production` PR the **owner** approves and merges from a device
-  the agent does not control. The same commit flows feature branch → preview →
+  Tracking points at the `production` branch. There is no server-enforced
+  ruleset in this fork (private repo on GitHub Free — see FOUNDATION.md); the
+  gate is procedural: an agent (a Write-not-Admin machine account) merges to
+  `main` only on green checks and the owner's word, and the production build is
+  triggered only by a `main → production` PR the **owner** approves and merges
+  from a device the agent does not control. The same commit flows feature branch → preview →
   `main` (staging) → `production`; only env vars differ, and only the owner
   crosses the last edge, reviewing the diff **before** the merge that triggers the
   secret-exposed build.
@@ -267,11 +267,10 @@ broad, note } }`.
   secret, so keeping it as a repo Actions secret does not violate the
   "production secrets never in Actions" rule above. The workflow never echoes it.
 
-**Required on `main-gates` (since 2026-07-26).** The gate shipped non-required
-to accumulate a verdict track record; the owner has since added the
-status-check context **`ai-review`** (the job name) to the `main-gates`
-ruleset's required-checks list, so a PR without a PASS verdict cannot merge to
-`main`. Disarming it is the same Admin-only ruleset edit in reverse.
+**Required procedurally, not by ruleset.** Upstream arms `ai-review` as a
+required check on its `main-gates` ruleset; this fork has no rulesets
+(FOUNDATION.md), so a FAIL verdict blocks a merge by discipline: the agent
+does not merge a PR whose `ai-review` check is red.
 
 **Adding slot `_2` / `_3` later.** Create repo Actions secrets
 `CLAUDE_CODE_OAUTH_TOKEN_2` / `_3` (each its own `claude setup-token`). No workflow

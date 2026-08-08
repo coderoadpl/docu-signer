@@ -9,10 +9,12 @@ concurrency:
 
 jobs:
   smoke-remote:
+    # Preview deployments sit behind Vercel Authentication, whose SSO
+    # interstitial fails the cache-header assertions — only Production is
+    # publicly reachable for an unauthenticated smoke.
     if: >-
       github.event.deployment_status.state == 'success' &&
-      (github.event.deployment.environment == 'Production' ||
-       github.event.deployment.environment == 'Preview')
+      github.event.deployment.environment == 'Production'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
@@ -29,5 +31,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run smoke:remote
         env:
-          BASE_URL: ${{ github.event.deployment.environment == 'Production' && 'https://podpisy.vercel.app' || github.event.deployment_status.environment_url }}
+          BASE_URL: ${{ github.event.deployment.environment == 'Production' && 'https://docu-signer-nine.vercel.app' || github.event.deployment_status.environment_url }}
           EXPECTED_SHA: ${{ github.event.deployment.sha }}

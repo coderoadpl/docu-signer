@@ -8,8 +8,9 @@ note below and [architecture.md](../architecture.md) §Environments (normative).
 > **production is a dedicated `production` branch** with Vercel Production Branch
 > Tracking set to it. The long-lived `staging` branch relic is deleted. A
 > production release is an **owner-approved PR `main → production`** whose merge
-> triggers the production build, gated by the `production-protection` GitHub
-> ruleset (empty bypass); agents act as a Write-not-Admin machine account. The
+> triggers the production build — gated upstream by the `production-protection`
+> ruleset, procedurally in this fork (no rulesets; FOUNDATION.md); agents act
+> as a Write-not-Admin machine account. The
 > Neon branch-per-environment model (point 2), build-time migration/admin
 > bootstrap (point 3),
 > entry/routing (point 4), Frankfurt co-location (point 5) and the single-tenant
@@ -33,9 +34,9 @@ fixed cost (Vercel Hobby + Neon Free), without fighting the platform.
    `VERCEL_URL`/`VERCEL_BRANCH_URL`, so every non-production deployment is
    fully functional (including sign-in) with zero per-branch configuration.
    Every PR gets a standard Preview. Development is local (`vercel env pull`
-   for parity). Production and Preview deployments are verified by
-   `post-deploy-smoke` (production via the alias, previews/staging via their
-   deployment URL).
+   for parity). Production deployments are verified by `post-deploy-smoke`
+   via the production alias; previews sit behind Vercel Authentication and
+   are not remotely smoked (see FOUNDATION.md).
 2. **One Neon project, branch per environment**: `production`, `staging`, and
    an **ephemeral branch per preview PR** created by the Neon⇄Vercel
    marketplace integration (copy-on-write from `production`'s parent, deleted
