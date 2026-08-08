@@ -287,6 +287,10 @@ export default tseslint.config(
         { type: 'platform-entry', pattern: 'api/**', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
+        // ADR-0011 Decision 4: the shell is split — the chrome skeleton lives in
+        // components/layout/AppShell.tsx; this is its thin stateful composition
+        // beside main.tsx, a single-file element like web-api above.
+        { type: 'web-shell', pattern: 'apps/web/src/AppLayout?(.test).tsx', mode: 'full' },
         { type: 'web-routes', pattern: 'apps/web/src/routes/**', mode: 'full' },
         {
           type: 'web-features',
@@ -295,6 +299,7 @@ export default tseslint.config(
           capture: ['feature'],
         },
         { type: 'web-ui', pattern: 'apps/web/src/components/ui/**', mode: 'full' },
+        { type: 'web-layout', pattern: 'apps/web/src/components/layout/**', mode: 'full' },
         { type: 'web-lib', pattern: 'apps/web/src/lib/**', mode: 'full' },
         { type: 'web-test', pattern: 'apps/web/src/test/**', mode: 'full' },
         { type: 'web-theme', pattern: 'apps/web/src/theme*', mode: 'full' },
@@ -363,9 +368,11 @@ export default tseslint.config(
               allow: [
                 'web-main',
                 'web-api',
+                'web-shell',
                 'web-routes',
                 'web-features',
                 'web-ui',
+                'web-layout',
                 'web-lib',
                 'web-theme',
                 'app-web',
@@ -380,6 +387,21 @@ export default tseslint.config(
               allow: ['web-api', 'core-domain', 'core-contract', 'core-client', 'adapter-auth'],
             },
             {
+              from: ['web-shell'],
+              allow: [
+                'web-shell',
+                'web-api',
+                'web-features',
+                'web-layout',
+                'web-lib',
+                'web-theme',
+                'web-test',
+                'core-domain',
+                'core-contract',
+                'core-client',
+              ],
+            },
+            {
               from: ['web-routes'],
               allow: ['web-routes', 'web-features', 'web-ui', 'web-lib'],
             },
@@ -389,6 +411,7 @@ export default tseslint.config(
                 ['web-features', { feature: '${from.feature}' }],
                 'web-api',
                 'web-ui',
+                'web-layout',
                 'web-lib',
                 'web-theme',
                 'web-test',
@@ -404,6 +427,10 @@ export default tseslint.config(
             {
               from: ['web-ui'],
               allow: ['web-ui', 'web-lib', 'web-theme'],
+            },
+            {
+              from: ['web-layout'],
+              allow: ['web-layout', 'web-ui', 'web-lib', 'web-theme'],
             },
             {
               from: ['web-lib'],
@@ -445,6 +472,11 @@ export default tseslint.config(
               disallow: ['@tanstack/react-query', '@tanstack/react-router'],
               message:
                 'components/ui is presentational: no TanStack Query/Router (frontend-lint-plan Phase 2)',
+            },
+            {
+              from: ['web-layout'],
+              disallow: ['@tanstack/react-query', '@tanstack/react-router'],
+              message: 'components/layout is structure-only: no TanStack Query/Router (ADR-0011)',
             },
           ],
         },

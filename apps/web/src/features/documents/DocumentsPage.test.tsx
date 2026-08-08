@@ -128,21 +128,34 @@ describe('DocumentsPage', () => {
     );
   });
 
-  it('surfaces a failed documents query as an alert', async () => {
+  it('surfaces a failed documents query and retries it', async () => {
+    const requests = vi.fn();
     server.use(
-      http.get('/api/documents', () =>
-        HttpResponse.json(
-          {
-            ok: false,
-            error: { code: 'internal', message: 'Nie udało się pobrać' },
-          },
-          { status: 500 },
-        ),
-      ),
+      http.get('/api/documents', () => {
+        requests();
+        return requests.mock.calls.length === 1
+          ? HttpResponse.json(
+              {
+                ok: false,
+                error: { code: 'internal', message: 'Nie udało się pobrać' },
+              },
+              { status: 500 },
+            )
+          : HttpResponse.json({
+              ok: true,
+              data: { documents: [document] },
+            });
+      }),
     );
     await renderPage();
 
     expect(await screen.findByText('Nie udało się pobrać')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Spróbuj ponownie' }),
+    );
+
+    expect(await screen.findByText('Umowa z Anną')).toBeInTheDocument();
+    expect(requests).toHaveBeenCalledTimes(2);
   });
 
   it('enables bulk export as documents are selected', async () => {

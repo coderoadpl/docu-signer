@@ -113,6 +113,16 @@ module.exports = {
       },
     },
     {
+      name: 'web-layouts-are-structure-only',
+      severity: 'error',
+      comment:
+        'components/layout: structure consumes theme, ui and lib only; no core, adapters, features, routes, api.ts or TanStack (ADR-0011)',
+      from: { path: '^apps/web/src/components/layout' },
+      to: {
+        path: '^(core|adapters|apps/web/src/(features|routes)|apps/web/src/api\\.)|node_modules/@tanstack/react-(query|router)(/|$)',
+      },
+    },
+    {
       name: 'web-lib-no-react',
       severity: 'error',
       comment: 'lib is pure TypeScript: no react (frontend-lint-plan Phase 2)',

@@ -68,6 +68,37 @@ const renderPage = async () => {
 };
 
 describe('DocumentDetailPage', () => {
+  it('surfaces a failed document query and retries it', async () => {
+    const requests = vi.fn();
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () => {
+        requests();
+        return requests.mock.calls.length === 1
+          ? HttpResponse.json(
+              {
+                ok: false,
+                error: { code: 'internal', message: 'Nie udało się pobrać dokumentu' },
+              },
+              { status: 500 },
+            )
+          : HttpResponse.json({ ok: true, data: { document } });
+      }),
+    );
+    await renderPage();
+
+    expect(
+      await screen.findByText('Nie udało się pobrać dokumentu'),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Spróbuj ponownie' }),
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Umowa z Anną' }),
+    ).toBeInTheDocument();
+    expect(requests).toHaveBeenCalledTimes(2);
+  });
+
   it('groups files by role and asks before deleting a file', async () => {
     const remove = vi.fn();
     server.use(
