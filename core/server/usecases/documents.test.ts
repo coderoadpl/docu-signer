@@ -1,12 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   err,
   internal,
+  MAX_DOCUMENT_EXPORT_BYTES,
+  MAX_DOCUMENT_FILE_BYTES,
   ok,
+  type AppError,
   type Document,
   type DocumentFile,
   type Identity,
+  type Result,
 } from '#core/domain/index.js';
 
 import type { DocumentRepository, StoragePort } from '../ports.js';
@@ -22,6 +26,7 @@ import {
   removeFile,
   requestFileUpload,
   serverUpload,
+  type DocumentDeps,
   updateDocument,
 } from './documents.js';
 
@@ -175,7 +180,10 @@ const fake = (initialDocuments: Document[] = [], initialFiles: DocumentFile[] = 
       return ok(undefined);
     },
     get: async (key) => ok(blobs.get(key) ?? null),
-    exists: async (key) => ok(blobs.has(key)),
+    head: async (key) => {
+      const bytes = blobs.get(key);
+      return ok(bytes ? { contentType: 'application/pdf', sizeBytes: bytes.byteLength } : null);
+    },
     delete: async (key) => {
       blobs.delete(key);
       return ok(undefined);
@@ -206,54 +214,88 @@ const createInput = {
 };
 
 describe('documents use-cases', () => {
-  it('authorizes before repository access and keeps the aggregate staff-only', async () => {
-    const state = fake();
-    expect(await listDocuments(ctx(staff(null)), {}, state.deps)).toMatchObject({
-      ok: false,
-      error: { code: 'forbidden' },
-    });
-    expect(await createDocument(ctx(member), createInput, state.deps)).toMatchObject({
-      ok: false,
-      error: { code: 'forbidden' },
-    });
-    expect(state.documents).toHaveLength(0);
-  });
-
-  it('denies every document operation to a member before touching its ports', async () => {
-    const state = fake([documentRow()], [fileRow()]);
+  it('denies every document use-case before any repository access', async () => {
     const input = {
       fileName: 'scan.pdf',
       contentType: 'application/pdf',
       role: 'source' as const,
     };
-    const calls = [
-      getDocument(ctx(member), documentId, state.deps),
-      updateDocument(ctx(member), documentId, createInput, state.deps),
-      deleteDocument(ctx(member), documentId, state.deps),
-      requestFileUpload(ctx(member), documentId, input, state.deps),
-      finalizeFileUpload(
-        ctx(member),
-        documentId,
-        {
-          key: fileRow().storageKey,
-          ...input,
-          sizeBytes: 3,
-        },
-        state.deps,
-      ),
-      serverUpload(
-        ctx(member),
-        documentId,
-        { ...input, bytes: new Uint8Array([1]) },
-        state.deps,
-      ),
-      removeFile(ctx(member), documentId, fileId, state.deps),
-      getFileContent(ctx(member), documentId, fileId, state.deps),
-      getFileExport(ctx(member), documentId, fileId, state.deps),
-      exportDocuments(ctx(member), { documentIds: [documentId] }, state.deps),
+    const visitor = staff(null);
+    const cases: Array<{
+      name: string;
+      run: (deps: DocumentDeps) => Promise<Result<unknown, AppError>>;
+    }> = [
+      { name: 'createDocument', run: (deps) => createDocument(ctx(member), createInput, deps) },
+      { name: 'listDocuments', run: (deps) => listDocuments(ctx(visitor), {}, deps) },
+      { name: 'getDocument', run: (deps) => getDocument(ctx(member), documentId, deps) },
+      {
+        name: 'updateDocument',
+        run: (deps) => updateDocument(ctx(visitor), documentId, createInput, deps),
+      },
+      { name: 'deleteDocument', run: (deps) => deleteDocument(ctx(member), documentId, deps) },
+      {
+        name: 'requestFileUpload',
+        run: (deps) => requestFileUpload(ctx(visitor), documentId, input, deps),
+      },
+      {
+        name: 'finalizeFileUpload',
+        run: (deps) =>
+          finalizeFileUpload(
+            ctx(member),
+            documentId,
+            { key: fileRow().storageKey, ...input, sizeBytes: 3 },
+            deps,
+          ),
+      },
+      {
+        name: 'serverUpload',
+        run: (deps) =>
+          serverUpload(
+            ctx(visitor),
+            documentId,
+            { ...input, bytes: new Uint8Array([1]) },
+            deps,
+          ),
+      },
+      {
+        name: 'removeFile',
+        run: (deps) => removeFile(ctx(member), documentId, fileId, deps),
+      },
+      {
+        name: 'getFileContent',
+        run: (deps) => getFileContent(ctx(visitor), documentId, fileId, deps),
+      },
+      {
+        name: 'getFileExport',
+        run: (deps) => getFileExport(ctx(member), documentId, fileId, deps),
+      },
+      {
+        name: 'exportDocuments',
+        run: (deps) => exportDocuments(ctx(visitor), { documentIds: [documentId] }, deps),
+      },
     ];
-    for (const result of await Promise.all(calls)) {
+    for (const testCase of cases) {
+      const state = fake([documentRow()], [fileRow()]);
+      const repositorySpies = [
+        vi.spyOn(state.deps.documents, 'listByTenant'),
+        vi.spyOn(state.deps.documents, 'findById'),
+        vi.spyOn(state.deps.documents, 'listFiles'),
+        vi.spyOn(state.deps.documents, 'listFilesForDocuments'),
+        vi.spyOn(state.deps.documents, 'create'),
+        vi.spyOn(state.deps.documents, 'update'),
+        vi.spyOn(state.deps.documents, 'delete'),
+        vi.spyOn(state.deps.documents, 'createFile'),
+        vi.spyOn(state.deps.documents, 'findFile'),
+        vi.spyOn(state.deps.documents, 'deleteFile'),
+      ];
+      const result = await testCase.run(state.deps);
       expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+      for (const repositorySpy of repositorySpies) {
+        expect(
+          repositorySpy,
+          `${testCase.name} touched a repository before denial`,
+        ).not.toHaveBeenCalled();
+      }
     }
   });
 
@@ -363,6 +405,37 @@ describe('documents use-cases', () => {
     });
   });
 
+  it.each([
+    {
+      name: 'content type',
+      declared: { contentType: 'image/png', sizeBytes: 3 },
+    },
+    {
+      name: 'size',
+      declared: { contentType: 'application/pdf', sizeBytes: 2 },
+    },
+  ])(
+    'rejects finalization when the declared $name differs from storage metadata',
+    async ({ declared }) => {
+      const state = fake([documentRow()], [fileRow()]);
+      const before = state.files.length;
+      expect(
+        await finalizeFileUpload(
+          ctx(staff('tenant-acme')),
+          documentId,
+          {
+            key: fileRow().storageKey,
+            fileName: 'scan.pdf',
+            role: 'source',
+            ...declared,
+          },
+          state.deps,
+        ),
+      ).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(state.files).toHaveLength(before);
+    },
+  );
+
   it('returns not_found for unknown entries, files and exports', async () => {
     const state = fake();
     expect(await getDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
@@ -398,6 +471,59 @@ describe('documents use-cases', () => {
         state.deps,
       ),
     ).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('allows a bulk export exactly at the aggregate byte cap', async () => {
+    const sizes = [
+      ...Array.from({ length: 10 }, () => MAX_DOCUMENT_FILE_BYTES),
+      MAX_DOCUMENT_EXPORT_BYTES - 10 * MAX_DOCUMENT_FILE_BYTES,
+    ];
+    const files = sizes.map((sizeBytes, index): DocumentFile => {
+      const id = `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`;
+      return {
+        ...fileRow(),
+        id,
+        sizeBytes,
+        storageKey: `documents/tenant-acme/${documentId}/${id}`,
+      };
+    });
+    const state = fake([documentRow()], files);
+    const get = vi.spyOn(state.deps.storage, 'get');
+    expect(
+      await exportDocuments(
+        ctx(staff('tenant-acme')),
+        { documentIds: [documentId] },
+        state.deps,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(get).toHaveBeenCalledTimes(files.length);
+  });
+
+  it('rejects an over-cap bulk export before fetching the next file', async () => {
+    const sizes = [
+      ...Array.from({ length: 10 }, () => MAX_DOCUMENT_FILE_BYTES),
+      MAX_DOCUMENT_EXPORT_BYTES - 10 * MAX_DOCUMENT_FILE_BYTES,
+      1,
+    ];
+    const files = sizes.map((sizeBytes, index): DocumentFile => {
+      const id = `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`;
+      return {
+        ...fileRow(),
+        id,
+        sizeBytes,
+        storageKey: `documents/tenant-acme/${documentId}/${id}`,
+      };
+    });
+    const state = fake([documentRow()], files);
+    const get = vi.spyOn(state.deps.storage, 'get');
+    expect(
+      await exportDocuments(
+        ctx(staff('tenant-acme')),
+        { documentIds: [documentId] },
+        state.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'export_too_large' } });
+    expect(get).toHaveBeenCalledTimes(files.length - 1);
   });
 
   it('lets repository failures reject for normalization at the composition edge', async () => {
@@ -474,7 +600,7 @@ describe('documents use-cases', () => {
 
     const missingStorage: StoragePort = {
       ...state.deps.storage,
-      exists: async () => ok(false),
+      head: async () => ok(null),
       get: async () => ok(null),
     };
     expect(

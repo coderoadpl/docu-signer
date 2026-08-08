@@ -12,16 +12,23 @@ import { EXIT_CODE_BY_ERROR_CODE, publicCacheControl } from '#core/contract/inde
 import { probeSignInCookies } from '#adapters/auth/client-adapter.js';
 
 import { fetchMagicLink } from './mailpit.js';
+import {
+  assertHealthAttestation,
+  assertSmoke,
+  SmokeFailure,
+  type AttestedSmokeTarget,
+} from './smoke-target.js';
+
+export { SmokeFailure };
 
 export const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 
-export class SmokeFailure extends Error {}
 export const fail = (message: string): never => {
   throw new SmokeFailure(message);
 };
 export function assert(condition: boolean, message: string): asserts condition {
-  if (!condition) throw new SmokeFailure(message);
+  assertSmoke(condition, message);
 }
 export const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -163,13 +170,7 @@ const expectError = (
   return parsed.error;
 };
 
-export interface SmokeTarget {
-  baseUrl: string;
-  email: string;
-  password: string;
-  tenant: string;
-  /** Deploy attestation: when set, health.sha must equal it (right deploy verified). */
-  expectedSha?: string;
+export interface SmokeTarget extends AttestedSmokeTarget {
   // WHY: production has no canary account until the owner provisions one, so a
   // secret-less remote drive can only exercise the unauthenticated surface.
   anonymousOnly?: boolean;
@@ -429,15 +430,7 @@ export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<vo
     health.status === 'ok' && health.database === 'up',
     `health degraded: status=${health.status} database=${health.database}`,
   );
-  // Deploy attestation: prove this smoke ran against the exact commit the deploy
-  // event carried, closing the "smoke verified the wrong deployment" class.
-  if (target.expectedSha !== undefined) {
-    assert(
-      health.sha === target.expectedSha,
-      `health SHA mismatch: expected ${target.expectedSha}, deployment reports ${health.sha}`,
-    );
-  }
-  if (target.anonymousOnly === true) return;
+  if (assertHealthAttestation(health.sha, target) === 'anonymous-only') return;
   await assertSessionCookieHardening(target);
 
   expectOk(

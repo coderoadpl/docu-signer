@@ -67,7 +67,7 @@ const baseDeps = (): AppDeps => ({
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),
-    exists: async () => ok(false),
+    head: async () => ok(null),
     delete: async () => ok(undefined),
     createUploadUrl: async () => ok(null),
   },
@@ -434,7 +434,7 @@ describe('buildApp routes', () => {
     deps.storage = {
       put: async () => ok(undefined),
       get: async () => ok(new Uint8Array([1, 2, 3])),
-      exists: async () => ok(true),
+      head: async () => ok({ contentType: 'image/png', sizeBytes: 3 }),
       delete: async () => ok(undefined),
       createUploadUrl: async () => ok(null),
     };
@@ -517,9 +517,23 @@ describe('buildApp routes', () => {
     ).toBe(200);
     const filePath = (template: string) =>
       template.replace(':documentId', documentId).replace(':fileId', fileId);
-    expect(
-      (await app.request(filePath(API_ROUTES.documentFileContent.path), { headers })).status,
-    ).toBe(200);
+    const inlineContent = await app.request(filePath(API_ROUTES.documentFileContent.path), {
+      headers,
+    });
+    expect(inlineContent.status).toBe(200);
+    expect(inlineContent.headers.get('content-disposition')).toContain('inline');
+    const currentFile = files[0];
+    if (!currentFile) throw new Error('document file was not finalized');
+    files[0] = {
+      ...currentFile,
+      fileName: 'active.svg',
+      contentType: 'image/svg+xml',
+    };
+    const svgContent = await app.request(filePath(API_ROUTES.documentFileContent.path), {
+      headers,
+    });
+    expect(svgContent.status).toBe(200);
+    expect(svgContent.headers.get('content-disposition')).toContain('attachment');
     expect(
       (await app.request(filePath(API_ROUTES.documentFileExport.path), { headers })).status,
     ).toBe(200);

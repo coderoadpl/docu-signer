@@ -3,13 +3,19 @@ import type * as VercelBlob from '@vercel/blob';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  del: vi.fn<(key: string, options: unknown) => Promise<void>>(),
   generateClientToken: vi.fn<() => Promise<string>>(),
+  get: vi.fn<(key: string, options: unknown) => Promise<unknown>>(),
   head: vi.fn<() => Promise<unknown>>(),
+  put: vi.fn<(key: string, body: unknown, options: unknown) => Promise<unknown>>(),
 }));
 
 vi.mock('@vercel/blob', async (importOriginal) => ({
   ...(await importOriginal<typeof VercelBlob>()),
+  del: mocks.del,
+  get: mocks.get,
   head: mocks.head,
+  put: mocks.put,
 }));
 
 vi.mock('@vercel/blob/client', () => ({
@@ -21,7 +27,10 @@ import { createVercelBlobStorage } from './vercel-blob.js';
 describe('Vercel Blob storage', () => {
   beforeEach(() => {
     mocks.generateClientToken.mockReset().mockResolvedValue('vercel_blob_client_store_payload');
-    mocks.head.mockReset().mockResolvedValue({});
+    mocks.del.mockReset().mockResolvedValue(undefined);
+    mocks.get.mockReset().mockResolvedValue(null);
+    mocks.head.mockReset().mockResolvedValue({ contentType: 'application/pdf', size: 3 });
+    mocks.put.mockReset().mockResolvedValue({});
   });
 
   it('creates a constrained direct upload target', async () => {
@@ -47,18 +56,93 @@ describe('Vercel Blob storage', () => {
     );
   });
 
-  it('maps malformed tokens, missing blobs, and storage failures', async () => {
+  it('puts bytes with private immutable-key options and deletes by key', async () => {
+    const storage = createVercelBlobStorage('vercel_blob_rw_store_secret');
+    expect(
+      await storage.put('documents/t/doc/file', new Uint8Array([1, 2, 3]), 'application/pdf'),
+    ).toEqual({ ok: true, value: undefined });
+    expect(mocks.put).toHaveBeenCalledWith(
+      'documents/t/doc/file',
+      Buffer.from([1, 2, 3]),
+      {
+        access: 'private',
+        contentType: 'application/pdf',
+        addRandomSuffix: false,
+        token: 'vercel_blob_rw_store_secret',
+      },
+    );
+    expect(await storage.delete('documents/t/doc/file')).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(mocks.del).toHaveBeenCalledWith('documents/t/doc/file', {
+      token: 'vercel_blob_rw_store_secret',
+    });
+  });
+
+  it('converts a successful response stream and maps missing or non-200 blobs to null', async () => {
+    const storage = createVercelBlobStorage('vercel_blob_rw_store_secret');
+    mocks.get.mockResolvedValueOnce({
+      statusCode: 200,
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2]));
+          controller.enqueue(new Uint8Array([3]));
+          controller.close();
+        },
+      }),
+    });
+    expect(await storage.get('present')).toEqual({
+      ok: true,
+      value: new Uint8Array([1, 2, 3]),
+    });
+    expect(mocks.get).toHaveBeenCalledWith('present', {
+      access: 'private',
+      token: 'vercel_blob_rw_store_secret',
+    });
+    mocks.get.mockResolvedValueOnce(null);
+    expect(await storage.get('missing')).toEqual({ ok: true, value: null });
+    mocks.get.mockResolvedValueOnce({ statusCode: 304, stream: null });
+    expect(await storage.get('not-modified')).toEqual({ ok: true, value: null });
+  });
+
+  it('reads metadata and maps a missing blob', async () => {
+    const storage = createVercelBlobStorage('vercel_blob_rw_store_secret');
+    expect(await storage.head('present')).toEqual({
+      ok: true,
+      value: { contentType: 'application/pdf', sizeBytes: 3 },
+    });
+    expect(mocks.head).toHaveBeenCalledWith('present', {
+      token: 'vercel_blob_rw_store_secret',
+    });
+    mocks.head.mockRejectedValueOnce(new BlobNotFoundError());
+    expect(await storage.head('missing')).toEqual({ ok: true, value: null });
+  });
+
+  it('maps operation rejections to internal errors', async () => {
     const storage = createVercelBlobStorage('vercel_blob_rw_store_secret');
     mocks.generateClientToken.mockResolvedValueOnce('malformed');
     expect(await storage.createUploadUrl('key', 'text/plain')).toMatchObject({
       ok: false,
       error: { code: 'internal' },
     });
-    expect(await storage.exists('present')).toEqual({ ok: true, value: true });
-    mocks.head.mockRejectedValueOnce(new BlobNotFoundError());
-    expect(await storage.exists('missing')).toEqual({ ok: true, value: false });
+    mocks.put.mockRejectedValueOnce(new Error('put unavailable'));
+    expect(await storage.put('key', new Uint8Array([1]), 'text/plain')).toMatchObject({
+      ok: false,
+      error: { code: 'internal' },
+    });
+    mocks.get.mockRejectedValueOnce(new Error('get unavailable'));
+    expect(await storage.get('key')).toMatchObject({
+      ok: false,
+      error: { code: 'internal' },
+    });
+    mocks.del.mockRejectedValueOnce(new Error('delete unavailable'));
+    expect(await storage.delete('key')).toMatchObject({
+      ok: false,
+      error: { code: 'internal' },
+    });
     mocks.head.mockRejectedValueOnce(new Error('unavailable'));
-    expect(await storage.exists('failed')).toMatchObject({
+    expect(await storage.head('failed')).toMatchObject({
       ok: false,
       error: { code: 'internal' },
     });

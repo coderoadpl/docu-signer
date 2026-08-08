@@ -54,7 +54,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),
-    exists: async () => ok(false),
+    head: async () => ok(null),
     delete: async () => ok(undefined),
     createUploadUrl: async () => ok(null),
   },
