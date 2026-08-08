@@ -31,6 +31,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'tsx scripts/e2e-server.ts',
+    env: { ...process.env, VITE_MAGIC_LINK: 'on' },
     url: `${baseURL}/api/health`,
     reuseExistingServer: !process.env['CI'],
     timeout: 120_000,
