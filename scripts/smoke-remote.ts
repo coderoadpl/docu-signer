@@ -10,8 +10,8 @@ if (!baseUrl) {
 const smokeEmail = process.env['SMOKE_EMAIL'];
 const anonymousOnly = smokeEmail === undefined || smokeEmail === '';
 const email = anonymousOnly ? 'demo@agentproofarch.dev' : smokeEmail;
-const password = process.env['SMOKE_PASSWORD'] ?? 'demo1234';
-const tenant = process.env['SMOKE_TENANT'] ?? 'default';
+const password = process.env['SMOKE_PASSWORD'] || 'demo1234';
+const tenant = process.env['SMOKE_TENANT'] || 'default';
 // When CI passes the deployment SHA, assert the live health SHA equals it so a
 // smoke run can never green-light a deployment other than the one that triggered it.
 const expectedSha = process.env['EXPECTED_SHA'] || undefined;
