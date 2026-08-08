@@ -1510,8 +1510,14 @@ foundation):
   vars are marked Sensitive** (write-only in the dashboard/CLI; control 3 of 5).
 - **Migrations run at build time** against that environment's own database
   (previews migrate their ephemeral branch — always safe; staging/prod are
-  forward-only: destructive changes ship as two deploys, expand → contract). The
-  drizzle migration sequence is mechanically gated (DECIDE F2): `pnpm run doc-lint`
+  forward-only: destructive changes ship as two deploys, expand → contract).
+
+  **Owner ruling (2026-07-27):** the migration lineage was rebuilt wholesale in
+  the skeleton-migration PR while no persistent environment existed. Every
+  database predating that merge must be recreated from `0000`; forward-only
+  binds from that merge onward.
+
+  The drizzle migration sequence is mechanically gated (DECIDE F2): `pnpm run doc-lint`
   runs `lintMigrations`, which fails the build on a duplicate, gapped or
   non-`<NNNN>` prefix or a `meta/_journal.json` that does not match the `.sql`
   files on disk — a config-regression probe plants a duplicate to prove the gate
