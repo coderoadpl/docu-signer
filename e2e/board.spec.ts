@@ -38,7 +38,6 @@ test('board: add, reorder, persist across reload, move across columns, undo rest
   await page.goto('/app/board');
   await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible();
 
-  // Add two cards to todo; wait until the optimistic rows reconcile.
   await column(page, 'todo').getByLabel('New card in todo').fill(cardA);
   await column(page, 'todo').getByRole('button', { name: 'add' }).click();
   await expect(column(page, 'todo').getByText(cardA)).toBeVisible();
@@ -48,7 +47,6 @@ test('board: add, reorder, persist across reload, move across columns, undo rest
   await expect(page.locator('section[aria-label] [aria-busy="true"]')).toHaveCount(0);
   await expect.poll(() => titlesIn(page, 'todo', mine)).toEqual([cardA, cardB]);
 
-  // Reorder within the column via the accessible buttons.
   await page.getByRole('button', { name: `Move ${cardB} up` }).click();
   await expect.poll(() => titlesIn(page, 'todo', mine)).toEqual([cardB, cardA]);
   await settled(page);
@@ -60,7 +58,6 @@ test('board: add, reorder, persist across reload, move across columns, undo rest
   await expect.poll(() => titlesIn(page, 'todo', mine)).toEqual([cardB, cardA]);
   await expect(page.getByRole('button', { name: 'undo' })).toHaveCount(0);
 
-  // Cross-column move persists too.
   await page.getByRole('button', { name: `Move ${cardB} right` }).click();
   await expect.poll(() => titlesIn(page, 'doing', mine)).toEqual([cardB]);
   await settled(page);
@@ -69,17 +66,14 @@ test('board: add, reorder, persist across reload, move across columns, undo rest
   await expect.poll(() => titlesIn(page, 'doing', mine)).toEqual([cardB]);
   await expect.poll(() => titlesIn(page, 'todo', mine)).toEqual([cardA]);
 
-  // Move A over to doing as well, then undo — A returns to todo.
   await page.getByRole('button', { name: `Move ${cardA} right` }).click();
   await expect.poll(() => titlesIn(page, 'doing', mine)).toEqual([cardB, cardA]);
   await settled(page);
   await page.getByRole('button', { name: 'undo' }).click();
   await expect.poll(() => titlesIn(page, 'todo', mine)).toEqual([cardA]);
   await expect.poll(() => titlesIn(page, 'doing', mine)).toEqual([cardB]);
-  // The undo move committed and consumed the single undo step.
   await expect(page.getByRole('button', { name: 'undo' })).toHaveCount(0);
 
-  // And the restored layout is durable.
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible();
   await expect.poll(() => titlesIn(page, 'todo', mine)).toEqual([cardA]);

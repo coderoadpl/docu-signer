@@ -89,13 +89,11 @@ describe('loadEnv', () => {
   });
 });
 
-// A minimal source that parses clean in local dev (neither deploy signal set).
 const localDev = (): NodeJS.ProcessEnv => ({
   DB_DRIVER: 'node-postgres',
   BETTER_AUTH_SECRET: DEV_ONLY_SECRET,
 });
 
-// A minimal source that parses clean once deployed on Vercel.
 const deployed = (): NodeJS.ProcessEnv => ({
   VERCEL: '1',
   DB_DRIVER: 'neon-http',

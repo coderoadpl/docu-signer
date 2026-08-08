@@ -28,7 +28,6 @@ const card = (id: string, title: string, column: string, position: number): Card
   createdAt: '2026-07-11T00:00:00.000Z',
 });
 
-// Alpha, Beta in todo; Gamma in doing.
 const serverCards: readonly Card[] = [
   card('a', 'Alpha', 'todo', 0),
   card('b', 'Beta', 'todo', 1),
@@ -134,7 +133,6 @@ describe('board store — undo', () => {
     await flush();
     expect(canUndoOf(store.getState())).toBe(true);
 
-    // The server list now reflects the committed move (a is in doing).
     const moved: readonly Card[] = [
       card('a', 'Alpha', 'doing', 0),
       card('c', 'Gamma', 'doing', 1),
@@ -152,9 +150,6 @@ describe('board store — undo', () => {
 });
 
 describe('board island core — the public seam runs in plain node', () => {
-  // The PUBLIC factory (features/board/index.web.ts binds this in the browser):
-  // fed a fake gateway and fake descriptors, the whole seam — send in,
-  // subscribe + selectors out — runs with no api.ts, no React and no DOM.
   const descriptors = {
     list: { queryKey: ['cards', 'list', 'personal'] },
     invalidates: () => ({ queryKey: ['cards', 'list'] }),

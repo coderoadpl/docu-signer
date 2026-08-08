@@ -276,7 +276,6 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ tenant: result.value }) : result);
   });
 
-  // Everything below is tenant-aware: authenticate, resolve tenant, inject identity.
   app.use('/api/*', async (c, next) => {
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
     const identity = await resolveIdentity(

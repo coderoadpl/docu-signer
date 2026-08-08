@@ -28,7 +28,6 @@ const roster = {
   nextCursor: null,
 };
 
-/** The owner row renders a disabled revoke button; the admin's is the enabled one. */
 const enabledRevoke = (): HTMLElement => {
   const button = screen
     .getAllByRole('button', { name: 'revoke' })
@@ -63,7 +62,6 @@ describe('StaffSettingsPage', () => {
     expect(await screen.findByText('admin@acme.dev')).toBeInTheDocument();
 
     await userEvent.click(enabledRevoke());
-    // Dialog is open but nothing has been revoked yet.
     const dialog = await screen.findByRole('dialog');
     expect(revokeCalls).toBe(0);
 

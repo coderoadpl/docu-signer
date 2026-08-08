@@ -747,8 +747,6 @@ publicCmd
     const ctx = cliCtx();
     const slug = parseArgs(canonicalSlugSchema, tenantArg, ctx.json);
     if (slug === undefined) return;
-    // Two-step, exercising the content-version flow: discover the current
-    // version, then fetch the long-cached profile keyed on it.
     const discovery = await ctx.publicApi.publicTenantDiscovery(slug);
     if (!discovery.ok) {
       emit(discovery, ctx.json, () => '');

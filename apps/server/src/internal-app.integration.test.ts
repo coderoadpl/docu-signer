@@ -62,7 +62,6 @@ beforeAll(async () => {
     { id: 'd-pending', tenantId: 't-acme', domain: 'pending.acme.com', kind: 'custom', verified: false },
   ]);
 
-  // Five members with MIXED-CASE emails for the demo backfill to normalise.
   await db.insert(members).values(
     Array.from({ length: 5 }, (_unused, i) => ({
       id: `bf-member-${i}`,
@@ -112,7 +111,6 @@ describe('backfill endpoint against Postgres (batch-checkpointed to completion)'
   };
 
   it('drives the demo backfill to completion across multiple calls, resuming from the checkpoint', async () => {
-    // Five rows, two per call: page 1 (2), page 2 (2), page 3 (1, under limit → done).
     const first = await runBatch(2);
     expect(first).toMatchObject({ processed: 2, done: false });
     const second = await runBatch(2);
@@ -120,11 +118,9 @@ describe('backfill endpoint against Postgres (batch-checkpointed to completion)'
     const third = await runBatch(2);
     expect(third).toMatchObject({ processed: 5, done: true });
 
-    // Idempotent + latched: a further call short-circuits on the done checkpoint.
     const extra = await runBatch(2);
     expect(extra).toMatchObject({ processed: 5, done: true });
 
-    // Every member email is now lowercased (the backfill's actual effect).
     const rows = await db.select({ email: members.email }).from(members);
     expect(rows.every((row) => row.email === row.email.toLowerCase())).toBe(true);
     expect(rows).toHaveLength(5);

@@ -111,8 +111,6 @@ describe('TOTP 2FA against the real Better Auth stack (US-028a)', () => {
     const verified = await call('/api/auth/two-factor/verify-totp', { code }, token);
     expect(verified.status).toBe(200);
 
-    // The otplib-generated code was accepted and enrolment persisted: the user
-    // now carries twoFactorEnabled and a secret-bearing two_factor row.
     const flag = await authPool.query('SELECT two_factor_enabled FROM "user" WHERE email = $1', [email]);
     expect(flag.rows[0]?.two_factor_enabled).toBe(true);
     const secretRow = await authPool.query(

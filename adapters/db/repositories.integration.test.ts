@@ -145,16 +145,12 @@ const seed = async (): Promise<void> => {
     ownerGrant: { id: 'itest-grant-b', userId: staffB },
   });
 
-  // Global accounts (the auth `user` table) the staff roster join and the FR-8
-  // directory lookup read. `grantable` holds no grant — the account that a grant
-  // test promotes and revokes.
   await db.insert(user).values([
     { id: staffA, name: 'Staff A', email: 'staff-a@example.com' },
     { id: staffB, name: 'Staff B', email: 'staff-b@example.com' },
     { id: adminB, name: 'Admin B', email: 'admin-b@example.com' },
     grantable,
   ]);
-  // An 'admin' grant on B — proves the non-owner role round-trips and stays scoped.
   await db.insert(tenantAdmins).values({
     id: 'itest-grant-b-admin',
     tenantId: tenantB.id,
@@ -323,7 +319,6 @@ describe('CardRepository', () => {
   });
 
   it('updatePositions rewrites column + position for the tenant rows', async () => {
-    // Move cardA2 to the front of doing, renumber both columns contiguously.
     await cardRepo().updatePositions(tenantA.id, 'personal', [
       { id: cardA2.id, column: 'doing', position: 0 },
       { id: cardA3.id, column: 'doing', position: 1 },
@@ -337,7 +332,6 @@ describe('CardRepository', () => {
 
   it('updatePositions is tenant-scoped: another tenant cannot renumber these cards', async () => {
     const before = (await cardRepo().listByTenant(tenantB.id, 'personal')).find((c) => c.id === cardB1.id);
-    // tenantA attempts to move tenantB's card — the id/tenant guard makes it a no-op.
     await cardRepo().updatePositions(tenantA.id, 'personal', [{ id: cardB1.id, column: 'done', position: 9 }]);
     const after = (await cardRepo().listByTenant(tenantB.id, 'personal')).find((c) => c.id === cardB1.id);
     expect(after).toEqual(before);
@@ -483,7 +477,6 @@ describe('team board rules against Postgres', () => {
     const id = created.value.id;
     expect(created.value.visited).toEqual(['todo']);
 
-    // review before in-dev is rejected with its rule, and persists nothing.
     const early = await moveCard(ctx, { cardId: id, board: 'team', toColumn: 'review', toIndex: 0 }, teamDeps());
     expect(early).toMatchObject({
       ok: false,
@@ -492,7 +485,6 @@ describe('team board rules against Postgres', () => {
     const afterReject = (await cardRepo().listByTenant(tenantA.id, 'team')).find((c) => c.id === id);
     expect(afterReject).toMatchObject({ column: 'todo', visited: ['todo'] });
 
-    // The legal path advances the card and grows visited, round-tripped through PG.
     for (const toColumn of ['in-dev', 'review', 'done']) {
       const step = await moveCard(ctx, { cardId: id, board: 'team', toColumn, toIndex: 0 }, teamDeps());
       expect(step.ok).toBe(true);
@@ -503,7 +495,6 @@ describe('team board rules against Postgres', () => {
   });
 
   it('enforces the WIP limit against real rows', async () => {
-    // in-dev limit is 3: seed three occupants, a fourth move is rejected.
     for (let i = 0; i < 3; i += 1) {
       await cardRepo().create({
         id: fixtureUuid(10 + i),
@@ -605,7 +596,6 @@ describe('MemberRepository + member use-cases', () => {
     const listedA = await listMembers(staffCtx(tenantA.id), {}, deps);
     expect(listedA.ok && listedA.value.items.some((m) => m.id === bMemberId)).toBe(false);
 
-    // A staff member of A cannot read (or export) B's member by id — tenant-scoped.
     expect(await memberRepo().findByTenantAndId(tenantA.id, bMemberId)).toBeNull();
     const exportAcrossTenant = await exportMember(staffCtx(tenantA.id), { id: bMemberId }, deps);
     expect(exportAcrossTenant).toMatchObject({ ok: false, error: { code: 'not_found' } });
@@ -624,12 +614,10 @@ describe('MemberRepository + member use-cases', () => {
     expect(bound?.id).toBe(memberId);
     expect(bound?.userId).toBe('itest-bound-user');
 
-    // The claim persisted: the row now carries the account id and lastSeenAt.
     const persisted = await memberRepo().findByTenantAndId(tenantA.id, memberId);
     expect(persisted?.userId).toBe('itest-bound-user');
     expect(persisted?.lastSeenAt).toBe('2026-03-02T00:00:00.000Z');
 
-    // Idempotent: a second, different account does NOT steal the bound member.
     const second = await bindMemberOnSignIn(
       { tenantId: tenantA.id, userId: 'itest-other-user', email: 'bind@example.com' },
       { members: memberRepo(), clock: { nowIso: () => '2026-03-03T00:00:00.000Z' } },
@@ -657,17 +645,14 @@ describe('MemberRepository + member use-cases', () => {
     const bId = inB.ok ? inB.value.member.id : '';
     expect(aId).not.toBe(bId);
 
-    // Independent profiles: an update in A must not touch B's tags.
     await updateMember(staffCtx(tenantA.id), { id: aId, tags: ['alpha-vip', 'renewed'] }, deps);
     const bBefore = await memberRepo().findByEmail(tenantB.id, sharedEmail);
     expect(bBefore?.tags).toEqual(['beta-basic']);
 
-    // Removing A's member deletes exactly A's row and reports the cascade count.
     const removed = await removeMember(staffCtx(tenantA.id), { id: aId }, deps);
     expect(removed).toMatchObject({ ok: true, value: { memberId: aId, deleted: { members: 1 } } });
     expect(await memberRepo().findByTenantAndId(tenantA.id, aId)).toBeNull();
 
-    // B's member (its own row and the shared global account it points at) survives.
     const bAfter = await memberRepo().findByEmail(tenantB.id, sharedEmail);
     expect(bAfter?.id).toBe(bId);
     expect(bAfter?.tags).toEqual(['beta-basic']);
@@ -689,7 +674,6 @@ describe('StaffRepository + UserDirectory', () => {
         expect.objectContaining({ userId: adminB, email: 'admin-b@example.com', role: 'admin' }),
       ]),
     );
-    // A's staff never leaks into B's roster.
     expect(roster.items.map((row) => row.userId)).not.toContain(staffA);
   });
 
@@ -706,7 +690,6 @@ describe('StaffRepository + UserDirectory', () => {
 
   it('findGrant reads the tenant grant graph, tenant-scoped', async () => {
     expect(await staffRepo().findGrant(tenantA.id, staffA)).toMatchObject({ userId: staffA, role: 'owner' });
-    // adminB is B's admin — invisible from A, and not an owner of B.
     expect(await staffRepo().findGrant(tenantA.id, adminB)).toBeNull();
     expect(await staffRepo().findGrant(tenantB.id, adminB)).toMatchObject({ role: 'admin' });
   });
@@ -724,12 +707,9 @@ describe('StaffRepository + UserDirectory', () => {
   it('grant then revoke round-trips a grant, tenant-scoped (cross-tenant revoke is a no-op)', async () => {
     await staffRepo().grant({ id: 'itest-grant-grantable-b', tenantId: tenantB.id, userId: grantable.id, role: 'admin' });
     expect(await staffRepo().findGrant(tenantB.id, grantable.id)).toMatchObject({ role: 'admin' });
-    // Cross-tenant isolation: the grant lives only in B.
     expect(await staffRepo().findGrant(tenantA.id, grantable.id)).toBeNull();
     expect((await staffRepo().listPageByTenant(tenantA.id, null, 50)).items.map((row) => row.userId)).not.toContain(grantable.id);
 
-    // A tenant-A revoke cannot remove a tenant-B grant (an admin is always
-    // removable — the last-owner guard only protects owners).
     expect(await staffRepo().revokeLastOwnerSafe(tenantA.id, grantable.id)).toBe(0);
     expect(await staffRepo().revokeLastOwnerSafe(tenantB.id, grantable.id)).toBe(1);
     expect(await staffRepo().findGrant(tenantB.id, grantable.id)).toBeNull();
@@ -763,15 +743,12 @@ describe('StaffRepository + UserDirectory', () => {
       staffRepo().revokeLastOwnerSafe(raceTenant.id, 'race-owner-2'),
     ]);
 
-    // Exactly one revoke wins; the tenant keeps an owner (counted straight off
-    // tenant_admins — the roster join to `user` would drop these account-less
-    // seed grants).
     expect(first + second).toBe(1);
-    const owners = await db
+    const ownerRowsIncludingAccountlessSeedGrants = await db
       .select({ c: count() })
       .from(tenantAdmins)
       .where(and(eq(tenantAdmins.tenantId, raceTenant.id), eq(tenantAdmins.role, 'owner')));
-    expect(owners[0]?.c).toBe(1);
+    expect(ownerRowsIncludingAccountlessSeedGrants[0]?.c).toBe(1);
   });
 });
 
@@ -927,8 +904,6 @@ describe('DocumentRepository', () => {
 // Runs LAST: it deletes tenant A, so every earlier suite must have observed the
 // seeded A rows before this destructive cascade removes them.
 describe('tenant offboarding cascade', () => {
-  // Every tenant-owned aggregate, counted directly against the tables (cards
-  // spans both boards, so it is not board-scoped here).
   const tenantRowCounts = async (tenantId: string) => {
     const [todoRows, cardRows, memberRows, adminRows, domainRows, tenantRows] = await Promise.all([
       db.select().from(todos).where(eq(todos.tenantId, tenantId)),
@@ -950,7 +925,6 @@ describe('tenant offboarding cascade', () => {
 
   it('deleteTenant erases every A aggregate and leaves every B row untouched', async () => {
     const beforeA = await tenantRowCounts(tenantA.id);
-    // A owns at least one row in each aggregate, so the cascade has something to prove.
     expect(beforeA.tenant).toBe(1);
     expect(beforeA.todos).toBeGreaterThan(0);
     expect(beforeA.cards).toBeGreaterThan(0);

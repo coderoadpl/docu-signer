@@ -54,13 +54,10 @@ test('team board: entry column only, WIP guard blocks visibly and releases, lega
   await expect(page.getByRole('heading', { name: 'Team board' })).toBeVisible();
   await settled(page);
 
-  // Team cards are born in the entry column only — the other columns simply
-  // have no add form (the server refuses direct creation too: entry-column rule).
   await expect(page.getByLabel('New card in todo')).toBeVisible();
   await expect(page.getByLabel('New card in done')).toHaveCount(0);
   await expect(page.getByLabel('New card in review')).toHaveCount(0);
 
-  // Fill in-dev to its limit (3), counting whatever is already there.
   const fillers: string[] = [];
   let occupancy = await inDevOccupancy(page);
   while (occupancy < 3) {
@@ -74,8 +71,6 @@ test('team board: entry column only, WIP guard blocks visibly and releases, lega
   await addCard(page, walker);
   await settled(page);
 
-  // The walker's move is a real button, visibly DISABLED, with the rejecting
-  // rule in its accessible name and the card's caption — not a hidden option.
   const blockedMove = page.getByRole('button', {
     name: `Move ${walker} to in-dev (blocked: wip-limit)`,
   });

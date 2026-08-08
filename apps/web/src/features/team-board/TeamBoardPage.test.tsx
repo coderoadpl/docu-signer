@@ -88,8 +88,6 @@ describe('TeamBoardPage', () => {
   });
 
   it('disables an illegal move and names the rejecting rule as accessible text', async () => {
-    // review is full at its WIP limit of 2, so moving Alpha (in-dev) into it is
-    // blocked by wip-limit — the button must be disabled and say so.
     server.use(
       ...cardsBackend([
         makeCard('r1', 'R1', 'review', ['todo', 'in-dev', 'review']),
@@ -106,7 +104,6 @@ describe('TeamBoardPage', () => {
     const blocked = screen.getByRole('button', { name: 'Move Alpha to review (blocked: wip-limit)' });
     expect(blocked).toBeDisabled();
 
-    // The WIP counter makes the limit visible.
     const review = screen.getByRole('region', { name: 'review' });
     expect(within(review).getByText('2/2')).toBeInTheDocument();
   });

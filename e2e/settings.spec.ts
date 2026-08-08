@@ -11,7 +11,6 @@ const signInDemo = async (page: Page): Promise<void> => {
   await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
 };
 
-/** Register an account through the UI in a throwaway context (its own cookie jar). */
 const registerAccount = async (page: Page, email: string): Promise<void> => {
   await page.goto('/register');
   await page.getByLabel('name').fill('Staff Target');
@@ -32,14 +31,11 @@ test('register lands the new user in /app onboarding and creates the first tenan
   await page.getByLabel('password').fill('registrant-pass-1');
   await page.getByRole('button', { name: 'create account' }).click();
 
-  // The new user has no access to the acme tenant this host resolves to, so the
-  // authenticated shell lands them on the create-tenant onboarding (US-016).
   await expect(page.getByLabel('New tenant name')).toBeVisible();
 
   await page.getByLabel('New tenant name').fill(tenantName);
   await page.getByRole('button', { name: 'create tenant' }).click();
 
-  // The freshly-created tenant (with its owner row) appears as a switch link.
   await expect(page.getByRole('link', { name: new RegExp(tenantName) })).toBeVisible();
 });
 
@@ -76,7 +72,6 @@ test('an owner grants then revokes admin access, gated by a confirmation dialog'
 
   const row = page.getByRole('listitem').filter({ hasText: email });
   await row.getByRole('button', { name: 'revoke' }).click();
-  // The mutation is gated: it fires only after confirming in the dialog.
   await page.getByRole('dialog').getByRole('button', { name: 'Revoke' }).click();
   await expect(page.getByText(email)).toHaveCount(0);
 });
@@ -88,7 +83,6 @@ test('an owner adds, checks and removes a custom domain', async ({ page }) => {
   await signInDemo(page);
   await page.goto('/app/settings/domains');
 
-  // The add flow shows the DNS record derived from SELF_HOST_TARGET_CNAME.
   await expect(page.getByText(/CNAME record pointing your domain at apps\.agentproofarch\.test/)).toBeVisible();
 
   await page.getByLabel('New domain').fill(domain);
@@ -97,7 +91,6 @@ test('an owner adds, checks and removes a custom domain', async ({ page }) => {
   const row = page.getByRole('listitem').filter({ hasText: domain });
   await expect(row).toContainText('pending');
 
-  // The noop provisioner resolves every domain, so check flips it to verified.
   await row.getByRole('button', { name: 'check' }).click();
   await expect(row).toContainText('verified');
 

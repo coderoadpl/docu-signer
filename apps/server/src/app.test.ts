@@ -243,8 +243,6 @@ describe('buildApp routes', () => {
   });
 
   it('mounts the Vercel backfill route only with a secret and gates it on that secret', async () => {
-    // No secret → the route is never registered, so the request falls through to
-    // the authenticated /api/* middleware (401), not the backfill handler.
     const withoutSecret = baseDeps();
     const unmounted = await buildApp(withoutSecret).request(
       '/api/internal/backfills/members-email-normalize',
@@ -257,13 +255,11 @@ describe('buildApp routes', () => {
     deps.backfillSecret = secret;
     const app = buildApp(deps);
 
-    // Missing/wrong secret header → unauthorized.
     const forbidden = await app.request('/api/internal/backfills/members-email-normalize', {
       method: 'POST',
     });
     expect(forbidden.status).toBe(401);
 
-    // Correct secret + a registered backfill → 200 with the batch progress.
     const okRes = await app.request('/api/internal/backfills/members-email-normalize', {
       method: 'POST',
       headers: { 'x-internal-secret': secret },
@@ -272,7 +268,6 @@ describe('buildApp routes', () => {
     const okBody = looseEnvelopeSchema.parse(await okRes.json());
     expect(okBody.ok).toBe(true);
 
-    // Correct secret + an unknown backfill → not_found envelope.
     const unknown = await app.request('/api/internal/backfills/no-such-backfill', {
       method: 'POST',
       headers: { 'x-internal-secret': secret },

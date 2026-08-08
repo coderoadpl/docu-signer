@@ -213,7 +213,6 @@ describe('cards use-cases — listing + adding', () => {
       ok: true,
       value: { board: 'team', column: 'todo', visited: ['todo'] },
     });
-    // 'doing' is a personal column, not a team column.
     expect(
       await addCard(
         { identity: identity('t-acme'), tenantCreationMode: 'open' },
@@ -237,7 +236,6 @@ describe('cards use-cases — listing + adding', () => {
         error: { code: 'validation', details: { rule: 'entry-column' } },
       });
     }
-    // The personal board keeps free placement.
     expect(
       await addCard(
         { identity: identity('t-acme'), tenantCreationMode: 'open' },
@@ -324,7 +322,6 @@ describe('cards use-cases — moveCard (personal, free movement)', () => {
 });
 
 describe('cards use-cases — moveCard (team, guarded movement)', () => {
-  // A team board sized so the legal path is walkable and each guard is reachable.
   const seed = () => [
     card('c', 't-acme', 'todo', 0, { board: 'team', visited: ['todo'] }),
   ];
@@ -342,7 +339,6 @@ describe('cards use-cases — moveCard (team, guarded movement)', () => {
     expect(await move(repo, 'c', 'review')).toMatchObject({ ok: true, value: { column: 'review' } });
     const done = await move(repo, 'c', 'done');
     expect(done).toMatchObject({ ok: true, value: { column: 'done' } });
-    // visited accumulated the whole path (dedup, order-preserving).
     const persisted = store.find((row) => row.id === fixtureId('c'));
     expect(persisted?.visited).toEqual(['todo', 'in-dev', 'review', 'done']);
   });
@@ -366,7 +362,6 @@ describe('cards use-cases — moveCard (team, guarded movement)', () => {
   });
 
   it('enforces the WIP limit on the destination column', async () => {
-    // in-dev limit is 3; fill it, then a fourth move is blocked.
     const { repo } = fakeRepo([
       card('o1', 't-acme', 'in-dev', 0, { board: 'team', visited: ['todo', 'in-dev'] }),
       card('o2', 't-acme', 'in-dev', 1, { board: 'team', visited: ['todo', 'in-dev'] }),
@@ -383,7 +378,6 @@ describe('cards use-cases — moveCard (team, guarded movement)', () => {
   it('a rejected move persists nothing', async () => {
     const { repo } = fakeRepo(seed());
     await move(repo, 'c', 'review');
-    // Still in todo, history untouched.
     expect(await layout(repo, 't-acme', 'team')).toEqual({ todo: ['c'] });
   });
 });

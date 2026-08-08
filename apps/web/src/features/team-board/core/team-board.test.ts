@@ -37,7 +37,6 @@ const card = (id: string, title: string, column: string, visited: readonly strin
   createdAt: '2026-07-19T00:00:00.000Z',
 });
 
-// Alpha in in-dev (has passed through in-dev); Beta in todo (has not).
 const serverCards: readonly Card[] = [
   card('a', 'Alpha', 'in-dev', ['todo', 'in-dev']),
   card('b', 'Beta', 'todo', ['todo']),
@@ -116,7 +115,6 @@ describe('team board store — oracle gate', () => {
     const store = createTeamBoardStore({ gateway, generateId: counter() });
     const before = effectiveBoard(store.getState(), serverCards);
 
-    // Beta has never visited in-dev, so review-requires-in-dev must block it.
     store.send({
       type: 'cardMoveRequested',
       cardId: 'b',
@@ -156,10 +154,6 @@ describe('team board store — rollback', () => {
 });
 
 describe('team board island core — the public seam runs in plain node', () => {
-  // The PUBLIC factory (features/team-board/index.web.ts binds this in the
-  // browser): fed a fake gateway and fake descriptors, the whole seam — send in,
-  // subscribe + selectors + oracle verdict out — runs with no api.ts, no React
-  // and no DOM.
   const descriptors = {
     list: { queryKey: ['cards', 'list', 'team'] },
     invalidates: () => ({ queryKey: ['cards', 'list'] }),
@@ -172,8 +166,6 @@ describe('team board island core — the public seam runs in plain node', () => 
     expect(core.teamBoardSelectors.list).toBe(descriptors.list);
     expect(core.teamBoardSelectors.columns).toEqual(['todo', 'in-dev', 'review', 'done']);
 
-    // Beta (never visited in-dev) → review is blocked by the domain oracle; the
-    // move never reaches the gateway and surfaces as lastRejection.
     core.send({
       type: 'cardMoveRequested',
       cardId: 'b',
@@ -188,7 +180,6 @@ describe('team board island core — the public seam runs in plain node', () => 
       rule: 'review-requires-in-dev',
     });
 
-    // Alpha (has visited in-dev) → review is allowed and lands optimistically.
     core.send({
       type: 'cardMoveRequested',
       cardId: 'a',
@@ -204,7 +195,6 @@ describe('team board island core — the public seam runs in plain node', () => 
 
 describe('team board selectors — WIP and verdicts', () => {
   it('reports each bounded column occupancy and limit', () => {
-    // review is full at its limit of 2.
     const full: readonly Card[] = [
       card('r1', 'R1', 'review', ['todo', 'in-dev', 'review']),
       card('r2', 'R2', 'review', ['todo', 'in-dev', 'review']),
@@ -214,7 +204,6 @@ describe('team board selectors — WIP and verdicts', () => {
     expect(wipLimitOf('review')).toBe(2);
     expect(wipLimitOf('todo')).toBeUndefined();
 
-    // Delta has visited in-dev, but review is full → blocked by wip-limit.
     const verdict = verdictOf(full, 'd', 'review');
     expect(verdict.allowed).toBe(false);
     expect(verdict.allowed ? undefined : verdict.rule).toBe('wip-limit');

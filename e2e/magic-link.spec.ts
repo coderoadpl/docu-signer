@@ -15,21 +15,15 @@ test('magic link signs in a provisioned member and binds them to the tenant', as
   await page.locator('#login-email').fill(PROVISIONED_MEMBER);
   await page.getByRole('button', { name: 'Wyślij link do logowania' }).click();
 
-  // The request is confirmed on the page without exposing the link.
   await expect(page.getByText(/znajdziesz w Mailpit/i)).toBeVisible();
 
-  // Recover the captured link from Mailpit (as a human would from the inbox).
   const link = await fetchMagicLink(MAILPIT_API_URL, PROVISIONED_MEMBER);
   expect(link).toContain('magic-link/verify');
 
   await page.goto(link);
 
-  // The verify redirects to the app shell; localhost resolves to acme, and the
-  // now-bound member sees the authenticated shell for that tenant (the switcher
-  // shows the acme slug — a member is not staff, so it has no tenant-name roster).
   await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText(/acme/i);
 
-  // The bound identity is the provisioned member's email (not the demo owner).
   const me = await page.request.get('/api/me');
   const meBody = await me.json();
   expect(meBody.ok).toBe(true);
