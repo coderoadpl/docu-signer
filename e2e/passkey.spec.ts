@@ -27,7 +27,7 @@ const signInWithPassword = async (page: Page): Promise<void> => {
   await page.goto('/login');
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await page.getByRole('button', { name: 'Zaloguj się' }).click();
   await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
 };
 
@@ -44,7 +44,7 @@ test('register a passkey in settings, then sign in with it (US-028a)', async ({ 
   await page.goto('/login');
 
   // No email or password is entered: the discoverable credential is what signs in.
-  await page.getByRole('button', { name: 'continue with a passkey' }).click();
+  await page.getByRole('button', { name: 'Zaloguj się kluczem dostępu' }).click();
   await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
 
   // The passkey was registered under the demo account, so the session it mints is demo's.

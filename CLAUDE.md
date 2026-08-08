@@ -54,10 +54,11 @@ rejected.)
 - `pnpm run e2e` = the **browser** gate: Playwright drives a real Chromium over
   the real stack (isolated `agentproofarch_e2e` DB, `localhost` registered as a
   single-tenant custom domain, `entry.node.ts` serving the built bundle) across
-  six spec files (15 tests): `app.spec.ts` (login → seeded todos → add-todo →
+  seven spec files (16 tests): `app.spec.ts` (login → seeded todos → add-todo →
   failed-login → cache headers → liveness/readiness → anonymous redirect to
   login), `board.spec.ts` (the personal board: add,
   reorder, persist across reload, move across columns, undo),
+  `documents.spec.ts` (create → role uploads → paired preview → export),
   `magic-link.spec.ts` (provisioned-member sign-in), `passkey.spec.ts`
   (registration → passkey sign-in), `settings.spec.ts` (registration and
   tenant/member/domain administration), and

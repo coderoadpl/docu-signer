@@ -9,16 +9,16 @@ const signIn = async (page: Page, password: string): Promise<void> => {
   await page.goto('/login');
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(password);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.getByRole('button', { name: 'Zaloguj się' }).click();
 };
 
 test('login lands on the tenant ledger with seeded todos', async ({ page }) => {
   await page.goto('/login');
-  await expect(page.getByRole('heading', { name: 'agentproofarch' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Podpisy' })).toBeVisible();
 
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.getByRole('button', { name: 'Zaloguj się' }).click();
 
   // The authenticated shell resolves the tenant from the host (localhost = acme)
   // and shows it in the header switcher; the seeded ledger renders below.
@@ -72,7 +72,7 @@ test('anonymous visitors are redirected off the boards to login', async ({ page 
     await page.goto(path);
     // The redirect must land on the login form, and no operable board shell
     // (add-card form) may ever be shown to an anonymous visitor.
-    await expect(page.getByLabel('email')).toBeVisible();
+    await expect(page.getByLabel('Adres e-mail')).toBeVisible();
     await expect(page.getByRole('button', { name: 'add' })).toHaveCount(0);
   }
 });

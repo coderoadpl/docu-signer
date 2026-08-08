@@ -13,7 +13,7 @@ const MAILPIT_API_URL = 'http://localhost:47980';
 test('magic link signs in a provisioned member and binds them to the tenant', async ({ page }) => {
   await page.goto('/login');
   await page.locator('#login-email').fill(PROVISIONED_MEMBER);
-  await page.getByRole('button', { name: /email me a sign-in link/i }).click();
+  await page.getByRole('button', { name: 'Wyślij link do logowania' }).click();
 
   // The request is confirmed on the page without exposing the link.
   await expect(page.getByText(/captured by mailpit/i)).toBeVisible();

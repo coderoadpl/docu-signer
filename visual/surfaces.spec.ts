@@ -9,7 +9,7 @@ const openLogin = async (page: Page): Promise<void> => {
   const config = page.waitForResponse('**/api/config');
   await page.goto('/login');
   await config;
-  await expect(page.getByRole('heading', { name: 'agentproofarch' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Podpisy' })).toBeVisible();
 };
 
 test('login page', async ({ page }) => {
@@ -22,7 +22,7 @@ test('login page with a rejected sign-in', async ({ page }) => {
   await openLogin(page);
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill('wrong-password');
-  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.getByRole('button', { name: 'Zaloguj się' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
 
   await expect(page).toHaveScreenshot('login-error.png', { fullPage: true });
@@ -42,7 +42,7 @@ test('authenticated app shell chrome', async ({ page }) => {
   await openLogin(page);
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.getByRole('button', { name: 'Zaloguj się' }).click();
 
   const chrome = page.getByRole('banner');
   await expect(chrome.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme Sp. z o.o.');

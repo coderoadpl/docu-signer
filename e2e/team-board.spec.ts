@@ -2,10 +2,10 @@ import { expect, test, type Page } from '@playwright/test';
 
 const signIn = async (page: Page): Promise<void> => {
   await page.goto('/login');
-  await expect(page.getByRole('heading', { name: 'agentproofarch' })).toBeVisible();
-  await page.getByLabel('email').fill('demo@agentproofarch.dev');
-  await page.getByLabel('password').fill('demo1234');
-  await page.getByRole('button', { name: 'sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Podpisy' })).toBeVisible();
+  await page.getByLabel('Adres e-mail').fill('demo@agentproofarch.dev');
+  await page.getByLabel('Hasło').fill('demo1234');
+  await page.getByRole('button', { name: 'Zaloguj się' }).click();
   await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
 };
 
