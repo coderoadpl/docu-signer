@@ -51,6 +51,10 @@ export default defineConfig({
         // surface, exercised by the smoke + e2e CI jobs — excluded for the same
         // reason as the smoke/e2e scripts above.
         'scripts/mailpit.ts',
+        // CI-only publisher/input programs exercise GitHub and git side effects.
+        'scripts/visual-report.ts',
+        'scripts/visual-screenshots.ts',
+        'scripts/visual-verdict-input.ts',
         // doc-lint is a check-gate orchestration script (a top-level program that
         // scans docs/config and process.exit()s), run by `pnpm run doc-lint`
         // inside `pnpm run check`, not by vitest. Like the smoke/e2e scripts above

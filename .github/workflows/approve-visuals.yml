@@ -1,0 +1,81 @@
+name: approve-visuals
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    if: >-
+      github.event.issue.pull_request != null
+      && startsWith(github.event.comment.body, '/approve-visuals')
+      && (
+        github.event.comment.author_association == 'OWNER'
+        || contains(fromJSON(vars.VISUAL_APPROVERS || '[]'),
+                    github.event.comment.user.login)
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      accepted: ${{ steps.command.outputs.accepted }}
+    steps:
+      - id: command
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            core.setOutput('accepted', context.payload.comment.body.trim() === '/approve-visuals');
+
+  approve-visuals:
+    needs: guard
+    if: needs.guard.outputs.accepted == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.issue.number }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+      COMMENTER: ${{ github.event.comment.user.login }}
+    steps:
+      - id: pull
+        run: |
+          pull="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
+          {
+            echo "head_repo=$(jq -r '.head.repo.full_name' <<<"${pull}")"
+            echo "head_ref=$(jq -r '.head.ref' <<<"${pull}")"
+            echo "head_sha=$(jq -r '.head.sha' <<<"${pull}")"
+          } >> "${GITHUB_OUTPUT}"
+
+      - if: steps.pull.outputs.head_repo != github.repository
+        run: |
+          gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="@${COMMENTER} \`/approve-visuals\` cannot commit baselines onto a fork branch. Review the artifacts and use the manual fork path."
+          exit 1
+
+      - env:
+          HEAD_REF: ${{ steps.pull.outputs.head_ref }}
+          HEAD_SHA: ${{ steps.pull.outputs.head_sha }}
+        run: |
+          gh api --method POST \
+            "repos/${REPOSITORY}/actions/workflows/visual-baselines.yml/dispatches" \
+            -f ref="${HEAD_REF}" \
+            -F "inputs[update]=true" \
+            -F "inputs[commit]=true" \
+            -f "inputs[sha]=${HEAD_SHA}"
+
+      - env:
+          HEAD_REF: ${{ steps.pull.outputs.head_ref }}
+          HEAD_SHA: ${{ steps.pull.outputs.head_sha }}
+        run: |
+          gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="Dispatched \`visual-baselines\` for \`${HEAD_SHA}\` on \`${HEAD_REF}\`. The baseline commit is rejected if the branch tip moves."
+
+      - run: |
+          gh api --method POST \
+            "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='+1'
