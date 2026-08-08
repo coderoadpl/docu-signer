@@ -216,7 +216,7 @@ humans who own the platform; the architecture (`docs/architecture.md`
 
 ### The `ai-review` gate (implementation of "fails closed")
 
-The [`ai-review`](../.github/workflows/ai-review.yml) workflow is the running
+The [`ai-review`](.github/workflows/ai-review.yml) workflow is the running
 version of the fail-closed bullet above (DECIDE F1). It runs
 [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action)
 (pinned to a commit SHA) on `pull_request` `opened`/`synchronize`/`ready_for_review`

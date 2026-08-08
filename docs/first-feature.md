@@ -184,9 +184,8 @@ pnpm run smoke                # runtime: real server + CLI flow, ~5s
 pnpm run e2e                  # browser: Playwright over the real stack
 ```
 
-When all three are green, open a PR. The
-[template](../.github/pull_request_template.md) is the same checklist made
-explicit — `check` green, `smoke` green, `e2e` green for a web change,
+When all three are green, open a PR with the same checklist made explicit —
+`check` green, `smoke` green, `e2e` green for a web change,
 architecture docs updated first if you changed a boundary, new deps via
 `pnpm add`, work done in a worktree. CI re-runs `check`, `smoke`
 and `e2e` on a clean checkout, and `post-deploy-smoke` verifies the deployed
