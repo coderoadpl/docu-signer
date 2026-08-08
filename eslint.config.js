@@ -84,8 +84,7 @@ const HTTP_GLOBALS = ['fetch', 'XMLHttpRequest', 'EventSource', 'WebSocket'].map
   message: NO_HTTP,
 }));
 
-const STORAGE_MESSAGE =
-  'localStorage/sessionStorage are banned outside the designated persistence helper (theme-mode.tsx).';
+const STORAGE_MESSAGE = 'localStorage/sessionStorage are banned in apps/web.';
 const STORAGE_GLOBALS = ['localStorage', 'sessionStorage'].map((name) => ({
   name,
   message: STORAGE_MESSAGE,
@@ -585,12 +584,6 @@ export default tseslint.config(
     files: ['apps/web/src/features/**/optimistic.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...WEB_RESTRICTED_SYNTAX],
-    },
-  },
-  {
-    files: ['apps/web/src/theme-mode.tsx'],
-    rules: {
-      'no-restricted-globals': ['error', ...HTTP_GLOBALS],
     },
   },
   {

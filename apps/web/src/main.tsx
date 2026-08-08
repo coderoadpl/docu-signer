@@ -1,6 +1,6 @@
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CssBaseline } from '@mui/material';
+import { CssBaseline, ThemeProvider } from '@mui/material';
 import { QueryClientProvider } from '@tanstack/react-query';
 import {
   createRootRoute,
@@ -12,7 +12,6 @@ import {
 } from '@tanstack/react-router';
 
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
-import { ThemeSwitcher } from './components/ui/ThemeSwitcher.js';
 import { AppLayout } from './AppLayout.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
@@ -29,7 +28,7 @@ import { StaffSettingsRoute } from './routes/settings-staff.js';
 import { SettingsRoute } from './routes/settings.js';
 import { TeamBoardRoute } from './routes/team-board.js';
 import { TodosRoute } from './routes/todos.js';
-import { ThemeModeProvider } from './theme-mode.js';
+import { createAppTheme } from './theme.js';
 
 /** Dev-only, lazy so the devtools chunk never reaches the production bundle. */
 const ReactQueryDevtools = lazy(() =>
@@ -38,14 +37,7 @@ const ReactQueryDevtools = lazy(() =>
   })),
 );
 
-const rootRoute = createRootRoute({
-  component: () => (
-    <>
-      <ThemeSwitcher />
-      <Outlet />
-    </>
-  ),
-});
+const rootRoute = createRootRoute({ component: Outlet });
 
 // The bare root redirects into the authenticated app; `/app` is the single
 // authenticated home (US-015). Keeping `/` as a redirect means any old bookmark
@@ -153,7 +145,7 @@ if (!container) throw new Error('Missing #root element');
 
 createRoot(container).render(
   <StrictMode>
-    <ThemeModeProvider>
+    <ThemeProvider theme={createAppTheme()}>
       <CssBaseline />
       <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
         <QueryClientProvider client={queryClient}>
@@ -166,6 +158,6 @@ createRoot(container).render(
           ) : null}
         </QueryClientProvider>
       </ErrorBoundary>
-    </ThemeModeProvider>
+    </ThemeProvider>
   </StrictMode>,
 );

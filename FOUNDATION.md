@@ -47,3 +47,5 @@ each.
   §Environments owner ruling); forward-only binds from that merge onward.
 - Login hides demo credentials and magic-link controls outside dev/e2e builds
   until SMTP exists in production.
+- A single Material theme and sidebar shell replace the upstream logbook look
+  and top navigation (owner decision 2026-07-27).

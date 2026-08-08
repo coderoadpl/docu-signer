@@ -87,9 +87,10 @@ away, or not screenshotted at all.
    demo todo with the same `createdAt`, and the ledger orders by that column —
    the row order is a database tie, and the rendered date is the day the seed
    ran. Neither is stable, so the ledger's *list* is not screenshotted; the
-   authenticated surface under test is the app shell chrome (wordmark, tenant
-   switcher, staff-role chip, account email, navigation), which is fully
-   determined by the seed. The remaining surfaces are the public ones: the login
+   authenticated surface under test is the app-bar chrome (tenant context and
+   switcher, staff-role chip, account email, sign-out) — since the sidebar
+   shell (2026-07-27), the wordmark and primary navigation live in the
+   drawer, outside this shot — which is fully determined by the seed. The remaining surfaces are the public ones: the login
    page, its error state, and the register page. Four screenshots that are
    trustworthy beat twenty that are re-baselined on sight.
 
