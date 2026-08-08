@@ -1,4 +1,4 @@
-import { createTheme } from '@mui/material/styles';
+import { createTheme, getContrastRatio } from '@mui/material/styles';
 import { describe, expect, it } from 'vitest';
 
 import { createAppTheme } from './theme.js';
@@ -12,12 +12,11 @@ describe('createAppTheme', () => {
     expect(createAppTheme().palette.primary.main).toBe(createTheme().palette.primary.main);
   });
 
-  it('picks accessible contrast text per accent hue at the 4.5 threshold', () => {
-    const purple = createAppTheme(280);
-    const yellow = createAppTheme(60);
-
-    expect(purple.palette.primary.contrastText).toBe('#fff');
-    expect(yellow.palette.primary.contrastText).not.toBe('#fff');
+  it('picks contrast text meeting WCAG AA for any accent hue', () => {
+    for (const hue of [0, 60, 120, 200, 280, 340]) {
+      const { main, contrastText } = createAppTheme(hue).palette.primary;
+      expect(getContrastRatio(main, contrastText)).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it('uses the Material shape and scales down display headings', () => {
