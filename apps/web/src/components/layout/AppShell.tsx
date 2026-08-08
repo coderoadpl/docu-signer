@@ -32,19 +32,37 @@ const MenuIcon = () => (
   </SvgIcon>
 );
 
+const CloseIcon = () => (
+  <SvgIcon>
+    <path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z" />
+  </SvgIcon>
+);
+
 const Sidebar = ({
   brand,
   navigation,
   onNavigate,
+  onClose,
 }: {
   brand: ReactNode;
   navigation: ReactNode;
   onNavigate?: () => void;
+  onClose?: () => void;
 }) => (
   <Stack sx={{ height: '100%' }}>
-    <Box sx={{ px: 3, py: 2.5 }}>{brand}</Box>
+    <Stack
+      direction="row"
+      sx={{ minHeight: '4.5rem', px: 3, py: 1.5, alignItems: 'center', gap: 1 }}
+    >
+      <Box sx={{ flex: 1 }}>{brand}</Box>
+      {onClose ? (
+        <IconButton aria-label="Zamknij nawigację" onClick={onClose}>
+          <CloseIcon />
+        </IconButton>
+      ) : null}
+    </Stack>
     <Divider />
-    <Box component="nav" aria-label="Primary navigation" onClick={onNavigate} sx={{ py: 1.5 }}>
+    <Box component="nav" aria-label="Główna nawigacja" onClick={onNavigate} sx={{ py: 1.5 }}>
       {navigation}
     </Box>
   </Stack>
@@ -89,6 +107,7 @@ export const AppShell = ({
           brand={brand}
           navigation={navigation}
           onNavigate={() => setMobileOpen(false)}
+          onClose={() => setMobileOpen(false)}
         />
       </Drawer>
       <Box sx={{ display: 'flex', flex: 1, minWidth: 0, flexDirection: 'column' }}>
@@ -96,7 +115,7 @@ export const AppShell = ({
           <Toolbar sx={{ gap: 1.5 }}>
             <IconButton
               edge="start"
-              aria-label="Open navigation"
+              aria-label="Otwórz nawigację"
               onClick={() => setMobileOpen(true)}
               sx={{ display: { xs: 'inline-flex', md: 'none' } }}
             >

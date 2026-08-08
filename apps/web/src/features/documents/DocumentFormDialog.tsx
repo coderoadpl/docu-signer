@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
@@ -44,13 +44,46 @@ export const DocumentFormDialog = ({
   const [values, setValues] = useState<DocumentFormValues>(
     initialValues ?? emptyDocumentForm(),
   );
+  const [fieldErrors, setFieldErrors] = useState<{
+    title?: string;
+    documentDate?: string;
+  }>({});
+  const titleInput = useRef<HTMLInputElement>(null);
+  const dateInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) setValues(initialValues ?? emptyDocumentForm());
+    if (open) {
+      setValues(initialValues ?? emptyDocumentForm());
+      setFieldErrors({});
+    }
   }, [initialValues, open]);
 
-  const field = (name: keyof DocumentFormValues, value: string) =>
+  const field = (name: keyof DocumentFormValues, value: string) => {
     setValues((current) => ({ ...current, [name]: value }));
+    if (name === 'title' || name === 'documentDate') {
+      setFieldErrors((current) => ({ ...current, [name]: undefined }));
+    }
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const errors = {
+      ...(values.title.trim() ? {} : { title: 'Tytuł jest wymagany' }),
+      ...(values.documentDate
+        ? {}
+        : { documentDate: 'Data dokumentu jest wymagana' }),
+    };
+    setFieldErrors(errors);
+    if (errors.title) {
+      titleInput.current?.focus();
+      return;
+    }
+    if (errors.documentDate) {
+      dateInput.current?.focus();
+      return;
+    }
+    onSubmit(values);
+  };
 
   return (
     <Dialog open={open} onClose={pending ? undefined : onClose} fullWidth maxWidth="sm">
@@ -59,17 +92,26 @@ export const DocumentFormDialog = ({
         <Stack
           component="form"
           id="document-form"
-          onSubmit={(event: FormEvent) => {
-            event.preventDefault();
-            onSubmit(values);
-          }}
+          noValidate
+          onSubmit={submit}
           sx={{ gap: 2, pt: 1 }}
         >
           <TextField
-            required
+            id="document-title"
             label="Tytuł"
             value={values.title}
             onChange={(event) => field('title', event.target.value)}
+            error={Boolean(fieldErrors.title)}
+            helperText={fieldErrors.title}
+            inputRef={titleInput}
+            slotProps={{
+              htmlInput: {
+                'aria-describedby': fieldErrors.title
+                  ? 'document-title-helper-text'
+                  : undefined,
+              },
+              formHelperText: { id: 'document-title-helper-text' },
+            }}
           />
           <FormControl required>
             <InputLabel id="document-type-label">Typ</InputLabel>
@@ -89,12 +131,23 @@ export const DocumentFormDialog = ({
             </Select>
           </FormControl>
           <TextField
-            required
+            id="document-date"
             label="Data dokumentu"
             type="date"
             value={values.documentDate}
             onChange={(event) => field('documentDate', event.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }}
+            error={Boolean(fieldErrors.documentDate)}
+            helperText={fieldErrors.documentDate}
+            inputRef={dateInput}
+            slotProps={{
+              inputLabel: { shrink: true },
+              htmlInput: {
+                'aria-describedby': fieldErrors.documentDate
+                  ? 'document-date-helper-text'
+                  : undefined,
+              },
+              formHelperText: { id: 'document-date-helper-text' },
+            }}
           />
           <TextField
             label="Osoba"
@@ -107,7 +160,7 @@ export const DocumentFormDialog = ({
             value={values.tags}
             onChange={(event) => field('tags', event.target.value)}
           />
-          {error ? <Alert>{error}</Alert> : null}
+          {error ? <Alert severity="error">{error}</Alert> : null}
         </Stack>
       </DialogContent>
       <DialogActions>

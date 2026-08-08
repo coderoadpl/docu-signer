@@ -18,16 +18,16 @@ describe('TwoFactorSection', () => {
 
     renderWithProviders(<TwoFactorSection />);
 
-    await userEvent.type(screen.getByLabelText('account password'), 'demo1234');
-    await userEvent.click(screen.getByRole('button', { name: 'enable 2FA' }));
+    await userEvent.type(screen.getByLabelText('Hasło do konta'), 'demo1234');
+    await userEvent.click(screen.getByRole('button', { name: 'Włącz 2FA' }));
 
-    const uri = await screen.findByLabelText('totp enrolment uri');
+    const uri = await screen.findByLabelText('Adres URI konfiguracji TOTP');
     expect(uri).toHaveValue('otpauth://totp/demo?secret=ABCD');
 
-    await userEvent.type(screen.getByLabelText('authenticator code'), '123456');
-    await userEvent.click(screen.getByRole('button', { name: 'verify code' }));
+    await userEvent.type(screen.getByLabelText('Kod z aplikacji'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Sprawdź kod' }));
 
-    expect(await screen.findByText(/two-factor authentication is enabled/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Uwierzytelnianie dwuskładnikowe jest włączone/i)).toBeInTheDocument();
   });
 
   it('disables 2FA after enrolment and returns to the enable form', async () => {
@@ -39,12 +39,12 @@ describe('TwoFactorSection', () => {
     );
 
     renderWithProviders(<TwoFactorSection />);
-    await userEvent.type(screen.getByLabelText('account password'), 'demo1234');
-    await userEvent.click(screen.getByRole('button', { name: 'enable 2FA' }));
+    await userEvent.type(screen.getByLabelText('Hasło do konta'), 'demo1234');
+    await userEvent.click(screen.getByRole('button', { name: 'Włącz 2FA' }));
 
-    await userEvent.click(await screen.findByRole('button', { name: 'disable 2FA' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Wyłącz 2FA' }));
 
-    expect(await screen.findByRole('button', { name: 'enable 2FA' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Włącz 2FA' })).toBeInTheDocument();
   });
 
   it('surfaces a wrong-password enable error', async () => {
@@ -53,8 +53,8 @@ describe('TwoFactorSection', () => {
     );
 
     renderWithProviders(<TwoFactorSection />);
-    await userEvent.type(screen.getByLabelText('account password'), 'wrong');
-    await userEvent.click(screen.getByRole('button', { name: 'enable 2FA' }));
+    await userEvent.type(screen.getByLabelText('Hasło do konta'), 'wrong');
+    await userEvent.click(screen.getByRole('button', { name: 'Włącz 2FA' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/invalid password/i);
   });

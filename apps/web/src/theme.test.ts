@@ -12,6 +12,13 @@ describe('createAppTheme', () => {
     expect(createAppTheme().palette.primary.main).toBe(createTheme().palette.primary.main);
   });
 
+  it('uses white contrast text on filled primary and secondary accents', () => {
+    const theme = createAppTheme(280);
+
+    expect(theme.palette.primary.contrastText).toBe('#fff');
+    expect(theme.palette.secondary.contrastText).toBe('#fff');
+  });
+
   it('uses the Material shape and scales down display headings', () => {
     const theme = createAppTheme();
 

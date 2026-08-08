@@ -11,14 +11,14 @@ describe('renderRootErrorFallback', () => {
     render(renderRootErrorFallback(new ApiError(unauthorized('Your session expired'))));
 
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('Your session has ended');
+    expect(alert).toHaveTextContent('Sesja wygasła');
     expect(alert).toHaveTextContent('Your session expired');
   });
 
   it('falls back to a generic heading for a non-ApiError throw', () => {
     render(renderRootErrorFallback(new Error('boom')));
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(screen.getByRole('alert')).toHaveTextContent('Wystąpił błąd');
   });
 });
 
@@ -26,12 +26,12 @@ describe('RootErrorFallback', () => {
   it('renders the active trace id when one is present', () => {
     render(<RootErrorFallback error={new Error('boom')} traceId="0af7651916cd43dd8448eb211c80319c" />);
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Trace ID: 0af7651916cd43dd8448eb211c80319c');
+    expect(screen.getByRole('alert')).toHaveTextContent('Identyfikator śledzenia: 0af7651916cd43dd8448eb211c80319c');
   });
 
   it('omits the trace id line when tracing is inactive', () => {
     render(<RootErrorFallback error={new Error('boom')} traceId={undefined} />);
 
-    expect(screen.getByRole('alert')).not.toHaveTextContent('Trace ID');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Identyfikator śledzenia');
   });
 });

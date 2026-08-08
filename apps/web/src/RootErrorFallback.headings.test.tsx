@@ -7,12 +7,12 @@ import { appError, forbidden, internal, notFound, tenantNotFound, validation } f
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 
 const cases = [
-  [forbidden('x'), 'You do not have access'],
-  [notFound('x'), 'Nothing here'],
-  [tenantNotFound('x'), 'Unknown tenant'],
-  [validation('x'), 'That request was invalid'],
-  [appError('conflict', 'x'), 'A conflicting change happened'],
-  [internal('x'), 'Something went wrong'],
+  [forbidden('x'), 'Nie masz dostępu'],
+  [notFound('x'), 'Nie znaleziono zasobu'],
+  [tenantNotFound('x'), 'Nieznana firma'],
+  [validation('x'), 'Żądanie jest nieprawidłowe'],
+  [appError('conflict', 'x'), 'Wystąpił konflikt zmian'],
+  [internal('x'), 'Wystąpił błąd'],
 ] as const;
 
 describe('renderRootErrorFallback headings', () => {

@@ -26,10 +26,10 @@ type DomainTarget = { cname: string | null; ip: string | null };
 
 const dnsInstruction = (target: DomainTarget): string =>
   target.cname
-    ? `Create a CNAME record pointing your domain at ${target.cname}.`
+    ? `Utwórz rekord CNAME wskazujący domenę na ${target.cname}.`
     : target.ip
-      ? `Create an A record pointing your domain at ${target.ip}.`
-      : 'Point your domain at this deployment, then press check.';
+      ? `Utwórz rekord A wskazujący domenę na ${target.ip}.`
+      : 'Skieruj domenę na tę instalację, a następnie sprawdź konfigurację.';
 
 /**
  * Domains settings (US-019): the tenant's custom domains with verified status,
@@ -64,20 +64,20 @@ export const DomainsPage = () => {
   return (
     <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', py: '2.5rem' }}>
       <Stack direction="row" sx={{ alignItems: 'baseline', columnGap: '1rem', mb: '1.5rem' }}>
-        <Typography variant="h1">Domains</Typography>
-        <Typography variant="overline">custom domains for this tenant (US-019)</Typography>
+        <Typography variant="h1">Domeny</Typography>
+        <Typography variant="overline">Domeny niestandardowe tej firmy</Typography>
       </Stack>
 
       {domains.isPending ? (
         <Typography variant="h2" component="p" sx={{ py: 2 }}>
-          reading domains…
+          Ładowanie domen…
         </Typography>
       ) : null}
-      {domains.isError ? <Alert>{domains.error.message}</Alert> : null}
+      {domains.isError ? <Alert severity="error">{domains.error.message}</Alert> : null}
       {domains.data ? (
         domains.data.domains.length === 0 ? (
           <Typography variant="h2" component="p" sx={{ py: '24px' }}>
-            — no custom domains yet —
+            — brak domen niestandardowych —
           </Typography>
         ) : (
           <List disablePadding>
@@ -88,7 +88,7 @@ export const DomainsPage = () => {
                   size="small"
                   variant="outlined"
                   color={row.verified ? 'success' : 'default'}
-                  label={row.verified ? 'verified' : 'pending'}
+                  label={row.verified ? 'zweryfikowana' : 'oczekuje'}
                 />
                 <Button
                   variant="text"
@@ -96,7 +96,7 @@ export const DomainsPage = () => {
                   disabled={check.isPending}
                   onClick={() => check.mutate({ domain: row.domain })}
                 >
-                  check
+                  Sprawdź
                 </Button>
                 <Button
                   variant="text"
@@ -105,7 +105,7 @@ export const DomainsPage = () => {
                   disabled={remove.isPending}
                   onClick={() => setPendingRemove(row.domain)}
                 >
-                  remove
+                  Usuń
                 </Button>
               </ListItem>
             ))}
@@ -115,7 +115,7 @@ export const DomainsPage = () => {
 
       <Paper variant="outlined" sx={{ mt: '1.5rem', p: '1rem' }}>
         <Typography variant="overline" sx={{ display: 'block', mb: '0.4rem' }}>
-          add a custom domain
+          Dodaj domenę niestandardową
         </Typography>
         <Alert severity="info" sx={{ mb: '0.8rem' }}>
           {dnsInstruction(target)}
@@ -133,38 +133,38 @@ export const DomainsPage = () => {
             onChange={(event) => setDomain(event.target.value)}
             placeholder="shop.example.com"
             size="small"
-            inputProps={{ 'aria-label': 'New domain' }}
+            inputProps={{ 'aria-label': 'Nowa domena' }}
             sx={{ flex: '2 1 12rem' }}
           />
           <Button type="submit" variant="contained" disabled={add.isPending}>
-            {add.isPending ? 'adding…' : 'add domain'}
+            {add.isPending ? 'Dodawanie…' : 'Dodaj domenę'}
           </Button>
         </Box>
       </Paper>
-      {add.isError ? <Alert sx={{ mt: '0.6rem' }}>{add.error.message}</Alert> : null}
-      {check.isError ? <Alert sx={{ mt: '0.6rem' }}>{check.error.message}</Alert> : null}
-      {remove.isError ? <Alert sx={{ mt: '0.6rem' }}>{remove.error.message}</Alert> : null}
+      {add.isError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{add.error.message}</Alert> : null}
+      {check.isError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{check.error.message}</Alert> : null}
+      {remove.isError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{remove.error.message}</Alert> : null}
 
       <Dialog open={pendingRemove !== null} onClose={() => setPendingRemove(null)}>
-        <DialogTitle>Remove this domain?</DialogTitle>
+        <DialogTitle>Usunąć tę domenę?</DialogTitle>
         <DialogContent>
           <DialogContentText>
             {pendingRemove
-              ? `Detach ${pendingRemove} from this tenant? Visitors on that domain will no longer reach it.`
+              ? `Odłączyć ${pendingRemove} od tej firmy? Aplikacja przestanie być dostępna pod tym adresem.`
               : ''}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPendingRemove(null)}>Cancel</Button>
+          <Button onClick={() => setPendingRemove(null)}>Anuluj</Button>
           <Button color="error" variant="contained" onClick={confirmRemove}>
-            Remove
+            Usuń
           </Button>
         </DialogActions>
       </Dialog>
 
       <Box sx={{ mt: '2rem' }}>
         <Button variant="text" onClick={() => window.history.back()}>
-          ← back to settings
+          ← Wróć do ustawień
         </Button>
       </Box>
     </Container>

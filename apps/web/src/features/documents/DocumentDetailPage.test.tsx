@@ -1,6 +1,7 @@
 import {
   createMemoryHistory,
   createRootRoute,
+  createRoute,
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
@@ -54,11 +55,19 @@ const document = {
 };
 
 const renderPage = async () => {
-  const root = createRootRoute({
+  const root = createRootRoute();
+  const detail = createRoute({
+    getParentRoute: () => root,
+    path: '/app/documents/$id',
     component: () => <DocumentDetailPage documentId={DOCUMENT_ID} />,
   });
+  const list = createRoute({
+    getParentRoute: () => root,
+    path: '/app/documents',
+    component: () => <p>Lista dokumentów</p>,
+  });
   const router = createRouter({
-    routeTree: root,
+    routeTree: root.addChildren([detail, list]),
     history: createMemoryHistory({
       initialEntries: [`/app/documents/${DOCUMENT_ID}`],
     }),
@@ -294,5 +303,29 @@ describe('DocumentDetailPage', () => {
       screen.queryByRole('heading', { name: 'Podgląd' }),
     ).not.toBeInTheDocument();
     expect(screen.getAllByText('Brak plików w tej sekcji.')).toHaveLength(4);
+  });
+
+  it('navigates before invalidating after deleting a document', async () => {
+    const detailRequests = vi.fn();
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () => {
+        detailRequests();
+        return HttpResponse.json({ ok: true, data: { document } });
+      }),
+      http.delete(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { deleted: true } }),
+      ),
+    );
+    await renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Usuń dokument' }),
+    );
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Usuń' }),
+    );
+
+    expect(await screen.findByText('Lista dokumentów')).toBeInTheDocument();
+    expect(detailRequests).toHaveBeenCalledOnce();
   });
 });

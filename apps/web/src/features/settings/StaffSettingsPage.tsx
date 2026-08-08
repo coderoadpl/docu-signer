@@ -65,16 +65,16 @@ export const StaffSettingsPage = () => {
   return (
     <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', py: '2.5rem' }}>
       <Stack direction="row" sx={{ alignItems: 'baseline', columnGap: '1rem', mb: '1.5rem' }}>
-        <Typography variant="h1">Staff</Typography>
-        <Typography variant="overline">owner &amp; admin access (FR-8)</Typography>
+        <Typography variant="h1">Zespół</Typography>
+        <Typography variant="overline">Uprawnienia właścicieli i administratorów</Typography>
       </Stack>
 
       {staff.isPending ? (
         <Typography variant="h2" component="p" sx={{ py: 2 }}>
-          reading the roster…
+          Ładowanie listy…
         </Typography>
       ) : null}
-      {staff.isError ? <Alert>{staff.error.message}</Alert> : null}
+      {staff.isError ? <Alert severity="error">{staff.error.message}</Alert> : null}
       {staff.data ? (
         <List disablePadding>
           {staff.data.staff.map((member) => (
@@ -84,7 +84,7 @@ export const StaffSettingsPage = () => {
                 secondary={member.email}
                 slotProps={{ secondary: { variant: 'caption' } }}
               />
-              <Chip size="small" variant="outlined" label={member.role} />
+              <Chip size="small" variant="outlined" label={member.role === 'owner' ? 'właściciel' : 'administrator'} />
               {isOwner ? (
                 <Button
                   variant="text"
@@ -93,7 +93,7 @@ export const StaffSettingsPage = () => {
                   disabled={member.role === 'owner' || revoke.isPending}
                   onClick={() => setPending(member)}
                 >
-                  revoke
+                  Odbierz
                 </Button>
               ) : null}
             </ListItem>
@@ -113,42 +113,42 @@ export const StaffSettingsPage = () => {
           <InputBase
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            placeholder="grant admin to a registered email…"
-            inputProps={{ 'aria-label': 'Grant admin email', type: 'email' }}
+            placeholder="Nadaj rolę administratora zarejestrowanej osobie…"
+            inputProps={{ 'aria-label': 'E-mail nowego administratora', type: 'email' }}
             sx={{ flex: '2 1 12rem', '& input': { p: '11px 0.9rem' } }}
           />
           <Button type="submit" variant="contained" disabled={grant.isPending}>
-            {grant.isPending ? 'granting…' : 'grant ↵'}
+            {grant.isPending ? 'Nadawanie…' : 'Nadaj ↵'}
           </Button>
         </Paper>
       ) : (
         <Alert severity="info" sx={{ mt: '1.5rem' }}>
-          Only an owner can grant or revoke staff access.
+          Tylko właściciel może nadawać lub odbierać dostęp do zespołu.
         </Alert>
       )}
-      {grant.isError ? <Alert sx={{ mt: '0.6rem' }}>{grant.error.message}</Alert> : null}
-      {revoke.isError ? <Alert sx={{ mt: '0.6rem' }}>{revoke.error.message}</Alert> : null}
+      {grant.isError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{grant.error.message}</Alert> : null}
+      {revoke.isError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{revoke.error.message}</Alert> : null}
 
       <Dialog open={pending !== null} onClose={() => setPending(null)}>
-        <DialogTitle>Revoke staff access?</DialogTitle>
+        <DialogTitle>Odebrać dostęp do zespołu?</DialogTitle>
         <DialogContent>
           <DialogContentText>
             {pending
-              ? `Remove ${pending.name || pending.email}'s admin access to this tenant? They keep their account but lose staff access here.`
+              ? `Odebrać osobie ${pending.name || pending.email} uprawnienia administratora tej firmy? Konto pozostanie aktywne.`
               : ''}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPending(null)}>Cancel</Button>
+          <Button onClick={() => setPending(null)}>Anuluj</Button>
           <Button color="error" variant="contained" onClick={confirmRevoke}>
-            Revoke
+            Odbierz
           </Button>
         </DialogActions>
       </Dialog>
 
       <Box sx={{ mt: '2rem' }}>
         <Button variant="text" onClick={() => window.history.back()}>
-          ← back to settings
+          ← Wróć do ustawień
         </Button>
       </Box>
     </Container>

@@ -11,7 +11,7 @@ const signIn = async (page: Page, password: string): Promise<void> => {
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
 };
 
-test('login lands on the tenant ledger with seeded todos', async ({ page }) => {
+test('login lands on documents and the ledger still shows seeded todos', async ({ page }) => {
   await page.goto('/login');
   await expect(page.getByRole('heading', { name: 'Podpisy' })).toBeVisible();
 
@@ -19,17 +19,20 @@ test('login lands on the tenant ledger with seeded todos', async ({ page }) => {
   await page.locator('#login-password').fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
 
-  await expect(page.getByRole('button', { name: 'Switch tenant' })).toContainText('Acme');
+  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toContainText('Acme');
+  await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
+  await page.getByRole('link', { name: 'Rejestr' }).click();
   await expect(page.getByText(SEEDED_TODO)).toBeVisible();
 });
 
 test('adding a todo shows it in the list without a reload', async ({ page }) => {
   await signIn(page, DEMO_PASSWORD);
+  await page.getByRole('link', { name: 'Rejestr' }).click();
   await expect(page.getByText(SEEDED_TODO)).toBeVisible();
 
   const title = `e2e entry ${Date.now()}`;
-  await page.getByLabel('New todo title').fill(title);
-  await page.getByRole('button', { name: /add/i }).click();
+  await page.getByLabel('Tytuł nowego wpisu').fill(title);
+  await page.getByRole('button', { name: /Dodaj/i }).click();
 
   await expect(page.getByText(title)).toBeVisible();
 });
@@ -38,7 +41,7 @@ test('a wrong password surfaces an error', async ({ page }) => {
   await signIn(page, 'wrong-password');
 
   await expect(page.getByRole('alert')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Switch tenant' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toHaveCount(0);
 });
 
 test('tenant-scoped API responses are never cached', async ({ page }) => {
@@ -68,6 +71,6 @@ test('anonymous visitors are redirected off the boards to login', async ({ page 
   for (const path of ['/app/board', '/app/team-board']) {
     await page.goto(path);
     await expect(page.getByLabel('Adres e-mail')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'add' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Dodaj' })).toHaveCount(0);
   }
 });

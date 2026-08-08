@@ -78,12 +78,12 @@ describe('TeamBoardPage', () => {
 
     await renderBoard();
 
-    const inDev = await screen.findByRole('region', { name: 'in-dev' });
+    const inDev = await screen.findByRole('region', { name: 'W realizacji' });
     expect(await within(inDev).findByText('Alpha')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Move Alpha to review' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Przenieś Alpha do kolumny Weryfikacja' }));
 
-    const review = screen.getByRole('region', { name: 'review' });
+    const review = screen.getByRole('region', { name: 'Weryfikacja' });
     expect(await within(review).findByText('Alpha')).toBeInTheDocument();
   });
 
@@ -98,13 +98,13 @@ describe('TeamBoardPage', () => {
 
     await renderBoard();
 
-    const inDev = await screen.findByRole('region', { name: 'in-dev' });
+    const inDev = await screen.findByRole('region', { name: 'W realizacji' });
     expect(await within(inDev).findByText('Alpha')).toBeInTheDocument();
 
-    const blocked = screen.getByRole('button', { name: 'Move Alpha to review (blocked: wip-limit)' });
+    const blocked = screen.getByRole('button', { name: 'Przenieś Alpha do kolumny Weryfikacja (zablokowane: limit pracy w toku)' });
     expect(blocked).toBeDisabled();
 
-    const review = screen.getByRole('region', { name: 'review' });
+    const review = screen.getByRole('region', { name: 'Weryfikacja' });
     expect(within(review).getByText('2/2')).toBeInTheDocument();
   });
 
@@ -113,9 +113,9 @@ describe('TeamBoardPage', () => {
 
     await renderBoard();
 
-    const todo = await screen.findByRole('region', { name: 'todo' });
-    await userEvent.type(within(todo).getByLabelText('New card in todo'), 'Fresh');
-    await userEvent.click(within(todo).getByRole('button', { name: 'add' }));
+    const todo = await screen.findByRole('region', { name: 'Do zrobienia' });
+    await userEvent.type(within(todo).getByLabelText('Nowa karta w kolumnie Do zrobienia'), 'Fresh');
+    await userEvent.click(within(todo).getByRole('button', { name: 'Dodaj' }));
 
     expect(await within(todo).findByText('Fresh')).toBeInTheDocument();
   });
@@ -142,15 +142,15 @@ describe('TeamBoardPage', () => {
 
     await renderBoard();
 
-    const todo = await screen.findByRole('region', { name: 'todo' });
-    await userEvent.type(within(todo).getByLabelText('New card in todo'), 'Fresh');
-    await userEvent.click(within(todo).getByRole('button', { name: 'add' }));
+    const todo = await screen.findByRole('region', { name: 'Do zrobienia' });
+    await userEvent.type(within(todo).getByLabelText('Nowa karta w kolumnie Do zrobienia'), 'Fresh');
+    await userEvent.click(within(todo).getByRole('button', { name: 'Dodaj' }));
 
-    const saving = await screen.findByRole('button', { name: 'Move Fresh to in-dev (saving)' });
+    const saving = await screen.findByRole('button', { name: 'Przenieś Fresh do kolumny W realizacji (zapisywanie)' });
     expect(saving).toBeDisabled();
 
     releaseCreate();
-    expect(await screen.findByRole('button', { name: 'Move Fresh to in-dev' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Przenieś Fresh do kolumny W realizacji' })).toBeEnabled();
   });
 });
 
@@ -181,7 +181,7 @@ describe('TeamBoardPage guards', () => {
     await renderTeamBoardWithRoutes('/team-board');
 
     expect(await screen.findByText('login')).toBeInTheDocument();
-    expect(screen.queryByLabelText('New card in todo')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nowa karta w kolumnie Do zrobienia')).not.toBeInTheDocument();
   });
 
   it('redirects a tenantless session to the ledger for tenant selection', async () => {
@@ -190,6 +190,6 @@ describe('TeamBoardPage guards', () => {
     await renderTeamBoardWithRoutes('/team-board');
 
     expect(await screen.findByText('picker')).toBeInTheDocument();
-    expect(screen.queryByLabelText('New card in todo')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nowa karta w kolumnie Do zrobienia')).not.toBeInTheDocument();
   });
 });

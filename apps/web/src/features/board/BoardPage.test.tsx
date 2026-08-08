@@ -79,11 +79,11 @@ describe('BoardPage', () => {
 
     await renderBoard();
 
-    const todo = await screen.findByRole('region', { name: 'todo' });
+    const todo = await screen.findByRole('region', { name: 'Do zrobienia' });
     expect(await within(todo).findByText('Alpha')).toBeInTheDocument();
 
-    await userEvent.type(within(todo).getByLabelText('New card in todo'), 'Beta');
-    await userEvent.click(within(todo).getByRole('button', { name: 'add' }));
+    await userEvent.type(within(todo).getByLabelText('Nowa karta w kolumnie Do zrobienia'), 'Beta');
+    await userEvent.click(within(todo).getByRole('button', { name: 'Dodaj' }));
 
     expect(await within(todo).findByText('Beta')).toBeInTheDocument();
   });
@@ -93,12 +93,12 @@ describe('BoardPage', () => {
 
     await renderBoard();
 
-    const todo = await screen.findByRole('region', { name: 'todo' });
+    const todo = await screen.findByRole('region', { name: 'Do zrobienia' });
     expect(await within(todo).findByText('Alpha')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Move Alpha right' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Przenieś Alpha w prawo' }));
 
-    const doing = screen.getByRole('region', { name: 'doing' });
+    const doing = screen.getByRole('region', { name: 'W toku' });
     expect(await within(doing).findByText('Alpha')).toBeInTheDocument();
   });
 
@@ -121,15 +121,15 @@ describe('BoardPage', () => {
 
     await renderBoard();
 
-    const todo = await screen.findByRole('region', { name: 'todo' });
-    await userEvent.type(within(todo).getByLabelText('New card in todo'), 'Fresh');
-    await userEvent.click(within(todo).getByRole('button', { name: 'add' }));
+    const todo = await screen.findByRole('region', { name: 'Do zrobienia' });
+    await userEvent.type(within(todo).getByLabelText('Nowa karta w kolumnie Do zrobienia'), 'Fresh');
+    await userEvent.click(within(todo).getByRole('button', { name: 'Dodaj' }));
 
-    const saving = await screen.findByRole('button', { name: 'Move Fresh right (saving)' });
+    const saving = await screen.findByRole('button', { name: 'Przenieś Fresh w prawo (zapisywanie)' });
     expect(saving).toBeDisabled();
 
     releaseCreate();
-    expect(await screen.findByRole('button', { name: 'Move Fresh right' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Przenieś Fresh w prawo' })).toBeEnabled();
   });
 });
 
@@ -160,7 +160,7 @@ describe('BoardPage guards', () => {
     await renderBoardWithRoutes('/board');
 
     expect(await screen.findByText('login')).toBeInTheDocument();
-    expect(screen.queryByLabelText('New card in todo')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nowa karta w kolumnie Do zrobienia')).not.toBeInTheDocument();
   });
 
   it('redirects a tenantless session to the ledger for tenant selection', async () => {
@@ -169,6 +169,6 @@ describe('BoardPage guards', () => {
     await renderBoardWithRoutes('/board');
 
     expect(await screen.findByText('picker')).toBeInTheDocument();
-    expect(screen.queryByLabelText('New card in todo')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nowa karta w kolumnie Do zrobienia')).not.toBeInTheDocument();
   });
 });

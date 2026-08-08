@@ -15,6 +15,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
+import { formatPolishDate } from '../../lib/format-date.js';
 import { EntryDate, EntryIndex } from '../../theme.js';
 
 /**
@@ -35,25 +36,25 @@ export const TodosPage = () => {
     onSettled: () => queryClient.invalidateQueries(actions.addTodoInvalidates()),
   });
 
-  const tenantName = me.data?.tenant?.name ?? 'this tenant';
+  const tenantName = me.data?.tenant?.name ?? 'ta firma';
 
   return (
     <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', py: '2.5rem' }}>
       <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem', mb: '1.5rem' }}>
-        <Typography variant="h1">Ledger</Typography>
+        <Typography variant="h1">Rejestr</Typography>
         <Typography variant="overline">{tenantName}</Typography>
       </Stack>
 
       {todos.isPending ? (
         <Typography variant="h2" component="p" sx={{ py: 2 }}>
-          reading entries…
+          Ładowanie wpisów…
         </Typography>
       ) : null}
-      {todos.isError ? <Alert>{todos.error.message}</Alert> : null}
+      {todos.isError ? <Alert severity="error">{todos.error.message}</Alert> : null}
       {todos.data ? (
         todos.data.todos.length === 0 ? (
           <Typography variant="h2" component="p" sx={{ py: '24px' }}>
-            — no entries yet; this tenant's page is blank —
+            — brak wpisów —
           </Typography>
         ) : (
           <List disablePadding>
@@ -64,7 +65,7 @@ export const TodosPage = () => {
                 </EntryIndex>
                 <ListItemText primary={todo.title} sx={{ m: 0 }} />
                 <EntryDate variant="caption" component="time" dateTime={todo.createdAt} sx={{ ml: 'auto' }}>
-                  {new Date(todo.createdAt).toLocaleDateString()}
+                  {formatPolishDate(todo.createdAt)}
                 </EntryDate>
               </ListItem>
             ))}
@@ -83,15 +84,15 @@ export const TodosPage = () => {
         <InputBase
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder={`new entry for ${tenantName}…`}
-          inputProps={{ 'aria-label': 'New todo title' }}
+          placeholder={`Nowy wpis dla ${tenantName}…`}
+          inputProps={{ 'aria-label': 'Tytuł nowego wpisu' }}
           sx={{ flex: 1, '& input': { p: '11px 0.9rem' } }}
         />
         <Button type="submit" variant="contained" disabled={addTodo.isPending}>
-          {addTodo.isPending ? 'adding…' : 'add ↵'}
+          {addTodo.isPending ? 'Dodawanie…' : 'Dodaj ↵'}
         </Button>
       </Paper>
-      {addTodo.isError ? <Alert sx={{ mt: '0.6rem' }}>{addTodo.error.message}</Alert> : null}
+      {addTodo.isError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{addTodo.error.message}</Alert> : null}
       <Box sx={{ height: '1rem' }} />
     </Container>
   );

@@ -22,9 +22,9 @@ import { actions } from '../../api.js';
 import { Eyebrow, Wordmark } from '../../theme.js';
 
 const registerSchema = z.object({
-  name: z.string().trim().min(1, 'Enter your name'),
-  email: z.string().trim().pipe(z.email('Enter a valid email')),
-  password: z.string().min(8, 'Use at least 8 characters'),
+  name: z.string().trim().min(1, 'Wpisz imię i nazwisko'),
+  email: z.string().trim().pipe(z.email('Wpisz prawidłowy adres e-mail')),
+  password: z.string().min(8, 'Hasło musi mieć co najmniej 8 znaków'),
 });
 
 type Field = 'name' | 'email' | 'password';
@@ -96,14 +96,14 @@ export const RegisterPage = () => {
         sx={{ width: '100%', maxWidth: '23rem', px: '1.8rem', pt: '2rem', pb: '1.6rem', animation: 'settle 0.45s ease-out both' }}
       >
         <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          agentproofarch
+          Podpisy
         </Wordmark>
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          create your account
+          Utwórz konto
         </Eyebrow>
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth error={Boolean(fieldErrors.name)}>
-            <FormLabel htmlFor="register-name">name</FormLabel>
+            <FormLabel htmlFor="register-name">Imię i nazwisko</FormLabel>
             <OutlinedInput
               id="register-name"
               value={name}
@@ -113,7 +113,7 @@ export const RegisterPage = () => {
             {fieldErrors.name ? <FormHelperText>{fieldErrors.name}</FormHelperText> : null}
           </FormControl>
           <FormControl fullWidth error={Boolean(fieldErrors.email)}>
-            <FormLabel htmlFor="register-email">email</FormLabel>
+            <FormLabel htmlFor="register-email">Adres e-mail</FormLabel>
             <OutlinedInput
               id="register-email"
               type="email"
@@ -124,7 +124,7 @@ export const RegisterPage = () => {
             {fieldErrors.email ? <FormHelperText>{fieldErrors.email}</FormHelperText> : null}
           </FormControl>
           <FormControl fullWidth error={Boolean(fieldErrors.password)}>
-            <FormLabel htmlFor="register-password">password</FormLabel>
+            <FormLabel htmlFor="register-password">Hasło</FormLabel>
             <OutlinedInput
               id="register-password"
               type="password"
@@ -135,13 +135,13 @@ export const RegisterPage = () => {
             {fieldErrors.password ? <FormHelperText>{fieldErrors.password}</FormHelperText> : null}
           </FormControl>
           <Button type="submit" variant="contained" fullWidth disabled={signUp.isPending} sx={{ mt: '0.4rem' }}>
-            {signUp.isPending ? 'creating…' : 'create account'}
+            {signUp.isPending ? 'Tworzenie…' : 'Utwórz konto'}
           </Button>
         </Stack>
-        {formError ? <Alert sx={{ mt: '0.6rem' }}>{formError}</Alert> : null}
+        {formError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{formError}</Alert> : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <Eyebrow variant="caption" component="p">
-          already have an account? <Link href="/login">sign in</Link>
+          Masz już konto? <Link href="/login">Zaloguj się</Link>
         </Eyebrow>
       </Paper>
     </Box>

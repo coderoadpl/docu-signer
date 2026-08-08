@@ -22,6 +22,7 @@ import { DocumentDetailRoute } from './routes/document-detail.js';
 import { DocumentsRoute } from './routes/documents.js';
 import { LoginRoute } from './routes/login.js';
 import { MembersRoute } from './routes/members.js';
+import { NotFoundRoute } from './routes/not-found.js';
 import { RegisterRoute } from './routes/register.js';
 import { DomainsRoute } from './routes/settings-domains.js';
 import { StaffSettingsRoute } from './routes/settings-staff.js';
@@ -66,10 +67,18 @@ const appLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/app',
   component: AppLayout,
+  notFoundComponent: NotFoundRoute,
 });
 const appIndexRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/',
+  beforeLoad: () => {
+    throw redirect({ to: '/app/documents' });
+  },
+});
+const ledgerRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: 'ledger',
   component: TodosRoute,
 });
 const boardRoute = createRoute({
@@ -120,6 +129,7 @@ const router = createRouter({
     registerRoute,
     appLayoutRoute.addChildren([
       appIndexRoute,
+      ledgerRoute,
       boardRoute,
       teamBoardRoute,
       membersRoute,

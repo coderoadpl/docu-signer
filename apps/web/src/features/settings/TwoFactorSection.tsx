@@ -7,7 +7,7 @@ import { ApiError } from '#core/client/index.js';
 import { actions } from '../../api.js';
 
 const errorText = (error: unknown): string =>
-  error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : 'Something went wrong';
+  error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : 'Wystąpił nieoczekiwany błąd';
 
 /**
  * US-028a TOTP 2FA settings (web). Enable (re-auth with the password) → show the
@@ -41,15 +41,15 @@ export const TwoFactorSection = () => {
 
   return (
     <Paper variant="outlined" sx={{ p: '1.25rem', mt: '1.5rem' }}>
-      <Typography variant="overline">two-factor authentication (TOTP)</Typography>
+      <Typography variant="overline">Uwierzytelnianie dwuskładnikowe (TOTP)</Typography>
       <Typography variant="body2" sx={{ mt: '0.3rem', mb: '0.8rem' }}>
-        Add a time-based one-time code from an authenticator app as a second factor.
+        Dodaj jednorazowy kod z aplikacji uwierzytelniającej jako drugi składnik.
       </Typography>
 
       {enrolment === null ? (
         <Stack useFlexGap spacing="0.8rem">
           <FormControl>
-            <FormLabel htmlFor="tfa-password">account password</FormLabel>
+            <FormLabel htmlFor="tfa-password">Hasło do konta</FormLabel>
             <OutlinedInput
               id="tfa-password"
               type="password"
@@ -64,7 +64,7 @@ export const TwoFactorSection = () => {
               disabled={enable.isPending || password.length === 0}
               onClick={() => enable.mutate({ password })}
             >
-              {enable.isPending ? 'enabling…' : 'enable 2FA'}
+              {enable.isPending ? 'Włączanie…' : 'Włącz 2FA'}
             </Button>
           </Box>
           {enable.isError ? <Alert>{errorText(enable.error)}</Alert> : null}
@@ -72,11 +72,11 @@ export const TwoFactorSection = () => {
       ) : (
         <Stack useFlexGap spacing="0.8rem">
           <Typography variant="body2">
-            Scan this URI in your authenticator, then enter a code to confirm:
+            Zeskanuj ten adres URI w aplikacji uwierzytelniającej, a następnie wpisz kod:
           </Typography>
-          <OutlinedInput readOnly value={enrolment.totpURI} inputProps={{ 'aria-label': 'totp enrolment uri' }} />
+          <OutlinedInput readOnly value={enrolment.totpURI} inputProps={{ 'aria-label': 'Adres URI konfiguracji TOTP' }} />
           <FormControl>
-            <FormLabel htmlFor="tfa-code">authenticator code</FormLabel>
+            <FormLabel htmlFor="tfa-code">Kod z aplikacji</FormLabel>
             <OutlinedInput
               id="tfa-code"
               value={code}
@@ -90,10 +90,10 @@ export const TwoFactorSection = () => {
               disabled={verify.isPending || code.length === 0}
               onClick={() => verify.mutate({ code })}
             >
-              {verify.isPending ? 'verifying…' : 'verify code'}
+              {verify.isPending ? 'Sprawdzanie…' : 'Sprawdź kod'}
             </Button>
           </Box>
-          {verify.isSuccess ? <Alert severity="success">Two-factor authentication is enabled.</Alert> : null}
+          {verify.isSuccess ? <Alert severity="success">Uwierzytelnianie dwuskładnikowe jest włączone.</Alert> : null}
           {verify.isError ? <Alert>{errorText(verify.error)}</Alert> : null}
           <Box>
             <Button
@@ -102,7 +102,7 @@ export const TwoFactorSection = () => {
               disabled={disable.isPending || password.length === 0}
               onClick={() => disable.mutate({ password })}
             >
-              disable 2FA
+              Wyłącz 2FA
             </Button>
           </Box>
           {disable.isError ? <Alert>{errorText(disable.error)}</Alert> : null}

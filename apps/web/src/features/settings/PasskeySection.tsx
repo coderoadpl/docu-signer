@@ -18,9 +18,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
+import { formatPolishDate } from '../../lib/format-date.js';
 
 const errorText = (error: unknown): string =>
-  error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : 'Something went wrong';
+  error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : 'Wystąpił nieoczekiwany błąd';
 
 /**
  * US-028a passkeys settings (web). Register a passkey under a display name (the
@@ -55,19 +56,19 @@ export const PasskeySection = () => {
 
   return (
     <Paper variant="outlined" sx={{ p: '1.25rem', mt: '1.5rem' }}>
-      <Typography variant="overline">passkeys</Typography>
+      <Typography variant="overline">Klucze dostępu</Typography>
       <Typography variant="body2" sx={{ mt: '0.3rem', mb: '0.8rem' }}>
-        Register a device or security key to sign in without a password.
+        Zarejestruj urządzenie lub klucz bezpieczeństwa, aby logować się bez hasła.
       </Typography>
 
       <Stack useFlexGap spacing="0.8rem">
         <FormControl>
-          <FormLabel htmlFor="passkey-name">passkey name</FormLabel>
+          <FormLabel htmlFor="passkey-name">Nazwa klucza</FormLabel>
           <OutlinedInput
             id="passkey-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. MacBook Touch ID"
+            placeholder="np. MacBook Touch ID"
           />
         </FormControl>
         <Box>
@@ -76,7 +77,7 @@ export const PasskeySection = () => {
             disabled={register.isPending || name.trim().length === 0}
             onClick={() => register.mutate({ name: name.trim() })}
           >
-            {register.isPending ? 'registering…' : 'register a passkey'}
+            {register.isPending ? 'Rejestrowanie…' : 'Zarejestruj klucz'}
           </Button>
         </Box>
         {register.isError ? <Alert>{errorText(register.error)}</Alert> : null}
@@ -98,29 +99,29 @@ export const PasskeySection = () => {
                       disabled={remove.isPending}
                       onClick={() => remove.mutate({ id: passkey.id })}
                     >
-                      confirm remove
+                      Potwierdź usunięcie
                     </Button>
                     <Button size="small" variant="text" onClick={() => setConfirmingId(null)}>
-                      cancel
+                      Anuluj
                     </Button>
                   </Stack>
                 ) : (
                   <Button size="small" color="error" variant="text" onClick={() => setConfirmingId(passkey.id)}>
-                    remove
+                    Usuń
                   </Button>
                 )
               }
             >
               <ListItemText
-                primary={passkey.name.length > 0 ? passkey.name : 'unnamed passkey'}
-                secondary={`added ${new Date(passkey.createdAt).toLocaleDateString()}`}
+                primary={passkey.name.length > 0 ? passkey.name : 'Klucz bez nazwy'}
+                secondary={`Dodano ${formatPolishDate(passkey.createdAt)}`}
               />
             </ListItem>
           ))}
         </List>
       ) : (
         <Typography variant="body2" sx={{ mt: '0.8rem' }}>
-          No passkeys registered yet.
+          Nie zarejestrowano jeszcze żadnych kluczy.
         </Typography>
       )}
       {remove.isError ? <Alert>{errorText(remove.error)}</Alert> : null}

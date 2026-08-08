@@ -18,6 +18,13 @@ import { ApiError } from '#core/client/index.js';
 import { actions } from '../../api.js';
 import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
+const authErrorMessage = (error: Error): string => {
+  const message = error instanceof ApiError ? error.appError.message : error.message;
+  return message === 'Invalid email or password'
+    ? 'Nieprawidłowy adres e-mail lub hasło'
+    : message;
+};
+
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -153,14 +160,19 @@ export const LoginPage = () => {
             znajdziesz w Mailpit.
           </Alert>
         ) : null}
+        {magicLink.isError ? (
+          <Alert severity="error" sx={{ mt: '0.6rem' }}>
+            {authErrorMessage(magicLink.error)}
+          </Alert>
+        ) : null}
         {signIn.isError ? (
-          <Alert sx={{ mt: '0.6rem' }}>
-            {signIn.error instanceof ApiError ? signIn.error.appError.message : signIn.error.message}
+          <Alert severity="error" sx={{ mt: '0.6rem' }}>
+            {authErrorMessage(signIn.error)}
           </Alert>
         ) : null}
         {passkey.isError ? (
-          <Alert sx={{ mt: '0.6rem' }}>
-            {passkey.error instanceof ApiError ? passkey.error.appError.message : passkey.error.message}
+          <Alert severity="error" sx={{ mt: '0.6rem' }}>
+            {authErrorMessage(passkey.error)}
           </Alert>
         ) : null}
         {import.meta.env.DEV ? (
