@@ -25,6 +25,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { DocumentFile, DocumentFileRole } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { StatusView } from '../../components/layout/StatusView.js';
 import { FileDropZone, PdfPreview, PreviewImage } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
@@ -298,15 +299,24 @@ export const DocumentDetailPage = ({
 
   if (documentQuery.isPending) {
     return (
-      <Container sx={{ py: 6 }}>
-        <Typography>Ładowanie dokumentu…</Typography>
+      <Container sx={{ maxWidth: '76rem !important', px: 2, py: 6 }}>
+        <StatusView state={{ kind: 'loading', label: 'Ładowanie dokumentu…' }} />
       </Container>
     );
   }
   if (documentQuery.isError) {
     return (
-      <Container sx={{ py: 6 }}>
-        <Alert>{documentQuery.error.message}</Alert>
+      <Container sx={{ maxWidth: '76rem !important', px: 2, py: 6 }}>
+        <StatusView
+          state={{
+            kind: 'error',
+            message: documentQuery.error.message,
+            retry: {
+              label: 'Spróbuj ponownie',
+              onRetry: () => void documentQuery.refetch(),
+            },
+          }}
+        />
       </Container>
     );
   }

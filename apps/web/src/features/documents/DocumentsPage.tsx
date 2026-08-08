@@ -27,7 +27,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { DocumentType } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { EmptyState } from '../../theme.js';
+import { StatusView } from '../../components/layout/StatusView.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
   DOCUMENT_TYPE_LABELS,
@@ -188,23 +188,39 @@ export const DocumentsPage = () => {
       ) : null}
 
       {documents.isPending ? (
-        <Typography sx={{ mt: 4 }}>Ładowanie dokumentów…</Typography>
+        <Box sx={{ mt: 4 }}>
+          <StatusView state={{ kind: 'loading', label: 'Ładowanie dokumentów…' }} />
+        </Box>
       ) : null}
       {documents.isError ? (
-        <Alert sx={{ mt: 4 }}>{documents.error.message}</Alert>
+        <Box sx={{ mt: 4 }}>
+          <StatusView
+            state={{
+              kind: 'error',
+              message: documents.error.message,
+              retry: {
+                label: 'Spróbuj ponownie',
+                onRetry: () => void documents.refetch(),
+              },
+            }}
+          />
+        </Box>
       ) : null}
       {documents.data?.documents.length === 0 ? (
-        <Paper variant="outlined" sx={{ mt: 4, p: 4 }}>
-          <EmptyState>
-            <Typography variant="h2">Brak dokumentów</Typography>
-            <Typography sx={{ mt: 1, mb: 3 }}>
-              Dodaj pierwszy dokument do archiwum.
-            </Typography>
-            <Button variant="contained" onClick={() => setCreateOpen(true)}>
-              Dodaj dokument
-            </Button>
-          </EmptyState>
-        </Paper>
+        <Box sx={{ mt: 4 }}>
+          <StatusView
+            state={{
+              kind: 'empty',
+              title: 'Brak dokumentów',
+              body: 'Dodaj pierwszy dokument do archiwum.',
+              action: (
+                <Button variant="contained" onClick={() => setCreateOpen(true)}>
+                  Dodaj dokument
+                </Button>
+              ),
+            }}
+          />
+        </Box>
       ) : null}
       {documents.data?.documents.length ? (
         <TableContainer component={Paper} sx={{ mt: 4 }}>
