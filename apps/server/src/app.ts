@@ -110,12 +110,16 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   memberId: null,
 });
 
-const attachmentHeaders = (fileName: string, contentType: string): HeadersInit => {
+const attachmentHeaders = (
+  fileName: string,
+  contentType: string,
+  disposition: 'inline' | 'attachment' = 'attachment',
+): HeadersInit => {
   const encodedName = encodeURIComponent(fileName);
   const fallbackName = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
   return {
     'content-type': contentType,
-    'content-disposition': `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+    'content-disposition': `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
     'cache-control': 'private, no-store',
   };
 };
@@ -148,9 +152,9 @@ export const buildApp = (deps: AppDeps) => {
       contentSecurityPolicy: {
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", 'https://vercel.com'],
         imgSrc: ["'self'", 'data:'],
-        objectSrc: ["'none'"],
+        objectSrc: ["'self'"], // WHY: same-origin PDF previews are embedded with <object>.
         baseUri: ["'self'"],
         frameAncestors: ["'none'"],
       },
@@ -160,19 +164,22 @@ export const buildApp = (deps: AppDeps) => {
   // JSON payloads are small; a 100KB cap is a cheap DoS floor under Vercel's
   // 4.5MB platform backstop. The over-limit response stays an envelope so
   // clients never see a non-JSON body from the API.
-  const normalBodyLimit = bodyLimit({
+  const jsonBodyLimit = bodyLimit({
     maxSize: 100 * 1024,
     onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
   });
-  const uploadBodyLimit = bodyLimit({
+  const serverUploadBodyLimit = bodyLimit({
     maxSize: 25 * 1024 * 1024,
     onError: () => respond(err(validation('Upload exceeds the 25MB limit'))),
   });
-  app.use('/api/*', (c, next) =>
-    /^\/api\/documents\/[^/]+\/files\/upload$/.test(c.req.path)
-      ? uploadBodyLimit(c, next)
-      : normalBodyLimit(c, next),
+  const jsonBodyRoutes = Object.values(API_ROUTES).filter(
+    (route) =>
+      route.method !== 'GET' && route.path !== API_ROUTES.documentFileServerUpload.path,
   );
+  for (const route of jsonBodyRoutes) app.use(route.path, jsonBodyLimit);
+  app.use(BETTER_AUTH_API_PATH_PATTERN, jsonBodyLimit);
+  app.use('/api/internal/backfills/:name', jsonBodyLimit);
+  app.use(API_ROUTES.documentFileServerUpload.path, serverUploadBodyLimit);
 
   app.use('*', telemetryMiddleware);
 
@@ -445,21 +452,17 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     if (!result.ok) return respond(result);
-    const encodedName = encodeURIComponent(result.value.fileName);
-    const fallbackName = result.value.fileName
-      .replace(/[^\x20-\x7e]/g, '_')
-      .replace(/["\\]/g, '_');
     const disposition = isAllowedDocumentContentType(result.value.contentType)
       ? 'inline'
       : 'attachment';
     const body = new ArrayBuffer(result.value.bytes.byteLength);
     new Uint8Array(body).set(result.value.bytes);
     return new Response(body, {
-      headers: {
-        'content-type': result.value.contentType,
-        'content-disposition': `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
-        'cache-control': 'private, no-store',
-      },
+      headers: attachmentHeaders(
+        result.value.fileName,
+        result.value.contentType,
+        disposition,
+      ),
     });
   });
 

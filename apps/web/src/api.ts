@@ -84,8 +84,9 @@ export const actions = {
   todos: todosQuery(apiClient),
   addTodo: addTodoMutation(apiClient),
   addTodoInvalidates,
-  documents: documentsQuery.bind(undefined, apiClient),
-  document: documentQuery.bind(undefined, apiClient),
+  documents: (filter: Parameters<typeof documentsQuery>[1]) =>
+    documentsQuery(apiClient, filter),
+  document: (documentId: string) => documentQuery(apiClient, documentId),
   createDocument: createDocumentMutation(apiClient),
   updateDocument: updateDocumentMutation(apiClient),
   deleteDocument: deleteDocumentMutation(apiClient),

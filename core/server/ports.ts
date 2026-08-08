@@ -26,35 +26,30 @@ export interface TodoRepository {
 }
 
 export interface DocumentRepository {
-  listByTenant(
-    tenantId: string,
-    filter: DocumentListFilter,
-  ): Promise<Result<Document[], AppError>>;
-  findById(tenantId: string, documentId: string): Promise<Result<Document | null, AppError>>;
-  listFiles(tenantId: string, documentId: string): Promise<Result<DocumentFile[], AppError>>;
+  listByTenant(tenantId: string, filter: DocumentListFilter): Promise<Document[]>;
+  findById(tenantId: string, documentId: string): Promise<Document | null>;
+  listFiles(tenantId: string, documentId: string): Promise<DocumentFile[]>;
   listFilesForDocuments(
     tenantId: string,
     documentIds: string[],
-  ): Promise<Result<DocumentFile[], AppError>>;
-  create(
-    input: Omit<Document, 'createdAt' | 'updatedAt'>,
-  ): Promise<Result<Document, AppError>>;
+  ): Promise<DocumentFile[]>;
+  create(input: Omit<Document, 'createdAt' | 'updatedAt'>): Promise<Document>;
   update(
     tenantId: string,
     documentId: string,
     input: Pick<Document, 'title' | 'docType' | 'documentDate' | 'person' | 'tags'>,
-  ): Promise<Result<Document | null, AppError>>;
-  delete(tenantId: string, documentId: string): Promise<Result<boolean, AppError>>;
+  ): Promise<Document | null>;
+  delete(tenantId: string, documentId: string): Promise<boolean>;
   createFile(
     tenantId: string,
     input: Omit<DocumentFile, 'createdAt'>,
-  ): Promise<Result<DocumentFile | null, AppError>>;
+  ): Promise<DocumentFile | null>;
   findFile(
     tenantId: string,
     documentId: string,
     fileId: string,
-  ): Promise<Result<DocumentFile | null, AppError>>;
-  deleteFile(tenantId: string, documentId: string, fileId: string): Promise<Result<boolean, AppError>>;
+  ): Promise<DocumentFile | null>;
+  deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
 }
 
 export interface UploadTarget {

@@ -31,8 +31,11 @@ describe('Vercel Blob storage', () => {
     ).toMatchObject({
       ok: true,
       value: {
+        url: 'https://vercel.com/api/blob/?pathname=documents%2Ft%2Fdoc%2Ffile',
         method: 'PUT',
         headers: {
+          authorization: 'Bearer vercel_blob_client_store_payload',
+          'x-api-version': '12',
           'x-vercel-blob-access': 'private',
           'x-vercel-blob-store-id': 'store',
           'x-content-type': 'application/pdf',

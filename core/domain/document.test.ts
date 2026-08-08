@@ -47,13 +47,17 @@ describe('document schemas', () => {
         role: 'source',
       }).success,
     ).toBe(false);
-    expect(
-      exportDocumentsSchema.safeParse({
-        documentIds: Array.from(
-          { length: 101 },
-          (_, index) => `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`,
-        ),
-      }).success,
-    ).toBe(false);
+    const bulkExport = exportDocumentsSchema.safeParse({
+      documentIds: Array.from(
+        { length: 101 },
+        (_, index) => `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`,
+      ),
+    });
+    expect(bulkExport.success).toBe(false);
+    if (!bulkExport.success) {
+      expect(bulkExport.error.issues[0]?.message).toBe(
+        'An export may contain at most 100 documents',
+      );
+    }
   });
 });

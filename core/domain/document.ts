@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const MAX_DOCUMENT_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_DOCUMENT_EXPORT_DOCUMENTS = 100;
 export const MAX_DOCUMENT_EXPORT_FILES = 100;
 
 export const documentTypeSchema = z.enum([
@@ -117,7 +118,13 @@ export const finalizeFileUploadSchema = z.object({
 export type FinalizeFileUpload = z.infer<typeof finalizeFileUploadSchema>;
 
 export const exportDocumentsSchema = z.object({
-  documentIds: z.array(z.uuid()).min(1).max(MAX_DOCUMENT_EXPORT_FILES),
+  documentIds: z
+    .array(z.uuid())
+    .min(1)
+    .max(
+      MAX_DOCUMENT_EXPORT_DOCUMENTS,
+      `An export may contain at most ${MAX_DOCUMENT_EXPORT_DOCUMENTS} documents`,
+    ),
 });
 
 export type ExportDocuments = z.infer<typeof exportDocumentsSchema>;

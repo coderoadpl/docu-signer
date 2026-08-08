@@ -82,29 +82,25 @@ const fake = (initialDocuments: Document[] = [], initialFiles: DocumentFile[] = 
 
   const repo: DocumentRepository = {
     listByTenant: async (tenantId) =>
-      ok(documents.filter((document) => document.tenantId === tenantId)),
+      documents.filter((document) => document.tenantId === tenantId),
     findById: async (tenantId, id) =>
-      ok(documents.find((document) => document.tenantId === tenantId && document.id === id) ?? null),
+      documents.find((document) => document.tenantId === tenantId && document.id === id) ?? null,
     listFiles: async (tenantId, id) =>
-      ok(
-        files.filter(
-          (file) =>
-            file.documentId === id &&
-            documents.some(
-              (document) => document.id === id && document.tenantId === tenantId,
-            ),
-        ),
+      files.filter(
+        (file) =>
+          file.documentId === id &&
+          documents.some(
+            (document) => document.id === id && document.tenantId === tenantId,
+          ),
       ),
     listFilesForDocuments: async (tenantId, ids) =>
-      ok(
-        files.filter(
-          (file) =>
-            ids.includes(file.documentId) &&
-            documents.some(
-              (document) =>
-                document.id === file.documentId && document.tenantId === tenantId,
-            ),
-        ),
+      files.filter(
+        (file) =>
+          ids.includes(file.documentId) &&
+          documents.some(
+            (document) =>
+              document.id === file.documentId && document.tenantId === tenantId,
+          ),
       ),
     create: async (input) => {
       const created: Document = {
@@ -113,48 +109,51 @@ const fake = (initialDocuments: Document[] = [], initialFiles: DocumentFile[] = 
         updatedAt: '2026-07-01T10:00:00.000Z',
       };
       documents.push(created);
-      return ok(created);
+      return created;
     },
     update: async (tenantId, id, input) => {
       const index = documents.findIndex(
         (document) => document.tenantId === tenantId && document.id === id,
       );
       const current = documents[index];
-      if (!current) return ok(null);
+      if (!current) return null;
       const updated = { ...current, ...input, updatedAt: '2026-07-02T10:00:00.000Z' };
       documents[index] = updated;
-      return ok(updated);
+      return updated;
     },
     delete: async (tenantId, id) => {
       const index = documents.findIndex(
         (document) => document.tenantId === tenantId && document.id === id,
       );
-      if (index < 0) return ok(false);
+      if (index < 0) return false;
       documents.splice(index, 1);
-      return ok(true);
+      return true;
     },
     createFile: async (tenantId, input) => {
-      if (!documents.some((document) => document.id === input.documentId && document.tenantId === tenantId)) {
-        return ok(null);
+      if (
+        !documents.some(
+          (document) =>
+            document.id === input.documentId && document.tenantId === tenantId,
+        )
+      ) {
+        return null;
       }
       const created: DocumentFile = {
         ...input,
         createdAt: '2026-07-01T10:00:00.000Z',
       };
       files.push(created);
-      return ok(created);
+      return created;
     },
     findFile: async (tenantId, id, idOfFile) =>
-      ok(
-        files.find(
-          (file) =>
-            file.id === idOfFile &&
-            file.documentId === id &&
-            documents.some(
-              (document) => document.id === id && document.tenantId === tenantId,
-            ),
-        ) ?? null,
-      ),
+      files.find(
+        (file) =>
+          file.id === idOfFile &&
+          file.documentId === id &&
+          documents.some(
+            (document) => document.id === id && document.tenantId === tenantId,
+          ),
+      ) ?? null,
     deleteFile: async (tenantId, id, idOfFile) => {
       const index = files.findIndex(
         (file) =>
@@ -164,9 +163,9 @@ const fake = (initialDocuments: Document[] = [], initialFiles: DocumentFile[] = 
             (document) => document.id === id && document.tenantId === tenantId,
           ),
       );
-      if (index < 0) return ok(false);
+      if (index < 0) return false;
       files.splice(index, 1);
-      return ok(true);
+      return true;
     },
   };
 
@@ -401,24 +400,26 @@ describe('documents use-cases', () => {
     ).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it('propagates repository and storage failures without normalizing them in core', async () => {
+  it('lets repository failures reject for normalization at the composition edge', async () => {
     const state = fake([documentRow()], [fileRow()]);
-    const failure = err(internal('failed port'));
+    const failure = new Error('failed port');
     const failedRepo: DocumentRepository = {
       ...state.deps.documents,
-      listByTenant: async () => failure,
-      findById: async () => failure,
-      update: async () => failure,
-      findFile: async () => failure,
+      listByTenant: async () => Promise.reject(failure),
+      findById: async () => Promise.reject(failure),
+      update: async () => Promise.reject(failure),
+      findFile: async () => Promise.reject(failure),
     };
     const failedDeps = { ...state.deps, documents: failedRepo };
-    expect(await listDocuments(ctx(staff('tenant-acme')), {}, failedDeps)).toEqual(failure);
-    expect(await getDocument(ctx(staff('tenant-acme')), documentId, failedDeps)).toEqual(failure);
-    expect(
-      await updateDocument(ctx(staff('tenant-acme')), documentId, createInput, failedDeps),
-    ).toEqual(failure);
-    expect(
-      await requestFileUpload(
+    await expect(listDocuments(ctx(staff('tenant-acme')), {}, failedDeps)).rejects.toBe(failure);
+    await expect(
+      getDocument(ctx(staff('tenant-acme')), documentId, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      updateDocument(ctx(staff('tenant-acme')), documentId, createInput, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      requestFileUpload(
         ctx(staff('tenant-acme')),
         documentId,
         {
@@ -428,23 +429,23 @@ describe('documents use-cases', () => {
         },
         failedDeps,
       ),
-    ).toEqual(failure);
-    expect(
-      await removeFile(ctx(staff('tenant-acme')), documentId, fileId, failedDeps),
-    ).toEqual(failure);
-    expect(
-      await getFileContent(ctx(staff('tenant-acme')), documentId, fileId, failedDeps),
-    ).toEqual(failure);
-    expect(
-      await getFileExport(ctx(staff('tenant-acme')), documentId, fileId, failedDeps),
-    ).toEqual(failure);
-    expect(
-      await exportDocuments(
+    ).rejects.toBe(failure);
+    await expect(
+      removeFile(ctx(staff('tenant-acme')), documentId, fileId, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      getFileContent(ctx(staff('tenant-acme')), documentId, fileId, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      getFileExport(ctx(staff('tenant-acme')), documentId, fileId, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      exportDocuments(
         ctx(staff('tenant-acme')),
         { documentIds: [documentId] },
         failedDeps,
       ),
-    ).toEqual(failure);
+    ).rejects.toBe(failure);
   });
 
   it('covers direct-upload and missing-storage outcomes', async () => {
@@ -511,16 +512,19 @@ describe('documents use-cases', () => {
   it('propagates delete and upload failures and reports vanished rows', async () => {
     const state = fake([documentRow()], [fileRow()]);
     const failure = err(internal('failed port'));
-    expect(
-      await deleteDocument(
+    await expect(
+      deleteDocument(
         ctx(staff('tenant-acme')),
         documentId,
         {
           ...state.deps,
-          documents: { ...state.deps.documents, listFiles: async () => failure },
+          documents: {
+            ...state.deps.documents,
+            listFiles: async () => Promise.reject(new Error('failed port')),
+          },
         },
       ),
-    ).toEqual(failure);
+    ).rejects.toThrow('failed port');
     expect(
       await deleteDocument(
         ctx(staff('tenant-acme')),
@@ -531,23 +535,26 @@ describe('documents use-cases', () => {
         },
       ),
     ).toEqual(failure);
-    expect(
-      await deleteDocument(
+    await expect(
+      deleteDocument(
         ctx(staff('tenant-acme')),
         documentId,
         {
           ...state.deps,
-          documents: { ...state.deps.documents, delete: async () => failure },
+          documents: {
+            ...state.deps.documents,
+            delete: async () => Promise.reject(new Error('failed port')),
+          },
         },
       ),
-    ).toEqual(failure);
+    ).rejects.toThrow('failed port');
     expect(
       await deleteDocument(
         ctx(staff('tenant-acme')),
         documentId,
         {
           ...state.deps,
-          documents: { ...state.deps.documents, delete: async () => ok(false) },
+          documents: { ...state.deps.documents, delete: async () => false },
         },
       ),
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });
@@ -576,7 +583,7 @@ describe('documents use-cases', () => {
         input,
         {
           ...state.deps,
-          documents: { ...state.deps.documents, createFile: async () => ok(null) },
+          documents: { ...state.deps.documents, createFile: async () => null },
         },
       ),
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });

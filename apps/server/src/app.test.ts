@@ -51,18 +51,18 @@ const baseDeps = (): AppDeps => ({
     updatePositions: async () => {},
   },
   documents: {
-    listByTenant: async () => ok([]),
-    findById: async () => ok(null),
-    listFiles: async () => ok([]),
-    listFilesForDocuments: async () => ok([]),
+    listByTenant: async () => [],
+    findById: async () => null,
+    listFiles: async () => [],
+    listFilesForDocuments: async () => [],
     create: async () => {
       throw new Error('not implemented in fake');
     },
-    update: async () => ok(null),
-    delete: async () => ok(false),
-    createFile: async () => ok(null),
-    findFile: async () => ok(null),
-    deleteFile: async () => ok(false),
+    update: async () => null,
+    delete: async () => false,
+    createFile: async () => null,
+    findFile: async () => null,
+    deleteFile: async () => false,
   },
   storage: {
     put: async () => ok(undefined),
@@ -205,7 +205,8 @@ describe('buildApp routes', () => {
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     const csp = res.headers.get('content-security-policy');
     expect(csp).toContain("script-src 'self'");
-    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("connect-src 'self' https://vercel.com");
+    expect(csp).toContain("object-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
   });
 
@@ -412,13 +413,13 @@ describe('buildApp routes', () => {
     const files: DocumentFile[] = [];
     deps.ids = { nextId: () => (files.length === 0 ? fileId : documentId) };
     deps.documents = {
-      listByTenant: async () => ok([document]),
-      findById: async (_tenantId, id) => ok(id === documentId ? document : null),
-      listFiles: async () => ok(files),
-      listFilesForDocuments: async () => ok(files),
-      create: async () => ok(document),
-      update: async () => ok({ ...document, title: 'Updated' }),
-      delete: async () => ok(true),
+      listByTenant: async () => [document],
+      findById: async (_tenantId, id) => (id === documentId ? document : null),
+      listFiles: async () => files,
+      listFilesForDocuments: async () => files,
+      create: async () => document,
+      update: async () => ({ ...document, title: 'Updated' }),
+      delete: async () => true,
       createFile: async (_tenantId, input) => {
         const file = {
           ...input,
@@ -426,12 +427,12 @@ describe('buildApp routes', () => {
           createdAt: '2026-07-27T10:00:00.000Z',
         };
         files.splice(0, files.length, file);
-        return ok(file);
+        return file;
       },
-      findFile: async () => ok(files[0] ?? null),
+      findFile: async () => files[0] ?? null,
       deleteFile: async () => {
         files.splice(0);
-        return ok(true);
+        return true;
       },
     };
     deps.storage = {

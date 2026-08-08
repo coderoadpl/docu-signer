@@ -38,18 +38,18 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   todos: { listByTenant: async () => [], create: async () => {} },
   cards: { listByTenant: async () => [], create: async () => {}, updatePositions: async () => {} },
   documents: {
-    listByTenant: async () => ok([]),
-    findById: async () => ok(null),
-    listFiles: async () => ok([]),
-    listFilesForDocuments: async () => ok([]),
+    listByTenant: async () => [],
+    findById: async () => null,
+    listFiles: async () => [],
+    listFilesForDocuments: async () => [],
     create: async () => {
       throw new Error('not implemented in fake');
     },
-    update: async () => ok(null),
-    delete: async () => ok(false),
-    createFile: async () => ok(null),
-    findFile: async () => ok(null),
-    deleteFile: async () => ok(false),
+    update: async () => null,
+    delete: async () => false,
+    createFile: async () => null,
+    findFile: async () => null,
+    deleteFile: async () => false,
   },
   storage: {
     put: async () => ok(undefined),

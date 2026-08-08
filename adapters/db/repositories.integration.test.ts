@@ -836,15 +836,9 @@ describe('DocumentRepository', () => {
       person: null,
       tags: ['contract'],
     });
-    expect(created).toMatchObject({ ok: true, value: { id: documentId } });
-    expect(await documentRepo().listByTenant(tenantB.id, {})).toEqual({
-      ok: true,
-      value: [],
-    });
-    expect(await documentRepo().findById(tenantB.id, documentId)).toEqual({
-      ok: true,
-      value: null,
-    });
+    expect(created).toMatchObject({ id: documentId });
+    expect(await documentRepo().listByTenant(tenantB.id, {})).toEqual([]);
+    expect(await documentRepo().findById(tenantB.id, documentId)).toBeNull();
     expect(
       await documentRepo().createFile(tenantB.id, {
         id: fileId,
@@ -855,7 +849,7 @@ describe('DocumentRepository', () => {
         sizeBytes: 3,
         storageKey: `documents/${tenantA.id}/${documentId}/${fileId}`,
       }),
-    ).toEqual({ ok: true, value: null });
+    ).toBeNull();
     const file = await documentRepo().createFile(tenantA.id, {
       id: fileId,
       documentId,
@@ -865,19 +859,12 @@ describe('DocumentRepository', () => {
       sizeBytes: 3,
       storageKey: `documents/${tenantA.id}/${documentId}/${fileId}`,
     });
-    expect(file).toMatchObject({ ok: true, value: { id: fileId } });
-    expect(await documentRepo().listFilesForDocuments(tenantA.id, [documentId])).toMatchObject({
-      ok: true,
-      value: [{ id: fileId }],
-    });
-    expect(await documentRepo().deleteFile(tenantB.id, documentId, fileId)).toEqual({
-      ok: true,
-      value: false,
-    });
-    expect(await documentRepo().deleteFile(tenantA.id, documentId, fileId)).toEqual({
-      ok: true,
-      value: true,
-    });
+    expect(file).toMatchObject({ id: fileId });
+    expect(await documentRepo().listFilesForDocuments(tenantA.id, [documentId])).toEqual([
+      expect.objectContaining({ id: fileId }),
+    ]);
+    expect(await documentRepo().deleteFile(tenantB.id, documentId, fileId)).toBe(false);
+    expect(await documentRepo().deleteFile(tenantA.id, documentId, fileId)).toBe(true);
     expect(
       await documentRepo().update(tenantA.id, documentId, {
         title: 'Updated',
@@ -886,11 +873,8 @@ describe('DocumentRepository', () => {
         person: 'Alice',
         tags: [],
       }),
-    ).toMatchObject({ ok: true, value: { title: 'Updated', person: 'Alice' } });
-    expect(await documentRepo().delete(tenantA.id, documentId)).toEqual({
-      ok: true,
-      value: true,
-    });
+    ).toMatchObject({ title: 'Updated', person: 'Alice' });
+    expect(await documentRepo().delete(tenantA.id, documentId)).toBe(true);
     expect(await db.select().from(documents).where(eq(documents.id, documentId))).toEqual([]);
     expect(await db.select().from(documentFiles).where(eq(documentFiles.documentId, documentId))).toEqual([]);
   });

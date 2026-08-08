@@ -59,8 +59,7 @@ const findDocument = async (
   deps: DocumentDeps,
 ): Promise<Result<Document, AppError>> => {
   const found = await deps.documents.findById(tenantId, documentId);
-  if (!found.ok) return found;
-  return found.value ? ok(found.value) : err(notFound('Document not found'));
+  return found ? ok(found) : err(notFound('Document not found'));
 };
 
 export const createDocument = async (
@@ -72,12 +71,14 @@ export const createDocument = async (
   if (!scope.ok) return scope;
   const parsed = createDocumentSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document', parsed.error.flatten()));
-  return deps.documents.create({
-    id: deps.ids.nextId(),
-    tenantId: scope.value,
-    ...parsed.data,
-    person: parsed.data.person ?? null,
-  });
+  return ok(
+    await deps.documents.create({
+      id: deps.ids.nextId(),
+      tenantId: scope.value,
+      ...parsed.data,
+      person: parsed.data.person ?? null,
+    }),
+  );
 };
 
 export const listDocuments = async (
@@ -90,16 +91,14 @@ export const listDocuments = async (
   const parsed = documentListFilterSchema.safeParse(filter);
   if (!parsed.success) return err(validation('Invalid document filters', parsed.error.flatten()));
   const documents = await deps.documents.listByTenant(scope.value, parsed.data);
-  if (!documents.ok) return documents;
   const files = await deps.documents.listFilesForDocuments(
     scope.value,
-    documents.value.map((document) => document.id),
+    documents.map((document) => document.id),
   );
-  if (!files.ok) return files;
   return ok(
-    documents.value.map((document) => ({
+    documents.map((document) => ({
       ...document,
-      files: files.value.filter((file) => file.documentId === document.id),
+      files: files.filter((file) => file.documentId === document.id),
     })),
   );
 };
@@ -114,7 +113,7 @@ export const getDocument = async (
   const document = await findDocument(scope.value, documentId, deps);
   if (!document.ok) return document;
   const files = await deps.documents.listFiles(scope.value, documentId);
-  return files.ok ? ok({ ...document.value, files: files.value }) : files;
+  return ok({ ...document.value, files });
 };
 
 export const updateDocument = async (
@@ -131,8 +130,7 @@ export const updateDocument = async (
     ...parsed.data,
     person: parsed.data.person ?? null,
   });
-  if (!updated.ok) return updated;
-  return updated.value ? ok(updated.value) : err(notFound('Document not found'));
+  return updated ? ok(updated) : err(notFound('Document not found'));
 };
 
 export const deleteDocument = async (
@@ -145,14 +143,12 @@ export const deleteDocument = async (
   const document = await findDocument(scope.value, documentId, deps);
   if (!document.ok) return document;
   const files = await deps.documents.listFiles(scope.value, documentId);
-  if (!files.ok) return files;
-  for (const file of files.value) {
+  for (const file of files) {
     const removed = await deps.storage.delete(file.storageKey);
     if (!removed.ok) return removed;
   }
   const deleted = await deps.documents.delete(scope.value, documentId);
-  if (!deleted.ok) return deleted;
-  return deleted.value ? ok(undefined) : err(notFound('Document not found'));
+  return deleted ? ok(undefined) : err(notFound('Document not found'));
 };
 
 const storageKey = (tenantId: string, documentId: string, fileId: string): string =>
@@ -207,8 +203,7 @@ const finalizeUpload = async (
     sizeBytes: parsed.data.sizeBytes,
     storageKey: parsed.data.key,
   });
-  if (!created.ok) return created;
-  return created.value ? ok(created.value) : err(notFound('Document not found'));
+  return created ? ok(created) : err(notFound('Document not found'));
 };
 
 export const finalizeFileUpload = async (
@@ -260,13 +255,11 @@ export const removeFile = async (
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
   const file = await deps.documents.findFile(scope.value, documentId, fileId);
-  if (!file.ok) return file;
-  if (!file.value) return err(notFound('Document file not found'));
-  const removed = await deps.storage.delete(file.value.storageKey);
+  if (!file) return err(notFound('Document file not found'));
+  const removed = await deps.storage.delete(file.storageKey);
   if (!removed.ok) return removed;
   const deleted = await deps.documents.deleteFile(scope.value, documentId, fileId);
-  if (!deleted.ok) return deleted;
-  return deleted.value ? ok(undefined) : err(notFound('Document file not found'));
+  return deleted ? ok(undefined) : err(notFound('Document file not found'));
 };
 
 export const getFileContent = async (
@@ -278,15 +271,14 @@ export const getFileContent = async (
   const scope = authorizeTenant(ctx, 'document:read');
   if (!scope.ok) return scope;
   const file = await deps.documents.findFile(scope.value, documentId, fileId);
-  if (!file.ok) return file;
-  if (!file.value) return err(notFound('Document file not found'));
-  const bytes = await deps.storage.get(file.value.storageKey);
+  if (!file) return err(notFound('Document file not found'));
+  const bytes = await deps.storage.get(file.storageKey);
   if (!bytes.ok) return bytes;
   if (!bytes.value) return err(notFound('Document file content not found'));
   return ok({
     bytes: bytes.value,
-    contentType: file.value.contentType,
-    fileName: file.value.fileName,
+    contentType: file.contentType,
+    fileName: file.fileName,
   });
 };
 
@@ -301,17 +293,16 @@ export const getFileExport = async (
   const document = await findDocument(scope.value, documentId, deps);
   if (!document.ok) return document;
   const file = await deps.documents.findFile(scope.value, documentId, fileId);
-  if (!file.ok) return file;
-  if (!file.value) return err(notFound('Document file not found'));
-  const bytes = await deps.storage.get(file.value.storageKey);
+  if (!file) return err(notFound('Document file not found'));
+  const bytes = await deps.storage.get(file.storageKey);
   if (!bytes.ok) return bytes;
   if (!bytes.value) return err(notFound('Document file content not found'));
   return ok({
     document: document.value,
-    file: file.value,
+    file,
     bytes: bytes.value,
-    contentType: file.value.contentType,
-    fileName: file.value.fileName,
+    contentType: file.contentType,
+    fileName: file.fileName,
   });
 };
 
@@ -327,22 +318,20 @@ export const exportDocuments = async (
   const exported: ExportDocumentContent[] = [];
   for (const documentId of parsed.data.documentIds) {
     const document = await deps.documents.findById(scope.value, documentId);
-    if (!document.ok) return document;
-    if (!document.value) continue;
+    if (!document) continue;
     const files = await deps.documents.listFiles(scope.value, documentId);
-    if (!files.ok) return files;
     const fileCount = exported.reduce((count, item) => count + item.files.length, 0);
-    if (fileCount + files.value.length > MAX_DOCUMENT_EXPORT_FILES) {
+    if (fileCount + files.length > MAX_DOCUMENT_EXPORT_FILES) {
       return err(validation(`An export may contain at most ${MAX_DOCUMENT_EXPORT_FILES} files`));
     }
     const exportedFiles: Array<{ file: DocumentFile; bytes: Uint8Array }> = [];
-    for (const file of files.value) {
+    for (const file of files) {
       const bytes = await deps.storage.get(file.storageKey);
       if (!bytes.ok) return bytes;
       if (!bytes.value) return err(notFound('Document file content not found'));
       exportedFiles.push({ file, bytes: bytes.value });
     }
-    exported.push({ document: document.value, files: exportedFiles });
+    exported.push({ document, files: exportedFiles });
   }
   return exported.length ? ok(exported) : err(notFound('Documents not found'));
 };
