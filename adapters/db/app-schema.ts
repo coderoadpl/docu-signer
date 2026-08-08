@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -134,6 +135,58 @@ export const cards = pgTable(
       'cards_column_check',
       sql`(${table.board} = 'personal' AND ${table.column} IN ('todo', 'doing', 'done')) OR (${table.board} = 'team' AND ${table.column} IN ('todo', 'in-dev', 'review', 'done'))`,
     ),
+  ],
+);
+
+export const documents = pgTable(
+  'documents',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    docType: text('doc_type', {
+      enum: ['umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny'],
+    }).notNull(),
+    documentDate: date('document_date').notNull(),
+    person: text('person'),
+    tags: jsonb('tags').$type<string[]>().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('documents_tenant_date_idx').on(table.tenantId, table.documentDate),
+    check(
+      'documents_doc_type_check',
+      sql`${table.docType} IN ('umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny')`,
+    ),
+  ],
+);
+
+export const documentFiles = pgTable(
+  'document_files',
+  {
+    id: uuid('id').primaryKey(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    role: text('role', {
+      enum: ['source', 'signed-scan', 'signed-digital', 'other'],
+    }).notNull(),
+    fileName: text('file_name').notNull(),
+    contentType: text('content_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    storageKey: text('storage_key').notNull().unique(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('document_files_document_idx').on(table.documentId, table.createdAt),
+    check(
+      'document_files_role_check',
+      sql`${table.role} IN ('source', 'signed-scan', 'signed-digital', 'other')`,
+    ),
+    check('document_files_size_check', sql`${table.sizeBytes} >= 0 AND ${table.sizeBytes} <= 26214400`),
   ],
 );
 

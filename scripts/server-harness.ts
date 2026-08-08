@@ -43,12 +43,14 @@ export interface BootTarget {
   port: number;
   databaseUrl: string;
   webDistDir: string;
+  storageLocalPath?: string;
 }
 
 export const bootServer = async ({
   port,
   databaseUrl,
   webDistDir,
+  storageLocalPath,
 }: BootTarget): Promise<ChildProcess> => {
   const child = spawn(tsxBin, ['apps/server/src/entry.node.ts'], {
     cwd: rootDir,
@@ -60,6 +62,7 @@ export const bootServer = async ({
       APP_BASE_URL: `http://localhost:${port}`,
       APP_BASE_DOMAIN: 'localhost',
       WEB_DIST_DIR: webDistDir,
+      ...(storageLocalPath === undefined ? {} : { STORAGE_LOCAL_PATH: storageLocalPath }),
       // Real smtp transport → the dev/CI Mailpit captures the magic-link send;
       // pinned here so a stray EMAIL_TRANSPORT in the ambient shell can't divert it.
       EMAIL_TRANSPORT: 'smtp',

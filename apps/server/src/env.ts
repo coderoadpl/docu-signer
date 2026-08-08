@@ -1,3 +1,5 @@
+import { isAbsolute } from 'node:path';
+
 import { z } from 'zod';
 
 import { DEV_ONLY_SECRET, serverEnvSchema, type ServerEnvParsed } from '#core/server/config.js';
@@ -29,6 +31,20 @@ const envSchema = serverEnvSchema.superRefine((data, ctx) => {
       code: z.ZodIssueCode.custom,
       path: ['DB_DRIVER'],
       message: 'DB_DRIVER must be neon-http on Vercel',
+    });
+  }
+  if (data.STORAGE_DRIVER === 'vercel-blob' && !data.BLOB_READ_WRITE_TOKEN) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['BLOB_READ_WRITE_TOKEN'],
+      message: 'BLOB_READ_WRITE_TOKEN is required for vercel-blob storage',
+    });
+  }
+  if (data.STORAGE_DRIVER === 'local-fs' && !isAbsolute(data.STORAGE_LOCAL_PATH)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['STORAGE_LOCAL_PATH'],
+      message: 'STORAGE_LOCAL_PATH must be absolute',
     });
   }
 });

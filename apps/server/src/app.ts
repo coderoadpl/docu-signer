@@ -4,16 +4,24 @@ import { secureHeaders } from 'hono/secure-headers';
 
 import {
   API_PATHS,
+  API_ROUTES,
   TENANT_HEADER,
   cardCreateInputSchema,
   cardMoveInputSchema,
   cardsListQuerySchema,
+  documentCreateInputSchema,
+  documentListInputSchema,
+  documentUpdateInputSchema,
+  exportDocumentsInputSchema,
+  fileUploadRequestInputSchema,
+  finalizeFileUploadInputSchema,
   memberEnsureInputSchema,
   memberExportQuerySchema,
   memberRemoveInputSchema,
   memberUpdateInputSchema,
   staffGrantInputSchema,
   staffRevokeInputSchema,
+  serverUploadMetadataSchema,
   tenantCreateInputSchema,
   todoCreateInputSchema,
 } from '#core/contract/index.js';
@@ -28,6 +36,7 @@ import {
   unauthorized,
   unavailable,
   validation,
+  isAllowedDocumentContentType,
   type Identity,
 } from '#core/domain/index.js';
 import {
@@ -36,22 +45,34 @@ import {
   addTodo,
   checkDomain,
   createTenant,
+  createDocument,
+  deleteDocument,
   ensureMember,
   exportMember,
+  exportDocuments,
+  finalizeFileUpload,
+  getDocument,
+  getFileContent,
+  getFileExport,
   grantAdmin,
   listCards,
   listDomains,
+  listDocuments,
   listMembers,
   listMyTenants,
   listStaff,
   listTodos,
   moveCard,
   removeDomain,
+  removeFile,
   removeMember,
   resolveIdentity,
   revokeAdmin,
+  requestFileUpload,
   runBackfillBatch,
   tenantCreationContext,
+  serverUpload,
+  updateDocument,
   updateMember,
   type AuthenticatedUser,
   type Ctx,
@@ -61,6 +82,12 @@ import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
 import type { AppDeps } from './composition.js';
 import { parseLimit } from './internal-app.js';
 import { captureServerException } from './observability.js';
+import { cleanExportBytes } from './clean-export.js';
+import {
+  archiveEntries,
+  singleExportFileName,
+  zipResponseStream,
+} from './export-files.js';
 import { registerPublicRoutes } from './public-app.js';
 import { respond } from './respond.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
@@ -82,6 +109,26 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   staffRole: null,
   memberId: null,
 });
+
+const attachmentHeaders = (fileName: string, contentType: string): HeadersInit => {
+  const encodedName = encodeURIComponent(fileName);
+  const fallbackName = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return {
+    'content-type': contentType,
+    'content-disposition': `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+    'cache-control': 'private, no-store',
+  };
+};
+
+const bytesResponse = (
+  bytes: Uint8Array,
+  fileName: string,
+  contentType: string,
+): Response => {
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+  return new Response(body, { headers: attachmentHeaders(fileName, contentType) });
+};
 
 export const buildApp = (deps: AppDeps) => {
   const app = new Hono<Vars>();
@@ -113,12 +160,18 @@ export const buildApp = (deps: AppDeps) => {
   // JSON payloads are small; a 100KB cap is a cheap DoS floor under Vercel's
   // 4.5MB platform backstop. The over-limit response stays an envelope so
   // clients never see a non-JSON body from the API.
-  app.use(
-    '/api/*',
-    bodyLimit({
-      maxSize: 100 * 1024,
-      onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
-    }),
+  const normalBodyLimit = bodyLimit({
+    maxSize: 100 * 1024,
+    onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
+  });
+  const uploadBodyLimit = bodyLimit({
+    maxSize: 25 * 1024 * 1024,
+    onError: () => respond(err(validation('Upload exceeds the 25MB limit'))),
+  });
+  app.use('/api/*', (c, next) =>
+    /^\/api\/documents\/[^/]+\/files\/upload$/.test(c.req.path)
+      ? uploadBodyLimit(c, next)
+      : normalBodyLimit(c, next),
   );
 
   app.use('*', telemetryMiddleware);
@@ -269,6 +322,175 @@ export const buildApp = (deps: AppDeps) => {
     }
     const result = await addTodo(ctxOf(c.get('identity')), parsed.data, deps);
     return respond(result.ok ? ok({ todo: result.value }) : result);
+  });
+
+  app.get(API_PATHS.documents, async (c) => {
+    const parsed = documentListInputSchema.safeParse({
+      docType: c.req.query('docType'),
+      person: c.req.query('person'),
+      text: c.req.query('text'),
+      dateFrom: c.req.query('dateFrom'),
+      dateTo: c.req.query('dateTo'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document filters', parsed.error.flatten())));
+    }
+    const result = await listDocuments(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result.ok ? ok({ documents: result.value }) : result);
+  });
+
+  app.post(API_PATHS.documents, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document payload', parsed.error.flatten())));
+    }
+    const result = await createDocument(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.document.path, async (c) => {
+    const result = await getDocument(ctxOf(c.get('identity')), c.req.param('documentId'), deps);
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.patch(API_ROUTES.documentUpdate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentUpdateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document payload', parsed.error.flatten())));
+    }
+    const result = await updateDocument(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentDelete.path, async (c) => {
+    const result = await deleteDocument(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileUploadRequest.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = fileUploadRequestInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid file upload request', parsed.error.flatten())));
+    }
+    const result = await requestFileUpload(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ upload: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileFinalize.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = finalizeFileUploadInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid uploaded file', parsed.error.flatten())));
+    }
+    const result = await finalizeFileUpload(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ file: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileServerUpload.path, async (c) => {
+    const parsed = serverUploadMetadataSchema.safeParse({
+      fileName: c.req.query('fileName'),
+      contentType: c.req.header('content-type'),
+      role: c.req.query('role'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid server upload metadata', parsed.error.flatten())));
+    }
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    const result = await serverUpload(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      { ...parsed.data, bytes },
+      deps,
+    );
+    return respond(result.ok ? ok({ file: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentFileDelete.path, async (c) => {
+    const result = await removeFile(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
+  });
+
+  app.get(API_ROUTES.documentFileContent.path, async (c) => {
+    const result = await getFileContent(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    if (!result.ok) return respond(result);
+    const encodedName = encodeURIComponent(result.value.fileName);
+    const fallbackName = result.value.fileName
+      .replace(/[^\x20-\x7e]/g, '_')
+      .replace(/["\\]/g, '_');
+    const disposition = isAllowedDocumentContentType(result.value.contentType)
+      ? 'inline'
+      : 'attachment';
+    const body = new ArrayBuffer(result.value.bytes.byteLength);
+    new Uint8Array(body).set(result.value.bytes);
+    return new Response(body, {
+      headers: {
+        'content-type': result.value.contentType,
+        'content-disposition': `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+        'cache-control': 'private, no-store',
+      },
+    });
+  });
+
+  app.get(API_ROUTES.documentFileExport.path, async (c) => {
+    const result = await getFileExport(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    if (!result.ok) return respond(result);
+    const bytes = await cleanExportBytes(result.value.bytes, result.value.contentType);
+    return bytesResponse(
+      bytes,
+      singleExportFileName(result.value.document, result.value.file),
+      result.value.contentType,
+    );
+  });
+
+  app.post(API_ROUTES.documentsExport.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = exportDocumentsInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid export request', parsed.error.flatten())));
+    }
+    const result = await exportDocuments(ctxOf(c.get('identity')), parsed.data, deps);
+    if (!result.ok) return respond(result);
+    const entries = await archiveEntries(result.value);
+    return new Response(zipResponseStream(entries), {
+      headers: attachmentHeaders('eksport-dokumentow.zip', 'application/zip'),
+    });
   });
 
   app.get(API_PATHS.cards, async (c) => {

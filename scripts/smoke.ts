@@ -141,11 +141,17 @@ try {
   const port = await ephemeralPort();
   console.log(`smoke: booting server on port ${port}...`);
   const webDistDir = mkdtempSync(join(tmpdir(), 'smoke-web-'));
-  homes.push(webDistDir);
+  const storageLocalPath = mkdtempSync(join(tmpdir(), 'smoke-storage-'));
+  homes.push(webDistDir, storageLocalPath);
   // Minimal SPA shell so the server serves index.html — smoke asserts its
   // revalidate-always cache header (Vercel parity) without a full web build.
   writeFileSync(join(webDistDir, 'index.html'), '<!doctype html><title>agentproofarch smoke</title>\n');
-  server = await bootServer({ port, databaseUrl: smokeDatabaseUrl, webDistDir });
+  server = await bootServer({
+    port,
+    databaseUrl: smokeDatabaseUrl,
+    webDistDir,
+    storageLocalPath,
+  });
   console.log('smoke: driving the CLI...');
   await driveCli(
     {

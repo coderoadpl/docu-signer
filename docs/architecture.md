@@ -625,6 +625,8 @@ them; `tenant:create` is the one row derived from an env-selected mode, below):
 | `todo:write`     | allow | allow | allow  | deny                  |
 | `card:read`      | allow | allow | allow  | deny                  |
 | `card:write`     | allow | allow | allow  | deny                  |
+| `document:read`  | allow | allow | deny   | deny                  |
+| `document:write` | allow | allow | deny   | deny                  |
 | `member:*`       | allow | allow | deny   | deny                  |
 | `staff:read`     | allow | allow | deny   | deny                  |
 | `staff:grant`    | allow | deny  | deny   | deny                  |
@@ -921,6 +923,9 @@ raw insert, a forgotten code path, or a future adapter.
 | `tenant_domains.kind ∈ {subdomain, custom}` | **DB** | closed set → DB `CHECK` (`tenant_domains_kind_check`). Test: raw-SQL bad kind → rejected. |
 | `cards.board ∈ {personal, team}` | **DB + app** | closed set → DB `CHECK` (`cards_board_check`); the use-cases validate at their boundary. Test: raw-SQL bad board → rejected. |
 | `cards.column` legal for its `board` | **DB + app** | per-board closed set → compound DB `CHECK` (`cards_column_check`, `(board,column)` pairs); each board also validates its column at the use-case. Test: raw-SQL `personal`/`in-dev` → rejected. |
+| `documents.doc_type ∈ {umowa-uod, uchwala, protokol, rachunek, inny}` | **DB + app** | closed set → DB `CHECK` (`documents_doc_type_check`); the adapter zod-parses on read. Test: raw-SQL bad type → rejected. |
+| `document_files.role ∈ {source, signed-scan, signed-digital, other}` | **DB + app** | closed set → DB `CHECK` (`document_files_role_check`); the adapter zod-parses on read. Test: raw-SQL bad role → rejected. |
+| `document_files.size_bytes ∈ [0, 25 MiB]` | **DB + app** | upload policy → DB `CHECK` (`document_files_size_check`), server body limit, direct-upload token constraint and finalize schema. Test: raw-SQL oversized file → rejected. |
 | `members.marketing_consents[].channel ∈ MarketingChannel` | **app-only (zod at the read boundary)** | the payload is jsonb — a per-element closed set a column `CHECK` cannot express — so the guard is `memberSchema.parse` at the repository boundary, which rejects LOUDLY (throws) rather than leaking an untyped channel into core. Test: raw-SQL garbage channel → `findMember` throws. |
 | `cards` row shape (int position ≥ 0, board enum, string[] visited) | **app-only (zod at the read boundary)** | structural shape the CHECKs don't fully cover → `cardSchema.parse` on read throws on a corrupted row. Test: raw-SQL negative position → `listByTenant` throws. |
 | tenant always has ≥ 1 owner | **app (one atomic conditional statement)** | a cross-row cardinality invariant Postgres cannot express as a column constraint → the atomic last-owner-safe revoke (§Transactions, `revokeLastOwnerSafe`); the owner count is taken under a row lock so concurrent revokes serialize. Test: an integration test fires two concurrent revokes and asserts the tenant never reaches zero owners. |

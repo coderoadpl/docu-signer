@@ -1,3 +1,6 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename } from 'node:path';
+
 import { Command, CommanderError } from 'commander';
 import { z } from 'zod';
 
@@ -8,6 +11,7 @@ import {
   TENANT_HEADER,
   cardCreateInputSchema,
   cardMoveInputSchema,
+  documentCreateInputSchema,
   memberEnsureInputSchema,
   memberRemoveInputSchema,
   memberUpdateInputSchema,
@@ -301,6 +305,126 @@ todo
     if (input === undefined) return;
     emit(await ctx.api.addTodo(input), ctx.json, (data) =>
       `added: ${data.todo.title} (${data.todo.id.slice(0, 8)})`,
+    );
+  });
+
+const document = program
+  .command('document')
+  .description('Documents in the active tenant — staff only (owner/admin)');
+
+document.command('list').description('List documents').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.listDocuments(), ctx.json, (data) =>
+    data.documents.length === 0
+      ? 'no documents'
+      : data.documents
+          .map(
+            (row) =>
+              `- ${row.documentDate}\t${row.title}\t${row.docType}\t(${row.id.slice(0, 8)})`,
+          )
+          .join('\n'),
+  );
+});
+
+document
+  .command('show <id>')
+  .description('Show a document and its attachments')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    emit(await ctx.api.getDocument(id), ctx.json, (data) => {
+      const files = data.document.files
+        .map((file) => `  - ${file.role}\t${file.fileName}\t(${file.id.slice(0, 8)})`)
+        .join('\n');
+      return `${data.document.documentDate}\t${data.document.title}\n${files || '  no files'}`;
+    });
+  });
+
+document
+  .command('add <title...>')
+  .description('Create a document entry')
+  .requiredOption('--type <type>', 'umowa-uod|uchwala|protokol|rachunek|inny')
+  .requiredOption('--date <date>', 'document date (YYYY-MM-DD)')
+  .option('--person <person>', 'person')
+  .option('--tag <tag...>', 'tags')
+  .action(
+    async (
+      titleWords: string[],
+      options: { type: string; date: string; person?: string; tag?: string[] },
+    ) => {
+      const ctx = cliCtx();
+      const input = parseArgs(
+        documentCreateInputSchema,
+        {
+          title: titleWords.join(' '),
+          docType: options.type,
+          documentDate: options.date,
+          ...(options.person === undefined ? {} : { person: options.person }),
+          tags: options.tag ?? [],
+        },
+        ctx.json,
+      );
+      if (input === undefined) return;
+      emit(await ctx.api.createDocument(input), ctx.json, (data) =>
+        `added: ${data.document.title} (${data.document.id})`,
+      );
+    },
+  );
+
+document
+  .command('upload <id> <path>')
+  .description('Upload an attachment through the server')
+  .requiredOption('--role <role>', 'source|signed-scan|signed-digital|other')
+  .option('--content-type <contentType>', 'MIME type', 'application/pdf')
+  .action(
+    async (
+      id: string,
+      path: string,
+      options: { role: string; contentType: string },
+    ) => {
+      const ctx = cliCtx();
+      const bytes = new Uint8Array(await readFile(path));
+      const input = parseArgs(
+        z.object({
+          fileName: z.string().min(1),
+          contentType: z.string().min(1),
+          role: z.enum(['source', 'signed-scan', 'signed-digital', 'other']),
+          bytes: z.instanceof(Uint8Array),
+        }),
+        {
+          fileName: basename(path),
+          contentType: options.contentType,
+          role: options.role,
+          bytes,
+        },
+        ctx.json,
+      );
+      if (input === undefined) return;
+      emit(await ctx.api.uploadDocumentFile(id, input), ctx.json, (data) =>
+        `uploaded: ${data.file.fileName} (${data.file.id})`,
+      );
+    },
+  );
+
+document
+  .command('export <id>')
+  .description('Export one document as a deterministic ZIP archive')
+  .option('--output <path>', 'output file', 'eksport-dokumentow.zip')
+  .action(async (id: string, options: { output: string }) => {
+    const ctx = cliCtx();
+    const result = await ctx.api.exportDocuments({ documentIds: [id] });
+    if (!result.ok) {
+      emit(result, ctx.json, () => '');
+      return;
+    }
+    await writeFile(options.output, result.value.bytes);
+    emit(
+      ok({
+        path: options.output,
+        fileName: result.value.fileName,
+        sizeBytes: result.value.bytes.byteLength,
+      }),
+      ctx.json,
+      (data) => `exported: ${data.path} (${data.sizeBytes} bytes)`,
     );
   });
 

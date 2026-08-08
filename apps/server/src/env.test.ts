@@ -61,6 +61,32 @@ describe('loadEnv', () => {
     expect(parseEnv({ ...localDev(), TENANT_CREATION: 'closed' }).success).toBe(true);
     expect(parseEnv({ ...localDev(), TENANT_CREATION: 'invalid' }).success).toBe(false);
   });
+
+  it('keeps sign-up enabled by default and parses the production switch', () => {
+    expect(loadEnv().AUTH_DISABLE_SIGNUP).toBe(false);
+    expect(
+      parseEnv({ ...localDev(), AUTH_DISABLE_SIGNUP: 'true' }).success,
+    ).toBe(true);
+  });
+
+  it('requires a Blob token only when Vercel Blob storage is selected', () => {
+    expect(parseEnv({ ...localDev(), STORAGE_DRIVER: 'local-fs' }).success).toBe(true);
+    expect(
+      parseEnv({
+        ...localDev(),
+        STORAGE_DRIVER: 'local-fs',
+        STORAGE_LOCAL_PATH: 'relative/storage',
+      }).success,
+    ).toBe(false);
+    expect(parseEnv({ ...localDev(), STORAGE_DRIVER: 'vercel-blob' }).success).toBe(false);
+    expect(
+      parseEnv({
+        ...localDev(),
+        STORAGE_DRIVER: 'vercel-blob',
+        BLOB_READ_WRITE_TOKEN: 'token',
+      }).success,
+    ).toBe(true);
+  });
 });
 
 // A minimal source that parses clean in local dev (neither deploy signal set).
@@ -199,6 +225,35 @@ describe('config subsets', () => {
     const parsed = seedEnvSchema.parse({});
     expect(parsed.DATABASE_URL).toBe(DEFAULT_DATABASE_URL);
     expect(parsed.BETTER_AUTH_SECRET).toBe(DEV_ONLY_SECRET);
+  });
+
+  it('the seed subset accepts complete admin pairs and refuses partial pairs', () => {
+    expect(
+      seedEnvSchema.safeParse({
+        SEED_ADMIN1_EMAIL: 'admin@example.com',
+        SEED_ADMIN1_PASSWORD: 'password-1',
+      }).success,
+    ).toBe(true);
+    expect(
+      seedEnvSchema.safeParse({ SEED_ADMIN1_EMAIL: 'admin@example.com' }).success,
+    ).toBe(false);
+    expect(
+      seedEnvSchema.safeParse({ SEED_ADMIN2_PASSWORD: 'password-2' }).success,
+    ).toBe(false);
+    expect(
+      seedEnvSchema.safeParse({
+        SEED_ADMIN2_EMAIL: 'admin2@example.com',
+        SEED_ADMIN2_PASSWORD: 'password-2',
+      }).success,
+    ).toBe(false);
+    expect(
+      seedEnvSchema.safeParse({
+        SEED_ADMIN1_EMAIL: 'same@example.com',
+        SEED_ADMIN1_PASSWORD: 'password-1',
+        SEED_ADMIN2_EMAIL: 'same@example.com',
+        SEED_ADMIN2_PASSWORD: 'password-2',
+      }).success,
+    ).toBe(false);
   });
 
   it('the observability subset defaults the service name and leaves endpoints unset', () => {

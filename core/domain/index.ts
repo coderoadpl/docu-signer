@@ -4,6 +4,7 @@ export * from './identity.js';
 export * from './authorization.js';
 export * from './slug.js';
 export * from './todo.js';
+export * from './document.js';
 export * from './card.js';
 export * from './team-board.js';
 export * from './tenant.js';

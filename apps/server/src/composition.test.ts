@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { serverEnvSchema } from '#core/server/config.js';
 
-import { selectDomainPort, selectEmailPort, selectGoogleSettings } from './composition.js';
+import {
+  selectDomainPort,
+  selectEmailPort,
+  selectGoogleSettings,
+  selectStoragePort,
+} from './composition.js';
 import type { Env } from './env.js';
 
 // selectDomainPort only — never createDeps here: the full graph constructs a
@@ -98,5 +103,31 @@ describe('selectGoogleSettings', () => {
   it('wires Google when both keys are present', () => {
     const google = selectGoogleSettings(env({ GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'secret' }));
     expect(google).toEqual({ clientId: 'id', clientSecret: 'secret' });
+  });
+});
+
+describe('selectStoragePort', () => {
+  it('wires local filesystem storage by default', async () => {
+    const storage = selectStoragePort(env({ STORAGE_LOCAL_PATH: '/tmp/podpisy-test-storage' }));
+    expect(await storage.createUploadUrl('key', 'application/pdf')).toEqual({
+      ok: true,
+      value: null,
+    });
+  });
+
+  it('wires Vercel Blob storage when selected', async () => {
+    const storage = selectStoragePort(
+      env({
+        STORAGE_DRIVER: 'vercel-blob',
+        BLOB_READ_WRITE_TOKEN: 'vercel_blob_rw_store_secret',
+      }),
+    );
+    expect(typeof storage.createUploadUrl).toBe('function');
+  });
+
+  it('fails fast when Vercel Blob storage has no token', () => {
+    expect(() => selectStoragePort(env({ STORAGE_DRIVER: 'vercel-blob' }))).toThrow(
+      /BLOB_READ_WRITE_TOKEN/,
+    );
   });
 });

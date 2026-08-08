@@ -82,6 +82,13 @@ export const serverEnvSchema = z.object({
     .enum(['on', 'off'])
     .default('on')
     .transform((value) => value === 'on'),
+  AUTH_DISABLE_SIGNUP: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  STORAGE_DRIVER: z.enum(['local-fs', 'vercel-blob']).default('local-fs'),
+  STORAGE_LOCAL_PATH: z.string().default('/tmp/podpisy-storage'),
+  BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
   // Email transport selector (composition root), like DOMAIN_PROVISIONER. `smtp`
   // (default): any RFC SMTP relay via the SMTP_* block — Amazon SES SMTP creds
   // included, and in dev/CI a local Mailpit that captures real sends instead of
@@ -131,10 +138,45 @@ export const databaseEnvSchema = z.object({
 });
 
 /** Seed subset: connection string + the auth secret the seeder signs up with. */
-export const seedEnvSchema = z.object({
-  DATABASE_URL: databaseUrlField,
-  BETTER_AUTH_SECRET: z.string().default(DEV_ONLY_SECRET),
-});
+export const seedEnvSchema = z
+  .object({
+    DATABASE_URL: databaseUrlField,
+    BETTER_AUTH_SECRET: z.string().default(DEV_ONLY_SECRET),
+    SEED_ADMIN1_EMAIL: z.email().optional(),
+    SEED_ADMIN1_PASSWORD: z.string().min(8).optional(),
+    SEED_ADMIN2_EMAIL: z.email().optional(),
+    SEED_ADMIN2_PASSWORD: z.string().min(8).optional(),
+  })
+  .superRefine((data, ctx) => {
+    for (const slot of ['1', '2'] as const) {
+      const email = data[`SEED_ADMIN${slot}_EMAIL`];
+      const password = data[`SEED_ADMIN${slot}_PASSWORD`];
+      if ((email === undefined) === (password === undefined)) continue;
+      ctx.addIssue({
+        code: 'custom',
+        path: [`SEED_ADMIN${slot}_${email === undefined ? 'EMAIL' : 'PASSWORD'}`],
+        message: `SEED_ADMIN${slot}_EMAIL and SEED_ADMIN${slot}_PASSWORD must be set together`,
+      });
+    }
+    if (data.SEED_ADMIN2_EMAIL && !data.SEED_ADMIN1_EMAIL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SEED_ADMIN1_EMAIL'],
+        message: 'SEED_ADMIN1 must be configured before SEED_ADMIN2',
+      });
+    }
+    if (
+      data.SEED_ADMIN1_EMAIL &&
+      data.SEED_ADMIN2_EMAIL &&
+      data.SEED_ADMIN1_EMAIL === data.SEED_ADMIN2_EMAIL
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SEED_ADMIN2_EMAIL'],
+        message: 'Seed admin emails must be different',
+      });
+    }
+  });
 
 /**
  * Observability subset. All optional — absent = no-op (dev/CI untouched):

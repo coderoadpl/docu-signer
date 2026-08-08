@@ -23,6 +23,7 @@ export interface AuthSettings {
   secureCookies: boolean;
   /** Off only in test harnesses (e2e drives many sign-ins from one bucket). */
   rateLimitEnabled: boolean;
+  disableSignUp?: boolean;
   /** Delivers the magic link; the dev transport captures it instead of sending. */
   email: EmailPort;
   /** Wired only when both env keys are present (FR-26), like SENTRY_DSN gating. */
@@ -39,7 +40,7 @@ export const createAuth = (db: Db, settings: AuthSettings) =>
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
-    emailAndPassword: { enabled: true },
+    emailAndPassword: { enabled: true, disableSignUp: settings.disableSignUp ?? false },
     ...(settings.google
       ? { socialProviders: { google: { clientId: settings.google.clientId, clientSecret: settings.google.clientSecret } } }
       : {}),

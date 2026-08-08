@@ -54,6 +54,18 @@ const card = {
 
 const tenant = { id: 't-acme', slug: 'acme', name: 'Acme Inc' };
 
+const document = {
+  id: '11111111-1111-4111-8111-111111111111',
+  tenantId: 't-acme',
+  title: 'Agreement',
+  docType: 'umowa-uod' as const,
+  documentDate: '2026-07-01',
+  person: null,
+  tags: [],
+  createdAt: '2026-07-03T00:00:00.000Z',
+  updatedAt: '2026-07-03T00:00:00.000Z',
+};
+
 const member = {
   id: 'member-1',
   tenantId: 't-acme',
@@ -77,6 +89,34 @@ const happyApi: ApiClient = {
   createTenant: async (input) => ok({ tenant: { id: 't-new', slug: input.slug, name: input.name } }),
   listTodos: async () => ok({ todos: [todo] }),
   addTodo: async (input) => ok({ todo: { ...todo, title: input.title } }),
+  listDocuments: async () => ok({ documents: [{ ...document, files: [] }] }),
+  createDocument: async (input) =>
+    ok({
+      document: {
+        ...document,
+        ...input,
+        person: input.person ?? null,
+        tags: input.tags ?? [],
+      },
+    }),
+  getDocument: async () => ok({ document: { ...document, files: [] } }),
+  updateDocument: async (_id, input) =>
+    ok({
+      document: {
+        ...document,
+        ...input,
+        person: input.person ?? null,
+        tags: input.tags ?? [],
+      },
+    }),
+  deleteDocument: async () => ok({ deleted: true }),
+  requestFileUpload: async () => err(internal('unused')),
+  finalizeFileUpload: async () => err(internal('unused')),
+  uploadDocumentFile: async () => err(internal('unused')),
+  deleteDocumentFile: async () => ok({ deleted: true }),
+  downloadDocumentFile: async () => err(internal('unused')),
+  exportDocumentFile: async () => err(internal('unused')),
+  exportDocuments: async () => err(internal('unused')),
   listCards: async () => ok({ cards: [card] }),
   addCard: async (input) => ok({ card: { ...card, title: input.title, column: input.column } }),
   moveCard: async (input) => ok({ card: { ...card, column: input.toColumn, position: input.toIndex } }),
@@ -115,6 +155,18 @@ const sadApi: ApiClient = {
   config: async () => err(internal('boom')),
   listTodos: async () => err(internal('boom')),
   addTodo: async () => err(internal('boom')),
+  listDocuments: async () => err(internal('boom')),
+  createDocument: async () => err(internal('boom')),
+  getDocument: async () => err(internal('boom')),
+  updateDocument: async () => err(internal('boom')),
+  deleteDocument: async () => err(internal('boom')),
+  requestFileUpload: async () => err(internal('boom')),
+  finalizeFileUpload: async () => err(internal('boom')),
+  uploadDocumentFile: async () => err(internal('boom')),
+  deleteDocumentFile: async () => err(internal('boom')),
+  downloadDocumentFile: async () => err(internal('boom')),
+  exportDocumentFile: async () => err(internal('boom')),
+  exportDocuments: async () => err(internal('boom')),
   listCards: async () => err(internal('boom')),
   addCard: async () => err(internal('boom')),
   moveCard: async () => err(internal('boom')),

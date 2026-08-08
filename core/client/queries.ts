@@ -18,7 +18,14 @@ import type {
   StaffRevokeInput,
   TenantCreateInput,
 } from '#core/contract/index.js';
-import type { BoardId, CardMove, NewCard, NewTodo } from '#core/domain/index.js';
+import type {
+  BoardId,
+  CardMove,
+  CreateDocument,
+  DocumentListFilter,
+  NewCard,
+  NewTodo,
+} from '#core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult, MagicLinkRequest, SocialSignInInput } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
@@ -97,6 +104,12 @@ export const todosScopes = {
   lists: () => ['todos', 'list'] as const,
 };
 
+export const documentsScopes = {
+  all: () => ['documents'] as const,
+  lists: () => ['documents', 'list'] as const,
+  list: (filter: DocumentListFilter) => ['documents', 'list', filter] as const,
+};
+
 export const cardsScopes = {
   all: () => ['cards'] as const,
   lists: () => ['cards', 'list'] as const,
@@ -172,6 +185,20 @@ export const addTodoMutation = (api: ApiClient) =>
 
 /** The invalidation filter `addTodoMutation` applies after it settles. */
 export const addTodoInvalidates = () => ({ queryKey: todosScopes.lists() });
+
+export const documentsQuery = (api: ApiClient, filter: DocumentListFilter = {}) =>
+  defineQuery({
+    queryKey: documentsScopes.list(filter),
+    call: ({ signal }) => api.listDocuments(filter, signal),
+  });
+
+export const createDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'create'],
+    call: (input: CreateDocument) => api.createDocument(input),
+  });
+
+export const documentsInvalidates = () => ({ queryKey: documentsScopes.lists() });
 
 export const cardsQuery = (api: ApiClient, board: BoardId = 'personal') =>
   defineQuery({

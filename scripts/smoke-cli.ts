@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
+import { PDFDocument } from 'pdf-lib';
 
 import { EXIT_CODE_BY_ERROR_CODE, publicCacheControl } from '#core/contract/index.js';
 import { probeSignInCookies } from '#adapters/auth/client-adapter.js';
@@ -66,6 +67,21 @@ const healthSchema = z.object({
 const todoItemSchema = z.object({ id: z.string(), title: z.string() });
 const todosSchema = z.object({ todos: z.array(todoItemSchema) });
 const addSchema = z.object({ todo: todoItemSchema });
+const documentItemSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  files: z.array(z.object({ id: z.uuid() })).optional(),
+});
+const documentWriteSchema = z.object({ document: documentItemSchema });
+const documentsSchema = z.object({ documents: z.array(documentItemSchema) });
+const documentFileWriteSchema = z.object({
+  file: z.object({ id: z.uuid(), fileName: z.string() }),
+});
+const documentExportSchema = z.object({
+  path: z.string(),
+  fileName: z.string(),
+  sizeBytes: z.number().positive(),
+});
 
 const cardItemSchema = z.object({
   id: z.string(),
@@ -458,6 +474,96 @@ export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<vo
     after.todos.length === before.todos.length + 1,
     `expected exactly one more todo (${before.todos.length} -> ${after.todos.length})`,
   );
+
+  const documentTitle = `Archive smoke ${randomUUID()}`;
+  const createdDocument = documentWriteSchema.parse(
+    expectOk(
+      await cli(
+        [
+          '--json',
+          '--api-url',
+          baseUrl,
+          '--tenant',
+          target.tenant,
+          'document',
+          'add',
+          '--type',
+          'umowa-uod',
+          '--date',
+          '2026-07-27',
+          documentTitle,
+        ],
+        authedHome,
+      ),
+      'document add',
+    ),
+  );
+  const pdf = await PDFDocument.create();
+  pdf.setTitle('metadata removed by export');
+  pdf.addPage();
+  const uploadPath = join(authedHome, 'archive-smoke.pdf');
+  writeFileSync(uploadPath, await pdf.save());
+  const uploadedDocumentFile = documentFileWriteSchema.parse(
+    expectOk(
+      await cli(
+        [
+          '--json',
+          '--api-url',
+          baseUrl,
+          '--tenant',
+          target.tenant,
+          'document',
+          'upload',
+          createdDocument.document.id,
+          uploadPath,
+          '--role',
+          'source',
+        ],
+        authedHome,
+      ),
+      'document upload',
+    ),
+  );
+  assert(
+    uploadedDocumentFile.file.fileName === 'archive-smoke.pdf',
+    'document upload returned the wrong file name',
+  );
+  const documentList = documentsSchema.parse(
+    expectOk(
+      await cli(
+        ['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'document', 'list'],
+        authedHome,
+      ),
+      'document list',
+    ),
+  );
+  assert(
+    documentList.documents.some((document) => document.id === createdDocument.document.id),
+    'the archive document did not appear in the document list',
+  );
+  const exportPath = join(authedHome, 'archive-export.zip');
+  const exportedDocument = documentExportSchema.parse(
+    expectOk(
+      await cli(
+        [
+          '--json',
+          '--api-url',
+          baseUrl,
+          '--tenant',
+          target.tenant,
+          'document',
+          'export',
+          createdDocument.document.id,
+          '--output',
+          exportPath,
+        ],
+        authedHome,
+      ),
+      'document export',
+    ),
+  );
+  assert(exportedDocument.path === exportPath, 'document export returned the wrong path');
+  assert(statSync(exportPath).size === exportedDocument.sizeBytes, 'document export size mismatch');
 
   const cardTitle = `smoke card ${randomUUID()}`;
   const addedCard = cardWriteSchema.parse(

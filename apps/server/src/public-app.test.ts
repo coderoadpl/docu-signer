@@ -7,7 +7,7 @@ import {
   publicTenantDiscoveryPath,
   publicTenantProfilePath,
 } from '#core/contract/index.js';
-import { tenantContentVersion, type Tenant } from '#core/domain/index.js';
+import { ok, tenantContentVersion, type Tenant } from '#core/domain/index.js';
 
 import { buildApp } from './app.js';
 import type { AppDeps } from './composition.js';
@@ -37,6 +37,27 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   googleEnabled: false,
   todos: { listByTenant: async () => [], create: async () => {} },
   cards: { listByTenant: async () => [], create: async () => {}, updatePositions: async () => {} },
+  documents: {
+    listByTenant: async () => ok([]),
+    findById: async () => ok(null),
+    listFiles: async () => ok([]),
+    listFilesForDocuments: async () => ok([]),
+    create: async () => {
+      throw new Error('not implemented in fake');
+    },
+    update: async () => ok(null),
+    delete: async () => ok(false),
+    createFile: async () => ok(null),
+    findFile: async () => ok(null),
+    deleteFile: async () => ok(false),
+  },
+  storage: {
+    put: async () => ok(undefined),
+    get: async () => ok(null),
+    exists: async () => ok(false),
+    delete: async () => ok(undefined),
+    createUploadUrl: async () => ok(null),
+  },
   members: {
     listByTenant: async () => [],
     findByEmail: async () => null,

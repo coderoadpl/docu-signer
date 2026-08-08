@@ -21,6 +21,7 @@ import {
 import type { Db } from './client.js';
 import { createCardRepository } from './cards-repository.js';
 import { createMemberRepository } from './members-repository.js';
+import { createDocumentRepository } from './documents-repository.js';
 import {
   createHealthPort,
   createTenantAccessReader,
@@ -29,7 +30,17 @@ import {
   createTodoRepository,
 } from './repositories.js';
 import { createStaffRepository, createUserDirectory } from './staff-repository.js';
-import { cards, members, tenantAdmins, tenantDomains, tenants, todos, user } from './schema.js';
+import {
+  cards,
+  documentFiles,
+  documents,
+  members,
+  tenantAdmins,
+  tenantDomains,
+  tenants,
+  todos,
+  user,
+} from './schema.js';
 import * as schema from './schema.js';
 
 const ITEST_DB = 'agentproofarch_itest';
@@ -87,6 +98,7 @@ const cardRepo = () => createCardRepository(db);
 const domainRepo = () => createTenantDomainRepository(db);
 const tenantRepo = () => createTenantRepository(db);
 const accessReader = () => createTenantAccessReader(db);
+const documentRepo = () => createDocumentRepository(db);
 
 const createIsolatedDatabase = async (): Promise<void> => {
   const admin = new pg.Client({ connectionString: baseDatabaseUrl });
@@ -767,6 +779,28 @@ describe('C3 invariant enforcement', () => {
     );
   });
 
+  it('DB rejects a documents.doc_type outside the closed set', async () => {
+    await expectCheckViolation(
+      sql`INSERT INTO documents (id, tenant_id, title, doc_type, document_date) VALUES ('44444444-4444-4444-8444-444444444444', ${tenantB.id}, 'x', 'invoice', '2026-07-27')`,
+      'documents_doc_type_check',
+    );
+  });
+
+  it('DB rejects an invalid document file role and an oversized file', async () => {
+    const ownerId = '55555555-5555-4555-8555-555555555555';
+    await db.execute(
+      sql`INSERT INTO documents (id, tenant_id, title, doc_type, document_date) VALUES (${ownerId}::uuid, ${tenantA.id}, 'x', 'inny', '2026-07-27') ON CONFLICT DO NOTHING`,
+    );
+    await expectCheckViolation(
+      sql`INSERT INTO document_files (id, document_id, role, file_name, content_type, size_bytes, storage_key) VALUES ('66666666-6666-4666-8666-666666666666', ${ownerId}::uuid, 'original', 'x.pdf', 'application/pdf', 1, 'bad-role')`,
+      'document_files_role_check',
+    );
+    await expectCheckViolation(
+      sql`INSERT INTO document_files (id, document_id, role, file_name, content_type, size_bytes, storage_key) VALUES ('77777777-7777-4777-8777-777777777777', ${ownerId}::uuid, 'source', 'x.pdf', 'application/pdf', 26214401, 'bad-size')`,
+      'document_files_size_check',
+    );
+  });
+
   it('the adapter zod boundary rejects a corrupted member marketing-consent channel', async () => {
     // marketing_consents is jsonb (no closed-set CHECK possible); the app-only
     // invariant lives at the read boundary. Plant a garbage channel via raw SQL.
@@ -785,6 +819,80 @@ describe('C3 invariant enforcement', () => {
           VALUES ('itest-corrupt-card', ${tenantB.id}, 'corrupt', 'personal', 'todo', -1, '[]'::jsonb, '2026-01-01T00:00:00.000Z')`,
     );
     await expect(cardRepo().listByTenant(tenantB.id, 'personal')).rejects.toThrow();
+  });
+});
+
+describe('DocumentRepository', () => {
+  const documentId = '11111111-1111-4111-8111-111111111111';
+  const fileId = '22222222-2222-4222-8222-222222222222';
+
+  it('round-trips tenant-scoped entries and atomically scopes attachment writes', async () => {
+    const created = await documentRepo().create({
+      id: documentId,
+      tenantId: tenantA.id,
+      title: 'Agreement',
+      docType: 'umowa-uod',
+      documentDate: '2026-07-27',
+      person: null,
+      tags: ['contract'],
+    });
+    expect(created).toMatchObject({ ok: true, value: { id: documentId } });
+    expect(await documentRepo().listByTenant(tenantB.id, {})).toEqual({
+      ok: true,
+      value: [],
+    });
+    expect(await documentRepo().findById(tenantB.id, documentId)).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(
+      await documentRepo().createFile(tenantB.id, {
+        id: fileId,
+        documentId,
+        role: 'source',
+        fileName: 'agreement.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 3,
+        storageKey: `documents/${tenantA.id}/${documentId}/${fileId}`,
+      }),
+    ).toEqual({ ok: true, value: null });
+    const file = await documentRepo().createFile(tenantA.id, {
+      id: fileId,
+      documentId,
+      role: 'source',
+      fileName: 'agreement.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: `documents/${tenantA.id}/${documentId}/${fileId}`,
+    });
+    expect(file).toMatchObject({ ok: true, value: { id: fileId } });
+    expect(await documentRepo().listFilesForDocuments(tenantA.id, [documentId])).toMatchObject({
+      ok: true,
+      value: [{ id: fileId }],
+    });
+    expect(await documentRepo().deleteFile(tenantB.id, documentId, fileId)).toEqual({
+      ok: true,
+      value: false,
+    });
+    expect(await documentRepo().deleteFile(tenantA.id, documentId, fileId)).toEqual({
+      ok: true,
+      value: true,
+    });
+    expect(
+      await documentRepo().update(tenantA.id, documentId, {
+        title: 'Updated',
+        docType: 'umowa-uod',
+        documentDate: '2026-07-28',
+        person: 'Alice',
+        tags: [],
+      }),
+    ).toMatchObject({ ok: true, value: { title: 'Updated', person: 'Alice' } });
+    expect(await documentRepo().delete(tenantA.id, documentId)).toEqual({
+      ok: true,
+      value: true,
+    });
+    expect(await db.select().from(documents).where(eq(documents.id, documentId))).toEqual([]);
+    expect(await db.select().from(documentFiles).where(eq(documentFiles.documentId, documentId))).toEqual([]);
   });
 });
 

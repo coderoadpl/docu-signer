@@ -6,10 +6,18 @@ import {
   cardCreateOutputSchema,
   cardMoveOutputSchema,
   cardsListOutputSchema,
+  documentCreateOutputSchema,
+  documentDeleteOutputSchema,
+  documentFileDeleteOutputSchema,
+  documentFileOutputSchema,
+  documentGetOutputSchema,
+  documentListOutputSchema,
+  documentUpdateOutputSchema,
   domainAddOutputSchema,
   domainCheckOutputSchema,
   domainListOutputSchema,
   domainRemoveOutputSchema,
+  fileUploadRequestOutputSchema,
   looseEnvelopeSchema,
   healthLiveOutputSchema,
   healthOutputSchema,
@@ -52,9 +60,15 @@ import {
   type AppError,
   type BoardId,
   type CardMove,
+  type CreateDocument,
+  type DocumentListFilter,
+  type ExportDocuments,
+  type FileUploadRequest,
+  type FinalizeFileUpload,
   type NewCard,
   type NewTodo,
   type Result,
+  type UpdateDocument,
 } from '#core/domain/index.js';
 
 declare const HTTP_METHOD_BRAND: unique symbol;
@@ -131,6 +145,77 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   return ok(data.data);
 };
 
+const pathWith = (path: string, values: Record<string, string>): string => {
+  let resolved = path;
+  for (const [name, value] of Object.entries(values)) {
+    resolved = resolved.replace(`:${name}`, encodeURIComponent(value));
+  }
+  return resolved;
+};
+
+const queryString = (filter: DocumentListFilter): string => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filter)) {
+    if (value !== undefined) params.set(key, value);
+  }
+  const encoded = params.toString();
+  return encoded.length > 0 ? `?${encoded}` : '';
+};
+
+const binaryBody = (bytes: Uint8Array): ArrayBuffer => {
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+  return body;
+};
+
+export interface ExportDownload {
+  bytes: Uint8Array;
+  contentType: string;
+  fileName: string;
+}
+
+const download = async <M extends HttpMethod>(
+  options: ApiClientOptions,
+  method: M,
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<Branded<Result<ExportDownload, AppError>, M>> => {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const traceparent = options.traceparent?.();
+  let response: Response;
+  try {
+    response = await fetchImpl(`${options.baseUrl}${path}`, {
+      method,
+      headers: {
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(traceparent === undefined ? {} : { traceparent }),
+        ...options.headers?.(),
+      },
+      body: body === undefined ? null : JSON.stringify(body),
+      credentials: 'include',
+      signal: signal ?? null,
+    });
+  } catch (cause) {
+    return err(internal(`Network error calling ${path}: ${String(cause)}`));
+  }
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    const envelope = looseEnvelopeSchema.safeParse(payload);
+    return envelope.success && !envelope.data.ok
+      ? err(envelope.data.error)
+      : err(internal(`Non-contract response from ${path} (HTTP ${response.status})`));
+  }
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const plainName = /filename="([^"]+)"/i.exec(disposition)?.[1];
+  return ok({
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type') ?? 'application/octet-stream',
+    fileName: encodedName ? decodeURIComponent(encodedName) : (plainName ?? 'download.bin'),
+  });
+};
+
 /** The single typed gateway to the API. No client ever hand-writes HTTP. */
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
@@ -158,6 +243,135 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.todos.method, API_ROUTES.todos.path, todoListOutputSchema, undefined, signal),
   addTodo: (input: NewTodo, signal?: AbortSignal) =>
     request(options, API_ROUTES.todosCreate.method, API_ROUTES.todosCreate.path, todoCreateOutputSchema, input, signal),
+  listDocuments: (filter: DocumentListFilter = {}, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documents.method,
+      `${API_ROUTES.documents.path}${queryString(filter)}`,
+      documentListOutputSchema,
+      undefined,
+      signal,
+    ),
+  createDocument: (input: CreateDocument, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentsCreate.method,
+      API_ROUTES.documentsCreate.path,
+      documentCreateOutputSchema,
+      input,
+      signal,
+    ),
+  getDocument: (documentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.document.method,
+      pathWith(API_ROUTES.document.path, { documentId }),
+      documentGetOutputSchema,
+      undefined,
+      signal,
+    ),
+  updateDocument: (documentId: string, input: UpdateDocument, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentUpdate.method,
+      pathWith(API_ROUTES.documentUpdate.path, { documentId }),
+      documentUpdateOutputSchema,
+      input,
+      signal,
+    ),
+  deleteDocument: (documentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentDelete.method,
+      pathWith(API_ROUTES.documentDelete.path, { documentId }),
+      documentDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
+  requestFileUpload: (documentId: string, input: FileUploadRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentFileUploadRequest.method,
+      pathWith(API_ROUTES.documentFileUploadRequest.path, { documentId }),
+      fileUploadRequestOutputSchema,
+      input,
+      signal,
+    ),
+  finalizeFileUpload: (documentId: string, input: FinalizeFileUpload, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentFileFinalize.method,
+      pathWith(API_ROUTES.documentFileFinalize.path, { documentId }),
+      documentFileOutputSchema,
+      input,
+      signal,
+    ),
+  uploadDocumentFile: async (
+    documentId: string,
+    input: FileUploadRequest & { bytes: Uint8Array },
+    signal?: AbortSignal,
+  ): Promise<WriteResult<z.output<typeof documentFileOutputSchema>>> => {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const traceparent = options.traceparent?.();
+    const path =
+      pathWith(API_ROUTES.documentFileServerUpload.path, { documentId }) +
+      `?fileName=${encodeURIComponent(input.fileName)}&role=${encodeURIComponent(input.role)}`;
+    let response: Response;
+    try {
+      response = await fetchImpl(`${options.baseUrl}${path}`, {
+        method: API_ROUTES.documentFileServerUpload.method,
+        headers: {
+          'content-type': input.contentType,
+          ...(traceparent === undefined ? {} : { traceparent }),
+          ...options.headers?.(),
+        },
+        body: binaryBody(input.bytes),
+        credentials: 'include',
+        signal: signal ?? null,
+      });
+    } catch (cause) {
+      return err(internal(`Network error calling ${path}: ${String(cause)}`));
+    }
+    const payload: unknown = await response.json().catch(() => null);
+    const envelope = looseEnvelopeSchema.safeParse(payload);
+    if (!envelope.success) return err(internal(`Response from ${path} does not match the contract envelope`));
+    if (!envelope.data.ok) return err(envelope.data.error);
+    const parsed = documentFileOutputSchema.safeParse(envelope.data.data);
+    return parsed.success ? ok(parsed.data) : err(internal(`Response data from ${path} does not match the contract`));
+  },
+  deleteDocumentFile: (documentId: string, fileId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentFileDelete.method,
+      pathWith(API_ROUTES.documentFileDelete.path, { documentId, fileId }),
+      documentFileDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
+  downloadDocumentFile: (documentId: string, fileId: string, signal?: AbortSignal) =>
+    download(
+      options,
+      API_ROUTES.documentFileContent.method,
+      pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId }),
+      undefined,
+      signal,
+    ),
+  exportDocumentFile: (documentId: string, fileId: string, signal?: AbortSignal) =>
+    download(
+      options,
+      API_ROUTES.documentFileExport.method,
+      pathWith(API_ROUTES.documentFileExport.path, { documentId, fileId }),
+      undefined,
+      signal,
+    ),
+  exportDocuments: (input: ExportDocuments, signal?: AbortSignal) =>
+    download(
+      options,
+      API_ROUTES.documentsExport.method,
+      API_ROUTES.documentsExport.path,
+      input,
+      signal,
+    ),
   listCards: (board: BoardId = 'personal', signal?: AbortSignal) =>
     request(
       options,

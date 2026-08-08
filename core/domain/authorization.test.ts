@@ -62,6 +62,8 @@ const EXPECTED: Record<Capability, Record<Principal, boolean>> = {
   'todo:write': { owner: true, admin: true, member: true, visitor: false },
   'card:read': { owner: true, admin: true, member: true, visitor: false },
   'card:write': { owner: true, admin: true, member: true, visitor: false },
+  'document:read': { owner: true, admin: true, member: false, visitor: false },
+  'document:write': { owner: true, admin: true, member: false, visitor: false },
   'member:read': { owner: true, admin: true, member: false, visitor: false },
   'member:write': { owner: true, admin: true, member: false, visitor: false },
   'member:remove': { owner: true, admin: true, member: false, visitor: false },

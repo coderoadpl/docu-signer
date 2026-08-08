@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { createAuth } from '#adapters/auth/create-auth.js';
+import { BETTER_AUTH_API_PATH_PATTERN, createAuth } from '#adapters/auth/create-auth.js';
 import { createDb } from '#adapters/db/client.js';
 import {
   API_PATHS,
+  API_ROUTES,
   healthLiveOutputSchema,
   healthOutputSchema,
   healthReadyOutputSchema,
@@ -14,6 +15,7 @@ import {
   TENANT_HEADER,
 } from '#core/contract/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
+import { ok, type DocumentFile } from '#core/domain/index.js';
 
 import { buildApp } from './app.js';
 import type { AppDeps } from './composition.js';
@@ -47,6 +49,27 @@ const baseDeps = (): AppDeps => ({
     listByTenant: async () => [],
     create: async () => {},
     updatePositions: async () => {},
+  },
+  documents: {
+    listByTenant: async () => ok([]),
+    findById: async () => ok(null),
+    listFiles: async () => ok([]),
+    listFilesForDocuments: async () => ok([]),
+    create: async () => {
+      throw new Error('not implemented in fake');
+    },
+    update: async () => ok(null),
+    delete: async () => ok(false),
+    createFile: async () => ok(null),
+    findFile: async () => ok(null),
+    deleteFile: async () => ok(false),
+  },
+  storage: {
+    put: async () => ok(undefined),
+    get: async () => ok(null),
+    exists: async () => ok(false),
+    delete: async () => ok(undefined),
+    createUploadUrl: async () => ok(null),
   },
   members: {
     listByTenant: async () => [],
@@ -368,6 +391,240 @@ describe('buildApp routes', () => {
     const body = looseEnvelopeSchema.parse(await res.json());
     expect(body.ok).toBe(true);
     if (body.ok) expect(memberListOutputSchema.parse(body.data).members).toHaveLength(1);
+  });
+
+  it('serves the complete staff-only document route lifecycle', async () => {
+    const deps = asStaff();
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const fileId = '22222222-2222-4222-8222-222222222222';
+    const storageKey = `documents/t-acme/${documentId}/${fileId}`;
+    const document = {
+      id: documentId,
+      tenantId: 't-acme',
+      title: 'Agreement',
+      docType: 'umowa-uod' as const,
+      documentDate: '2026-07-27',
+      person: null,
+      tags: [],
+      createdAt: '2026-07-27T10:00:00.000Z',
+      updatedAt: '2026-07-27T10:00:00.000Z',
+    };
+    const files: DocumentFile[] = [];
+    deps.ids = { nextId: () => (files.length === 0 ? fileId : documentId) };
+    deps.documents = {
+      listByTenant: async () => ok([document]),
+      findById: async (_tenantId, id) => ok(id === documentId ? document : null),
+      listFiles: async () => ok(files),
+      listFilesForDocuments: async () => ok(files),
+      create: async () => ok(document),
+      update: async () => ok({ ...document, title: 'Updated' }),
+      delete: async () => ok(true),
+      createFile: async (_tenantId, input) => {
+        const file = {
+          ...input,
+          id: fileId,
+          createdAt: '2026-07-27T10:00:00.000Z',
+        };
+        files.splice(0, files.length, file);
+        return ok(file);
+      },
+      findFile: async () => ok(files[0] ?? null),
+      deleteFile: async () => {
+        files.splice(0);
+        return ok(true);
+      },
+    };
+    deps.storage = {
+      put: async () => ok(undefined),
+      get: async () => ok(new Uint8Array([1, 2, 3])),
+      exists: async () => ok(true),
+      delete: async () => ok(undefined),
+      createUploadUrl: async () => ok(null),
+    };
+    const app = buildApp(deps);
+    const headers = { [TENANT_HEADER]: 'acme', 'content-type': 'application/json' };
+    const entryBody = JSON.stringify({
+      title: document.title,
+      docType: document.docType,
+      documentDate: document.documentDate,
+      tags: [],
+    });
+    expect(
+      (
+        await app.request(API_PATHS.documents, {
+          method: 'POST',
+          headers,
+          body: entryBody,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await app.request(API_PATHS.documents, { headers })).status).toBe(200);
+    const documentPath = API_ROUTES.document.path.replace(':documentId', documentId);
+    expect((await app.request(documentPath, { headers })).status).toBe(200);
+    expect(
+      (
+        await app.request(documentPath, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            title: 'Updated',
+            docType: document.docType,
+            documentDate: document.documentDate,
+            tags: [],
+          }),
+        })
+      ).status,
+    ).toBe(200);
+    const uploadRequestPath = API_ROUTES.documentFileUploadRequest.path.replace(
+      ':documentId',
+      documentId,
+    );
+    const uploadRequest = await app.request(uploadRequestPath, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        fileName: 'scan.png',
+        contentType: 'image/png',
+        role: 'source',
+      }),
+    });
+    expect(uploadRequest.status).toBe(200);
+    const finalizePath = API_ROUTES.documentFileFinalize.path.replace(':documentId', documentId);
+    expect(
+      (
+        await app.request(finalizePath, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            key: storageKey,
+            fileName: 'scan.png',
+            contentType: 'image/png',
+            sizeBytes: 3,
+            role: 'source',
+          }),
+        })
+      ).status,
+    ).toBe(200);
+    const uploadPath = API_ROUTES.documentFileServerUpload.path.replace(
+      ':documentId',
+      documentId,
+    );
+    expect(
+      (
+        await app.request(`${uploadPath}?fileName=scan.png&role=source`, {
+          method: 'POST',
+          headers: { [TENANT_HEADER]: 'acme', 'content-type': 'image/png' },
+          body: new Uint8Array([1, 2, 3]),
+        })
+      ).status,
+    ).toBe(200);
+    const filePath = (template: string) =>
+      template.replace(':documentId', documentId).replace(':fileId', fileId);
+    expect(
+      (await app.request(filePath(API_ROUTES.documentFileContent.path), { headers })).status,
+    ).toBe(200);
+    expect(
+      (await app.request(filePath(API_ROUTES.documentFileExport.path), { headers })).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request(API_ROUTES.documentsExport.path, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ documentIds: [documentId] }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request(filePath(API_ROUTES.documentFileDelete.path), {
+          method: 'DELETE',
+          headers,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request(documentPath, {
+          method: 'DELETE',
+          headers,
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  it('returns validation envelopes for every malformed document mutation boundary', async () => {
+    const app = buildApp(asStaff());
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const headers = { [TENANT_HEADER]: 'acme', 'content-type': 'application/json' };
+    const documentPath = API_ROUTES.document.path.replace(':documentId', documentId);
+    const requests = [
+      app.request(`${API_PATHS.documents}?dateFrom=2026-07-28&dateTo=2026-07-27`, {
+        headers,
+      }),
+      app.request(API_PATHS.documents, { method: 'POST', headers, body: '{}' }),
+      app.request(documentPath, { method: 'PATCH', headers, body: '{}' }),
+      app.request(
+        API_ROUTES.documentFileUploadRequest.path.replace(':documentId', documentId),
+        { method: 'POST', headers, body: '{}' },
+      ),
+      app.request(
+        API_ROUTES.documentFileFinalize.path.replace(':documentId', documentId),
+        { method: 'POST', headers, body: '{}' },
+      ),
+      app.request(
+        `${API_ROUTES.documentFileServerUpload.path.replace(':documentId', documentId)}?fileName=x.exe&role=other`,
+        {
+          method: 'POST',
+          headers: { [TENANT_HEADER]: 'acme', 'content-type': 'application/octet-stream' },
+          body: new Uint8Array([1]),
+        },
+      ),
+      app.request(API_ROUTES.documentsExport.path, {
+        method: 'POST',
+        headers,
+        body: '{}',
+      }),
+    ];
+    for (const response of await Promise.all(requests)) {
+      expect(response.status).toBe(400);
+      expect(looseEnvelopeSchema.parse(await response.json())).toMatchObject({
+        ok: false,
+        error: { code: 'validation' },
+      });
+    }
+  });
+
+  it('applies the normal body limit to Better Auth routes and the 25MB limit to uploads', async () => {
+    const app = buildApp(baseDeps());
+    const authResponse = await app.request(
+      BETTER_AUTH_API_PATH_PATTERN.replace('*', 'body-limit-probe'),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'x'.repeat(101 * 1024) }),
+      },
+    );
+    expect(authResponse.status).toBe(400);
+    expect(looseEnvelopeSchema.parse(await authResponse.json())).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+
+    const uploadPath = API_ROUTES.documentFileServerUpload.path.replace(
+      ':documentId',
+      '11111111-1111-4111-8111-111111111111',
+    );
+    const uploadResponse = await app.request(`${uploadPath}?fileName=scan.pdf&role=source`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/pdf' },
+      body: new Uint8Array(25 * 1024 * 1024 + 1),
+    });
+    expect(uploadResponse.status).toBe(400);
+    expect(looseEnvelopeSchema.parse(await uploadResponse.json())).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
   });
 
   it('forbids an end-customer member from reading the roster (staff-only capability)', async () => {

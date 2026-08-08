@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createDb } from '#adapters/db/client.js';
 import { createCardRepository } from '#adapters/db/cards-repository.js';
 import { createMemberRepository } from '#adapters/db/members-repository.js';
+import { createDocumentRepository } from '#adapters/db/documents-repository.js';
 import { createStaffRepository, createUserDirectory } from '#adapters/db/staff-repository.js';
 import {
   createHealthPort,
@@ -18,17 +19,21 @@ import { createSmtpEmailPort } from '#adapters/email/smtp.js';
 import { createCaddyDomainPort } from '#adapters/domain-provisioning/caddy.js';
 import { createNoopDomainPort } from '#adapters/domain-provisioning/noop.js';
 import { createVercelDomainPort } from '#adapters/domain-provisioning/vercel.js';
+import { createLocalFsStorage } from '#adapters/storage/local-fs.js';
+import { createVercelBlobStorage } from '#adapters/storage/vercel-blob.js';
 import type {
   AuthPort,
   BackfillPort,
   CardRepository,
   Clock,
   DomainPort,
+  DocumentRepository,
   EmailPort,
   HealthPort,
   IdGenerator,
   MemberRepository,
   StaffRepository,
+  StoragePort,
   TenantAccessReader,
   TenantDomainRepository,
   TenantRepository,
@@ -43,6 +48,8 @@ export interface AppDeps {
   authPort: AuthPort;
   todos: TodoRepository;
   cards: CardRepository;
+  documents: DocumentRepository;
+  storage: StoragePort;
   members: MemberRepository;
   staff: StaffRepository;
   users: UserDirectory;
@@ -144,12 +151,23 @@ export const selectGoogleSettings = (env: Env): GoogleSettings | undefined =>
     ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
     : undefined;
 
+export const selectStoragePort = (env: Env): StoragePort => {
+  if (env.STORAGE_DRIVER === 'vercel-blob') {
+    if (!env.BLOB_READ_WRITE_TOKEN) {
+      throw new Error('STORAGE_DRIVER=vercel-blob requires BLOB_READ_WRITE_TOKEN');
+    }
+    return createVercelBlobStorage(env.BLOB_READ_WRITE_TOKEN);
+  }
+  return createLocalFsStorage(env.STORAGE_LOCAL_PATH);
+};
+
 export const createDeps = (env: Env): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
   const domainPort = selectDomainPort(env);
   const email = selectEmailPort(env);
   const google = selectGoogleSettings(env);
+  const storage = selectStoragePort(env);
 
   const baseTrustedOrigins = [
     env.APP_BASE_URL,
@@ -170,6 +188,7 @@ export const createDeps = (env: Env): AppDeps => {
     baseDomain: env.APP_BASE_DOMAIN,
     secureCookies: env.SECURE_COOKIES,
     rateLimitEnabled: env.AUTH_RATE_LIMIT,
+    disableSignUp: env.AUTH_DISABLE_SIGNUP,
     email,
     ...(google ? { google } : {}),
     trustedOrigins: async () => {
@@ -187,6 +206,8 @@ export const createDeps = (env: Env): AppDeps => {
     authPort: createAuthPort(auth),
     todos: createTodoRepository(db),
     cards: createCardRepository(db),
+    documents: createDocumentRepository(db),
+    storage,
     members: createMemberRepository(db),
     staff: createStaffRepository(db),
     users: createUserDirectory(db),
