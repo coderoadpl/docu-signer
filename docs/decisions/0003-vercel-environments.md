@@ -10,7 +10,8 @@ note below and [architecture.md](../architecture.md) §Environments (normative).
 > production release is an **owner-approved PR `main → production`** whose merge
 > triggers the production build, gated by the `production-protection` GitHub
 > ruleset (empty bypass); agents act as a Write-not-Admin machine account. The
-> Neon branch-per-environment model (point 2), build-time migrations (point 3),
+> Neon branch-per-environment model (point 2), build-time migration/admin
+> bootstrap (point 3),
 > entry/routing (point 4), Frankfurt co-location (point 5) and the single-tenant
 > `*.vercel.app` constraint (point 6) are unchanged. Everything below records the
 > original decision.
@@ -40,11 +41,13 @@ fixed cost (Vercel Hobby + Neon Free), without fighting the platform.
    marketplace integration (copy-on-write from `production`'s parent, deleted
    with the PR). `DATABASE_URL` is injected per environment by the
    integration; `DB_DRIVER=neon-http` everywhere on Vercel.
-3. **Migrations at build time.** The Vercel build runs
-   `db:migrate` against the environment's own database before building the
-   SPA. Previews therefore always test the PR's schema on a disposable
-   branch. Staging/prod migrations are forward-only; destructive changes ship
-   expand → contract across two deploys.
+3. **Migration and admin bootstrap at build time.** The Vercel build runs
+   `db:migrate`, then the admin-only `db:seed:deploy`, against the environment's
+   own database before building the SPA. The deploy seed creates no demo data
+   and is a no-op unless the `SEED_ADMIN1_*` pair is configured. Previews
+   therefore test the PR's schema and bootstrap on a disposable branch.
+   Staging/prod migrations are forward-only; destructive changes ship expand →
+   contract across two deploys.
 4. **Entry**: `api/index.ts` exports a node-style handler through
    `@hono/node-server/vercel` (with `NODEJS_HELPERS=0`, see PRs #11/#15);
    `vercel.json` routes `/api/*` to the function and everything else to the
@@ -73,8 +76,9 @@ fixed cost (Vercel Hobby + Neon Free), without fighting the platform.
 - Hobby limits accepted: no Custom Environments, single-member team,
   non-commercial use — fine for the foundation demo; upgrading to Pro changes
   configuration, not architecture.
-- Build-time migrations couple deploy and migrate; the expand→contract rule
-  and Neon's instant branch restore are the mitigations. Revisit if a real
-  product needs decoupled migration gates.
+- Build-time migration/bootstrap couples deploy and database setup; the
+  idempotent admin-only seed, expand→contract rule, and Neon's instant branch
+  restore are the mitigations. Revisit if a real product needs decoupled
+  migration gates.
 - Web multi-tenancy is unexercised on previews until a wildcard domain
   exists; the CLI/X-Tenant path keeps it covered by `smoke:remote`.

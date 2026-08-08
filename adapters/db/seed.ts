@@ -5,19 +5,18 @@
  * Tenants: acme.localhost and globex.localhost (subdomains of APP_BASE_DOMAIN).
  * Idempotent: running twice is a no-op.
  */
-import { randomUUID } from 'node:crypto';
-
-import { and, eq } from 'drizzle-orm';
-import { hashPassword } from 'better-auth/crypto';
+import { eq } from 'drizzle-orm';
 
 import { createAuth } from '#adapters/auth/create-auth.js';
 import { seedEnvSchema } from '#core/server/config.js';
 
 import { createDb } from './client.js';
-import { account, members, tenantAdmins, tenantDomains, tenants, todos, user } from './schema.js';
+import { configuredSeedAdmins, ensureSeedAdmins } from './seed-admins.js';
+import { members, tenantAdmins, tenantDomains, tenants, todos, user } from './schema.js';
 
 const {
   DATABASE_URL: connectionString,
+  DB_DRIVER: driver,
   BETTER_AUTH_SECRET,
   SEED_ADMIN1_EMAIL,
   SEED_ADMIN1_PASSWORD,
@@ -25,7 +24,7 @@ const {
   SEED_ADMIN2_PASSWORD,
 } = seedEnvSchema.parse(process.env);
 
-const db = createDb('node-postgres', connectionString);
+const db = createDb(driver, connectionString);
 
 const auth = createAuth(db, {
   secret: BETTER_AUTH_SECRET,
@@ -150,96 +149,18 @@ await db.insert(todos).values(
   })),
 ).onConflictDoNothing();
 
-const configuredAdmins = [
-  SEED_ADMIN1_EMAIL && SEED_ADMIN1_PASSWORD
-    ? {
-        email: SEED_ADMIN1_EMAIL,
-        password: SEED_ADMIN1_PASSWORD,
-        slot: '1',
-        role: 'owner' as const,
-      }
-    : null,
-  SEED_ADMIN2_EMAIL && SEED_ADMIN2_PASSWORD
-    ? {
-        email: SEED_ADMIN2_EMAIL,
-        password: SEED_ADMIN2_PASSWORD,
-        slot: '2',
-        role: 'admin' as const,
-      }
-    : null,
-].filter((admin) => admin !== null);
-
-const ensureArchiveAdmin = async (
-  slot: string,
-  email: string,
-  password: string,
-): Promise<string> => {
-  const found = await db.select().from(user).where(eq(user.email, email)).limit(1);
-  const userId = found[0]?.id ?? randomUUID();
-  if (found.length === 0) {
-    await db.insert(user).values({
-      id: userId,
-      name: `Archive Admin ${slot}`,
-      email,
-      emailVerified: true,
-    });
-  }
-  const passwordHash = await hashPassword(password);
-  const credentials = await db
-    .select()
-    .from(account)
-    .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')))
-    .limit(1);
-  const credential = credentials[0];
-  if (credential) {
-    await db
-      .update(account)
-      .set({ password: passwordHash })
-      .where(eq(account.id, credential.id));
-  } else {
-    await db.insert(account).values({
-      id: randomUUID(),
-      accountId: userId,
-      providerId: 'credential',
-      userId,
-      password: passwordHash,
-    });
-  }
-  return userId;
-};
-
-if (configuredAdmins.length > 0) {
-  await db
-    .insert(tenants)
-    .values({
-      id: 'tenant-default',
-      slug: 'default',
-      name: 'Amazing Company',
-      createdAt: nowIso,
-    })
-    .onConflictDoNothing();
-
-  for (const admin of configuredAdmins) {
-    const userId = await ensureArchiveAdmin(admin.slot, admin.email, admin.password);
-    await db
-      .insert(tenantAdmins)
-      .values({
-        id: `admin-default-${admin.slot}`,
-        tenantId: 'tenant-default',
-        userId,
-        role: admin.role,
-      })
-      .onConflictDoUpdate({
-        target: tenantAdmins.id,
-        set: { userId, role: admin.role },
-      });
-  }
-}
+const configuredAdmins = configuredSeedAdmins({
+  SEED_ADMIN1_EMAIL,
+  SEED_ADMIN1_PASSWORD,
+  SEED_ADMIN2_EMAIL,
+  SEED_ADMIN2_PASSWORD,
+});
+const adminResults = await ensureSeedAdmins(db, configuredAdmins);
 
 console.log('Seed applied:');
-console.log(`  user     ${DEMO_EMAIL} / demo1234`);
+console.log(`  user     ${DEMO_EMAIL}`);
 console.log('  tenants  http://acme.localhost:47100  http://globex.localhost:47100');
-for (const admin of configuredAdmins) {
-  console.log(`  archive  ${admin.email} / ${admin.password}`);
+for (const result of adminResults) {
+  console.log(`  archive  ${result.email} (${result.role}) ${result.status}`);
 }
 process.exit(0);

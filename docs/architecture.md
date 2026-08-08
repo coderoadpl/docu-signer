@@ -85,9 +85,10 @@ Dependency rules (enforced):
   self-host, `noop` by default). The
   one deliberate exception is the
   auth *client* adapter, constructed in `apps/web/src/api.ts` (web) and the
-  CLI's `cliCtx`; the standalone DB operations `adapters/db/migrate.ts` and
-  `adapters/db/seed.ts` are also sanctioned composition points outside the
-  server root. Seed needs the real auth adapter to hash credentials, just as
+  CLI's `cliCtx`; the standalone DB operations `adapters/db/migrate.ts`,
+  `adapters/db/seed.ts`, and `adapters/db/seed-deploy.ts` are also sanctioned
+  composition points outside the server root. Seed needs the real auth and
+  database adapters to hash credentials and persist bootstrap data, just as
   migrate needs the real database adapter.
 - `@vercel/*` and `@neondatabase/*` are importable only inside `adapters/`
   (and the platform entry `api/index.ts`).
@@ -1574,9 +1575,13 @@ foundation):
   non-secret local values (`.env.example` documents every name; the dev
   database is local Docker). Nothing secret in the repo. **All production env
   vars are marked Sensitive** (write-only in the dashboard/CLI; control 3 of 5).
-- **Migrations run at build time** against that environment's own database
-  (previews migrate their ephemeral branch — always safe; staging/prod are
-  forward-only: destructive changes ship as two deploys, expand → contract).
+- **Migrations and the deploy admin seed run at build time** against that
+  environment's own database. `db:seed:deploy` runs after migration and creates
+  only the `default` tenant plus the `SEED_ADMIN*` accounts and grants; it never
+  invokes the local `db:seed` demo fixture. With no admin 1 pair it is a no-op.
+  Previews migrate and bootstrap their ephemeral branch; staging/prod migrations
+  are forward-only, so destructive changes ship as two deploys, expand →
+  contract.
 
   **Owner ruling (2026-07-27):** the migration lineage was rebuilt wholesale in
   the skeleton-migration PR while no persistent environment existed. Every
@@ -1691,8 +1696,9 @@ be safe to run repeatedly without corrupting the tenant it touches:
   overridden per environment). Its data is disposable and belongs to no creator.
 - **Never `db:seed` against a real database.** `smoke:remote` only drives the
   public CLI/API — it never seeds. Only the isolated local `smoke` harness (its
-  own throwaway `agentproofarch_smoke` DB) seeds; production is seeded once at
-  provisioning, out of band.
+  own throwaway `agentproofarch_smoke` DB) uses the demo seed. Deployments run
+  the idempotent, admin-only `db:seed:deploy` after every build-time migration;
+  it creates no demo/example data.
 - **Non-self-poisoning by construction.** Every card a run creates is parked in
   an **unbounded** column before it ends (`done` on both boards — absent from
   `TEAM_WIP_LIMITS`), and the team card walks the full legal chain
