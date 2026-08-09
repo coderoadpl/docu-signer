@@ -243,6 +243,115 @@ export const hasSignedDocumentFile = (
 ): boolean =>
   document.files.some((file) => file.role === 'signed-scan' || file.role === 'signed-digital');
 
+export interface CanonicalDocumentInterval {
+  start: string;
+  end: string;
+}
+
+export interface CanonicalDocumentPersonGroup<
+  Document extends CanonicalGroupedDocumentInput,
+> {
+  person: string;
+  documents: Document[];
+}
+
+export interface CanonicalDocumentPeriodGroup<
+  Document extends CanonicalGroupedDocumentInput,
+> extends CanonicalDocumentInterval {
+  people: Array<CanonicalDocumentPersonGroup<Document>>;
+}
+
+export type CanonicalGroupedDocumentInput = Pick<
+  DocumentWithFiles,
+  'docType' | 'documentDate' | 'periodStart' | 'periodEnd' | 'person'
+>;
+
+const DOC_TYPE_PRECEDENCE: Partial<Record<DocumentType, number>> = {
+  protokol: 0,
+  rachunek: 1,
+  'umowa-uod': 2,
+};
+
+const personGroupLabel = (person: string | null | undefined): string =>
+  person?.trim() || 'Bez osoby';
+
+const comparePersonLabels = (left: string, right: string): number => {
+  if (left === right) return 0;
+  if (left === 'Bez osoby') return 1;
+  if (right === 'Bez osoby') return -1;
+  return left.localeCompare(right, 'pl');
+};
+
+export const canonicalDocumentInterval = (
+  document: Pick<CanonicalGroupedDocumentInput, 'documentDate' | 'periodStart' | 'periodEnd'>,
+): CanonicalDocumentInterval =>
+  normalizeInterval(
+    document.periodStart ?? document.documentDate,
+    document.periodEnd ?? document.documentDate,
+  );
+
+export const formatCanonicalDocumentInterval = (
+  interval: CanonicalDocumentInterval,
+): string =>
+  interval.start === interval.end
+    ? formatPolishDate(interval.start)
+    : `${formatPolishDate(interval.start)}-${formatPolishDate(interval.end)}`;
+
+export const groupDocumentsCanonically = <
+  Document extends CanonicalGroupedDocumentInput,
+>(
+  documents: Document[],
+): Array<CanonicalDocumentPeriodGroup<Document>> => {
+  const periodBuckets = new Map<string, {
+    interval: CanonicalDocumentInterval;
+    documents: Array<{ document: Document; index: number }>;
+  }>();
+  for (const [index, document] of documents.entries()) {
+    const interval = canonicalDocumentInterval(document);
+    const key = `${interval.start}|${interval.end}`;
+    const bucket = periodBuckets.get(key);
+    if (bucket) {
+      bucket.documents.push({ document, index });
+    } else {
+      periodBuckets.set(key, { interval, documents: [{ document, index }] });
+    }
+  }
+
+  return Array.from(periodBuckets.values())
+    .sort((left, right) =>
+      left.interval.start === right.interval.start
+        ? left.interval.end.localeCompare(right.interval.end)
+        : left.interval.start.localeCompare(right.interval.start),
+    )
+    .map(({ interval, documents: periodDocuments }) => {
+      const personBuckets = new Map<string, Array<{ document: Document; index: number }>>();
+      for (const item of periodDocuments) {
+        const person = personGroupLabel(item.document.person);
+        const bucket = personBuckets.get(person) ?? [];
+        bucket.push(item);
+        personBuckets.set(person, bucket);
+      }
+      return {
+        ...interval,
+        people: Array.from(personBuckets.entries())
+          .sort(([left], [right]) => comparePersonLabels(left, right))
+          .map(([person, items]) => ({
+            person,
+            documents: [...items]
+              .sort((left, right) => {
+                const leftPrecedence = DOC_TYPE_PRECEDENCE[left.document.docType];
+                const rightPrecedence = DOC_TYPE_PRECEDENCE[right.document.docType];
+                if (leftPrecedence !== undefined || rightPrecedence !== undefined) {
+                  return (leftPrecedence ?? 3) - (rightPrecedence ?? 3) || left.index - right.index;
+                }
+                return left.index - right.index;
+              })
+              .map((item) => item.document),
+          })),
+      };
+    });
+};
+
 export const documentFilterSummary = (filter: SavedSearchFilter): string => {
   const parts = [
     filter.text ? `Tytuł: ${filter.text}` : '',
