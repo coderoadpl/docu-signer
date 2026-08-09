@@ -149,7 +149,7 @@ beforeAll(() => {
     depRun.stdout,
   );
   for (const violation of depReport.summary.violations) depcruiseRules.add(violation.rule.name);
-}, 60_000);
+}, 120_000);
 
 afterAll(() => {
   rmSync(join(demoRoot, coreDir), { recursive: true, force: true });

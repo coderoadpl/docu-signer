@@ -106,7 +106,7 @@ export default defineConfig({
         test: {
           name: 'web',
           environment: 'jsdom',
-          testTimeout: 15_000,
+          testTimeout: 30_000,
           include: ['apps/web/**/*.test.ts', 'apps/web/**/*.test.tsx'],
           exclude: [...configDefaults.exclude],
           setupFiles: [

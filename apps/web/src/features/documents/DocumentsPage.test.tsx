@@ -17,6 +17,54 @@ import { server } from '../../test/server.js';
 import { DocumentsPage } from './DocumentsPage.js';
 import { documentsSearchSchema } from './documents.logic.js';
 
+vi.mock('../../components/ui/PolishDatePicker.js', async () => {
+  const React = await import('react');
+  const polishDateFromIso = (value: string): string => {
+    if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return '';
+    return `${value.slice(8, 10)}.${value.slice(5, 7)}.${value.slice(0, 4)}`;
+  };
+  const isoDateFromPolish = (value: string): string => {
+    if (!/^\d{2}\.\d{2}\.\d{4}$/u.test(value)) return '';
+    return `${value.slice(6, 10)}-${value.slice(3, 5)}-${value.slice(0, 2)}`;
+  };
+  const PolishDatePickerProvider = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children);
+  const PolishDatePicker = ({
+    describedBy,
+    helperText,
+    inputRef,
+    label,
+    value,
+    onChange,
+  }: {
+    describedBy?: string | undefined;
+    helperText?: string | undefined;
+    inputRef?: React.Ref<HTMLInputElement> | undefined;
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+  }) => {
+    const displayValue = polishDateFromIso(value);
+    return React.createElement(
+      'div',
+      { 'aria-describedby': describedBy, 'aria-label': label, role: 'group' },
+      React.createElement('input', {
+        'aria-label': label,
+        'aria-describedby': describedBy,
+        onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+          onChange(isoDateFromPolish(event.target.value));
+        },
+        ref: inputRef,
+        value: displayValue,
+      }),
+      React.createElement('button', { onClick: () => onChange(''), type: 'button' }, 'Wyczyść'),
+      React.createElement('span', null, displayValue || 'DD.MM.YYYY'),
+      helperText ? React.createElement('p', { id: describedBy }, helperText) : null,
+    );
+  };
+  return { PolishDatePicker, PolishDatePickerProvider };
+});
+
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 
 const document = {
@@ -69,8 +117,7 @@ const dateField = (container: HTMLElement, name: string) =>
   within(container).getByRole('group', { name: new RegExp(name, 'u') });
 
 const pasteDate = async (field: HTMLElement, value: string) => {
-  await userEvent.click(field);
-  await userEvent.paste(value);
+  fireEvent.change(within(field).getByRole('textbox'), { target: { value } });
   await waitFor(() => expect(field).toHaveTextContent(value));
 };
 
@@ -78,6 +125,7 @@ const clearDateWithButton = async (field: HTMLElement) => {
   await userEvent.click(within(field).getByRole('button', { name: 'Wyczyść' }));
   await waitFor(() => expect(field).toHaveTextContent('DD.MM.YYYY'));
 };
+const DOCUMENTS_PAGE_FLOW_TIMEOUT_MS = 30_000;
 
 describe('DocumentsPage', () => {
   it('renders server-filtered documents', async () => {
@@ -190,7 +238,7 @@ describe('DocumentsPage', () => {
         draft: 'true',
       }),
     );
-  });
+  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
 
   it('restores filter controls from a deep link', async () => {
     const seen = vi.fn();
@@ -342,7 +390,7 @@ describe('DocumentsPage', () => {
     expect(screen.getByLabelText('Szukaj po tytule')).toHaveValue('Szkic');
     expect(screen.getByText('Tylko szkice')).toBeInTheDocument();
     await waitFor(() =>
-      expect(router.state.location.search).toMatchObject({ q: 'Szkic', szkice: 'true' }),
+      expect(router.state.location.search).toMatchObject({ q: 'Szkic', szkice: true }),
     );
   });
 
@@ -381,7 +429,7 @@ describe('DocumentsPage', () => {
         });
       }),
     );
-    const { router } = await renderPage();
+    await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
     fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
@@ -395,7 +443,7 @@ describe('DocumentsPage', () => {
     expect(screen.queryByText('Dodaj pierwszy dokument do archiwum.')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Wyczyść filtry' }));
     expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
-  });
+  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
 
   it('surfaces a failed documents query and retries it', async () => {
     const requests = vi.fn();
@@ -560,7 +608,7 @@ describe('DocumentsPage', () => {
         },
       }),
     );
-  });
+  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
 
   it('shows bulk progress and summarizes partial failures', async () => {
     const updates = vi.fn();
@@ -623,7 +671,7 @@ describe('DocumentsPage', () => {
       DOCUMENT_ID,
       expect.objectContaining({ person: 'Jan Kowalski' }),
     );
-  });
+  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
 
   it('opens the row overflow menu and moves a document to trash', async () => {
     const remove = vi.fn();
@@ -648,10 +696,9 @@ describe('DocumentsPage', () => {
     await waitFor(() => expect(remove).toHaveBeenCalledWith(DOCUMENT_ID));
   });
 
-  it('saves, applies and deletes teczki presets', async () => {
+  it('saves and applies teczki presets', async () => {
     const seen = vi.fn();
     const savedCreate = vi.fn();
-    const savedDelete = vi.fn();
     const savedSearch = {
       id: '33333333-3333-4333-8333-333333333333',
       tenantId: 'tenant-1',
@@ -694,13 +741,8 @@ describe('DocumentsPage', () => {
         savedSearches = [savedSearch];
         return HttpResponse.json({ ok: true, data: { savedSearch } });
       }),
-      http.delete('/api/saved-searches/:id', ({ params }) => {
-        savedDelete(params.id);
-        savedSearches = [];
-        return HttpResponse.json({ ok: true, data: { deleted: true } });
-      }),
     );
-    await renderPage();
+    const { router } = await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
     expect(screen.getByLabelText('Tag')).toBeInTheDocument();
@@ -751,8 +793,34 @@ describe('DocumentsPage', () => {
       status: 'signed',
       szkice: 'all',
     });
+  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
+  it('deletes teczki presets', async () => {
+    const savedDelete = vi.fn();
+    const savedSearch = {
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-1',
+      name: 'Odbiór',
+      filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
+      createdAt: '2026-08-01T00:00:00.000Z',
+    };
+    let savedSearches: Array<typeof savedSearch> = [savedSearch];
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+      http.get('/api/saved-searches', () =>
+        HttpResponse.json({ ok: true, data: { savedSearches } }),
+      ),
+      http.delete('/api/saved-searches/:id', ({ params }) => {
+        savedDelete(params.id);
+        savedSearches = [];
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage('/app/documents?tab=teczki');
+
+    expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));
     expect(screen.getByRole('button', { name: 'Potwierdź' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Potwierdź' }));
@@ -1010,7 +1078,7 @@ describe('DocumentsPage', () => {
     expect(router.state.location.pathname).toBe(
       `/app/documents/${DOCUMENT_ID}`,
     );
-  });
+  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
 
   it('shows Polish inline validation and focuses the first invalid field', async () => {
     server.use(

@@ -116,7 +116,7 @@ describe('DocumentDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '← Dokumenty' }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/app/documents'));
-    expect(router.state.location.search).toMatchObject({ q: 'Szkic', szkice: 'true' });
+    expect(router.state.location.search).toMatchObject({ q: 'Szkic', szkice: true });
   });
 
   it('surfaces a failed document query and retries it', async () => {

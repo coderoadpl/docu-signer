@@ -232,6 +232,7 @@ const signIn = async (page: Page) => {
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Dokumenty' })).toBeVisible();
 };
 
 test('creates, uploads, previews and exports an archived document', async ({
@@ -414,8 +415,9 @@ test('keeps draft filters after approving a draft and returning to the list', as
   await page.getByRole('cell', { name: title, exact: true }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
   await expect(page.getByText('Szkic. Dokument jest widoczny')).toBeVisible();
-  expect(page.url()).toContain(`q=${encodeURIComponent(title)}`);
-  expect(page.url()).toContain('szkice=true');
+  let searchParams = new URL(page.url()).searchParams;
+  expect(searchParams.get('q')).toBe(title);
+  expect(searchParams.get('szkice')).toBe('true');
 
   await page.getByRole('button', { name: 'Zatwierdź' }).click();
   await expect(page.getByText('Szkic. Dokument jest widoczny')).toBeHidden();
@@ -424,8 +426,9 @@ test('keeps draft filters after approving a draft and returning to the list', as
   await expect(page.getByLabel('Szukaj po tytule')).toHaveValue(title);
   await expect(page.getByLabel('Szkice')).toContainText('Tylko szkice');
   await expect(page.getByRole('heading', { name: 'Brak wyników dla tych filtrów' })).toBeVisible();
-  expect(page.url()).toContain(`q=${encodeURIComponent(title)}`);
-  expect(page.url()).toContain('szkice=true');
+  searchParams = new URL(page.url()).searchParams;
+  expect(searchParams.get('q')).toBe(title);
+  expect(searchParams.get('szkice')).toBe('true');
   expect(created.data.document.id.length).toBeGreaterThan(0);
 });
 

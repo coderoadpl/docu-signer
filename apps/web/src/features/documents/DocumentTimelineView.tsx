@@ -69,6 +69,17 @@ export const DocumentTimelineView = ({
   const intervals = useMemo(() => groups.flatMap((group) => group.intervals), [groups]);
   const scale = useMemo(() => createTimelineScale(intervals), [intervals]);
   const ticks = useMemo(() => timelineMonthTicks(scale), [scale]);
+  const positionedGroups = useMemo(
+    () =>
+      groups.reduce<Array<{ group: (typeof groups)[number]; y: number }>>((items, group) => {
+        const previous = items.at(-1);
+        const y = previous
+          ? previous.y + groupHeight(previous.group.documents.length) + GROUP_GAP
+          : TOP_GUTTER;
+        return [...items, { group, y }];
+      }, []),
+    [groups],
+  );
   const contentWidth = LEFT_GUTTER + scale.width + RIGHT_GUTTER;
   const contentHeight =
     TOP_GUTTER +
@@ -80,8 +91,6 @@ export const DocumentTimelineView = ({
     event.preventDefault();
     activate(documentId);
   };
-
-  let offsetY = TOP_GUTTER;
 
   return (
     <Paper variant="outlined" sx={{ mt: 3, overflow: 'hidden' }}>
@@ -96,8 +105,8 @@ export const DocumentTimelineView = ({
             minWidth: `${contentWidth}px`,
             width: '100%',
             height: `${contentHeight}px`,
-            backgroundColor: theme.palette.background.paper,
           }}
+          style={{ backgroundColor: theme.palette.background.paper }}
         >
           <rect width={contentWidth} height={contentHeight} fill={theme.palette.background.paper} />
           {ticks.map((tick) => {
@@ -123,9 +132,7 @@ export const DocumentTimelineView = ({
               </g>
             );
           })}
-          {groups.map((group) => {
-            const y = offsetY;
-            offsetY += groupHeight(group.documents.length) + GROUP_GAP;
+          {positionedGroups.map(({ group, y }) => {
             return (
               <g key={group.person} aria-label={`Sekcja osoby ${group.person}`}>
                 <text

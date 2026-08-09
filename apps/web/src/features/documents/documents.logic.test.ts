@@ -4,6 +4,9 @@ import { ApiError } from '#core/client/index.js';
 
 import {
   documentFilterSummary,
+  documentFiltersFromSearch,
+  documentsSearchFromState,
+  documentsSearchSchema,
   emptyDocumentFilters,
   filesByRole,
   fileNameStem,
@@ -167,6 +170,19 @@ describe('document view logic', () => {
     expect(formatFileSize(1024)).toBe('1.0 KB');
     expect(formatFileSize(2 * 1024 * 1024)).toBe('2.0 MB');
     expect(formatFileSize(10)).toBe('10 B');
+  });
+
+  it('keeps the draft filter as a plain URL boolean', () => {
+    const parsed = documentsSearchSchema.parse({ q: 'Szkic', szkice: 'true' });
+    expect(parsed).toEqual({ q: 'Szkic', szkice: true });
+    expect(documentFiltersFromSearch(parsed)).toMatchObject({ text: 'Szkic', draft: 'true' });
+    expect(
+      documentsSearchFromState('list', {
+        ...emptyDocumentFilters(),
+        text: 'Szkic',
+        draft: 'true',
+      }),
+    ).toEqual({ q: 'Szkic', szkice: true });
   });
 
   it('builds tag suggestions and saved-search summaries', () => {

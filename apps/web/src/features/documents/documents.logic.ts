@@ -71,8 +71,12 @@ const textParamSchema = z.preprocess(
   z.string().trim().min(1).optional(),
 ).catch(undefined);
 const draftParamSchema = z.preprocess(
-  (value: unknown) => (value === true ? 'true' : value),
-  z.enum(['true', 'all']).optional(),
+  (value: unknown) => {
+    if (value === true || value === 'true' || value === '"true"') return true;
+    if (value === 'all' || value === '"all"') return 'all';
+    return value;
+  },
+  z.union([z.literal(true), z.literal('all')]).optional(),
 ).catch(undefined);
 const documentsSearchInputSchema = z.object({
   tab: z.enum(['teczki', 'os-czasu', 'kosz']).optional().catch(undefined),
@@ -121,7 +125,7 @@ export const documentFiltersFromSearch = (
   dateFrom: search.od ?? '',
   dateTo: search.do ?? '',
   signatureStatus: search.status ?? '',
-  draft: search.szkice ?? 'false',
+  draft: search.szkice === true ? 'true' : search.szkice ?? 'false',
 });
 
 export const documentsSearchFromState = (
@@ -136,7 +140,8 @@ export const documentsSearchFromState = (
   ...(values.person.trim() ? { osoba: values.person.trim() } : {}),
   ...(values.tag.trim() ? { tag: values.tag.trim() } : {}),
   ...(values.signatureStatus ? { status: values.signatureStatus } : {}),
-  ...(values.draft === 'false' ? {} : { szkice: values.draft }),
+  ...(values.draft === 'true' ? { szkice: true as const } : {}),
+  ...(values.draft === 'all' ? { szkice: 'all' as const } : {}),
   ...(values.dateFrom ? { od: values.dateFrom } : {}),
   ...(values.dateTo ? { do: values.dateTo } : {}),
 });

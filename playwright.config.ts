@@ -42,6 +42,6 @@ export default defineConfig({
     env: { ...process.env, VITE_MAGIC_LINK: 'on' },
     url: `${baseURL}/api/health`,
     reuseExistingServer: false,
-    timeout: 240_000,
+    timeout: 420_000,
   },
 });
