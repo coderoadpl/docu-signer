@@ -44,7 +44,7 @@ import {
   type SignaturePlacement,
   type SigningInkColorId,
   type SigningStamp,
-} from './core/signing.js';
+} from './signing.js';
 import { canSignPdfFile, uploadErrorMessage } from './documents.logic.js';
 import {
   flattenSignedPdf,

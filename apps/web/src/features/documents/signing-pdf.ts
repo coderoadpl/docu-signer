@@ -7,7 +7,7 @@ import {
   inkToPdfSegments,
   type CanvasPdfMetrics,
   type SigningStamp,
-} from './core/signing.js';
+} from './signing.js';
 
 const viewportTransformSchema = z.tuple([
   z.number(),

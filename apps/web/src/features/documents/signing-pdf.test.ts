@@ -1,7 +1,7 @@
 import { degrees, PDFDocument, PDFPage, rgb } from 'pdf-lib';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DEFAULT_SIGNING_INK_COLOR, signingInkColorById } from './core/signing.js';
+import { DEFAULT_SIGNING_INK_COLOR, signingInkColorById } from './signing.js';
 import { flattenSignedPdf } from './signing-pdf.js';
 
 afterEach(() => {
