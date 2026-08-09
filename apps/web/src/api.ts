@@ -9,6 +9,7 @@ import {
   deleteDocumentMutation,
   disableTwoFactorMutation,
   directFileUploadMutation,
+  documentFileQuery,
   documentQuery,
   documentsInvalidates,
   documentsQuery,
@@ -50,6 +51,8 @@ export const actions = {
   documents: (filter: Parameters<typeof documentsQuery>[1]) =>
     documentsQuery(apiClient, filter),
   document: (documentId: string) => documentQuery(apiClient, documentId),
+  documentFile: (documentId: string, fileId: string) =>
+    documentFileQuery(apiClient, documentId, fileId),
   createDocument: createDocumentMutation(apiClient),
   updateDocument: updateDocumentMutation(apiClient),
   deleteDocument: deleteDocumentMutation(apiClient),

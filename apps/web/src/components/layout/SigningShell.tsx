@@ -1,0 +1,46 @@
+import type { ReactNode } from 'react';
+import { Box } from '@mui/material';
+
+import { SigningSurface } from '../../theme.js';
+
+export const SigningShell = ({
+  header,
+  controls,
+  children,
+  footer,
+}: {
+  header: ReactNode;
+  controls: ReactNode;
+  children: ReactNode;
+  footer: ReactNode;
+}) => (
+  <SigningSurface
+    sx={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 'modal',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+    }}
+  >
+    <Box component="header" sx={{ flex: '0 0 auto' }}>
+      {header}
+    </Box>
+    <Box sx={{ flex: '0 0 auto' }}>{controls}</Box>
+    <Box
+      component="main"
+      sx={{
+        flex: '1 1 auto',
+        minHeight: 0,
+        overflow: 'auto',
+        p: { xs: 1, md: 2 },
+      }}
+    >
+      {children}
+    </Box>
+    <Box component="footer" sx={{ flex: '0 0 auto' }}>
+      {footer}
+    </Box>
+  </SigningSurface>
+);

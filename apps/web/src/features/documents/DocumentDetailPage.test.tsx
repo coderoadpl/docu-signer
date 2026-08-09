@@ -17,6 +17,7 @@ import { DocumentDetailPage } from './DocumentDetailPage.js';
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const SOURCE_ID = '22222222-2222-4222-8222-222222222222';
 const SCAN_ID = '33333333-3333-4333-8333-333333333333';
+const SIGNED_ID = '44444444-4444-4444-8444-444444444444';
 
 const files = [
   {
@@ -38,6 +39,16 @@ const files = [
     sizeBytes: 2048,
     storageKey: 'scan-key',
     createdAt: '2026-07-19T10:00:00.000Z',
+  },
+  {
+    id: SIGNED_ID,
+    documentId: DOCUMENT_ID,
+    role: 'signed-digital',
+    fileName: 'oryginal-podpisany.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 3072,
+    storageKey: 'signed-key',
+    createdAt: '2026-07-20T10:00:00.000Z',
   },
 ];
 
@@ -131,10 +142,10 @@ describe('DocumentDetailPage', () => {
     expect(screen.getByText('podpisany-skan.jpg')).toBeInTheDocument();
     expect(screen.getAllByText(/Podpisany skan/).length).toBeGreaterThan(0);
     expect(
-      screen.getByRole('img', { name: 'Podgląd: podpisany-skan.jpg' }),
+      screen.getByLabelText('Podgląd: oryginal-podpisany.pdf'),
     ).toHaveAttribute(
-      'src',
-      `/api/documents/${DOCUMENT_ID}/files/${SCAN_ID}/content`,
+      'data',
+      `/api/documents/${DOCUMENT_ID}/files/${SIGNED_ID}/content`,
     );
     expect(
       screen.getAllByRole('link', { name: 'Eksportuj' }).at(0),
@@ -142,6 +153,7 @@ describe('DocumentDetailPage', () => {
       'href',
       `/api/documents/${DOCUMENT_ID}/files/${SOURCE_ID}/export`,
     );
+    expect(screen.getAllByRole('button', { name: 'Podpisz' })).toHaveLength(2);
 
     const deleteButton = screen
       .getAllByRole('button', { name: 'Usuń' })

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
@@ -7,7 +7,58 @@ const DEMO_PASSWORD = 'demo1234';
 const validPdfBuffer = async () => {
   const pdf = await PDFDocument.create();
   pdf.addPage([200, 200]);
+  pdf.addPage([200, 200]);
   return Buffer.from(await pdf.save());
+};
+
+const drawOnSigningSurface = async (
+  page: Page,
+  points: Array<{ x: number; y: number }>,
+) => {
+  const canvas = page.getByRole('application', {
+    name: 'Powierzchnia do rysowania podpisu',
+  });
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('Missing signing surface bounds');
+  const [first, ...rest] = points;
+  if (!first) throw new Error('Signing stroke needs at least one point');
+  await page.mouse.move(box.x + box.width * first.x, box.y + box.height * first.y);
+  await page.mouse.down();
+  for (const point of rest) {
+    await page.mouse.move(box.x + box.width * point.x, box.y + box.height * point.y);
+  }
+  await page.mouse.up();
+};
+
+const signVisiblePdf = async (page: Page) => {
+  await expect(
+    page.getByRole('heading', { name: 'Podpisz dokument' }),
+  ).toBeVisible();
+  await expect(page.getByText('Strona 1 z 2')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Czarny' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Granatowy' })).toBeVisible();
+  await page.getByRole('button', { name: 'Granatowy' }).click();
+
+  await drawOnSigningSurface(page, [
+    { x: 0.25, y: 0.18 },
+    { x: 0.35, y: 0.12 },
+    { x: 0.45, y: 0.2 },
+  ]);
+  await page.getByRole('button', { name: 'Przybij na tej stronie' }).click();
+  await page.getByRole('button', { name: 'Następna' }).click();
+  await expect(page.getByText('Strona 2 z 2')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Wyczyść' }).click();
+  await drawOnSigningSurface(page, [
+    { x: 0.25, y: 0.55 },
+    { x: 0.45, y: 0.45 },
+    { x: 0.65, y: 0.58 },
+  ]);
+  await page.getByRole('button', { name: 'Przybij na tej stronie' }).click();
+  const save = page.getByRole('button', { name: 'Zapisz podpisany PDF' });
+  await expect(save).toBeEnabled();
+  await save.click();
 };
 
 test('creates, uploads, previews and exports an archived document', async ({
@@ -16,6 +67,8 @@ test('creates, uploads, previews and exports an archived document', async ({
   const stamp = Date.now();
   const title = `Umowa e2e ${stamp}`;
   const sourceName = `umowa-${stamp}.pdf`;
+  const signedName = `umowa-${stamp}-podpisany.pdf`;
+  const signedAgainName = `umowa-${stamp}-podpisany-2.pdf`;
   const scanName = `umowa-${stamp}-podpisana.png`;
 
   await page.goto('/login');
@@ -47,6 +100,19 @@ test('creates, uploads, previews and exports an archived document', async ({
   });
   await expect(sourceSection.getByText(sourceName)).toBeVisible();
 
+  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
+  await signVisiblePdf(page);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  const signedSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Podpis cyfrowy/ }) });
+  await expect(signedSection.getByText(signedName)).toBeVisible();
+  await signedSection.getByRole('button', { name: 'Podpisz' }).click();
+  await signVisiblePdf(page);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(signedSection.getByText(signedAgainName)).toBeVisible();
+
   const scanSection = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: /Podpisany skan/ }) });
@@ -64,7 +130,10 @@ test('creates, uploads, previews and exports an archived document', async ({
     page.locator(`object[aria-label="Podgląd: ${sourceName}"]`),
   ).toBeVisible();
   await expect(
-    page.getByRole('img', { name: `Podgląd: ${scanName}` }),
+    page.locator(`object[aria-label="Podgląd: ${signedName}"]`),
+  ).toBeVisible();
+  await expect(
+    scanSection.getByText(scanName),
   ).toBeVisible();
 
   const downloadPromise = page.waitForEvent('download');

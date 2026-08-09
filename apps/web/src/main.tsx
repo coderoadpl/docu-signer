@@ -33,6 +33,18 @@ const ReactQueryDevtools = lazy(() =>
   })),
 );
 
+const LazyDocumentSigningRoute = lazy(() =>
+  import('./routes/document-signing.js').then((module) => ({
+    default: module.DocumentSigningRoute,
+  })),
+);
+
+const DocumentSigningRoute = () => (
+  <Suspense fallback={null}>
+    <LazyDocumentSigningRoute />
+  </Suspense>
+);
+
 const rootRoute = createRootRoute({ component: Outlet });
 
 // The bare root redirects into the authenticated app; `/app` is the single
@@ -83,6 +95,11 @@ const documentDetailRoute = createRoute({
   path: 'documents/$id',
   component: DocumentDetailRoute,
 });
+const documentSigningRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: 'documents/$id/sign/$fileId',
+  component: DocumentSigningRoute,
+});
 const settingsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: 'settings',
@@ -98,6 +115,7 @@ const router = createRouter({
       appIndexRoute,
       documentsRoute,
       documentDetailRoute,
+      documentSigningRoute,
       settingsRoute,
     ]),
   ]),

@@ -33,6 +33,7 @@ import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   FILE_ROLE_SYMBOLS,
+  canSignPdfFile,
   filesByRole,
   formatFileSize,
   toDocumentInput,
@@ -86,10 +87,12 @@ const ConfirmDialog = ({
 const FileRow = ({
   documentId,
   file,
+  onSign,
   onDelete,
 }: {
   documentId: string;
   file: DocumentFile;
+  onSign: (file: DocumentFile) => void;
   onDelete: (file: DocumentFile) => void;
 }) => {
   const contentUrl = actions.documentFileContentUrl(documentId, file.id);
@@ -108,6 +111,11 @@ const FileRow = ({
           Pobierz
         </Link>
         <Link href={exportUrl}>Eksportuj</Link>
+        {canSignPdfFile(file) ? (
+          <Button variant="contained" onClick={() => onSign(file)}>
+            Podpisz
+          </Button>
+        ) : null}
         <Button color="error" onClick={() => onDelete(file)}>
           Usuń
         </Button>
@@ -181,6 +189,7 @@ const RoleFiles = ({
   uploading,
   uploadError,
   onUpload,
+  onSign,
   onDelete,
 }: {
   documentId: string;
@@ -189,6 +198,7 @@ const RoleFiles = ({
   uploading: boolean;
   uploadError?: string | undefined;
   onUpload: (file: File, role: DocumentFileRole) => void;
+  onSign: (file: DocumentFile) => void;
   onDelete: (file: DocumentFile) => void;
 }) => {
   const acceptFile = (file: File | undefined) => {
@@ -242,6 +252,7 @@ const RoleFiles = ({
               key={file.id}
               documentId={documentId}
               file={file}
+              onSign={onSign}
               onDelete={onDelete}
             />
           ))}
@@ -407,6 +418,12 @@ export const DocumentDetailPage = ({
             uploadError={uploadErrors[role]}
             onUpload={(file, selectedRole) =>
               void upload(file, selectedRole)
+            }
+            onSign={(file) =>
+              void navigate({
+                to: '/app/documents/$id/sign/$fileId',
+                params: { id: documentId, fileId: file.id },
+              })
             }
             onDelete={setFileToDelete}
           />
