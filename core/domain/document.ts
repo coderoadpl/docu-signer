@@ -46,6 +46,7 @@ const documentFieldsSchema = z.object({
   tags: z.array(z.string()),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  deletedAt: z.iso.datetime().nullable().default(null),
 });
 
 export const documentSchema = documentFieldsSchema.refine(

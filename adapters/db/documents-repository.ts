@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, ilike, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, exists, ilike, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
 
 import {
   documentFileSchema,
@@ -16,6 +16,7 @@ const toDocument = (row: typeof documents.$inferSelect): Document =>
     ...row,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    deletedAt: row.deletedAt?.toISOString() ?? null,
   });
 
 const toDocumentFile = (row: typeof documentFiles.$inferSelect): DocumentFile =>
@@ -23,7 +24,7 @@ const toDocumentFile = (row: typeof documentFiles.$inferSelect): DocumentFile =>
 
 export const createDocumentRepository = (db: Db): DocumentRepository => ({
   listByTenant: async (tenantId, filter) => {
-    const conditions: SQL[] = [eq(documents.tenantId, tenantId)];
+    const conditions: SQL[] = [eq(documents.tenantId, tenantId), isNull(documents.deletedAt)];
     const hasSourceFile = exists(
       db
         .select({ id: documentFiles.id })
@@ -69,7 +70,43 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
       .orderBy(desc(documents.documentDate), desc(documents.createdAt));
     return rows.map(toDocument);
   },
+  listDeletedByTenant: async (tenantId) => {
+    const rows = await db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.tenantId, tenantId), isNotNull(documents.deletedAt)))
+      .orderBy(desc(documents.deletedAt), desc(documents.documentDate), desc(documents.createdAt));
+    return rows.map(toDocument);
+  },
   findById: async (tenantId, documentId) => {
+    const rows = await db
+      .select()
+      .from(documents)
+      .where(
+        and(
+          eq(documents.tenantId, tenantId),
+          eq(documents.id, documentId),
+          isNull(documents.deletedAt),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toDocument(rows[0]) : null;
+  },
+  findDeletedById: async (tenantId, documentId) => {
+    const rows = await db
+      .select()
+      .from(documents)
+      .where(
+        and(
+          eq(documents.tenantId, tenantId),
+          eq(documents.id, documentId),
+          isNotNull(documents.deletedAt),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toDocument(rows[0]) : null;
+  },
+  findAnyById: async (tenantId, documentId) => {
     const rows = await db
       .select()
       .from(documents)
@@ -78,6 +115,21 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     return rows[0] ? toDocument(rows[0]) : null;
   },
   listFiles: async (tenantId, documentId) => {
+    const rows = await db
+      .select({ file: documentFiles })
+      .from(documentFiles)
+      .innerJoin(documents, eq(documentFiles.documentId, documents.id))
+      .where(
+        and(
+          eq(documents.tenantId, tenantId),
+          eq(documents.id, documentId),
+          isNull(documents.deletedAt),
+        ),
+      )
+      .orderBy(documentFiles.createdAt);
+    return rows.map((row) => toDocumentFile(row.file));
+  },
+  listFilesIncludingDeleted: async (tenantId, documentId) => {
     const rows = await db
       .select({ file: documentFiles })
       .from(documentFiles)
@@ -92,7 +144,13 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
       .select({ file: documentFiles })
       .from(documentFiles)
       .innerJoin(documents, eq(documentFiles.documentId, documents.id))
-      .where(and(eq(documents.tenantId, tenantId), inArray(documents.id, documentIds)))
+      .where(
+        and(
+          eq(documents.tenantId, tenantId),
+          inArray(documents.id, documentIds),
+          isNull(documents.deletedAt),
+        ),
+      )
       .orderBy(documentFiles.createdAt);
     return rows.map((row) => toDocumentFile(row.file));
   },
@@ -106,11 +164,45 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     const rows = await db
       .update(documents)
       .set({ ...input, updatedAt: sql`now()` })
-      .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
+      .where(
+        and(
+          eq(documents.tenantId, tenantId),
+          eq(documents.id, documentId),
+          isNull(documents.deletedAt),
+        ),
+      )
       .returning();
     return rows[0] ? toDocument(rows[0]) : null;
   },
   delete: async (tenantId, documentId) => {
+    const rows = await db
+      .update(documents)
+      .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(documents.tenantId, tenantId),
+          eq(documents.id, documentId),
+          isNull(documents.deletedAt),
+        ),
+      )
+      .returning({ id: documents.id });
+    return rows.length > 0;
+  },
+  restore: async (tenantId, documentId) => {
+    const rows = await db
+      .update(documents)
+      .set({ deletedAt: null, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(documents.tenantId, tenantId),
+          eq(documents.id, documentId),
+          isNotNull(documents.deletedAt),
+        ),
+      )
+      .returning();
+    return rows[0] ? toDocument(rows[0]) : null;
+  },
+  purge: async (tenantId, documentId) => {
     const rows = await db
       .delete(documents)
       .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
@@ -133,7 +225,13 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
             createdAt: sql<Date>`now()`.as('created_at'),
           })
           .from(documents)
-          .where(and(eq(documents.id, input.documentId), eq(documents.tenantId, tenantId))),
+          .where(
+            and(
+              eq(documents.id, input.documentId),
+              eq(documents.tenantId, tenantId),
+              isNull(documents.deletedAt),
+            ),
+          ),
       )
       .returning();
     return rows[0] ? toDocumentFile(rows[0]) : null;
@@ -148,6 +246,7 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
           eq(documents.tenantId, tenantId),
           eq(documents.id, documentId),
           eq(documentFiles.id, fileId),
+          isNull(documents.deletedAt),
         ),
       )
       .limit(1);
@@ -169,6 +268,7 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
                 and(
                   eq(documents.id, sourceDocumentId),
                   eq(documents.tenantId, tenantId),
+                  isNull(documents.deletedAt),
                 ),
               ),
           ),
@@ -180,6 +280,7 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
                 and(
                   eq(documents.id, targetDocumentId),
                   eq(documents.tenantId, tenantId),
+                  isNull(documents.deletedAt),
                 ),
               ),
           ),
@@ -203,6 +304,7 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
                 and(
                   eq(documents.id, documentFiles.documentId),
                   eq(documents.tenantId, tenantId),
+                  isNull(documents.deletedAt),
                 ),
               ),
           ),

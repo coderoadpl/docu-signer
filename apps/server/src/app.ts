@@ -36,10 +36,13 @@ import {
   getFileContent,
   getFileExport,
   listDocuments,
+  listTrashedDocuments,
   listSavedSearches,
   moveDocumentFile,
+  purgeDocument,
   removeFile,
   resolveIdentity,
+  restoreDocument,
   requestFileUpload,
   serverUpload,
   updateDocument,
@@ -260,6 +263,11 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ document: result.value }) : result);
   });
 
+  app.get(API_ROUTES.documentsTrash.path, async (c) => {
+    const result = await listTrashedDocuments(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ documents: result.value }) : result);
+  });
+
   app.get(API_ROUTES.document.path, async (c) => {
     const result = await getDocument(ctxOf(c.get('identity')), c.req.param('documentId'), deps);
     return respond(result.ok ? ok({ document: result.value }) : result);
@@ -282,6 +290,24 @@ export const buildApp = (deps: AppDeps) => {
 
   app.delete(API_ROUTES.documentDelete.path, async (c) => {
     const result = await deleteDocument(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
+  });
+
+  app.post(API_ROUTES.documentRestore.path, async (c) => {
+    const result = await restoreDocument(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentPurge.path, async (c) => {
+    const result = await purgeDocument(
       ctxOf(c.get('identity')),
       c.req.param('documentId'),
       deps,

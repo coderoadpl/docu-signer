@@ -4,7 +4,10 @@ import {
   API_PATHS,
   API_ROUTES,
   documentCreateInputSchema,
+  documentGetOutputSchema,
   documentListInputSchema,
+  documentRestoreOutputSchema,
+  documentTrashListOutputSchema,
   exportDocumentsInputSchema,
   fileUploadRequestInputSchema,
   finalizeFileUploadInputSchema,
@@ -34,6 +37,18 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/documents',
     });
+    expect(API_ROUTES.documentsTrash).toEqual({
+      method: 'GET',
+      path: '/api/documents/trash',
+    });
+    expect(API_ROUTES.documentRestore).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/restore',
+    });
+    expect(API_ROUTES.documentPurge).toEqual({
+      method: 'DELETE',
+      path: '/api/documents/:documentId/purge',
+    });
     expect(API_ROUTES.documentFileMove).toEqual({
       method: 'POST',
       path: '/api/documents/:documentId/files/:fileId/move',
@@ -57,6 +72,28 @@ describe('API route contract', () => {
         tags: [],
       }).success,
     ).toBe(true);
+    const document = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-default',
+      title: 'Umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      deletedAt: '2026-08-02T00:00:00.000Z',
+    };
+    expect(documentGetOutputSchema.safeParse({ document: { ...document, files: [] } }).success).toBe(true);
+    expect(documentTrashListOutputSchema.safeParse({ documents: [{ ...document, files: [] }] }).success).toBe(true);
+    expect(documentRestoreOutputSchema.safeParse({ document: { ...document, deletedAt: null } }).success).toBe(true);
+    expect(
+      documentTrashListOutputSchema.safeParse({
+        documents: [{ ...document, deletedAt: '2026-08-02', files: [] }],
+      }).success,
+    ).toBe(false);
     expect(
       meOutputSchema.safeParse({
         userId: 'u1',

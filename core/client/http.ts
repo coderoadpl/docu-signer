@@ -10,6 +10,9 @@ import {
   documentFileOutputSchema,
   documentGetOutputSchema,
   documentListOutputSchema,
+  documentPurgeOutputSchema,
+  documentRestoreOutputSchema,
+  documentTrashListOutputSchema,
   documentUpdateOutputSchema,
   fileUploadRequestOutputSchema,
   looseEnvelopeSchema,
@@ -249,6 +252,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  listTrashedDocuments: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentsTrash.method,
+      API_ROUTES.documentsTrash.path,
+      documentTrashListOutputSchema,
+      undefined,
+      signal,
+    ),
   getDocument: (documentId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -273,6 +285,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.documentDelete.method,
       pathWith(API_ROUTES.documentDelete.path, { documentId }),
       documentDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
+  restoreDocument: (documentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentRestore.method,
+      pathWith(API_ROUTES.documentRestore.path, { documentId }),
+      documentRestoreOutputSchema,
+      undefined,
+      signal,
+    ),
+  purgeDocument: (documentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentPurge.method,
+      pathWith(API_ROUTES.documentPurge.path, { documentId }),
+      documentPurgeOutputSchema,
       undefined,
       signal,
     ),

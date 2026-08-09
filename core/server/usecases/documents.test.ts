@@ -23,9 +23,12 @@ import {
   getFileContent,
   getFileExport,
   listDocuments,
+  listTrashedDocuments,
   moveDocumentFile,
+  purgeDocument,
   removeFile,
   requestFileUpload,
+  restoreDocument,
   serverUpload,
   type DocumentDeps,
   updateDocument,
@@ -68,6 +71,7 @@ const documentRow = (tenantId = 'tenant-acme'): Document => ({
   tags: ['contract'],
   createdAt: '2026-07-01T10:00:00.000Z',
   updatedAt: '2026-07-01T10:00:00.000Z',
+  deletedAt: null,
 });
 
 const fileRow = (): DocumentFile => ({
@@ -93,10 +97,31 @@ const fake = (
 
   const repo: DocumentRepository = {
     listByTenant: async (tenantId) =>
-      documents.filter((document) => document.tenantId === tenantId),
+      documents.filter((document) => document.tenantId === tenantId && document.deletedAt === null),
+    listDeletedByTenant: async (tenantId) =>
+      documents.filter((document) => document.tenantId === tenantId && document.deletedAt !== null),
     findById: async (tenantId, id) =>
+      documents.find(
+        (document) =>
+          document.tenantId === tenantId && document.id === id && document.deletedAt === null,
+      ) ?? null,
+    findDeletedById: async (tenantId, id) =>
+      documents.find(
+        (document) =>
+          document.tenantId === tenantId && document.id === id && document.deletedAt !== null,
+      ) ?? null,
+    findAnyById: async (tenantId, id) =>
       documents.find((document) => document.tenantId === tenantId && document.id === id) ?? null,
     listFiles: async (tenantId, id) =>
+      files.filter(
+        (file) =>
+          file.documentId === id &&
+          documents.some(
+            (document) =>
+              document.id === id && document.tenantId === tenantId && document.deletedAt === null,
+          ),
+      ),
+    listFilesIncludingDeleted: async (tenantId, id) =>
       files.filter(
         (file) =>
           file.documentId === id &&
@@ -110,7 +135,9 @@ const fake = (
           ids.includes(file.documentId) &&
           documents.some(
             (document) =>
-              document.id === file.documentId && document.tenantId === tenantId,
+              document.id === file.documentId &&
+              document.tenantId === tenantId &&
+              document.deletedAt === null,
           ),
       ),
     create: async (input) => {
@@ -118,13 +145,15 @@ const fake = (
         ...input,
         createdAt: '2026-07-01T10:00:00.000Z',
         updatedAt: '2026-07-01T10:00:00.000Z',
+        deletedAt: null,
       };
       documents.push(created);
       return created;
     },
     update: async (tenantId, id, input) => {
       const index = documents.findIndex(
-        (document) => document.tenantId === tenantId && document.id === id,
+        (document) =>
+          document.tenantId === tenantId && document.id === id && document.deletedAt === null,
       );
       const current = documents[index];
       if (!current) return null;
@@ -134,17 +163,52 @@ const fake = (
     },
     delete: async (tenantId, id) => {
       const index = documents.findIndex(
+        (document) =>
+          document.tenantId === tenantId && document.id === id && document.deletedAt === null,
+      );
+      if (index < 0) return false;
+      const current = documents[index];
+      if (!current) return false;
+      documents[index] = {
+        ...current,
+        updatedAt: '2026-07-03T10:00:00.000Z',
+        deletedAt: '2026-07-03T10:00:00.000Z',
+      };
+      return true;
+    },
+    restore: async (tenantId, id) => {
+      const index = documents.findIndex(
+        (document) =>
+          document.tenantId === tenantId && document.id === id && document.deletedAt !== null,
+      );
+      const current = documents[index];
+      if (!current) return null;
+      const restored = {
+        ...current,
+        updatedAt: '2026-07-04T10:00:00.000Z',
+        deletedAt: null,
+      };
+      documents[index] = restored;
+      return restored;
+    },
+    purge: async (tenantId, id) => {
+      const index = documents.findIndex(
         (document) => document.tenantId === tenantId && document.id === id,
       );
       if (index < 0) return false;
       documents.splice(index, 1);
+      for (let fileIndex = files.length - 1; fileIndex >= 0; fileIndex -= 1) {
+        if (files[fileIndex]?.documentId === id) files.splice(fileIndex, 1);
+      }
       return true;
     },
     createFile: async (tenantId, input) => {
       if (
         !documents.some(
           (document) =>
-            document.id === input.documentId && document.tenantId === tenantId,
+            document.id === input.documentId &&
+            document.tenantId === tenantId &&
+            document.deletedAt === null,
         )
       ) {
         return null;
@@ -162,15 +226,22 @@ const fake = (
           file.id === idOfFile &&
           file.documentId === id &&
           documents.some(
-            (document) => document.id === id && document.tenantId === tenantId,
+            (document) =>
+              document.id === id && document.tenantId === tenantId && document.deletedAt === null,
           ),
       ) ?? null,
     moveFileToDocument: async (tenantId, sourceDocumentId, idOfFile, targetDocumentId) => {
       const sourceOwned = documents.some(
-        (document) => document.id === sourceDocumentId && document.tenantId === tenantId,
+        (document) =>
+          document.id === sourceDocumentId &&
+          document.tenantId === tenantId &&
+          document.deletedAt === null,
       );
       const targetOwned = documents.some(
-        (document) => document.id === targetDocumentId && document.tenantId === tenantId,
+        (document) =>
+          document.id === targetDocumentId &&
+          document.tenantId === tenantId &&
+          document.deletedAt === null,
       );
       const index = files.findIndex(
         (file) => file.id === idOfFile && file.documentId === sourceDocumentId,
@@ -187,7 +258,8 @@ const fake = (
           file.id === idOfFile &&
           file.documentId === id &&
           documents.some(
-            (document) => document.id === id && document.tenantId === tenantId,
+            (document) =>
+              document.id === id && document.tenantId === tenantId && document.deletedAt === null,
           ),
       );
       if (index < 0) return false;
@@ -252,11 +324,14 @@ describe('documents use-cases', () => {
       { name: 'createDocument', run: (deps) => createDocument(ctx(member), createInput, deps) },
       { name: 'listDocuments', run: (deps) => listDocuments(ctx(visitor), {}, deps) },
       { name: 'getDocument', run: (deps) => getDocument(ctx(member), documentId, deps) },
+      { name: 'listTrashedDocuments', run: (deps) => listTrashedDocuments(ctx(visitor), deps) },
       {
         name: 'updateDocument',
         run: (deps) => updateDocument(ctx(visitor), documentId, createInput, deps),
       },
       { name: 'deleteDocument', run: (deps) => deleteDocument(ctx(member), documentId, deps) },
+      { name: 'restoreDocument', run: (deps) => restoreDocument(ctx(member), documentId, deps) },
+      { name: 'purgeDocument', run: (deps) => purgeDocument(ctx(member), documentId, deps) },
       {
         name: 'requestFileUpload',
         run: (deps) => requestFileUpload(ctx(visitor), documentId, input, deps),
@@ -313,12 +388,18 @@ describe('documents use-cases', () => {
       const state = fake([documentRow()], [fileRow()]);
       const repositorySpies = [
         vi.spyOn(state.deps.documents, 'listByTenant'),
+        vi.spyOn(state.deps.documents, 'listDeletedByTenant'),
         vi.spyOn(state.deps.documents, 'findById'),
+        vi.spyOn(state.deps.documents, 'findDeletedById'),
+        vi.spyOn(state.deps.documents, 'findAnyById'),
         vi.spyOn(state.deps.documents, 'listFiles'),
+        vi.spyOn(state.deps.documents, 'listFilesIncludingDeleted'),
         vi.spyOn(state.deps.documents, 'listFilesForDocuments'),
         vi.spyOn(state.deps.documents, 'create'),
         vi.spyOn(state.deps.documents, 'update'),
         vi.spyOn(state.deps.documents, 'delete'),
+        vi.spyOn(state.deps.documents, 'restore'),
+        vi.spyOn(state.deps.documents, 'purge'),
         vi.spyOn(state.deps.documents, 'createFile'),
         vi.spyOn(state.deps.documents, 'findFile'),
         vi.spyOn(state.deps.documents, 'moveFileToDocument'),
@@ -366,6 +447,83 @@ describe('documents use-cases', () => {
       ok: true,
       value: undefined,
     });
+    expect(state.documents[1]?.deletedAt).toBe('2026-07-03T10:00:00.000Z');
+  });
+
+  it('soft-deletes, lists trash with files, restores, and purges idempotently', async () => {
+    const state = fake([documentRow()], [fileRow()]);
+    const storageDelete = vi.spyOn(state.deps.storage, 'delete');
+
+    expect(await deleteDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(storageDelete).not.toHaveBeenCalled();
+    expect(await listDocuments(ctx(staff('tenant-acme')), {}, state.deps)).toEqual({
+      ok: true,
+      value: [],
+    });
+    expect(await listTrashedDocuments(ctx(staff('tenant-acme')), state.deps)).toMatchObject({
+      ok: true,
+      value: [{ id: documentId, deletedAt: '2026-07-03T10:00:00.000Z', files: [{ id: fileId }] }],
+    });
+    expect(await getDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
+      ok: true,
+      value: { id: documentId, deletedAt: '2026-07-03T10:00:00.000Z', files: [{ id: fileId }] },
+    });
+    expect(await restoreDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
+      ok: true,
+      value: { id: documentId, deletedAt: null },
+    });
+    expect(await listDocuments(ctx(staff('tenant-acme')), {}, state.deps)).toMatchObject({
+      ok: true,
+      value: [{ id: documentId, deletedAt: null }],
+    });
+
+    expect(await deleteDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(await purgeDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(storageDelete).toHaveBeenCalledWith(fileRow().storageKey);
+    expect(state.documents).toEqual([]);
+    expect(state.files).toEqual([]);
+    expect(await purgeDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(storageDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not expose trashed documents through active operations or other tenants', async () => {
+    const state = fake([documentRow(), { ...documentRow('tenant-other'), id: movedDocumentId }], [fileRow()]);
+
+    expect(await deleteDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(await updateDocument(ctx(staff('tenant-acme')), documentId, createInput, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+    expect(
+      await getFileContent(ctx(staff('tenant-acme')), documentId, fileId, state.deps),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(
+      await exportDocuments(ctx(staff('tenant-acme')), { documentIds: [documentId] }, state.deps),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await restoreDocument(ctx(staff('tenant-other')), documentId, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+    expect(await purgeDocument(ctx(staff('tenant-other')), documentId, state.deps)).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(state.documents.some((document) => document.id === documentId)).toBe(true);
   });
 
   it('validates document input and filters before repository access', async () => {
@@ -644,7 +802,10 @@ describe('documents use-cases', () => {
     const failedRepo: DocumentRepository = {
       ...state.deps.documents,
       listByTenant: async () => Promise.reject(failure),
+      listDeletedByTenant: async () => Promise.reject(failure),
       findById: async () => Promise.reject(failure),
+      findDeletedById: async () => Promise.reject(failure),
+      findAnyById: async () => Promise.reject(failure),
       update: async () => Promise.reject(failure),
       findFile: async () => Promise.reject(failure),
     };
@@ -652,6 +813,9 @@ describe('documents use-cases', () => {
     await expect(listDocuments(ctx(staff('tenant-acme')), {}, failedDeps)).rejects.toBe(failure);
     await expect(
       getDocument(ctx(staff('tenant-acme')), documentId, failedDeps),
+    ).rejects.toBe(failure);
+    await expect(
+      listTrashedDocuments(ctx(staff('tenant-acme')), failedDeps),
     ).rejects.toBe(failure);
     await expect(
       updateDocument(ctx(staff('tenant-acme')), documentId, createInput, failedDeps),
@@ -747,24 +911,34 @@ describe('documents use-cases', () => {
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
-  it('propagates delete and upload failures and reports vanished rows', async () => {
+  it('propagates delete, purge and upload failures and reports vanished rows', async () => {
     const state = fake([documentRow()], [fileRow()]);
     const failure = err(internal('failed port'));
+    expect(
+      await deleteDocument(
+        ctx(staff('tenant-acme')),
+        documentId,
+        {
+          ...state.deps,
+          storage: { ...state.deps.storage, delete: async () => failure },
+        },
+      ),
+    ).toEqual({ ok: true, value: undefined });
     await expect(
-      deleteDocument(
+      purgeDocument(
         ctx(staff('tenant-acme')),
         documentId,
         {
           ...state.deps,
           documents: {
             ...state.deps.documents,
-            listFiles: async () => Promise.reject(new Error('failed port')),
+            listFilesIncludingDeleted: async () => Promise.reject(new Error('failed port')),
           },
         },
       ),
     ).rejects.toThrow('failed port');
     expect(
-      await deleteDocument(
+      await purgeDocument(
         ctx(staff('tenant-acme')),
         documentId,
         {
@@ -803,14 +977,15 @@ describe('documents use-cases', () => {
       role: 'source' as const,
       bytes: new Uint8Array([1]),
     };
+    const uploadState = fake([documentRow()], [fileRow()]);
     expect(
       await serverUpload(
         ctx(staff('tenant-acme')),
         documentId,
         input,
         {
-          ...state.deps,
-          storage: { ...state.deps.storage, put: async () => failure },
+          ...uploadState.deps,
+          storage: { ...uploadState.deps.storage, put: async () => failure },
         },
       ),
     ).toEqual(failure);
@@ -820,8 +995,8 @@ describe('documents use-cases', () => {
         documentId,
         input,
         {
-          ...state.deps,
-          documents: { ...state.deps.documents, createFile: async () => null },
+          ...uploadState.deps,
+          documents: { ...uploadState.deps.documents, createFile: async () => null },
         },
       ),
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });

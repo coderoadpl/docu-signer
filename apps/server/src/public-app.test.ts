@@ -35,14 +35,20 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   authPort: { getAuthenticatedUser: async () => null },
   documents: {
     listByTenant: async () => [],
+    listDeletedByTenant: async () => [],
     findById: async () => null,
+    findDeletedById: async () => null,
+    findAnyById: async () => null,
     listFiles: async () => [],
+    listFilesIncludingDeleted: async () => [],
     listFilesForDocuments: async () => [],
     create: async () => {
       throw new Error('not implemented');
     },
     update: async () => null,
     delete: async () => false,
+    restore: async () => null,
+    purge: async () => false,
     createFile: async () => null,
     findFile: async () => null,
     moveFileToDocument: async () => null,

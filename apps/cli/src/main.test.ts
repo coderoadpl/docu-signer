@@ -39,10 +39,30 @@ describe('CLI command surface', () => {
     expect(accountHelp.status).toBe(0);
     expect(accountHelp.stdout).toContain('change-password');
     expect(accountHelp.stdout).toContain('request-password-reset');
+
+    const documentHelp = run('document', '--help');
+    expect(documentHelp.status).toBe(0);
+    expect(documentHelp.stdout).toContain('trash-list');
+    expect(documentHelp.stdout).toContain('restore');
+    expect(documentHelp.stdout).toContain('purge');
   }, CLI_TEST_TIMEOUT_MS);
 
   it('maps an unknown removed command to the validation exit code', () => {
     const result = run('--json', 'todo', 'list');
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('requires --yes before purging a document', () => {
+    const result = run(
+      '--json',
+      'document',
+      'purge',
+      '11111111-1111-4111-8111-111111111111',
+    );
     expect(result.status).toBe(2);
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,

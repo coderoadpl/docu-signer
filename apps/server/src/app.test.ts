@@ -32,14 +32,20 @@ const baseDeps = (): AppDeps => ({
   authPort: { getAuthenticatedUser: async () => null },
   documents: {
     listByTenant: async () => [],
+    listDeletedByTenant: async () => [],
     findById: async () => null,
+    findDeletedById: async () => null,
+    findAnyById: async () => null,
     listFiles: async () => [],
+    listFilesIncludingDeleted: async () => [],
     listFilesForDocuments: async () => [],
     create: async () => {
       throw new Error('not implemented');
     },
     update: async () => null,
     delete: async () => false,
+    restore: async () => null,
+    purge: async () => false,
     createFile: async () => null,
     findFile: async () => null,
     moveFileToDocument: async () => null,
@@ -151,6 +157,7 @@ describe('buildApp', () => {
       tags: [],
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
+      deletedAt: null,
     };
     deps.documents.listByTenant = async (tenantId, filter) => {
       seenTenant = tenantId;
@@ -179,6 +186,7 @@ describe('buildApp', () => {
       ...input,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
+      deletedAt: null,
     });
     const response = await buildApp(deps).request(API_ROUTES.documentsCreate.path, {
       method: API_ROUTES.documentsCreate.method,
@@ -196,6 +204,129 @@ describe('buildApp', () => {
       ok: true,
       data: { document: { title: 'Umowa', tenantId: tenant.id } },
     });
+  });
+
+  it('lists trash, restores and purges documents through the contract routes', async () => {
+    const deps = authorizedDeps();
+    const row: Document = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: tenant.id,
+      title: 'Usunięta umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-02T00:00:00.000Z',
+      deletedAt: '2026-08-02T00:00:00.000Z',
+    };
+    deps.documents.listDeletedByTenant = async () => [row];
+    deps.documents.findById = async () => null;
+    deps.documents.findDeletedById = async () => row;
+    deps.documents.restore = async () => ({ ...row, deletedAt: null });
+    deps.documents.findAnyById = async () => row;
+    deps.documents.purge = async () => true;
+
+    const app = buildApp(deps);
+    const list = await app.request(API_ROUTES.documentsTrash.path, {
+      headers: { [TENANT_HEADER]: tenant.slug },
+    });
+    expect(list.status).toBe(200);
+    expect(await list.json()).toMatchObject({
+      ok: true,
+      data: { documents: [{ title: 'Usunięta umowa', deletedAt: row.deletedAt }] },
+    });
+
+    const restore = await app.request(
+      '/api/documents/11111111-1111-4111-8111-111111111111/restore',
+      {
+        method: API_ROUTES.documentRestore.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(restore.status).toBe(200);
+    expect(await restore.json()).toMatchObject({
+      ok: true,
+      data: { document: { title: 'Usunięta umowa', deletedAt: null } },
+    });
+
+    const purge = await app.request(
+      '/api/documents/11111111-1111-4111-8111-111111111111/purge',
+      {
+        method: API_ROUTES.documentPurge.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(purge.status).toBe(200);
+    expect(await purge.json()).toMatchObject({ ok: true, data: { deleted: true } });
+
+    const anonymous = await buildApp(baseDeps()).request(API_ROUTES.documentsTrash.path);
+    expect(anonymous.status).toBe(401);
+  });
+
+  it('serves document file content and export responses', async () => {
+    const deps = authorizedDeps();
+    const document: Document = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: tenant.id,
+      title: 'Eksport',
+      docType: 'inny',
+      documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      deletedAt: null,
+    };
+    const file = {
+      id: '22222222-2222-4222-8222-222222222222',
+      documentId: document.id,
+      role: 'source' as const,
+      fileName: 'scan.png',
+      contentType: 'image/png',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-default/export/source',
+      createdAt: '2026-08-01T00:00:00.000Z',
+    };
+    deps.documents.findById = async () => document;
+    deps.documents.findFile = async () => file;
+    deps.documents.listFiles = async () => [file];
+    deps.storage.get = async () => ok(new Uint8Array([1, 2, 3]));
+
+    const app = buildApp(deps);
+    const content = await app.request(
+      '/api/documents/11111111-1111-4111-8111-111111111111/files/22222222-2222-4222-8222-222222222222/content',
+      { headers: { [TENANT_HEADER]: tenant.slug } },
+    );
+    expect(content.status).toBe(200);
+    expect(content.headers.get('content-disposition')).toContain('inline');
+    expect(new Uint8Array(await content.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+
+    const single = await app.request(
+      '/api/documents/11111111-1111-4111-8111-111111111111/files/22222222-2222-4222-8222-222222222222/export',
+      { headers: { [TENANT_HEADER]: tenant.slug } },
+    );
+    expect(single.status).toBe(200);
+    expect(single.headers.get('content-disposition')).toContain('2026-08-01--eksport--source.png');
+
+    const invalid = await app.request(API_ROUTES.documentsExport.path, {
+      method: API_ROUTES.documentsExport.method,
+      headers: { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' },
+      body: JSON.stringify({ documentIds: [] }),
+    });
+    expect(invalid.status).toBe(400);
+
+    const archive = await app.request(API_ROUTES.documentsExport.path, {
+      method: API_ROUTES.documentsExport.method,
+      headers: { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' },
+      body: JSON.stringify({ documentIds: [document.id] }),
+    });
+    expect(archive.status).toBe(200);
+    expect(archive.headers.get('content-type')).toBe('application/zip');
   });
 
   it('lists, creates, rejects invalid, and deletes saved searches', async () => {
