@@ -61,6 +61,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   },
   email: { sendMail: async () => {} },
   googleEnabled: false,
+  passwordResetEnabled: true,
   tenants: { findById: async () => null, findBySlug },
   tenantAccess: { findStaffGrant: async () => null },
   health: { pingDatabase: async () => true },

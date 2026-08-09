@@ -25,6 +25,22 @@ export interface MagicLinkRequest {
   callbackURL?: string;
 }
 
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+  revokeOtherSessions: boolean;
+}
+
+export interface PasswordResetRequest {
+  email: string;
+  redirectTo: string;
+}
+
+export interface PasswordResetCompletion {
+  token: string;
+  newPassword: string;
+}
+
 interface TwoFactorEnableResult {
   /** otpauth:// URI for an authenticator app (rendered as a QR by the UI). */
   totpURI: string;
@@ -53,8 +69,11 @@ export interface AuthClientPort {
   signUp(input: { name: string; email: string; password: string }): Promise<WriteResult<AuthSessionResult>>;
   signIn(input: { email: string; password: string }): Promise<WriteResult<AuthSessionResult>>;
   signOut(): Promise<WriteResult<void>>;
+  changePassword(input: ChangePasswordInput): Promise<WriteResult<void>>;
   /** US-026: request a passwordless magic link; no real delivery in dev. */
   requestMagicLink(input: MagicLinkRequest): Promise<WriteResult<void>>;
+  requestPasswordReset(input: PasswordResetRequest): Promise<WriteResult<void>>;
+  resetPassword(input: PasswordResetCompletion): Promise<WriteResult<void>>;
   /** FR-26: begin a social sign-in, yielding the provider authorization URL. */
   signInSocial(input: SocialSignInInput): Promise<WriteResult<SocialSignInResult>>;
   /** US-028a: turn on TOTP 2FA, returning the enrolment URI + backup codes. */

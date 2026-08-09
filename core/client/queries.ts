@@ -19,7 +19,15 @@ import type {
   UpdateDocument,
 } from '#core/domain/index.js';
 
-import type { AuthClientPort, AuthSessionResult, MagicLinkRequest, SocialSignInInput } from './auth-port.js';
+import type {
+  AuthClientPort,
+  AuthSessionResult,
+  ChangePasswordInput,
+  MagicLinkRequest,
+  PasswordResetCompletion,
+  PasswordResetRequest,
+  SocialSignInInput,
+} from './auth-port.js';
 import {
   unwrap,
   type ApiClient,
@@ -252,10 +260,28 @@ export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, 
     call: () => auth.signOut(),
   });
 
+export const changePasswordMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'change-password'],
+    call: (input: ChangePasswordInput) => auth.changePassword(input),
+  });
+
 export const requestMagicLinkMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'magic-link'],
     call: (input: MagicLinkRequest) => auth.requestMagicLink(input),
+  });
+
+export const requestPasswordResetMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'password-reset', 'request'],
+    call: (input: PasswordResetRequest) => auth.requestPasswordReset(input),
+  });
+
+export const resetPasswordMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'password-reset', 'complete'],
+    call: (input: PasswordResetCompletion) => auth.resetPassword(input),
   });
 
 export const signInSocialMutation = (auth: AuthClientPort) =>

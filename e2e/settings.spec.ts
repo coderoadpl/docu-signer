@@ -15,6 +15,7 @@ test('account settings contains only personal security controls', async ({ page 
   await page.getByRole('link', { name: 'Konto' }).click();
 
   await expect(page.getByRole('heading', { name: 'Konto', level: 1 })).toBeVisible();
+  await expect(page.getByText(/^Hasło$/i)).toBeVisible();
   await expect(page.getByText(/uwierzytelnianie dwuskładnikowe/i)).toBeVisible();
   await expect(page.getByText(/klucze dostępu/i)).toBeVisible();
   await expect(page.getByText(/firma|domena|administrator/i)).toHaveCount(0);

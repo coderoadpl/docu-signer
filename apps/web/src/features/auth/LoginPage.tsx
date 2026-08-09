@@ -131,6 +131,11 @@ export const LoginPage = () => {
                 : 'Wyślij link do logowania'}
             </Button>
           ) : null}
+          {config.data?.passwordResetEnabled ? (
+            <Button type="button" variant="text" fullWidth href="/forgot-password">
+              Nie pamiętasz hasła?
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outlined"

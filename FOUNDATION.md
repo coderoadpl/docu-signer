@@ -6,7 +6,8 @@
   subtree is this repo's root).
 - Forked commit: `32e2d34` (upstream main, 2026-07-27 — the wholesale
   re-transplant in PR #2); the layout layer from upstream PR #86 (through
-  `cf247d1`) was ported on top the same day in PR #3.
+  `cf247d1`) was ported on top the same day in PR #3; the upstream v1.2.0
+  account-management slice (password change/reset) was ported on 2026-08-02.
 - Foundation-owned paths (per architecture.md §Consumption model):
   `eslint.config.js`, `eslint-plugin-agentproofarch/`,
   `.dependency-cruiser.cjs`, `tsconfig.json`, `scripts/doc-lint.ts`,
@@ -49,6 +50,8 @@ each.
   §Environments owner ruling); forward-only binds from that merge onward.
 - Login hides demo credentials and magic-link controls outside dev/e2e builds
   until SMTP exists in production.
+- Password reset is hidden on deployed environments until a real SMTP relay or
+  SES transport is configured; dev/e2e use Mailpit.
 - Merges to `main` land over SSH as the owner — Vercel Hobby blocks production
   deploys from commits authored by an unconnected account, so `gh pr merge`
   (agent-authored merge commit) cannot release; `gh` stays for PR management.

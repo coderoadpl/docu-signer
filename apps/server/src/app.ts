@@ -180,7 +180,10 @@ export const buildApp = (deps: AppDeps) => {
   // Unauthenticated client config (which optional auth methods are wired), read
   // by the pre-auth login/register pages. Flags only, never a secret. Mounted
   // above the `/api/*` tenant middleware so it answers without a session.
-  app.get(API_PATHS.config, () => respond(ok({ googleEnabled: deps.googleEnabled })));
+  app.get(API_PATHS.config, () => respond(ok({
+    googleEnabled: deps.googleEnabled,
+    passwordResetEnabled: deps.passwordResetEnabled,
+  })));
 
   // The public, unauthenticated contract group (US-028, §Public surface). Mounted
   // HERE — before the `/api/*` tenant-resolution middleware below — so a request

@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { probeSignInCookies } from '#adapters/auth/client-adapter.js';
 import { EXIT_CODE_BY_ERROR_CODE, publicCacheControl } from '#core/contract/index.js';
 
-import { fetchMagicLink } from './mailpit.js';
+import { fetchMagicLink, fetchPasswordResetLink } from './mailpit.js';
 import {
   assertHealthAttestation,
   assertSmoke,
@@ -101,6 +101,7 @@ const profileSchema = z.object({
   displayName: z.string(),
   contentVersion: z.string(),
 });
+const passwordResetRequestSchema = z.object({ requested: z.literal(true), email: z.string() });
 
 const readEnvelope = (result: Run, label: string) => {
   let raw: unknown;
@@ -346,6 +347,16 @@ export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<vo
     );
     const magicMe = meSchema.parse(expectOk(await cli(['whoami'], magicHome), 'magic whoami'));
     assert(magicMe.tenant?.slug === target.tenant, 'magic-link account lacks archive access');
+
+    const resetRequest = passwordResetRequestSchema.parse(
+      expectOk(
+        await cli(['account', 'request-password-reset', '--email', target.email], magicHome),
+        'password reset request',
+      ),
+    );
+    assert(resetRequest.email === target.email, 'password reset requested the wrong account');
+    const resetLink = await fetchPasswordResetLink(target.mailpitApiUrl, target.email);
+    assert(new URL(resetLink).pathname.includes('reset-password'), 'password reset email did not contain a reset URL');
   }
 
   expectOk(await cli(['document', 'remove', created.id]), 'document cleanup');
