@@ -368,7 +368,7 @@ describe('DocumentDetailPage', () => {
     await userEvent.click(
       screen.getByRole('menuitem', { name: 'Przenieś do nowego dokumentu' }),
     );
-    const dialog = screen.getByRole('dialog', { name: 'Przenieś do nowego dokumentu' });
+    const dialog = await screen.findByRole('dialog', { name: 'Przenieś do nowego dokumentu' });
     expect(within(dialog).getByRole('textbox', { name: 'Tytuł' })).toHaveValue('oryginal');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Przenieś' }));
 

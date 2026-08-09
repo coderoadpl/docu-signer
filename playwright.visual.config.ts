@@ -32,6 +32,9 @@ export default defineConfig({
     },
   },
   reporter: [['list'], ['html', { open: 'never' }]],
+  use: {
+    contextOptions: { reducedMotion: 'reduce' },
+  },
   projects: [
     {
       name: 'chromium',
@@ -42,7 +45,6 @@ export default defineConfig({
         viewport: { width: 1280, height: 800 },
         deviceScaleFactor: 1,
         colorScheme: 'light',
-        contextOptions: { reducedMotion: 'reduce' },
         locale: 'en-US',
         timezoneId: 'UTC',
       },

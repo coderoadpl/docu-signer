@@ -1,14 +1,40 @@
-import type { ElementType } from 'react';
+import { useMemo, type ElementType } from 'react';
 import { Box, Typography } from '@mui/material';
-import { createTheme, styled, type Theme } from '@mui/material/styles';
+import { createTheme, styled, type Theme, type ThemeOptions } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
 
-export const createAppTheme = (accentHue?: number): Theme => {
+const reducedMotionTransitions = {
+  create: () => 'none',
+  duration: {
+    shortest: 0,
+    shorter: 0,
+    short: 0,
+    standard: 0,
+    complex: 0,
+    enteringScreen: 0,
+    leavingScreen: 0,
+  },
+  getAutoHeightDuration: () => 0,
+} satisfies ThemeOptions['transitions'];
+
+interface AppThemeOptions {
+  accentHue?: number;
+  prefersReducedMotion?: boolean;
+}
+
+const reducedMotionMediaQuery = '(prefers-reduced-motion: reduce)';
+
+export const createAppTheme = ({
+  accentHue,
+  prefersReducedMotion = false,
+}: AppThemeOptions = {}): Theme => {
   const base = createTheme({ palette: { contrastThreshold: 4.5 } });
   const primaryMain = accentHue === undefined
     ? base.palette.primary.main
     : `hsl(${accentHue}, 62%, 36%)`;
 
   return createTheme({
+    ...(prefersReducedMotion ? { transitions: reducedMotionTransitions } : {}),
     palette: {
       primary: base.palette.augmentColor({
         color: { main: primaryMain },
@@ -24,6 +50,11 @@ export const createAppTheme = (accentHue?: number): Theme => {
       h2: { fontSize: '1.25rem', fontWeight: 500 },
     },
     components: {
+      MuiButtonBase: {
+        defaultProps: {
+          disableRipple: prefersReducedMotion,
+        },
+      },
       MuiListItemButton: {
         styleOverrides: {
           root: ({ theme }) => ({
@@ -39,6 +70,17 @@ export const createAppTheme = (accentHue?: number): Theme => {
       },
     },
   });
+};
+
+export const useAppTheme = ({ accentHue }: Pick<AppThemeOptions, 'accentHue'> = {}): Theme => {
+  // WHY: reduced motion is an accessibility preference, so it must shape the product theme itself.
+  const prefersReducedMotion = useMediaQuery(reducedMotionMediaQuery, { noSsr: true });
+  return useMemo(
+    () => createAppTheme(
+      accentHue === undefined ? { prefersReducedMotion } : { accentHue, prefersReducedMotion },
+    ),
+    [accentHue, prefersReducedMotion],
+  );
 };
 
 type AsElement = { component?: ElementType };

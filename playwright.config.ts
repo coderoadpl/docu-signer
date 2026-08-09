@@ -21,6 +21,7 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL,
+    contextOptions: { reducedMotion: 'reduce' },
     trace: 'on-first-retry',
   },
   projects: [
