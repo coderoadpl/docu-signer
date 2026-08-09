@@ -1,4 +1,5 @@
 import { ApiError } from '#core/client/index.js';
+import { z } from 'zod';
 import {
   type CreateDocument,
   type DocumentFile,
@@ -9,6 +10,8 @@ import {
   type DocumentType,
   type DocumentWithFiles,
   type UpdateDocument,
+  documentSignatureStatusSchema,
+  documentTypeSchema,
 } from '#core/domain/index.js';
 import { formatPolishDate } from '../../lib/format-date.js';
 
@@ -60,6 +63,40 @@ export interface DocumentFilterValues {
   draft: 'false' | 'true' | 'all';
 }
 
+export type DocumentsView = 'list' | 'folders' | 'timeline' | 'trash';
+
+const dateParamSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().catch(undefined);
+const textParamSchema = z.preprocess(
+  (value: unknown) => (typeof value === 'string' ? value : undefined),
+  z.string().trim().min(1).optional(),
+).catch(undefined);
+const draftParamSchema = z.preprocess(
+  (value: unknown) => {
+    if (value === true || value === 'true' || value === '"true"') return true;
+    if (value === 'all' || value === '"all"') return 'all';
+    return value;
+  },
+  z.union([z.literal(true), z.literal('all')]).optional(),
+).catch(undefined);
+const documentsSearchInputSchema = z.object({
+  tab: z.enum(['teczki', 'os-czasu', 'kosz']).optional().catch(undefined),
+  q: textParamSchema,
+  typ: documentTypeSchema.optional().catch(undefined),
+  osoba: textParamSchema,
+  tag: textParamSchema,
+  status: documentSignatureStatusSchema.optional().catch(undefined),
+  szkice: draftParamSchema,
+  od: dateParamSchema,
+  do: dateParamSchema,
+});
+
+export const documentsSearchSchema = z.preprocess(
+  (value) => (typeof value === 'object' && value !== null ? value : {}),
+  documentsSearchInputSchema,
+);
+
+export type DocumentsSearchParams = z.infer<typeof documentsSearchSchema>;
+
 export const emptyDocumentFilters = (): DocumentFilterValues => ({
   text: '',
   docType: '',
@@ -69,6 +106,44 @@ export const emptyDocumentFilters = (): DocumentFilterValues => ({
   dateTo: '',
   signatureStatus: '',
   draft: 'false',
+});
+
+export const documentsViewFromSearch = (search: DocumentsSearchParams): DocumentsView => {
+  if (search.tab === 'teczki') return 'folders';
+  if (search.tab === 'os-czasu') return 'timeline';
+  if (search.tab === 'kosz') return 'trash';
+  return 'list';
+};
+
+export const documentFiltersFromSearch = (
+  search: DocumentsSearchParams,
+): DocumentFilterValues => ({
+  text: search.q ?? '',
+  docType: search.typ ?? '',
+  person: search.osoba ?? '',
+  tag: search.tag ?? '',
+  dateFrom: search.od ?? '',
+  dateTo: search.do ?? '',
+  signatureStatus: search.status ?? '',
+  draft: search.szkice === true ? 'true' : search.szkice ?? 'false',
+});
+
+export const documentsSearchFromState = (
+  view: DocumentsView,
+  values: DocumentFilterValues,
+): DocumentsSearchParams => ({
+  ...(view === 'folders' ? { tab: 'teczki' as const } : {}),
+  ...(view === 'timeline' ? { tab: 'os-czasu' as const } : {}),
+  ...(view === 'trash' ? { tab: 'kosz' as const } : {}),
+  ...(values.text.trim() ? { q: values.text.trim() } : {}),
+  ...(values.docType ? { typ: values.docType } : {}),
+  ...(values.person.trim() ? { osoba: values.person.trim() } : {}),
+  ...(values.tag.trim() ? { tag: values.tag.trim() } : {}),
+  ...(values.signatureStatus ? { status: values.signatureStatus } : {}),
+  ...(values.draft === 'true' ? { szkice: true as const } : {}),
+  ...(values.draft === 'all' ? { szkice: 'all' as const } : {}),
+  ...(values.dateFrom ? { od: values.dateFrom } : {}),
+  ...(values.dateTo ? { do: values.dateTo } : {}),
 });
 
 export const emptyDocumentForm = (): DocumentFormValues => ({
@@ -143,6 +218,11 @@ export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilte
 export const hasDocumentFilter = (filter: DocumentListFilter): boolean =>
   Object.values(filter).some((value) => value !== undefined && value.length > 0);
 
+export const hasSignedDocumentFile = (
+  document: Pick<DocumentWithFiles, 'files'>,
+): boolean =>
+  document.files.some((file) => file.role === 'signed-scan' || file.role === 'signed-digital');
+
 export const documentFilterSummary = (filter: SavedSearchFilter): string => {
   const parts = [
     filter.text ? `Tytuł: ${filter.text}` : '',
@@ -198,6 +278,178 @@ export const canSignPdfFile = (
 ): boolean =>
   (file.role === 'source' || file.role === 'signed-digital') &&
   file.contentType.toLowerCase() === 'application/pdf';
+
+export interface TimelineInterval {
+  start: string;
+  end: string;
+}
+
+export interface TimelineDocument extends TimelineInterval {
+  id: string;
+  title: string;
+  docType: DocumentType;
+  instant: boolean;
+  signed: boolean;
+}
+
+export interface TimelineGroup {
+  person: string;
+  intervals: TimelineInterval[];
+  documents: TimelineDocument[];
+}
+
+export interface TimelineScale {
+  start: string;
+  end: string;
+  width: number;
+  x: (date: string) => number;
+}
+
+export interface TimelineTick {
+  date: string;
+  label: string;
+  year: string;
+}
+
+type TimelineDocumentInput = Pick<
+  DocumentWithFiles,
+  'id' | 'title' | 'docType' | 'documentDate' | 'periodStart' | 'periodEnd' | 'person' | 'files'
+>;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const TIMELINE_MIN_WIDTH = 720;
+const TIMELINE_DAY_WIDTH = 3.2;
+
+const dateMs = (date: string): number => {
+  const parts = date.split('-').map((part) => Number(part));
+  const year = parts.at(0) ?? 0;
+  const month = parts.at(1) ?? 1;
+  const day = parts.at(2) ?? 1;
+  return Date.UTC(year, month - 1, day);
+};
+
+const isoDateFromMs = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+
+const startOfMonth = (date: string): string => {
+  const parts = date.split('-').map((part) => Number(part));
+  const year = parts.at(0) ?? 0;
+  const month = parts.at(1) ?? 1;
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
+};
+
+const addMonths = (date: string, months: number): string => {
+  const parts = date.split('-').map((part) => Number(part));
+  const year = parts.at(0) ?? 0;
+  const month = parts.at(1) ?? 1;
+  return new Date(Date.UTC(year, month - 1 + months, 1)).toISOString().slice(0, 10);
+};
+
+const normalizeInterval = (start: string, end: string): TimelineInterval =>
+  start <= end ? { start, end } : { start: end, end: start };
+
+export const timelineIntervalForDocument = (
+  document: TimelineDocumentInput,
+): TimelineDocument => {
+  const interval = normalizeInterval(
+    document.periodStart ?? document.documentDate,
+    document.periodEnd ?? document.documentDate,
+  );
+  return {
+    ...interval,
+    id: document.id,
+    title: document.title,
+    docType: document.docType,
+    instant: document.periodStart === null && document.periodEnd === null,
+    signed: hasSignedDocumentFile(document),
+  };
+};
+
+export const unionTimelineIntervals = (
+  intervals: TimelineInterval[],
+): TimelineInterval[] => {
+  const sorted = [...intervals].sort((left, right) =>
+    left.start === right.start ? left.end.localeCompare(right.end) : left.start.localeCompare(right.start),
+  );
+  const merged: TimelineInterval[] = [];
+  for (const interval of sorted) {
+    const current = merged.at(-1);
+    if (!current || dateMs(interval.start) > dateMs(current.end)) {
+      merged.push({ ...interval });
+    } else if (interval.end > current.end) {
+      current.end = interval.end;
+    }
+  }
+  return merged;
+};
+
+export const groupDocumentsForTimeline = (
+  documents: TimelineDocumentInput[],
+): TimelineGroup[] => {
+  const buckets = new Map<string, TimelineDocument[]>();
+  for (const document of documents) {
+    const person = document.person?.trim() || 'Bez osoby';
+    const current = buckets.get(person) ?? [];
+    current.push(timelineIntervalForDocument(document));
+    buckets.set(person, current);
+  }
+  return Array.from(buckets.entries())
+    .map(([person, items]) => {
+      const documentsForPerson = [...items].sort((left, right) =>
+        left.start === right.start
+          ? left.title.localeCompare(right.title, 'pl')
+          : left.start.localeCompare(right.start),
+      );
+      return {
+        person,
+        intervals: unionTimelineIntervals(documentsForPerson),
+        documents: documentsForPerson,
+      };
+    })
+    .sort((left, right) => left.person.localeCompare(right.person, 'pl'));
+};
+
+export const createTimelineScale = (
+  intervals: TimelineInterval[],
+  minWidth = TIMELINE_MIN_WIDTH,
+): TimelineScale => {
+  if (intervals.length === 0) {
+    return {
+      start: '1970-01-01',
+      end: '1970-01-01',
+      width: minWidth,
+      x: () => 0,
+    };
+  }
+  const starts = intervals.map((interval) => dateMs(interval.start));
+  const ends = intervals.map((interval) => dateMs(interval.end));
+  const min = Math.min(...starts);
+  const max = Math.max(...ends);
+  const spanDays = Math.max(1, Math.round((max - min) / DAY_MS));
+  const width = Math.max(minWidth, Math.ceil(spanDays * TIMELINE_DAY_WIDTH));
+  return {
+    start: isoDateFromMs(min),
+    end: isoDateFromMs(max),
+    width,
+    x: (date: string) => ((dateMs(date) - min) / Math.max(1, max - min)) * width,
+  };
+};
+
+export const timelineMonthTicks = (scale: Pick<TimelineScale, 'start' | 'end'>): TimelineTick[] => {
+  const ticks: TimelineTick[] = [];
+  let cursor = startOfMonth(scale.start);
+  while (cursor <= scale.end) {
+    const parts = cursor.split('-');
+    const year = parts.at(0) ?? '';
+    const month = parts.at(1) ?? '';
+    ticks.push({
+      date: cursor,
+      label: `${month}.${year}`,
+      year,
+    });
+    cursor = addMonths(cursor, 1);
+  }
+  return ticks;
+};
 
 export const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;

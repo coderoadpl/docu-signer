@@ -5,16 +5,65 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { documentCreateInputSchema } from '#core/contract/index.js';
 
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentsPage } from './DocumentsPage.js';
+import { documentsSearchSchema } from './documents.logic.js';
+
+vi.mock('../../components/ui/PolishDatePicker.js', async () => {
+  const React = await import('react');
+  const polishDateFromIso = (value: string): string => {
+    if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return '';
+    return `${value.slice(8, 10)}.${value.slice(5, 7)}.${value.slice(0, 4)}`;
+  };
+  const isoDateFromPolish = (value: string): string => {
+    if (!/^\d{2}\.\d{2}\.\d{4}$/u.test(value)) return '';
+    return `${value.slice(6, 10)}-${value.slice(3, 5)}-${value.slice(0, 2)}`;
+  };
+  const PolishDatePickerProvider = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children);
+  const PolishDatePicker = ({
+    describedBy,
+    helperText,
+    inputRef,
+    label,
+    value,
+    onChange,
+  }: {
+    describedBy?: string | undefined;
+    helperText?: string | undefined;
+    inputRef?: React.Ref<HTMLInputElement> | undefined;
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+  }) => {
+    const displayValue = polishDateFromIso(value);
+    return React.createElement(
+      'div',
+      { 'aria-describedby': describedBy, 'aria-label': label, role: 'group' },
+      React.createElement('input', {
+        'aria-label': label,
+        'aria-describedby': describedBy,
+        onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+          onChange(isoDateFromPolish(event.target.value));
+        },
+        ref: inputRef,
+        value: displayValue,
+      }),
+      React.createElement('button', { onClick: () => onChange(''), type: 'button' }, 'Wyczyść'),
+      React.createElement('span', null, displayValue || 'DD.MM.YYYY'),
+      helperText ? React.createElement('p', { id: describedBy }, helperText) : null,
+    );
+  };
+  return { PolishDatePicker, PolishDatePickerProvider };
+});
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -42,21 +91,23 @@ const trashedDocument = {
   deletedAt: '2026-08-02T09:00:00.000Z',
 };
 
-const renderPage = async () => {
+const renderPage = async (initialEntry = '/app/documents') => {
   const root = createRootRoute();
   const list = createRoute({
     getParentRoute: () => root,
     path: '/app/documents',
+    validateSearch: documentsSearchSchema,
     component: DocumentsPage,
   });
   const detail = createRoute({
     getParentRoute: () => root,
     path: '/app/documents/$id',
+    validateSearch: documentsSearchSchema,
     component: () => <div>Szczegóły dokumentu</div>,
   });
   const router = createRouter({
     routeTree: root.addChildren([list, detail]),
-    history: createMemoryHistory({ initialEntries: ['/app/documents'] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   return { router, ...renderWithProviders(<RouterProvider router={router} />) };
@@ -66,8 +117,7 @@ const dateField = (container: HTMLElement, name: string) =>
   within(container).getByRole('group', { name: new RegExp(name, 'u') });
 
 const pasteDate = async (field: HTMLElement, value: string) => {
-  await userEvent.click(field);
-  await userEvent.paste(value);
+  fireEvent.change(within(field).getByRole('textbox'), { target: { value } });
   await waitFor(() => expect(field).toHaveTextContent(value));
 };
 
@@ -75,6 +125,10 @@ const clearDateWithButton = async (field: HTMLElement) => {
   await userEvent.click(within(field).getByRole('button', { name: 'Wyczyść' }));
   await waitFor(() => expect(field).toHaveTextContent('DD.MM.YYYY'));
 };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('DocumentsPage', () => {
   it('renders server-filtered documents', async () => {
@@ -97,12 +151,54 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+    fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
+      target: { value: 'Proto' },
+    });
     fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
       target: { value: 'Protokół' },
     });
 
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    expect(seen).not.toHaveBeenCalledWith('Proto');
+    expect(seen).not.toHaveBeenCalledWith('Protokół');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(seen).not.toHaveBeenCalledWith('Protokół');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    vi.useRealTimers();
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
+  });
+
+  it('cancels a pending text-filter debounce on unmount', async () => {
+    const seen = vi.fn();
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        seen(new URL(request.url).searchParams.get('text'));
+        return HttpResponse.json({ ok: true, data: { documents: [document] } });
+      }),
+    );
+    const { unmount } = await renderPage();
+
+    expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+    fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
+      target: { value: 'Protokół' },
+    });
+
+    unmount();
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(seen).not.toHaveBeenCalledWith('Protokół');
   });
 
   it('filters by person and tag autocomplete suggestions and signature status', async () => {
@@ -186,6 +282,160 @@ describe('DocumentsPage', () => {
         signatureStatus: 'signed',
         draft: 'true',
       }),
+    );
+  });
+
+  it('restores filter controls from a deep link', async () => {
+    const seen = vi.fn();
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        if (params.get('draft') !== 'all') seen(Object.fromEntries(params.entries()));
+        return HttpResponse.json({ ok: true, data: { documents: [document] } });
+      }),
+    );
+    await renderPage(
+      '/app/documents?q=umowa&typ=umowa-uod&osoba=Anna&tag=ważne&status=needs-signature&szkice=true&od=2026-01-01&do=2026-12-31',
+    );
+
+    expect(await screen.findByLabelText('Szukaj po tytule')).toHaveValue('umowa');
+    expect(screen.getByRole('combobox', { name: 'Osoba' })).toHaveValue('Anna');
+    expect(screen.getByRole('combobox', { name: 'Tag' })).toHaveValue('ważne');
+    expect(screen.getByText('Do podpisania')).toBeInTheDocument();
+    expect(screen.getByText('Tylko szkice')).toBeInTheDocument();
+    expect(dateField(window.document.body, 'Od')).toHaveTextContent('01.01.2026');
+    expect(dateField(window.document.body, 'Do')).toHaveTextContent('31.12.2026');
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        text: 'umowa',
+        docType: 'umowa-uod',
+        person: 'Anna',
+        tag: 'ważne',
+        signatureStatus: 'needs-signature',
+        draft: 'true',
+        dateFrom: '2026-01-01',
+        dateTo: '2026-12-31',
+      }),
+    );
+  });
+
+  it('restores non-list tabs from deep links', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+    );
+    await renderPage('/app/documents?tab=os-czasu&tag=ważne');
+
+    expect(
+      await screen.findByRole('tab', { name: 'Os czasu', selected: true }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Os czasu dokumentów' })).toBeInTheDocument();
+  });
+
+  it('renders timeline sections, interval gaps and signature status markers', async () => {
+    const signedFile = {
+      id: '66666666-6666-4666-8666-666666666666',
+      documentId: '22222222-2222-4222-8222-222222222222',
+      role: 'signed-digital' as const,
+      fileName: 'podpis.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 12,
+      storageKey: 'signed',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const january = {
+      ...document,
+      id: '22222222-2222-4222-8222-222222222222',
+      title: 'Styczniowa umowa',
+      documentDate: '2026-01-15',
+      periodStart: '2026-01-01',
+      periodEnd: '2026-01-31',
+      person: 'Anna Nowak',
+      files: [signedFile],
+    };
+    const march = {
+      ...document,
+      id: '33333333-3333-4333-8333-333333333333',
+      title: 'Marcowy protokół',
+      docType: 'protokol',
+      documentDate: '2026-03-15',
+      periodStart: '2026-03-01',
+      periodEnd: '2026-03-31',
+      person: 'Anna Nowak',
+      files: [],
+    };
+    const noPerson = {
+      ...document,
+      id: '44444444-4444-4444-8444-444444444444',
+      title: 'Jednorazowa notatka',
+      docType: 'inny',
+      documentDate: '2026-02-10',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      files: [],
+    };
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [january, march, noPerson] } }),
+      ),
+    );
+    const { router } = await renderPage('/app/documents?tab=os-czasu');
+
+    expect(await screen.findByText('Anna Nowak')).toBeInTheDocument();
+    expect(screen.getByText('Bez osoby')).toBeInTheDocument();
+    expect(screen.getAllByTestId('timeline-band-Anna Nowak')).toHaveLength(2);
+    expect(screen.getByTestId('timeline-document-44444444-4444-4444-8444-444444444444')).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: 'Status podpisu Styczniowa umowa: Podpisane' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: 'Status podpisu Marcowy protokół: Do podpisania' }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Otwórz dokument Marcowy protokół, Do podpisania' }),
+    );
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        '/app/documents/33333333-3333-4333-8333-333333333333',
+      ),
+    );
+    expect(router.state.location.search).toMatchObject({ tab: 'os-czasu' });
+  });
+
+  it('keeps the draft-filtered list after a detail roundtrip', async () => {
+    const seen = vi.fn();
+    const draft = {
+      ...document,
+      id: '55555555-5555-4555-8555-555555555555',
+      title: 'Szkic importu',
+      draft: true,
+    };
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        if (params.get('draft') !== 'all') seen(Object.fromEntries(params.entries()));
+        return HttpResponse.json({ ok: true, data: { documents: [draft] } });
+      }),
+    );
+    const { router } = await renderPage('/app/documents?szkice=true&q=Szkic');
+
+    expect((await screen.findAllByText('Szkic importu')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(seen).toHaveBeenCalledWith({ text: 'Szkic', draft: 'true' }));
+    const firstTitle = screen.getAllByText('Szkic importu').at(0);
+    if (!firstTitle) throw new Error('Missing draft title');
+    await userEvent.click(firstTitle);
+    expect(await screen.findByText('Szczegóły dokumentu')).toBeInTheDocument();
+
+    router.history.back();
+
+    expect((await screen.findAllByText('Szkic importu')).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Szukaj po tytule')).toHaveValue('Szkic');
+    expect(screen.getByText('Tylko szkice')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ q: 'Szkic', szkice: true }),
     );
   });
 
@@ -491,10 +741,9 @@ describe('DocumentsPage', () => {
     await waitFor(() => expect(remove).toHaveBeenCalledWith(DOCUMENT_ID));
   });
 
-  it('saves, applies and deletes teczki presets', async () => {
+  it('saves and applies teczki presets', async () => {
     const seen = vi.fn();
     const savedCreate = vi.fn();
-    const savedDelete = vi.fn();
     const savedSearch = {
       id: '33333333-3333-4333-8333-333333333333',
       tenantId: 'tenant-1',
@@ -537,13 +786,8 @@ describe('DocumentsPage', () => {
         savedSearches = [savedSearch];
         return HttpResponse.json({ ok: true, data: { savedSearch } });
       }),
-      http.delete('/api/saved-searches/:id', ({ params }) => {
-        savedDelete(params.id);
-        savedSearches = [];
-        return HttpResponse.json({ ok: true, data: { deleted: true } });
-      }),
     );
-    await renderPage();
+    const { router } = await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
     expect(screen.getByLabelText('Tag')).toBeInTheDocument();
@@ -589,8 +833,39 @@ describe('DocumentsPage', () => {
         draft: 'all',
       }),
     );
+    expect(router.state.location.search).toMatchObject({
+      tag: 'odbiór',
+      status: 'signed',
+      szkice: 'all',
+    });
+  });
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
+  it('deletes teczki presets', async () => {
+    const savedDelete = vi.fn();
+    const savedSearch = {
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-1',
+      name: 'Odbiór',
+      filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
+      createdAt: '2026-08-01T00:00:00.000Z',
+    };
+    let savedSearches: Array<typeof savedSearch> = [savedSearch];
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+      http.get('/api/saved-searches', () =>
+        HttpResponse.json({ ok: true, data: { savedSearches } }),
+      ),
+      http.delete('/api/saved-searches/:id', ({ params }) => {
+        savedDelete(params.id);
+        savedSearches = [];
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage('/app/documents?tab=teczki');
+
+    expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));
     expect(screen.getByRole('button', { name: 'Potwierdź' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Potwierdź' }));

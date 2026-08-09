@@ -19,7 +19,7 @@ const run = (...args: string[]) =>
   });
 
 describe('CLI command surface', () => {
-  it('exposes document, auth, health, public, and origin commands only', () => {
+  it('exposes the allowed root commands only', () => {
     const result = run('--help');
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('account');
@@ -30,16 +30,22 @@ describe('CLI command surface', () => {
     expect(result.stdout).toContain('public');
     expect(result.stdout).not.toMatch(/^\s+(todo|card|member|staff|tenant|domain)\b/m);
     expect(result.stdout).not.toContain('--tenant');
+  }, CLI_TEST_TIMEOUT_MS);
 
+  it('documents the TOTP login option', () => {
     const loginHelp = run('login', '--help');
     expect(loginHelp.status).toBe(0);
     expect(loginHelp.stdout).toContain('--code <totp>');
+  }, CLI_TEST_TIMEOUT_MS);
 
+  it('documents account password commands', () => {
     const accountHelp = run('account', '--help');
     expect(accountHelp.status).toBe(0);
     expect(accountHelp.stdout).toContain('change-password');
     expect(accountHelp.stdout).toContain('request-password-reset');
+  }, CLI_TEST_TIMEOUT_MS);
 
+  it('documents trash document commands', () => {
     const documentHelp = run('document', '--help');
     expect(documentHelp.status).toBe(0);
     expect(documentHelp.stdout).toContain('trash-list');

@@ -27,7 +27,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 
 import {
   documentTypeSchema,
@@ -46,6 +46,9 @@ import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   canSignPdfFile,
+  documentFiltersFromSearch,
+  documentsSearchFromState,
+  documentsViewFromSearch,
   fileNameStem,
   filesByRole,
   formatFileSize,
@@ -360,6 +363,7 @@ export const DocumentDetailPage = ({
   documentId: string;
 }) => {
   const navigate = useNavigate();
+  const search = useSearch({ from: '/app/documents/$id' });
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
   const folderDocuments = useQuery(actions.documents({}));
@@ -374,6 +378,10 @@ export const DocumentDetailPage = ({
   const [uploadErrors, setUploadErrors] = useState<
     Partial<Record<DocumentFileRole, string>>
   >({});
+  const documentsSearch = documentsSearchFromState(
+    documentsViewFromSearch(search),
+    documentFiltersFromSearch(search),
+  );
   const updateDocument = useMutation({
     ...actions.updateDocument,
     onSuccess: async () => {
@@ -390,7 +398,7 @@ export const DocumentDetailPage = ({
   const deleteDocument = useMutation({
     ...actions.deleteDocument,
     onSuccess: async () => {
-      await navigate({ to: '/app/documents' });
+      await navigate({ to: '/app/documents', search: documentsSearch });
       queryClient.removeQueries(actions.document(documentId));
       await queryClient.invalidateQueries(actions.documentsInvalidates());
     },
@@ -404,7 +412,7 @@ export const DocumentDetailPage = ({
   const purgeDocument = useMutation({
     ...actions.purgeDocument,
     onSuccess: async () => {
-      await navigate({ to: '/app/documents' });
+      await navigate({ to: '/app/documents', search: documentsSearch });
       queryClient.removeQueries(actions.document(documentId));
       await queryClient.invalidateQueries(actions.documentsInvalidates());
     },
@@ -500,7 +508,11 @@ export const DocumentDetailPage = ({
 
   return (
     <PageContainer>
-      <Button size="small" color="inherit" onClick={() => void navigate({ to: '/app/documents' })}>
+      <Button
+        size="small"
+        color="inherit"
+        onClick={() => void navigate({ to: '/app/documents', search: documentsSearch })}
+      >
         ← Dokumenty
       </Button>
       <Stack

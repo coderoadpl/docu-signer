@@ -1,8 +1,15 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
+import { z } from 'zod';
 
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
 const DEMO_PASSWORD = 'demo1234';
+const documentCreateResponseSchema = z.object({
+  ok: z.literal(true),
+  data: z.object({
+    document: z.object({ id: z.string() }),
+  }),
+});
 
 const validPdfBuffer = async () => {
   const pdf = await PDFDocument.create();
@@ -225,6 +232,7 @@ const signIn = async (page: Page) => {
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Dokumenty' })).toBeVisible();
 };
 
 test('creates, uploads, previews and exports an archived document', async ({
@@ -261,6 +269,10 @@ test('creates, uploads, previews and exports an archived document', async ({
 
   await page.getByRole('button', { name: '← Dokumenty' }).click();
   await page.getByLabel('Tag').fill('e2e');
+  await page.getByRole('tab', { name: 'Os czasu' }).click();
+  await expect(page.getByRole('img', { name: 'Os czasu dokumentów' })).toBeVisible();
+  await expect(page.getByRole('button', { name: new RegExp(title, 'u') })).toBeVisible();
+  await page.getByRole('tab', { name: 'Lista' }).click();
   await page.getByRole('button', { name: 'Zapisz teczkę' }).click();
   const savedSearchDialog = page.getByRole('dialog', { name: 'Zapisz teczkę' });
   await savedSearchDialog.getByLabel('Nazwa').fill(`E2E ${stamp}`);
@@ -378,6 +390,46 @@ test('moves a document to trash and restores it', async ({ page }) => {
 
   await page.getByRole('tab', { name: 'Lista' }).click();
   await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+});
+
+test('keeps draft filters after approving a draft and returning to the list', async ({ page }) => {
+  const stamp = Date.now();
+  const title = `Szkic e2e ${stamp}`;
+
+  await signIn(page);
+  const response = await page.request.post('/api/documents', {
+    data: {
+      title,
+      docType: 'inny',
+      documentDate: '2026-08-03',
+      person: 'Jan Kowalski',
+      tags: ['e2e-draft'],
+      draft: true,
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const created = documentCreateResponseSchema.parse(await response.json());
+
+  await page.goto(`/app/documents?szkice=true&q=${encodeURIComponent(title)}`);
+  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('cell', { name: title, exact: true }).click();
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByText('Szkic. Dokument jest widoczny')).toBeVisible();
+  let searchParams = new URL(page.url()).searchParams;
+  expect(searchParams.get('q')).toBe(title);
+  expect(searchParams.get('szkice')).toBe('true');
+
+  await page.getByRole('button', { name: 'Zatwierdź' }).click();
+  await expect(page.getByText('Szkic. Dokument jest widoczny')).toBeHidden();
+  await page.getByRole('button', { name: '← Dokumenty' }).click();
+
+  await expect(page.getByLabel('Szukaj po tytule')).toHaveValue(title);
+  await expect(page.getByLabel('Szkice')).toContainText('Tylko szkice');
+  await expect(page.getByRole('heading', { name: 'Brak wyników dla tych filtrów' })).toBeVisible();
+  searchParams = new URL(page.url()).searchParams;
+  expect(searchParams.get('q')).toBe(title);
+  expect(searchParams.get('szkice')).toBe('true');
+  expect(created.data.document.id.length).toBeGreaterThan(0);
 });
 
 test.describe('signature pad dialog', () => {

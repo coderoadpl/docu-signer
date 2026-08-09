@@ -1,8 +1,6 @@
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CssBaseline, ThemeProvider } from '@mui/material';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { QueryClientProvider } from '@tanstack/react-query';
 import {
   createRootRoute,
@@ -15,14 +13,14 @@ import {
 } from '@tanstack/react-router';
 
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
-import { polishPickerLocaleText } from './components/ui/polish-picker-locale.js';
+import { PolishDatePickerProvider } from './components/ui/PolishDatePicker.js';
 import { AppLayout } from './AppLayout.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { DocumentDetailRoute } from './routes/document-detail.js';
-import { DocumentsRoute } from './routes/documents.js';
+import { DocumentsRoute, documentsSearchSchema } from './routes/documents.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
 import { LoginRoute } from './routes/login.js';
 import { NotFoundRoute } from './routes/not-found.js';
@@ -30,7 +28,6 @@ import { RegisterRoute } from './routes/register.js';
 import { ResetPasswordRoute, resetPasswordSearchSchema } from './routes/reset-password.js';
 import { SettingsRoute } from './routes/settings.js';
 import { useAppTheme } from './theme.js';
-import 'dayjs/locale/pl.js';
 
 /** Dev-only, lazy so the devtools chunk never reaches the production bundle. */
 const ReactQueryDevtools = lazy(() =>
@@ -105,11 +102,13 @@ const appIndexRoute = createRoute({
 const documentsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: 'documents',
+  validateSearch: documentsSearchSchema,
   component: DocumentsRoute,
 });
 const documentDetailRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: 'documents/$id',
+  validateSearch: documentsSearchSchema,
   component: DocumentDetailRoute,
 });
 const documentSigningRoute = createRoute({
@@ -158,11 +157,7 @@ const AppRoot = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
-        <LocalizationProvider
-          dateAdapter={AdapterDayjs}
-          adapterLocale="pl"
-          localeText={polishPickerLocaleText}
-        >
+        <PolishDatePickerProvider>
           <QueryClientProvider client={queryClient}>
             <RefreshSnackbar />
             <RouterProvider router={router} />
@@ -172,7 +167,7 @@ const AppRoot = () => {
               </Suspense>
             ) : null}
           </QueryClientProvider>
-        </LocalizationProvider>
+        </PolishDatePickerProvider>
       </ErrorBoundary>
     </ThemeProvider>
   );

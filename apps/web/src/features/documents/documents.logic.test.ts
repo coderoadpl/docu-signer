@@ -4,15 +4,24 @@ import { ApiError } from '#core/client/index.js';
 
 import {
   documentFilterSummary,
+  documentFiltersFromSearch,
+  documentsSearchFromState,
+  documentsSearchSchema,
   emptyDocumentFilters,
   filesByRole,
   fileNameStem,
   formatFileSize,
+  createTimelineScale,
+  groupDocumentsForTimeline,
   hasDocumentFilter,
+  hasSignedDocumentFile,
   suggestDocumentDate,
+  timelineIntervalForDocument,
+  timelineMonthTicks,
   toDocumentFilter,
   toDocumentFilterValues,
   toDocumentInput,
+  unionTimelineIntervals,
   uniqueDocumentPersons,
   uniqueDocumentTags,
   uploadErrorMessage,
@@ -163,6 +172,19 @@ describe('document view logic', () => {
     expect(formatFileSize(10)).toBe('10 B');
   });
 
+  it('keeps the draft filter as a plain URL boolean', () => {
+    const parsed = documentsSearchSchema.parse({ q: 'Szkic', szkice: 'true' });
+    expect(parsed).toEqual({ q: 'Szkic', szkice: true });
+    expect(documentFiltersFromSearch(parsed)).toMatchObject({ text: 'Szkic', draft: 'true' });
+    expect(
+      documentsSearchFromState('list', {
+        ...emptyDocumentFilters(),
+        text: 'Szkic',
+        draft: 'true',
+      }),
+    ).toEqual({ q: 'Szkic', szkice: true });
+  });
+
   it('builds tag suggestions and saved-search summaries', () => {
     const documents = [
       {
@@ -222,5 +244,110 @@ describe('document view logic', () => {
     ).toBe('Magazyn plików jest chwilowo niedostępny.');
     expect(uploadErrorMessage(new Error('Błąd pliku'))).toBe('Błąd pliku');
     expect(uploadErrorMessage('unknown')).toBe('Nie udało się wgrać pliku.');
+  });
+
+  it('groups timeline documents by person and keeps visible interval gaps', () => {
+    const sourceFile = {
+      id: '33333333-3333-4333-8333-333333333333',
+      documentId: '11111111-1111-4111-8111-111111111111',
+      role: 'source' as const,
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 10,
+      storageKey: 'source',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const signedFile = { ...sourceFile, role: 'signed-digital' as const };
+    const documents = [
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        title: 'Styczeń',
+        docType: 'umowa-uod' as const,
+        documentDate: '2026-01-15',
+        periodStart: '2026-01-01',
+        periodEnd: '2026-01-31',
+        person: 'Anna',
+        files: [sourceFile],
+      },
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        title: 'Marzec',
+        docType: 'protokol' as const,
+        documentDate: '2026-03-15',
+        periodStart: '2026-03-01',
+        periodEnd: '2026-03-31',
+        person: 'Anna',
+        files: [signedFile],
+      },
+      {
+        id: '44444444-4444-4444-8444-444444444444',
+        title: 'Bez okresu',
+        docType: 'inny' as const,
+        documentDate: '2026-02-10',
+        periodStart: null,
+        periodEnd: null,
+        person: null,
+        files: [],
+      },
+    ];
+
+    expect(hasSignedDocumentFile({ files: [signedFile] })).toBe(true);
+    const instantDocument = documents.at(2);
+    if (!instantDocument) throw new Error('Missing instant timeline document');
+    expect(timelineIntervalForDocument(instantDocument)).toMatchObject({
+      start: '2026-02-10',
+      end: '2026-02-10',
+      instant: true,
+      signed: false,
+    });
+    expect(
+      unionTimelineIntervals([
+        { start: '2026-01-01', end: '2026-01-10' },
+        { start: '2026-01-05', end: '2026-01-20' },
+        { start: '2026-03-01', end: '2026-03-31' },
+      ]),
+    ).toEqual([
+      { start: '2026-01-01', end: '2026-01-20' },
+      { start: '2026-03-01', end: '2026-03-31' },
+    ]);
+    expect(groupDocumentsForTimeline(documents)).toMatchObject([
+      {
+        person: 'Anna',
+        intervals: [
+          { start: '2026-01-01', end: '2026-01-31' },
+          { start: '2026-03-01', end: '2026-03-31' },
+        ],
+        documents: [
+          { title: 'Styczeń', signed: false },
+          { title: 'Marzec', signed: true },
+        ],
+      },
+      {
+        person: 'Bez osoby',
+        intervals: [{ start: '2026-02-10', end: '2026-02-10' }],
+        documents: [{ title: 'Bez okresu', instant: true }],
+      },
+    ]);
+  });
+
+  it('builds a deterministic timeline x scale and month ticks', () => {
+    const scale = createTimelineScale(
+      [
+        { start: '2026-01-15', end: '2026-01-31' },
+        { start: '2026-03-01', end: '2026-03-31' },
+      ],
+      120,
+    );
+
+    expect(scale.start).toBe('2026-01-15');
+    expect(scale.end).toBe('2026-03-31');
+    expect(scale.width).toBeGreaterThanOrEqual(240);
+    expect(scale.x('2026-01-15')).toBe(0);
+    expect(Math.round(scale.x('2026-03-31'))).toBe(scale.width);
+    expect(timelineMonthTicks(scale)).toEqual([
+      { date: '2026-01-01', label: '01.2026', year: '2026' },
+      { date: '2026-02-01', label: '02.2026', year: '2026' },
+      { date: '2026-03-01', label: '03.2026', year: '2026' },
+    ]);
   });
 });
