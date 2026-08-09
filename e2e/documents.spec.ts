@@ -604,6 +604,8 @@ test('mass signing signs, skips and signs an already signed document', async ({ 
     { x: 0.44, y: 0.48 },
     { x: 0.68, y: 0.6 },
   ]);
+  await page.getByRole('button', { name: 'Usuń' }).click();
+  await expect(page.getByRole('button', { name: 'Usuń' })).toBeHidden();
   await page.getByRole('button', { name: 'Przejdź' }).click();
 
   await expect(page.getByRole('heading', { name: firstTitle })).toBeVisible();

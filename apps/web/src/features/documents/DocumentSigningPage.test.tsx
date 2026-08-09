@@ -1018,6 +1018,82 @@ describe('DocumentSigningPage', () => {
     expect(pdfMocks.flatten).not.toHaveBeenCalled();
   });
 
+  it('removes the selected mass-signing stamp before proceeding and skips the document', async () => {
+    await renderPage(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+    );
+    await signingCanvas();
+
+    fireEvent.click(await enabledButton('Złóż podpis'));
+    await drawSignaturePadStroke({ pointerId: 43, pointerType: 'pen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
+
+    expect(await screen.findByText('Wybrany odcisk: strona 1')).toBeInTheDocument();
+    fireEvent.click(await enabledButton('Usuń'));
+    await waitFor(() =>
+      expect(screen.queryByText('Wybrany odcisk: strona 1')).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(await enabledButton('Przejdź'));
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Podsumowanie' })).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Podpisano 0')).toBeInTheDocument();
+    expect(screen.getByText('Pominięto 1')).toBeInTheDocument();
+    expect(pdfMocks.flatten).not.toHaveBeenCalled();
+  });
+
+  it('moves and resizes a mass-signing stamp away from the default corner before saving', async () => {
+    installUploadHandlers();
+    await renderPage(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+    );
+    await signingCanvas();
+
+    fireEvent.click(await enabledButton('Złóż podpis'));
+    await drawSignaturePadStroke({ pointerId: 44, pointerType: 'pen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
+    expect(await screen.findByText('Wybrany odcisk: strona 1')).toBeInTheDocument();
+
+    const canvas = await signingCanvas();
+    fireEvent.pointerDown(canvas, {
+      pointerId: 45,
+      pointerType: 'mouse',
+      clientX: 170,
+      clientY: 260,
+      pressure: 0.5,
+    });
+    expect(canvas.setPointerCapture).toHaveBeenCalledWith(45);
+    fireEvent.pointerMove(canvas, {
+      pointerId: 45,
+      pointerType: 'mouse',
+      clientX: 100,
+      clientY: 150,
+      pressure: 0.5,
+    });
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 45,
+        pointerType: 'mouse',
+        bubbles: true,
+      }),
+    );
+    fireEvent.change(screen.getByRole('slider', { name: 'Rozmiar' }), {
+      target: { value: '150' },
+    });
+
+    fireEvent.click(await enabledButton('Przejdź'));
+    await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalled());
+    const stamp = pdfMocks.flatten.mock.calls[0]?.[1]?.[0]?.stamp;
+    expect(stamp?.placement.scale).toBe(1.5);
+    expect(stamp?.placement.offsetX).toBeLessThan(0.1);
+    expect(stamp?.placement.offsetY).toBeLessThan(0.1);
+    expect(stamp?.placement.offsetX).toBeGreaterThan(-0.2);
+    expect(stamp?.placement.offsetY).toBeGreaterThan(-0.2);
+  });
+
   it('saves multiple mass-signing stamps, consumes the queue and counts the summary', async () => {
     installUploadHandlers();
     server.use(
@@ -1151,8 +1227,8 @@ describe('DocumentSigningPage', () => {
           expect.objectContaining({
             stamp: expect.objectContaining({
               placement: expect.objectContaining({
-                offsetX: expect.closeTo(0.62, 5),
-                offsetY: expect.closeTo(0.72, 5),
+                offsetX: expect.closeTo(0.6, 5),
+                offsetY: expect.closeTo(0.7, 5),
               }),
             }),
           }),

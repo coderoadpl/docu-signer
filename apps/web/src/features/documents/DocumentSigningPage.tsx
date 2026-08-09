@@ -33,6 +33,7 @@ import {
   DEFAULT_SIGNING_INK_COLOR,
   SIGNING_INK_COLORS,
   appendSigningStamp,
+  clampSignaturePlacementToPage,
   createSigningStamp,
   defaultSignaturePlacement,
   defaultSigningGestureMode,
@@ -465,6 +466,64 @@ const MassSummary = ({
       </Stack>
     </Stack>
   </SigningShell>
+);
+
+const StampPlacementControls = ({
+  activePlacement,
+  committing,
+  label,
+  onRemove,
+  onResize,
+  removeDisabled,
+  sliderId,
+  marginBottom,
+  marginTop,
+}: {
+  activePlacement: SignaturePlacement;
+  committing: boolean;
+  label: string;
+  marginBottom?: number;
+  marginTop?: number;
+  onRemove: () => void;
+  onResize: (placement: SignaturePlacement) => void;
+  removeDisabled: boolean;
+  sliderId: string;
+}) => (
+  <Stack
+    direction="row"
+    sx={{
+      alignItems: 'center',
+      gap: 2,
+      flexWrap: 'wrap',
+      mb: marginBottom,
+      mt: marginTop,
+    }}
+  >
+    <Typography id={sliderId}>Rozmiar</Typography>
+    <Slider
+      aria-labelledby={sliderId}
+      min={50}
+      max={200}
+      value={Math.round(activePlacement.scale * 100)}
+      valueLabelDisplay="auto"
+      valueLabelFormat={(value) => `${value}%`}
+      onChange={(_, value) => {
+        if (typeof value === 'number') {
+          onResize({ ...activePlacement, scale: value / 100 });
+        }
+      }}
+      sx={{ width: 180, maxWidth: '50vw' }}
+    />
+    <Button
+      color="error"
+      onClick={onRemove}
+      disabled={removeDisabled || committing}
+      sx={{ minHeight: 44 }}
+    >
+      Usuń
+    </Button>
+    <Typography variant="body2">{label}</Typography>
+  </Stack>
 );
 
 export const DocumentSigningPage = ({
@@ -914,6 +973,14 @@ export const DocumentSigningPage = ({
     setSelectedStampIndex(undefined);
   };
 
+  const resizeActivePlacement = (next: SignaturePlacement) => {
+    if (selectedStampIndex === undefined) {
+      setPlacement(clampSignaturePlacementToPage(strokes, next));
+      return;
+    }
+    setStamps(updateSigningStampPlacement(stamps, selectedStampIndex, next));
+  };
+
   const flattenedStamps = async (): Promise<
     Parameters<typeof flattenSignedPdf>[1]
   > => {
@@ -1202,43 +1269,20 @@ export const DocumentSigningPage = ({
             </ToggleButton>
           </Stack>
           {placing ? (
-            <Stack direction="row" sx={{ alignItems: 'center', gap: 2, mt: 1 }}>
-              <Typography id="signature-size">Rozmiar</Typography>
-              <Slider
-                aria-labelledby="signature-size"
-                min={50}
-                max={200}
-                value={Math.round(activePlacement.scale * 100)}
-                valueLabelDisplay="auto"
-                valueLabelFormat={(value) => `${value}%`}
-                onChange={(_, value) => {
-                  if (typeof value === 'number') {
-                    const next = { ...activePlacement, scale: value / 100 };
-                    if (selectedStampIndex === undefined) {
-                      setPlacement(next);
-                    } else {
-                      setStamps(
-                        updateSigningStampPlacement(stamps, selectedStampIndex, next),
-                      );
-                    }
-                  }
-                }}
-                sx={{ maxWidth: 240 }}
-              />
-              <Button
-                color="error"
-                onClick={removeSelectedStamp}
-                disabled={selectedStampIndex === undefined || committing}
-                sx={{ minHeight: 44 }}
-              >
-                Usuń
-              </Button>
-              <Typography variant="body2">
-                {selectedStamp
+            <StampPlacementControls
+              activePlacement={activePlacement}
+              committing={committing}
+              label={
+                selectedStamp
                   ? `Wybrany odcisk: strona ${selectedStamp.pageIndex + 1}`
-                  : 'Położenie bieżącego rysunku'}
-              </Typography>
-            </Stack>
+                  : 'Położenie bieżącego rysunku'
+              }
+              marginTop={1}
+              onRemove={removeSelectedStamp}
+              onResize={resizeActivePlacement}
+              removeDisabled={selectedStampIndex === undefined}
+              sliderId="signature-size"
+            />
           ) : (
             <Typography variant="body2" sx={{ mt: 1 }}>
               Odciski w sesji: {stamps.length}
@@ -1251,6 +1295,18 @@ export const DocumentSigningPage = ({
         massMode ? (
           <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1.5 }}>
             {commitError ? <Alert severity="error" sx={{ mb: 1 }}>{commitError}</Alert> : null}
+            {selectedStamp ? (
+              <StampPlacementControls
+                activePlacement={activePlacement}
+                committing={committing}
+                label={`Wybrany odcisk: strona ${selectedStamp.pageIndex + 1}`}
+                marginBottom={1}
+                onRemove={removeSelectedStamp}
+                onResize={resizeActivePlacement}
+                removeDisabled={selectedStampIndex === undefined}
+                sliderId="mass-signature-size"
+              />
+            ) : null}
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 1.5 }}
@@ -1302,7 +1358,6 @@ export const DocumentSigningPage = ({
           width: 'fit-content',
           maxWidth: '100%',
           maxHeight: massMode ? '100%' : undefined,
-          height: massMode ? '100%' : undefined,
           mx: 'auto',
         }}
       >
@@ -1416,7 +1471,7 @@ export const DocumentSigningPage = ({
                   offsetY: drag.placement.offsetY + (event.clientY - drag.clientY) / bounds.height,
                 };
                 if (drag.stampIndex === undefined) {
-                  setPlacement(next);
+                  setPlacement(clampSignaturePlacementToPage(strokes, next));
                 } else {
                   const stampIndex = drag.stampIndex;
                   setStamps((current) =>
