@@ -65,7 +65,6 @@ import {
   documentsSearchFromSigningSearch,
   massSigningQueueSearch,
   signingQueueFromSearch,
-  signingQueueSearch,
   uploadErrorMessage,
 } from './documents.logic.js';
 import {
@@ -512,7 +511,6 @@ export const DocumentSigningPage = ({
     DEFAULT_SIGNING_INK_COLOR.id,
   );
   const [commitError, setCommitError] = useState<string>();
-  const [sequenceStepSigned, setSequenceStepSigned] = useState(false);
   const requestUpload = useMutation(actions.requestFileUpload);
   const directUpload = useMutation(actions.directFileUpload);
   const finalizeUpload = useMutation(actions.finalizeFileUpload);
@@ -523,10 +521,6 @@ export const DocumentSigningPage = ({
   const massMode = signingSearch.tryb === 'masowe';
   const massComplete = massMode && signingSearch.koniec === true;
   const massSkippedCount = signingSearch.pominiete ?? 0;
-  const sequenceActive =
-    !massMode &&
-    signingSearch.podpisane !== undefined &&
-    signingSearch.razem !== undefined;
   const massStateValid =
     !massMode ||
     (signingSearch.podpisane !== undefined &&
@@ -577,7 +571,6 @@ export const DocumentSigningPage = ({
   );
   const canCommit = Boolean(
     pageReady &&
-      !sequenceStepSigned &&
       (massMode ? stamps.length > 0 : stamps.length > 0 || strokes.length > 0),
   );
 
@@ -596,7 +589,6 @@ export const DocumentSigningPage = ({
     setSelectedStampIndex(undefined);
     setSignaturePadOpen(false);
     setCommitError(undefined);
-    setSequenceStepSigned(false);
     currentStrokeRef.current = undefined;
     activePointerRef.current = undefined;
     activePointerTypeRef.current = undefined;
@@ -940,35 +932,6 @@ export const DocumentSigningPage = ({
     );
   };
 
-  const advanceSequence = (signedCount: number) => {
-    const [next, ...remaining] = queueTargets;
-    if (next) {
-      void navigate({
-        to: '/app/documents/$id/sign/$fileId',
-        params: { id: next.documentId, fileId: next.fileId },
-        search: {
-          ...listSearch,
-          ...signingQueueSearch({
-            signedCount,
-            targets: remaining,
-            total: sequenceTotal,
-          }),
-        },
-        replace: true,
-      });
-      return;
-    }
-    void navigate({
-      to: '/app/documents',
-      search: {
-        ...listSearch,
-        podpisano: signedCount,
-        razem: sequenceTotal,
-      },
-      replace: true,
-    });
-  };
-
   const advanceMassSigning = ({
     signedCount,
     skippedCount,
@@ -1037,10 +1000,6 @@ export const DocumentSigningPage = ({
     setCommitError(undefined);
     try {
       await saveSignedPdf();
-      if (sequenceActive) {
-        setSequenceStepSigned(true);
-        return;
-      }
       await navigate({
         to: '/app/documents/$id',
         params: { id: documentId },
@@ -1315,37 +1274,15 @@ export const DocumentSigningPage = ({
         ) : (
           <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1.5 }}>
           {commitError ? <Alert severity="error" sx={{ mb: 1 }}>{commitError}</Alert> : null}
-          {sequenceStepSigned ? (
-            <Alert severity="success" sx={{ mb: 1 }}>
-              Zapisano podpisany PDF.
-            </Alert>
-          ) : null}
           <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 2 }}>
             <Button onClick={close} disabled={committing}>Anuluj</Button>
-            {sequenceActive && !sequenceStepSigned ? (
-              <Button
-                onClick={() => advanceSequence(sequenceSignedCount)}
-                disabled={committing}
-              >
-                Pomiń
-              </Button>
-            ) : null}
-            {sequenceStepSigned ? (
-              <Button
-                variant="contained"
-                onClick={() => advanceSequence(sequenceSignedCount + 1)}
-              >
-                Następny dokument
-              </Button>
-            ) : (
-              <Button
-                variant="contained"
-                onClick={() => void commit()}
-                disabled={!canCommit || committing}
-              >
-                {committing ? 'Zapisywanie…' : 'Zapisz podpisany PDF'}
-              </Button>
-            )}
+            <Button
+              variant="contained"
+              onClick={() => void commit()}
+              disabled={!canCommit || committing}
+            >
+              {committing ? 'Zapisywanie…' : 'Zapisz podpisany PDF'}
+            </Button>
           </Stack>
         </Paper>
         )

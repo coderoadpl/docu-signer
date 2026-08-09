@@ -560,37 +560,6 @@ test.describe('signature pad dialog', () => {
   });
 });
 
-test('signs unsigned documents one after another', async ({ page }) => {
-  const stamp = Date.now();
-  const titlePrefix = `Kolejka e2e ${stamp}`;
-
-  await signIn(page);
-  await page.getByRole('link', { name: 'Dokumenty' }).click();
-  await createSourceDocument(page, `${titlePrefix} A`, `kolejka-a-${stamp}.pdf`);
-  await page.getByRole('button', { name: '← Dokumenty' }).click();
-  await createSourceDocument(page, `${titlePrefix} B`, `kolejka-b-${stamp}.pdf`);
-  await page.getByRole('button', { name: '← Dokumenty' }).click();
-
-  await page.getByLabel('Szukaj po tytule').fill(titlePrefix);
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get('q'))
-    .toBe(titlePrefix);
-  await expect(page.getByRole('cell', { name: `${titlePrefix} A`, exact: true })).toBeVisible();
-  await expect(page.getByRole('cell', { name: `${titlePrefix} B`, exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Podpisuj kolejno' }).click();
-
-  await signVisiblePdf(page);
-  await expect(page.getByText('Zapisano podpisany PDF.')).toBeVisible();
-  await page.getByRole('button', { name: 'Następny dokument' }).click();
-
-  await signVisiblePdf(page);
-  await expect(page.getByText('Zapisano podpisany PDF.')).toBeVisible();
-  await page.getByRole('button', { name: 'Następny dokument' }).click();
-
-  await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
-  await expect(page.getByText('Podpisano 2 z 2.')).toBeVisible();
-});
-
 test('mass signing signs, skips and signs an already signed document', async ({ page }) => {
   const stamp = Date.now();
   const titlePrefix = `Masowe e2e ${stamp}`;

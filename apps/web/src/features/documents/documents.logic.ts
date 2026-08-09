@@ -423,17 +423,6 @@ export interface SigningQueueTarget {
 const commaParts = (value: string | undefined): string[] =>
   value ? value.split(',').map((part) => part.trim()).filter(Boolean) : [];
 
-export const signingQueueTargets = (
-  documents: Array<Pick<DocumentWithFiles, 'id' | 'files'>>,
-): SigningQueueTarget[] =>
-  documents.flatMap((document) => {
-    if (hasSignedDocumentFile(document)) return [];
-    const file = document.files.find(
-      (item) => item.role === 'source' && canSignPdfFile(item),
-    );
-    return file ? [{ documentId: document.id, fileId: file.id }] : [];
-  });
-
 const newestFileFirst = (
   left: Pick<DocumentFile, 'createdAt'>,
   right: Pick<DocumentFile, 'createdAt'>,

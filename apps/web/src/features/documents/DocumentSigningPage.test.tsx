@@ -1003,68 +1003,6 @@ describe('DocumentSigningPage', () => {
     });
   });
 
-  it('advances through a signing queue after saving or skipping', async () => {
-    installUploadHandlers();
-    server.use(
-      http.get('/api/documents/33333333-3333-4333-8333-333333333333', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            document: {
-              ...document,
-              id: '33333333-3333-4333-8333-333333333333',
-              files: [
-                {
-                  ...sourceFile,
-                  id: '44444444-4444-4444-8444-444444444444',
-                  documentId: '33333333-3333-4333-8333-333333333333',
-                },
-              ],
-            },
-          },
-        }),
-      ),
-      http.get(
-        '/api/documents/33333333-3333-4333-8333-333333333333/files/44444444-4444-4444-8444-444444444444/content',
-        () =>
-          new HttpResponse(new Uint8Array([37, 80, 68, 70]), {
-            headers: { 'content-type': 'application/pdf' },
-          }),
-      ),
-    );
-    const { router } = await renderPage(
-      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?q=umowa&kolejka=33333333-3333-4333-8333-333333333333&pliki=44444444-4444-4444-8444-444444444444&podpisane=0&razem=2`,
-    );
-
-    await drawStroke();
-    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
-    await waitFor(() =>
-      expect(screen.getByText('Zapisano podpisany PDF.')).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Następny dokument' }));
-
-    await waitFor(() =>
-      expect(router.state.location.pathname).toBe(
-        '/app/documents/33333333-3333-4333-8333-333333333333/sign/44444444-4444-4444-8444-444444444444',
-      ),
-    );
-    expect(router.state.location.search).toMatchObject({
-      q: 'umowa',
-      podpisane: 1,
-      razem: 2,
-    });
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Pomiń' }));
-    await waitFor(() =>
-      expect(router.state.location.pathname).toBe('/app/documents'),
-    );
-    expect(router.state.location.search).toMatchObject({
-      q: 'umowa',
-      podpisano: 1,
-      razem: 2,
-    });
-  });
-
   it('skips a mass-signing document with zero stamps and shows the summary', async () => {
     await renderPage(
       `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
