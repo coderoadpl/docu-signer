@@ -67,10 +67,10 @@ const document = {
   files,
 };
 
-const renderPage = async () => {
+const renderPage = async (documentList = [document]) => {
   server.use(
     http.get('/api/documents', () =>
-      HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      HttpResponse.json({ ok: true, data: { documents: documentList } }),
     ),
   );
   const root = createRootRoute();
@@ -91,7 +91,7 @@ const renderPage = async () => {
     }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return { router, ...renderWithProviders(<RouterProvider router={router} />) };
 };
 
 describe('DocumentDetailPage', () => {
@@ -304,6 +304,59 @@ describe('DocumentDetailPage', () => {
     );
     await waitFor(() => expect(directUpload).toHaveBeenCalledOnce());
     expect(finalize).toHaveBeenCalledOnce();
+  });
+
+  it('shows related documents and moves a file to a new document', async () => {
+    const move = vi.fn();
+    const movedDocument = {
+      ...document,
+      id: '55555555-5555-4555-8555-555555555555',
+      title: 'oryginal',
+      docType: 'umowa-uod',
+      files: [{ ...files[0], documentId: '55555555-5555-4555-8555-555555555555' }],
+    };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.post(
+        `/api/documents/${DOCUMENT_ID}/files/${SOURCE_ID}/move`,
+        async ({ request }) => {
+          move(await request.json());
+          return HttpResponse.json({
+            ok: true,
+            data: { document: movedDocument },
+          });
+        },
+      ),
+    );
+    const { router } = await renderPage([
+      document,
+      {
+        ...document,
+        id: '66666666-6666-4666-8666-666666666666',
+        title: 'Uchwała powiązana',
+        docType: 'uchwala',
+        files: [],
+      },
+    ]);
+
+    expect(await screen.findByText('Uchwała powiązana · Uchwała')).toBeInTheDocument();
+    const moveButton = screen
+      .getAllByRole('button', { name: 'Przenieś do nowego dokumentu' })
+      .at(0);
+    if (!moveButton) throw new Error('Missing move file button');
+    await userEvent.click(moveButton);
+    const dialog = screen.getByRole('dialog', { name: 'Przenieś do nowego dokumentu' });
+    expect(within(dialog).getByRole('textbox', { name: 'Tytuł' })).toHaveValue('oryginal');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Przenieś' }));
+
+    await waitFor(() =>
+      expect(move).toHaveBeenCalledWith({ title: 'oryginal', docType: 'umowa-uod' }),
+    );
+    expect(router.state.location.pathname).toBe(
+      '/app/documents/55555555-5555-4555-8555-555555555555',
+    );
   });
 
   it('renders missing metadata and empty file groups cleanly', async () => {

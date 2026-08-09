@@ -45,6 +45,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     delete: async () => false,
     createFile: async () => null,
     findFile: async () => null,
+    moveFileToDocument: async () => null,
     deleteFile: async () => false,
   },
   storage: {

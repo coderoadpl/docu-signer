@@ -13,6 +13,7 @@ import {
   exportDocumentsMutation,
   finalizeFileUploadMutation,
   meQuery,
+  moveDocumentFileMutation,
   requestFileUploadMutation,
   updateDocumentMutation,
   uploadDocumentFileMutation,
@@ -116,6 +117,9 @@ describe('document mutation descriptors', () => {
       if (url.includes('/files/finalize') || url.includes('/files/upload?')) {
         return response({ file: documentFile });
       }
+      if (url.includes('/files/') && url.endsWith('/move')) {
+        return response({ document: { ...document, files: [documentFile] } });
+      }
       if (init?.method === 'DELETE') return response({ deleted: true });
       return response({ document });
     });
@@ -189,6 +193,13 @@ describe('document mutation descriptors', () => {
       }),
     ).resolves.toEqual({ deleted: true });
     await expect(
+      observe(moveDocumentFileMutation(api)).mutate({
+        documentId: document.id,
+        fileId: documentFile.id,
+        input: { title: 'Moved', docType: 'protokol' },
+      }),
+    ).resolves.toEqual({ document: { ...document, files: [documentFile] } });
+    await expect(
       observe(exportDocumentsMutation(api)).mutate({ documentIds: [document.id] }),
     ).resolves.toMatchObject({ fileName: 'documents.zip', contentType: 'application/zip' });
 
@@ -196,7 +207,7 @@ describe('document mutation descriptors', () => {
       ([request, init]) => String(request).endsWith('/api/documents') && init?.method === 'POST',
     );
     expect(createRequest?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify(input) });
-    expect(fetchImpl).toHaveBeenCalledTimes(9);
+    expect(fetchImpl).toHaveBeenCalledTimes(10);
   });
 
   it('propagates a failed write as ApiError', async () => {

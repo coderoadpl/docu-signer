@@ -8,6 +8,7 @@ import {
   finalizeFileUploadSchema,
   MAX_DOCUMENT_EXPORT_FILES,
   MAX_DOCUMENT_EXPORT_BYTES,
+  moveDocumentFileSchema,
   notFound,
   ok,
   updateDocumentSchema,
@@ -21,6 +22,7 @@ import {
   type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
+  type MoveDocumentFile,
   type Result,
   type UpdateDocument,
 } from '#core/domain/index.js';
@@ -272,6 +274,44 @@ export const removeFile = async (
   if (!removed.ok) return removed;
   const deleted = await deps.documents.deleteFile(scope.value, documentId, fileId);
   return deleted ? ok(undefined) : err(notFound('Document file not found'));
+};
+
+export const moveDocumentFile = async (
+  ctx: Ctx,
+  documentId: string,
+  fileId: string,
+  input: MoveDocumentFile,
+  deps: DocumentDeps,
+): Promise<Result<DocumentWithFiles, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:write');
+  if (!scope.ok) return scope;
+  const parsed = moveDocumentFileSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid document payload', parsed.error.flatten()));
+  const source = await findDocument(scope.value, documentId, deps);
+  if (!source.ok) return source;
+  const file = await deps.documents.findFile(scope.value, documentId, fileId);
+  if (!file) return err(notFound('Document file not found'));
+  const created = await deps.documents.create({
+    id: deps.ids.nextId(),
+    tenantId: scope.value,
+    title: parsed.data.title,
+    docType: parsed.data.docType,
+    documentDate: parsed.data.documentDate ?? source.value.documentDate,
+    periodStart:
+      parsed.data.periodStart === undefined ? source.value.periodStart : parsed.data.periodStart,
+    periodEnd:
+      parsed.data.periodEnd === undefined ? source.value.periodEnd : parsed.data.periodEnd,
+    person: source.value.person,
+    tags: source.value.tags,
+  });
+  const moved = await deps.documents.moveFileToDocument(
+    scope.value,
+    documentId,
+    file.id,
+    created.id,
+  );
+  if (!moved) return err(notFound('Document file not found'));
+  return ok({ ...created, files: [moved] });
 };
 
 export const getFileContent = async (

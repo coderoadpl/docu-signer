@@ -133,6 +133,26 @@ export const yearFolders = (
     .map(([year, count]) => ({ label: String(year), count }));
 };
 
+export const fileNameStem = (fileName: string): string => {
+  const trimmed = fileName.trim();
+  const dot = trimmed.lastIndexOf('.');
+  return dot > 0 ? trimmed.slice(0, dot) : trimmed;
+};
+
+export const relatedDocuments = (
+  current: Pick<DocumentWithFiles, 'id' | 'tags'>,
+  documents: Array<Pick<DocumentWithFiles, 'id' | 'title' | 'docType' | 'tags'>>,
+): Array<Pick<DocumentWithFiles, 'id' | 'title' | 'docType' | 'tags'>> => {
+  if (current.tags.length === 0) return [];
+  return documents
+    .filter(
+      (document) =>
+        document.id !== current.id &&
+        current.tags.some((tag) => document.tags.includes(tag)),
+    )
+    .slice(0, 10);
+};
+
 export const filesByRole = (
   files: DocumentFile[],
 ): Record<DocumentFileRole, DocumentFile[]> => ({

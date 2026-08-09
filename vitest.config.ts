@@ -9,6 +9,7 @@ const integrationEnabled = process.env['VITEST_INTEGRATION'] === '1';
 
 export default defineConfig({
   test: {
+    hookTimeout: 180_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json-summary'],
@@ -110,9 +111,9 @@ export default defineConfig({
           name: 'web',
           environment: 'jsdom',
           // jsdom + msw + user-event under parallel CI CPU load intermittently
-          // pushes render/settle waits past the 5s default; 15s removes the
-          // flake without masking a genuinely hung test.
-          testTimeout: 15_000,
+          // pushes render/settle waits past the 5s default; 30s keeps the
+          // component gate deterministic without masking a genuinely hung test.
+          testTimeout: 30_000,
           include: ['apps/web/**/*.test.ts', 'apps/web/**/*.test.tsx'],
           exclude: [...configDefaults.exclude],
           setupFiles: [

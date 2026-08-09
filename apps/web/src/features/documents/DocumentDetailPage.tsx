@@ -9,19 +9,29 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControl,
+  InputLabel,
   LinearProgress,
   Link,
   List,
   ListItem,
   ListItemText,
+  MenuItem,
   Paper,
+  Select,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { DocumentFile, DocumentFileRole } from '#core/domain/index.js';
+import {
+  documentTypeSchema,
+  type DocumentFile,
+  type DocumentFileRole,
+  type DocumentType,
+} from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
@@ -34,8 +44,10 @@ import {
   FILE_ROLE_LABELS,
   FILE_ROLE_SYMBOLS,
   canSignPdfFile,
+  fileNameStem,
   filesByRole,
   formatFileSize,
+  relatedDocuments,
   toDocumentInput,
   uniqueDocumentTags,
   uploadErrorMessage,
@@ -89,11 +101,13 @@ const FileRow = ({
   documentId,
   file,
   onSign,
+  onMove,
   onDelete,
 }: {
   documentId: string;
   file: DocumentFile;
   onSign: (file: DocumentFile) => void;
+  onMove: (file: DocumentFile) => void;
   onDelete: (file: DocumentFile) => void;
 }) => {
   const contentUrl = actions.documentFileContentUrl(documentId, file.id);
@@ -117,6 +131,9 @@ const FileRow = ({
             Podpisz
           </Button>
         ) : null}
+        <Button onClick={() => onMove(file)}>
+          Przenieś do nowego dokumentu
+        </Button>
         <Button color="error" onClick={() => onDelete(file)}>
           Usuń
         </Button>
@@ -191,6 +208,7 @@ const RoleFiles = ({
   uploadError,
   onUpload,
   onSign,
+  onMove,
   onDelete,
 }: {
   documentId: string;
@@ -200,6 +218,7 @@ const RoleFiles = ({
   uploadError?: string | undefined;
   onUpload: (file: File, role: DocumentFileRole) => void;
   onSign: (file: DocumentFile) => void;
+  onMove: (file: DocumentFile) => void;
   onDelete: (file: DocumentFile) => void;
 }) => {
   const acceptFile = (file: File | undefined) => {
@@ -254,6 +273,7 @@ const RoleFiles = ({
               documentId={documentId}
               file={file}
               onSign={onSign}
+              onMove={onMove}
               onDelete={onDelete}
             />
           ))}
@@ -279,6 +299,9 @@ export const DocumentDetailPage = ({
   const [editOpen, setEditOpen] = useState(false);
   const [deleteDocumentOpen, setDeleteDocumentOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<DocumentFile>();
+  const [fileToMove, setFileToMove] = useState<DocumentFile>();
+  const [moveTitle, setMoveTitle] = useState('');
+  const [moveDocType, setMoveDocType] = useState<DocumentType>('umowa-uod');
   const [uploadingRole, setUploadingRole] = useState<DocumentFileRole>();
   const [uploadErrors, setUploadErrors] = useState<
     Partial<Record<DocumentFileRole, string>>
@@ -303,6 +326,17 @@ export const DocumentDetailPage = ({
     onSuccess: async () => {
       setFileToDelete(undefined);
       await queryClient.invalidateQueries(actions.documentsInvalidates());
+    },
+  });
+  const moveFile = useMutation({
+    ...actions.moveDocumentFile,
+    onSuccess: async ({ document: movedDocument }) => {
+      setFileToMove(undefined);
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+      await navigate({
+        to: '/app/documents/$id',
+        params: { id: movedDocument.id },
+      });
     },
   });
   const requestUpload = useMutation(actions.requestFileUpload);
@@ -337,6 +371,7 @@ export const DocumentDetailPage = ({
   const document = documentQuery.data.document;
   const grouped = filesByRole(document.files);
   const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
+  const related = relatedDocuments(document, folderDocuments.data?.documents ?? []);
   const period =
     document.periodStart || document.periodEnd
       ? [
@@ -366,6 +401,11 @@ export const DocumentDetailPage = ({
     } finally {
       setUploadingRole(undefined);
     }
+  };
+  const startMove = (file: DocumentFile) => {
+    setFileToMove(file);
+    setMoveTitle(fileNameStem(file.fileName));
+    setMoveDocType(document.docType);
   };
 
   return (
@@ -438,11 +478,37 @@ export const DocumentDetailPage = ({
                 params: { id: documentId, fileId: file.id },
               })
             }
+            onMove={startMove}
             onDelete={setFileToDelete}
           />
         ))}
       </Stack>
       <Preview documentId={documentId} files={document.files} />
+      {related.length ? (
+        <Box component="section" sx={{ mt: 5 }}>
+          <Typography variant="h2" sx={{ mb: 2 }}>
+            Powiązane
+          </Typography>
+          <List disablePadding>
+            {related.map((item) => (
+              <ListItem key={item.id} disableGutters>
+                <Link
+                  href={`/app/documents/${item.id}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void navigate({
+                      to: '/app/documents/$id',
+                      params: { id: item.id },
+                    });
+                  }}
+                >
+                  {item.title} · {DOCUMENT_TYPE_LABELS[item.docType]}
+                </Link>
+              </ListItem>
+            ))}
+          </List>
+        </Box>
+      ) : null}
 
       <DocumentFormDialog
         open={editOpen}
@@ -488,6 +554,60 @@ export const DocumentDetailPage = ({
           }
         }}
       />
+      <Dialog
+        open={Boolean(fileToMove)}
+        onClose={moveFile.isPending ? undefined : () => setFileToMove(undefined)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Przenieś do nowego dokumentu</DialogTitle>
+        <DialogContent>
+          <Stack sx={{ gap: 2, pt: 1 }}>
+            <TextField
+              label="Tytuł"
+              value={moveTitle}
+              onChange={(event) => setMoveTitle(event.target.value)}
+            />
+            <FormControl required>
+              <InputLabel id="move-document-type-label">Typ</InputLabel>
+              <Select
+                labelId="move-document-type-label"
+                label="Typ"
+                value={moveDocType}
+                onChange={(event) =>
+                  setMoveDocType(documentTypeSchema.parse(event.target.value))
+                }
+              >
+                {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
+                  <MenuItem key={value} value={value}>
+                    {label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {moveFile.error ? <Alert severity="error">{moveFile.error.message}</Alert> : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFileToMove(undefined)} disabled={moveFile.isPending}>
+            Anuluj
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!moveTitle.trim() || !fileToMove || moveFile.isPending}
+            onClick={() => {
+              if (!fileToMove) return;
+              moveFile.mutate({
+                documentId,
+                fileId: fileToMove.id,
+                input: { title: moveTitle, docType: moveDocType },
+              });
+            }}
+          >
+            {moveFile.isPending ? 'Przenoszenie…' : 'Przenieś'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </PageContainer>
   );
 };

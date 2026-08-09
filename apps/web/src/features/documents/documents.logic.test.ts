@@ -4,7 +4,9 @@ import { ApiError } from '#core/client/index.js';
 
 import {
   filesByRole,
+  fileNameStem,
   formatFileSize,
+  relatedDocuments,
   suggestDocumentDate,
   tagFolders,
   toDocumentFilter,
@@ -152,6 +154,19 @@ describe('document view logic', () => {
       { label: '2026', count: 1 },
       { label: '2025', count: 1 },
     ]);
+  });
+
+  it('derives file name stems and related documents', () => {
+    expect(fileNameStem('umowa.pdf')).toBe('umowa');
+    expect(fileNameStem('.env')).toBe('.env');
+    const current = { id: 'current', tags: ['ważne', 'podpis'] };
+    expect(
+      relatedDocuments(current, [
+        { id: 'current', title: 'Bieżący', docType: 'inny', tags: ['ważne'] },
+        { id: 'shared', title: 'Powiązany', docType: 'uchwala', tags: ['ważne'] },
+        { id: 'other', title: 'Inny', docType: 'inny', tags: ['inne'] },
+      ]),
+    ).toEqual([{ id: 'shared', title: 'Powiązany', docType: 'uchwala', tags: ['ważne'] }]);
   });
 
   it('maps API errors to Polish upload messages', () => {

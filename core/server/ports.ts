@@ -36,6 +36,12 @@ export interface DocumentRepository {
     documentId: string,
     fileId: string,
   ): Promise<DocumentFile | null>;
+  moveFileToDocument(
+    tenantId: string,
+    sourceDocumentId: string,
+    fileId: string,
+    targetDocumentId: string,
+  ): Promise<DocumentFile | null>;
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
 }
 

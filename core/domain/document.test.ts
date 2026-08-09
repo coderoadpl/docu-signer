@@ -6,6 +6,7 @@ import {
   exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
+  moveDocumentFileSchema,
 } from './document.js';
 
 describe('document schemas', () => {
@@ -40,6 +41,14 @@ describe('document schemas', () => {
         title: 'Agreement',
         docType: 'umowa-uod',
         documentDate: '2026-07-27',
+        periodStart: '2026-08-01',
+        periodEnd: '2026-07-31',
+      }).success,
+    ).toBe(false);
+    expect(
+      moveDocumentFileSchema.safeParse({
+        title: 'Moved',
+        docType: 'protokol',
         periodStart: '2026-08-01',
         periodEnd: '2026-07-31',
       }).success,

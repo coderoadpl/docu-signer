@@ -7,6 +7,7 @@ import {
   API_ROUTES,
   TENANT_HEADER,
   documentCreateInputSchema,
+  documentFileMoveInputSchema,
   documentListInputSchema,
   documentUpdateInputSchema,
   exportDocumentsInputSchema,
@@ -32,6 +33,7 @@ import {
   getFileContent,
   getFileExport,
   listDocuments,
+  moveDocumentFile,
   removeFile,
   resolveIdentity,
   requestFileUpload,
@@ -336,6 +338,22 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ deleted: true as const }) : result);
+  });
+
+  app.post(API_ROUTES.documentFileMove.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentFileMoveInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document payload', parsed.error.flatten())));
+    }
+    const result = await moveDocumentFile(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
   });
 
   app.get(API_ROUTES.documentFileContent.path, async (c) => {

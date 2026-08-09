@@ -144,6 +144,21 @@ export const finalizeFileUploadSchema = z.object({
 
 export type FinalizeFileUpload = z.infer<typeof finalizeFileUploadSchema>;
 
+const moveDocumentFileFieldsSchema = z.object({
+  title: z.string().trim().min(1, 'Title must not be empty').max(300, 'Title too long'),
+  docType: documentTypeSchema,
+  documentDate: z.iso.date().optional(),
+  periodStart: z.iso.date().nullable().optional(),
+  periodEnd: z.iso.date().nullable().optional(),
+});
+
+export const moveDocumentFileSchema = moveDocumentFileFieldsSchema.refine(
+  periodIsOrdered,
+  'periodStart must not be after periodEnd',
+);
+
+export type MoveDocumentFile = z.input<typeof moveDocumentFileSchema>;
+
 export const exportDocumentsSchema = z.object({
   documentIds: z
     .array(z.uuid())

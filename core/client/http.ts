@@ -6,6 +6,7 @@ import {
   documentCreateOutputSchema,
   documentDeleteOutputSchema,
   documentFileDeleteOutputSchema,
+  documentFileMoveOutputSchema,
   documentFileOutputSchema,
   documentGetOutputSchema,
   documentListOutputSchema,
@@ -35,6 +36,7 @@ import {
   type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
+  type MoveDocumentFile,
   type Result,
   type UpdateDocument,
 } from '#core/domain/index.js';
@@ -328,6 +330,20 @@ export const createApiClient = (options: ApiClientOptions) => ({
       pathWith(API_ROUTES.documentFileDelete.path, { documentId, fileId }),
       documentFileDeleteOutputSchema,
       undefined,
+      signal,
+    ),
+  moveDocumentFile: (
+    documentId: string,
+    fileId: string,
+    input: MoveDocumentFile,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.documentFileMove.method,
+      pathWith(API_ROUTES.documentFileMove.path, { documentId, fileId }),
+      documentFileMoveOutputSchema,
+      input,
       signal,
     ),
   downloadDocumentFile: (documentId: string, fileId: string, signal?: AbortSignal) =>

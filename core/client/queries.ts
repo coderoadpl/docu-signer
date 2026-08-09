@@ -15,6 +15,7 @@ import type {
   ExportDocuments,
   FileUploadRequest,
   FinalizeFileUpload,
+  MoveDocumentFile,
   UpdateDocument,
 } from '#core/domain/index.js';
 
@@ -205,6 +206,20 @@ export const deleteDocumentFileMutation = (api: ApiClient) =>
     mutationKey: [...documentsScopes.all(), 'files', 'delete'],
     call: ({ documentId, fileId }: { documentId: string; fileId: string }) =>
       api.deleteDocumentFile(documentId, fileId),
+  });
+
+export const moveDocumentFileMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'files', 'move'],
+    call: ({
+      documentId,
+      fileId,
+      input,
+    }: {
+      documentId: string;
+      fileId: string;
+      input: MoveDocumentFile;
+    }) => api.moveDocumentFile(documentId, fileId, input),
   });
 
 export const exportDocumentsMutation = (api: ApiClient) =>

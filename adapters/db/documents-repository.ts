@@ -125,6 +125,41 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
       .limit(1);
     return rows[0] ? toDocumentFile(rows[0].file) : null;
   },
+  moveFileToDocument: async (tenantId, sourceDocumentId, fileId, targetDocumentId) => {
+    const rows = await db
+      .update(documentFiles)
+      .set({ documentId: targetDocumentId })
+      .where(
+        and(
+          eq(documentFiles.id, fileId),
+          eq(documentFiles.documentId, sourceDocumentId),
+          exists(
+            db
+              .select({ id: documents.id })
+              .from(documents)
+              .where(
+                and(
+                  eq(documents.id, sourceDocumentId),
+                  eq(documents.tenantId, tenantId),
+                ),
+              ),
+          ),
+          exists(
+            db
+              .select({ id: documents.id })
+              .from(documents)
+              .where(
+                and(
+                  eq(documents.id, targetDocumentId),
+                  eq(documents.tenantId, tenantId),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning();
+    return rows[0] ? toDocumentFile(rows[0]) : null;
+  },
   deleteFile: async (tenantId, documentId, fileId) => {
     const rows = await db
       .delete(documentFiles)
