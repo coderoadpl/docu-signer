@@ -97,7 +97,8 @@ rejected.)
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
   replaces the source or persists a reusable signature. A desktop signing
   session can create a QR remote pad at `/pad/{sessionId}`; the pad requires a
-  normal login plus the session secret from the URL fragment.
+  normal login plus the session secret from the URL fragment and defaults to a
+  touch-locked Piórko mode with an explicit Ręka mode for finger drawing.
 - Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
   timestamps (`createdAt`, `updatedAt`) never render in UI or exports. Two
   carve-outs: `deletedAt` records a user action and renders as `Usunięto:` in

@@ -101,7 +101,7 @@ const dispatchPointerStroke = async ({
   points,
 }: {
   canvas: Locator;
-  pointerType: 'pen' | 'touch';
+  pointerType: 'mouse' | 'pen' | 'touch';
   points: Array<{ x: number; y: number }>;
 }) => {
   await expect(canvas).toBeVisible();
@@ -764,7 +764,7 @@ test('mass signing can receive a signature from a QR pad browser context', async
     });
     await dispatchPointerStroke({
       canvas: padCanvas,
-      pointerType: 'touch',
+      pointerType: 'mouse',
       points: [
         { x: 0.18, y: 0.54 },
         { x: 0.34, y: 0.38 },

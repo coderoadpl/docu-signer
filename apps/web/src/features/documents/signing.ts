@@ -191,7 +191,7 @@ export const penPriorityActive = ({
     now >= lastPenSeenAt &&
     now - lastPenSeenAt <= SIGNING_PEN_PRIORITY_MS);
 
-export const documentPointerDrawsInk = ({
+export const pointerDrawsInk = ({
   fingerDrawing,
   mode,
   penPriority,
