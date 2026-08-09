@@ -13,6 +13,12 @@ import { createAppTheme, Wordmark } from './theme.js';
 const errorCodeOf = (error: Error | null): string | null =>
   error instanceof ApiError ? error.appError.code : null;
 
+const noArchiveAccessState: PageState = {
+  kind: 'empty',
+  title: 'Brak dostępu do archiwum',
+  body: 'To konto nie jest przypisane do archiwum dokumentów.',
+};
+
 const useSignOut = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -30,6 +36,7 @@ export const AppLayout = () => {
   const me = useQuery(actions.me);
   const code = errorCodeOf(me.error);
   const unauthorized = code === 'unauthorized';
+  const forbidden = code === 'forbidden';
 
   useEffect(() => {
     if (unauthorized) void navigate({ to: '/login' });
@@ -39,6 +46,9 @@ export const AppLayout = () => {
     return <Shell state={{ kind: 'loading', label: 'Ładowanie aplikacji…' }} />;
   }
   if (unauthorized) return null;
+  if (forbidden) {
+    return <Shell state={noArchiveAccessState} />;
+  }
   if (me.isError || !me.data) {
     return (
       <Shell
@@ -47,16 +57,7 @@ export const AppLayout = () => {
     );
   }
   if (!me.data.tenant) {
-    return (
-      <Shell
-        email={me.data.email}
-        state={{
-          kind: 'empty',
-          title: 'Brak dostępu do archiwum',
-          body: 'To konto nie jest przypisane do archiwum dokumentów.',
-        }}
-      />
-    );
+    return <Shell email={me.data.email} state={noArchiveAccessState} />;
   }
 
   return <Shell tenant={me.data.tenant} email={me.data.email} />;
@@ -115,7 +116,7 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
             Wyloguj się
           </Button>
         }
-        navigation={navigation}
+        navigation={tenant ? navigation : null}
         {...(state === undefined ? {} : { state })}
       >
         <Outlet />
