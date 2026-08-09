@@ -49,8 +49,12 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   },
   documents: {
     listByTenant: async () => [],
+    listDeletedByTenant: async () => [],
     findById: async () => null,
+    findDeletedById: async () => null,
+    findAnyById: async () => null,
     listFiles: async () => [],
+    listFilesIncludingDeleted: async () => [],
     listFilesForDocuments: async () => [],
     create: async () => {
       throw new Error('not implemented');
@@ -58,6 +62,8 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     update: async () => null,
     approve: async () => null,
     delete: async () => false,
+    restore: async () => null,
+    purge: async () => false,
     createFile: async () => null,
     findFile: async () => null,
     moveFileToDocument: async () => null,

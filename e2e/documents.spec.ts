@@ -213,6 +213,13 @@ const signVisiblePdf = async (page: Page) => {
   await save.click();
 };
 
+const signIn = async (page: Page) => {
+  await page.goto('/login');
+  await page.locator('#login-email').fill(DEMO_EMAIL);
+  await page.locator('#login-password').fill(DEMO_PASSWORD);
+  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
+};
+
 test('creates, uploads, previews and exports an archived document', async ({
   page,
 }) => {
@@ -223,10 +230,7 @@ test('creates, uploads, previews and exports an archived document', async ({
   const signedAgainName = `umowa-${stamp}-podpisany-2.pdf`;
   const scanName = `umowa-${stamp}-podpisana.png`;
 
-  await page.goto('/login');
-  await page.locator('#login-email').fill(DEMO_EMAIL);
-  await page.locator('#login-password').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
+  await signIn(page);
 
   await page.getByRole('link', { name: 'Dokumenty' }).click();
   await expect(
@@ -330,6 +334,42 @@ test('creates, uploads, previews and exports an archived document', async ({
   await expect(
     page.getByRole('heading', { name: sourceName.replace(/\.pdf$/u, '') }),
   ).toBeVisible();
+});
+
+test('moves a document to trash and restores it', async ({ page }) => {
+  const stamp = Date.now();
+  const title = `Kosz e2e ${stamp}`;
+
+  await signIn(page);
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
+  await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Dodaj dokument' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Dodaj dokument' });
+  await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
+  await dialog.getByLabel('Osoba').fill('Jan Kowalski');
+  await dialog.getByLabel('Data podpisania').fill('2026-08-02');
+  await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
+
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await page.getByRole('button', { name: 'Usuń dokument' }).click();
+  const deleteDialog = page.getByRole('dialog', { name: 'Przenieść dokument do kosza?' });
+  await expect(
+    deleteDialog.getByText('Dokument trafi do kosza. Możesz go później przywrócić.'),
+  ).toBeVisible();
+  await deleteDialog.getByRole('button', { name: 'Przenieś do kosza' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Kosz' }).click();
+  const trashRow = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: title, exact: true }) });
+  await expect(trashRow).toBeVisible();
+  await trashRow.getByRole('button', { name: 'Przywróć' }).click();
+  await expect(page.getByRole('heading', { name: 'Kosz jest pusty' })).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Lista' }).click();
+  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
 });
 
 test.describe('signature pad dialog', () => {

@@ -33,6 +33,15 @@ const document = {
   files: [],
 };
 
+const trashedDocument = {
+  ...document,
+  id: '22222222-2222-4222-8222-222222222222',
+  title: 'Usunięta uchwała',
+  docType: 'uchwala',
+  person: 'Piotr Zieliński',
+  deletedAt: '2026-08-02T09:00:00.000Z',
+};
+
 const renderPage = async () => {
   const root = createRootRoute();
   const list = createRoute({
@@ -373,6 +382,186 @@ describe('DocumentsPage', () => {
     await waitFor(() =>
       expect(savedDelete).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333'),
     );
+  });
+
+  it('lists trash and restores a trashed document', async () => {
+    const restore = vi.fn();
+    let trash = [trashedDocument];
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+      http.get('/api/documents/trash', () =>
+        HttpResponse.json({ ok: true, data: { documents: trash } }),
+      ),
+      http.post('/api/documents/:id/restore', ({ params }) => {
+        restore(params.id);
+        trash = [];
+        return HttpResponse.json({
+          ok: true,
+          data: { document: { ...trashedDocument, deletedAt: null } },
+        });
+      }),
+    );
+    await renderPage();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
+    expect(await screen.findAllByText('Usunięta uchwała')).toHaveLength(2);
+    expect(screen.getAllByText('Uchwała').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Piotr Zieliński').length).toBeGreaterThan(0);
+    expect(screen.getByText('Usunięto: 02.08.2026')).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Przywróć' }).at(0) ?? screen.getByText('Przywróć'));
+    await waitFor(() =>
+      expect(restore).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222'),
+    );
+    expect(await screen.findByRole('heading', { name: 'Kosz jest pusty' })).toBeInTheDocument();
+  });
+
+  it('purges one trashed document after a hard-delete confirmation', async () => {
+    const purge = vi.fn();
+    let trash = [trashedDocument];
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+      http.get('/api/documents/trash', () =>
+        HttpResponse.json({ ok: true, data: { documents: trash } }),
+      ),
+      http.delete('/api/documents/:id/purge', ({ params }) => {
+        purge(params.id);
+        trash = [];
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
+    await screen.findAllByText('Usunięta uchwała');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Usuń trwale' }).at(0) ?? screen.getByText('Usuń trwale'));
+    const dialog = await screen.findByRole('dialog', { name: 'Usunąć trwale?' });
+    expect(within(dialog).getByText(/magazynu blob/u)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Usuń trwale' }));
+
+    await waitFor(() =>
+      expect(purge).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222'),
+    );
+    expect(await screen.findByText('Kosz: 1 usunięto, 0 błędów.')).toBeInTheDocument();
+  });
+
+  it('empties all trashed documents with typed confirmation and a summary', async () => {
+    const purge = vi.fn();
+    let trash = [
+      trashedDocument,
+      {
+        ...trashedDocument,
+        id: '33333333-3333-4333-8333-333333333333',
+        title: 'Usunięty rachunek',
+        docType: 'rachunek',
+      },
+    ];
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+      http.get('/api/documents/trash', () =>
+        HttpResponse.json({ ok: true, data: { documents: trash } }),
+      ),
+      http.delete('/api/documents/:id/purge', ({ params }) => {
+        purge(params.id);
+        trash = trash.filter((item) => item.id !== params.id);
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
+    expect(await screen.findAllByText('Usunięta uchwała')).toHaveLength(2);
+    expect(await screen.findAllByText('Usunięty rachunek')).toHaveLength(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Opróżnij kosz' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Opróżnić kosz?' });
+    const confirm = within(dialog).getByLabelText('Wpisz OPRÓŻNIJ KOSZ');
+    expect(within(dialog).getByRole('button', { name: 'Opróżnij kosz' })).toBeDisabled();
+    fireEvent.change(confirm, { target: { value: 'OPRÓŻNIJ KOSZ' } });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Opróżnij kosz' }));
+
+    await waitFor(() => expect(purge).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Kosz: 2 usunięto, 0 błędów.')).toBeInTheDocument();
+    expect(screen.getByText('Kosz jest pusty. Kosz nigdy nie opróżnia się sam.')).toBeInTheDocument();
+  });
+
+  it('reports trash restore and empty-all failures without auto-clearing the trash', async () => {
+    let trash = [
+      trashedDocument,
+      {
+        ...trashedDocument,
+        id: '33333333-3333-4333-8333-333333333333',
+        title: 'Usunięty rachunek',
+        docType: 'rachunek',
+      },
+    ];
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+      http.get('/api/documents/trash', () =>
+        HttpResponse.json({ ok: true, data: { documents: trash } }),
+      ),
+      http.post('/api/documents/:id/restore', () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            error: { code: 'internal', message: 'Nie udało się przywrócić' },
+          },
+          { status: 500 },
+        ),
+      ),
+      http.delete('/api/documents/:id/purge', ({ params }) => {
+        if (params.id === '22222222-2222-4222-8222-222222222222') {
+          return HttpResponse.json(
+            {
+              ok: false,
+              error: { code: 'internal', message: 'Nie udało się usunąć' },
+            },
+            { status: 500 },
+          );
+        }
+        trash = trash.filter((item) => item.id !== params.id);
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
+    await screen.findAllByText('Usunięta uchwała');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Przywróć' }).at(0) ?? screen.getByText('Przywróć'));
+    expect(await screen.findByText('Nie udało się przywrócić')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Opróżnij kosz' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Opróżnić kosz?' });
+    fireEvent.change(within(dialog).getByLabelText('Wpisz OPRÓŻNIJ KOSZ'), {
+      target: { value: 'OPRÓŻNIJ KOSZ' },
+    });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Opróżnij kosz' }));
+
+    expect(await screen.findByText('Kosz: 1 usunięto, 1 błędów.')).toBeInTheDocument();
+    expect(screen.getAllByText('Usunięta uchwała').length).toBeGreaterThan(0);
+  });
+
+  it('shows the non-auto-empty trash copy when Kosz is empty', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+      http.get('/api/documents/trash', () =>
+        HttpResponse.json({ ok: true, data: { documents: [] } }),
+      ),
+    );
+    await renderPage();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
+    expect(await screen.findByRole('heading', { name: 'Kosz jest pusty' })).toBeInTheDocument();
+    expect(screen.getByText('Kosz jest pusty. Kosz nigdy nie opróżnia się sam.')).toBeInTheDocument();
   });
 
   it('creates a document and navigates to its detail', async () => {

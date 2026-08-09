@@ -28,26 +28,37 @@ describe('API client', () => {
   });
 
   it('sends tenant document filters and write bodies', async () => {
-    const fetchImpl = vi.fn<typeof fetch>(async () =>
-      json({
+    const document = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-default',
+      title: 'Umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      deletedAt: null,
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (
+        (url.startsWith('/api/documents?') || url.endsWith('/api/documents')) &&
+        init?.method === 'GET'
+      ) {
+        return json({ ok: true, data: { documents: [] } });
+      }
+      if (url.endsWith('/api/documents/trash')) {
+        return json({ ok: true, data: { documents: [{ ...document, files: [] }] } });
+      }
+      if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
+      return json({
         ok: true,
-        data: {
-          document: {
-            id: '11111111-1111-4111-8111-111111111111',
-            tenantId: 'tenant-default',
-            title: 'Umowa',
-            docType: 'umowa-uod',
-            documentDate: '2026-08-01',
-            periodStart: null,
-            periodEnd: null,
-            person: null,
-            tags: [],
-            createdAt: '2026-08-01T00:00:00.000Z',
-            updatedAt: '2026-08-01T00:00:00.000Z',
-          },
-        },
-      }),
-    );
+        data: { document },
+      });
+    });
     const api = createApiClient({ baseUrl: '', fetchImpl });
     await api.listDocuments({
       person: 'Jan',
@@ -63,6 +74,9 @@ describe('API client', () => {
       periodEnd: '2026-08-31',
       tags: [],
     });
+    await api.listTrashedDocuments();
+    await api.restoreDocument('11111111-1111-4111-8111-111111111111');
+    await api.purgeDocument('11111111-1111-4111-8111-111111111111');
 
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(
       '/api/documents?person=Jan&tag=podpis&dateFrom=2026-01-01&signatureStatus=needs-signature',
@@ -78,6 +92,15 @@ describe('API client', () => {
         tags: [],
       }),
     });
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe('/api/documents/trash');
+    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
+      '/api/documents/11111111-1111-4111-8111-111111111111/restore',
+    );
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'POST' });
+    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe(
+      '/api/documents/11111111-1111-4111-8111-111111111111/purge',
+    );
+    expect(fetchImpl.mock.calls[4]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
   it('calls saved search routes through the contract', async () => {

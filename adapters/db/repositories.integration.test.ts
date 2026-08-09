@@ -211,6 +211,62 @@ describe('DocumentRepository', () => {
       }),
     ).resolves.toMatchObject([{ title: 'Podpisany' }]);
   });
+
+  it('soft-deletes, restores and purges documents while active reads exclude trash', async () => {
+    const repository = createDocumentRepository(db);
+    const id = '29292929-2929-4292-8292-292929292929';
+    const fileId = '20202020-2020-4202-8202-202020202020';
+    await repository.create({
+      id,
+      tenantId: 'tenant-a',
+      title: 'Kosz',
+      docType: 'inny',
+      documentDate: '2026-08-04',
+      periodStart: null,
+      periodEnd: null,
+      person: 'Trash Person',
+      tags: ['trash-itest'],
+    });
+    await repository.createFile('tenant-a', {
+      id: fileId,
+      documentId: id,
+      role: 'source',
+      fileName: 'kosz.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-a/trash-itest/source',
+    });
+
+    await expect(repository.delete('tenant-b', id)).resolves.toBe(false);
+    await expect(repository.delete('tenant-a', id)).resolves.toBe(true);
+    await expect(repository.findById('tenant-a', id)).resolves.toBeNull();
+    await expect(repository.listByTenant('tenant-a', { tag: 'trash-itest' })).resolves.toEqual([]);
+    await expect(repository.listByTenant('tenant-a', { text: 'Kosz' })).resolves.toEqual([]);
+    await expect(repository.listFiles('tenant-a', id)).resolves.toEqual([]);
+    await expect(repository.findFile('tenant-a', id, fileId)).resolves.toBeNull();
+
+    const deleted = await repository.findDeletedById('tenant-a', id);
+    expect(deleted).toMatchObject({ id, deletedAt: expect.any(String) });
+    await expect(repository.findAnyById('tenant-a', id)).resolves.toMatchObject({
+      id,
+      deletedAt: expect.any(String),
+    });
+    await expect(repository.listDeletedByTenant('tenant-a')).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id, deletedAt: expect.any(String) })]),
+    );
+    await expect(repository.listFilesIncludingDeleted('tenant-a', id)).resolves.toMatchObject([
+      { id: fileId },
+    ]);
+
+    await expect(repository.restore('tenant-b', id)).resolves.toBeNull();
+    await expect(repository.restore('tenant-a', id)).resolves.toMatchObject({ id, deletedAt: null });
+    await expect(repository.findById('tenant-a', id)).resolves.toMatchObject({ id, deletedAt: null });
+    await expect(repository.delete('tenant-a', id)).resolves.toBe(true);
+    await expect(repository.purge('tenant-a', id)).resolves.toBe(true);
+    await expect(repository.purge('tenant-a', id)).resolves.toBe(false);
+    await expect(repository.findAnyById('tenant-a', id)).resolves.toBeNull();
+    await expect(repository.listFilesIncludingDeleted('tenant-a', id)).resolves.toEqual([]);
+  });
 });
 
 describe('ApiTokenRepository', () => {

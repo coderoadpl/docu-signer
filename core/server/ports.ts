@@ -13,14 +13,18 @@ import type {
 
 export interface DocumentRepository {
   listByTenant(tenantId: string, filter: DocumentListFilter): Promise<Document[]>;
+  listDeletedByTenant(tenantId: string): Promise<Document[]>;
   findById(tenantId: string, documentId: string): Promise<Document | null>;
+  findDeletedById(tenantId: string, documentId: string): Promise<Document | null>;
+  findAnyById(tenantId: string, documentId: string): Promise<Document | null>;
   listFiles(tenantId: string, documentId: string): Promise<DocumentFile[]>;
+  listFilesIncludingDeleted(tenantId: string, documentId: string): Promise<DocumentFile[]>;
   listFilesForDocuments(
     tenantId: string,
     documentIds: string[],
   ): Promise<DocumentFile[]>;
   create(
-    input: Omit<Document, 'createdAt' | 'updatedAt' | 'draft'> & { draft?: boolean },
+    input: Omit<Document, 'createdAt' | 'updatedAt' | 'deletedAt' | 'draft'> & { draft?: boolean },
   ): Promise<Document>;
   update(
     tenantId: string,
@@ -32,6 +36,8 @@ export interface DocumentRepository {
   ): Promise<Document | null>;
   approve(tenantId: string, documentId: string): Promise<Document | null>;
   delete(tenantId: string, documentId: string): Promise<boolean>;
+  restore(tenantId: string, documentId: string): Promise<Document | null>;
+  purge(tenantId: string, documentId: string): Promise<boolean>;
   createFile(
     tenantId: string,
     input: Omit<DocumentFile, 'createdAt'>,

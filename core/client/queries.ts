@@ -104,6 +104,7 @@ const documentsScopes = {
   all: () => ['documents'] as const,
   lists: () => ['documents', 'list'] as const,
   list: (filter: DocumentListFilter) => ['documents', 'list', filter] as const,
+  trash: () => ['documents', 'trash'] as const,
   details: () => ['documents', 'detail'] as const,
   detail: (documentId: string) => ['documents', 'detail', documentId] as const,
   file: (documentId: string, fileId: string) =>
@@ -148,6 +149,12 @@ export const documentsQuery = (api: ApiClient, filter: DocumentListFilter = {}) 
     call: ({ signal }) => api.listDocuments(filter, signal),
   });
 
+export const trashedDocumentsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: documentsScopes.trash(),
+    call: ({ signal }) => api.listTrashedDocuments(signal),
+  });
+
 export const documentQuery = (api: ApiClient, documentId: string) =>
   defineQuery({
     queryKey: documentsScopes.detail(documentId),
@@ -181,6 +188,18 @@ export const deleteDocumentMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...documentsScopes.all(), 'delete'],
     call: (documentId: string) => api.deleteDocument(documentId),
+  });
+
+export const restoreDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'restore'],
+    call: (documentId: string) => api.restoreDocument(documentId),
+  });
+
+export const purgeDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'purge'],
+    call: (documentId: string) => api.purgeDocument(documentId),
   });
 
 export const requestFileUploadMutation = (api: ApiClient) =>

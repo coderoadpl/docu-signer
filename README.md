@@ -65,7 +65,7 @@ seed. Use `--api-url` or `APP_CLI_API_URL` to target another origin.
 Full command set (<!--count:cli-command-groups-->11<!--/count--> top-level groups):
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
 `origin list|use`, `account change-password|request-password-reset`,
-`document list|search|show|add|upload|export|remove|approve`,
+`document list|trash-list|search|show|add|approve|upload|export|remove|restore|purge`,
 `token create|list|revoke`, `public profile`.
 
 Every command also accepts `--token <value>` (or the `APP_CLI_TOKEN` env var)
@@ -128,8 +128,8 @@ Dependency lifecycle scripts are blocked unless explicitly named in
 configuration applies a three-day (`4320` minute) minimum-release-age cooldown.
 
 Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
-<!--count:integration-tests-->16<!--/count--> integration tests against a real
-Postgres and <!--count:e2e-tests-->14<!--/count--> Playwright test executions
+<!--count:integration-tests-->17<!--/count--> integration tests against a real
+Postgres and <!--count:e2e-tests-->16<!--/count--> Playwright test executions
 across <!--count:e2e-specs-->6<!--/count--> spec files: Chromium covers all
 six, and WebKit reruns `documents.spec.ts` to pin the Safari/pdf.js legacy
 regression.

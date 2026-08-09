@@ -17,11 +17,14 @@ import {
   finalizeFileUploadMutation,
   meQuery,
   moveDocumentFileMutation,
+  purgeDocumentMutation,
   requestPasswordResetMutation,
   resetPasswordMutation,
   requestFileUploadMutation,
+  restoreDocumentMutation,
   savedSearchesInvalidates,
   savedSearchesQuery,
+  trashedDocumentsQuery,
   updateDocumentMutation,
   uploadDocumentFileMutation,
 } from './queries.js';
@@ -41,6 +44,7 @@ const document = {
   draft: false,
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z',
+  deletedAt: null,
 };
 
 const documentFile = {
@@ -85,8 +89,10 @@ describe('document query descriptors', () => {
   });
 
   it('executes the detail queryFn and builds identity scope', async () => {
-    const fetchImpl = vi.fn<typeof fetch>(() =>
-      response({ document: { ...document, files: [] } }),
+    const fetchImpl = vi.fn<typeof fetch>((input) =>
+      String(input).endsWith('/api/documents/trash')
+        ? response({ documents: [{ ...document, files: [] }] })
+        : response({ document: { ...document, files: [] } }),
     );
     const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
     const query = documentQuery(api, document.id);
@@ -97,6 +103,12 @@ describe('document query descriptors', () => {
       document: { ...document, files: [] },
     });
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(`/api/documents/${document.id}`);
+
+    const trash = trashedDocumentsQuery(api);
+    expect(trash.queryKey).toEqual(['documents', 'trash']);
+    await expect(newClient().fetchQuery(trash)).resolves.toEqual({
+      documents: [{ ...document, files: [] }],
+    });
   });
 
   it('propagates a failed read as ApiError', async () => {
@@ -163,6 +175,12 @@ describe('document mutation descriptors', () => {
     await expect(observe(deleteDocumentMutation(api)).mutate(document.id)).resolves.toEqual({
       deleted: true,
     });
+    await expect(observe(restoreDocumentMutation(api)).mutate(document.id)).resolves.toEqual({
+      document,
+    });
+    await expect(observe(purgeDocumentMutation(api)).mutate(document.id)).resolves.toEqual({
+      deleted: true,
+    });
     await expect(
       observe(requestFileUploadMutation(api)).mutate({
         documentId: document.id,
@@ -225,7 +243,7 @@ describe('document mutation descriptors', () => {
       ([request, init]) => String(request).endsWith('/api/documents') && init?.method === 'POST',
     );
     expect(createRequest?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify(input) });
-    expect(fetchImpl).toHaveBeenCalledTimes(10);
+    expect(fetchImpl).toHaveBeenCalledTimes(12);
   });
 
   it('propagates a failed write as ApiError', async () => {

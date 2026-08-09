@@ -406,6 +406,20 @@ document.command('list').description('List documents').action(async () => {
   );
 });
 
+document.command('trash-list').description('List soft-deleted documents').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.listTrashedDocuments(), ctx.json, (data) =>
+    data.documents.length === 0
+      ? 'no trashed documents'
+      : data.documents
+          .map(
+            (row) =>
+              `- ${row.deletedAt ?? 'deleted'}\t${row.title}\t${row.docType}\t(${row.id.slice(0, 8)})`,
+          )
+          .join('\n'),
+  );
+});
+
 document
   .command('search')
   .description('List documents with filters')
@@ -554,10 +568,33 @@ document
 
 document
   .command('remove <id>')
-  .description('Delete a document and its attachments')
+  .description('Move a document to trash')
   .action(async (id: string) => {
     const ctx = cliCtx();
     emit(await ctx.api.deleteDocument(id), ctx.json, () => `removed: ${id}`);
+  });
+
+document
+  .command('restore <id>')
+  .description('Restore a document from trash')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    emit(await ctx.api.restoreDocument(id), ctx.json, (data) =>
+      `restored: ${data.document.title} (${data.document.id})`,
+    );
+  });
+
+document
+  .command('purge <id>')
+  .description('Permanently delete a document and its attachments')
+  .option('--yes', 'confirm permanent deletion', false)
+  .action(async (id: string, options: { yes: boolean }) => {
+    const ctx = cliCtx();
+    if (!options.yes) {
+      emit(err(validation('Pass --yes to permanently delete a document')), ctx.json, () => '');
+      return;
+    }
+    emit(await ctx.api.purgeDocument(id), ctx.json, () => `purged: ${id}`);
   });
 
 const collectScope = (value: string, previous: string[]): string[] => [...previous, value];

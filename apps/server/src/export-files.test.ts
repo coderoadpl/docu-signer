@@ -18,6 +18,7 @@ const document: Document = {
   draft: false,
   createdAt: '2026-07-18T10:00:00.000Z',
   updatedAt: '2026-07-18T10:00:00.000Z',
+  deletedAt: null,
 };
 
 const file: DocumentFile = {

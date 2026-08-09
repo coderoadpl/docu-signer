@@ -47,6 +47,7 @@ const documentFieldsSchema = z.object({
   draft: z.boolean().default(false),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  deletedAt: z.iso.datetime().nullable().default(null),
 });
 
 export const documentSchema = documentFieldsSchema.refine(

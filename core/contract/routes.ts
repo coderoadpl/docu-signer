@@ -63,6 +63,10 @@ export const documentListOutputSchema = z.object({
   documents: z.array(documentWithFilesSchema),
 });
 
+export const documentTrashListOutputSchema = z.object({
+  documents: z.array(documentWithFilesSchema),
+});
+
 export const documentCreateInputSchema = createDocumentSchema;
 
 export const documentCreateOutputSchema = z.object({
@@ -84,6 +88,14 @@ export const documentApproveOutputSchema = z.object({
 });
 
 export const documentDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
+
+export const documentRestoreOutputSchema = z.object({
+  document: documentSchema,
+});
+
+export const documentPurgeOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
@@ -188,10 +200,13 @@ export const API_ROUTES = {
   me: { method: 'GET', path: '/api/me' },
   documents: { method: 'GET', path: '/api/documents' },
   documentsCreate: { method: 'POST', path: '/api/documents' },
+  documentsTrash: { method: 'GET', path: '/api/documents/trash' },
   document: { method: 'GET', path: '/api/documents/:documentId' },
   documentUpdate: { method: 'PATCH', path: '/api/documents/:documentId' },
   documentApprove: { method: 'POST', path: '/api/documents/:documentId/approve' },
   documentDelete: { method: 'DELETE', path: '/api/documents/:documentId' },
+  documentRestore: { method: 'POST', path: '/api/documents/:documentId/restore' },
+  documentPurge: { method: 'DELETE', path: '/api/documents/:documentId/purge' },
   documentFileUploadRequest: {
     method: 'POST',
     path: '/api/documents/:documentId/files/upload-request',

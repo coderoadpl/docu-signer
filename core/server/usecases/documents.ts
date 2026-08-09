@@ -145,10 +145,30 @@ export const getDocument = async (
 ): Promise<Result<DocumentWithFiles, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:read');
   if (!scope.ok) return scope;
-  const document = await findDocument(scope.value, documentId, deps);
-  if (!document.ok) return document;
-  const files = await deps.documents.listFiles(scope.value, documentId);
-  return ok({ ...document.value, files });
+  const document = await deps.documents.findAnyById(scope.value, documentId);
+  if (!document) return err(notFound('Document not found'));
+  const files = await deps.documents.listFilesIncludingDeleted(scope.value, documentId);
+  return ok({ ...document, files });
+};
+
+export const listTrashedDocuments = async (
+  ctx: Ctx,
+  deps: DocumentDeps,
+): Promise<Result<DocumentWithFiles[], AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:read');
+  if (!scope.ok) return scope;
+  const documents = await deps.documents.listDeletedByTenant(scope.value);
+  const filesByDocument = await Promise.all(
+    documents.map((document) =>
+      deps.documents.listFilesIncludingDeleted(scope.value, document.id),
+    ),
+  );
+  return ok(
+    documents.map((document, index) => ({
+      ...document,
+      files: filesByDocument[index] ?? [],
+    })),
+  );
 };
 
 export const updateDocument = async (
@@ -192,15 +212,43 @@ export const deleteDocument = async (
   if (!scope.ok) return scope;
   const tokenDeleteDenial = forbidTokenDelete(ctx);
   if (tokenDeleteDenial) return tokenDeleteDenial;
-  const document = await findDocument(scope.value, documentId, deps);
-  if (!document.ok) return document;
-  const files = await deps.documents.listFiles(scope.value, documentId);
+  const deleted = await deps.documents.delete(scope.value, documentId);
+  return deleted ? ok(undefined) : err(notFound('Document not found'));
+};
+
+export const restoreDocument = async (
+  ctx: Ctx,
+  documentId: string,
+  deps: DocumentDeps,
+): Promise<Result<Document, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:write');
+  if (!scope.ok) return scope;
+  const active = await deps.documents.findById(scope.value, documentId);
+  if (active) return ok(active);
+  const deleted = await deps.documents.findDeletedById(scope.value, documentId);
+  if (!deleted) return err(notFound('Document not found'));
+  const restored = await deps.documents.restore(scope.value, documentId);
+  return restored ? ok(restored) : err(notFound('Document not found'));
+};
+
+export const purgeDocument = async (
+  ctx: Ctx,
+  documentId: string,
+  deps: DocumentDeps,
+): Promise<Result<void, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:write');
+  if (!scope.ok) return scope;
+  const tokenDeleteDenial = forbidTokenDelete(ctx);
+  if (tokenDeleteDenial) return tokenDeleteDenial;
+  const document = await deps.documents.findAnyById(scope.value, documentId);
+  if (!document) return ok(undefined);
+  const files = await deps.documents.listFilesIncludingDeleted(scope.value, documentId);
   for (const file of files) {
     const removed = await deps.storage.delete(file.storageKey);
     if (!removed.ok) return removed;
   }
-  const deleted = await deps.documents.delete(scope.value, documentId);
-  return deleted ? ok(undefined) : err(notFound('Document not found'));
+  await deps.documents.purge(scope.value, documentId);
+  return ok(undefined);
 };
 
 const storageKey = (tenantId: string, documentId: string, fileId: string): string =>
@@ -367,7 +415,7 @@ export const moveDocumentFile = async (
     created.id,
   );
   if (!moved) {
-    await deps.documents.delete(scope.value, created.id);
+    await deps.documents.purge(scope.value, created.id);
     return err(notFound('Document file not found'));
   }
   return ok({ ...created, files: [moved] });

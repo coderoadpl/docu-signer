@@ -284,12 +284,18 @@ describe('DocumentDetailPage', () => {
       screen.getByRole('button', { name: 'Usuń dokument' }),
     );
     const deleteDialog = screen.getByRole('dialog');
+    expect(
+      within(deleteDialog).getByText('Dokument trafi do kosza. Możesz go później przywrócić.'),
+    ).toBeInTheDocument();
+    expect(
+      within(deleteDialog).getByRole('button', { name: 'Przenieś do kosza' }),
+    ).toBeInTheDocument();
     await userEvent.click(
       within(deleteDialog).getByRole('button', { name: 'Anuluj' }),
     );
     await waitFor(() =>
       expect(
-        screen.queryByRole('dialog', { name: 'Usunąć dokument?' }),
+        screen.queryByRole('dialog', { name: 'Przenieść dokument do kosza?' }),
       ).not.toBeInTheDocument(),
     );
 
@@ -401,6 +407,54 @@ describe('DocumentDetailPage', () => {
     expect(screen.getAllByText('Brak plików w tej sekcji.')).toHaveLength(4);
   });
 
+  it('renders a trashed document as read-only with restore and purge actions', async () => {
+    const restore = vi.fn();
+    const purge = vi.fn();
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            document: { ...document, deletedAt: '2026-08-02T09:00:00.000Z' },
+          },
+        }),
+      ),
+      http.post(`/api/documents/${DOCUMENT_ID}/restore`, () => {
+        restore();
+        return HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, deletedAt: null } },
+        });
+      }),
+      http.delete(`/api/documents/${DOCUMENT_ID}/purge`, () => {
+        purge();
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByText(/W koszu/u)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Przywróć' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Usuń trwale' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edytuj' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Usuń dokument' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Wgraj plik' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Podpisz' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Podgląd pliku oryginal.pdf')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Pobierz plik oryginal.pdf')).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Eksportuj' })).not.toBeInTheDocument();
+    expect(screen.getByText('oryginal.pdf')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Przywróć' }));
+    await waitFor(() => expect(restore).toHaveBeenCalledOnce());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Usuń trwale' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Usunąć trwale?' });
+    expect(within(dialog).getByText(/magazynu blob/u)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Usuń trwale' }));
+    await waitFor(() => expect(purge).toHaveBeenCalledOnce());
+  });
+
   it('navigates before invalidating after deleting a document', async () => {
     const detailRequests = vi.fn();
     server.use(
@@ -418,7 +472,7 @@ describe('DocumentDetailPage', () => {
       await screen.findByRole('button', { name: 'Usuń dokument' }),
     );
     await userEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Usuń' }),
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Przenieś do kosza' }),
     );
 
     expect(await screen.findByText('Lista dokumentów')).toBeInTheDocument();
