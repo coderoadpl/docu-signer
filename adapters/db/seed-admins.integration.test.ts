@@ -16,6 +16,7 @@ import {
   user,
 } from './schema.js';
 import * as schema from './schema.js';
+import { closePoolAndDropIntegrationDatabase } from './test-support/integration-database.js';
 
 const ITEST_DB = 'agentproofarch_seed_itest';
 const baseDatabaseUrl =
@@ -41,16 +42,6 @@ const recreateDatabase = async (): Promise<void> => {
   }
 };
 
-const dropDatabase = async (): Promise<void> => {
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  try {
-    await admin.query(`DROP DATABASE IF EXISTS ${ITEST_DB} WITH (FORCE)`);
-  } finally {
-    await admin.end();
-  }
-};
-
 beforeAll(async () => {
   await recreateDatabase();
   const migrationPool = new pg.Pool({ connectionString: itestUrl });
@@ -60,13 +51,15 @@ beforeAll(async () => {
     await migrationPool.end();
   }
   appPool = new pg.Pool({ connectionString: itestUrl });
-  appPool.on('error', () => {});
   db = drizzleNodePg(appPool, { schema });
 }, 60_000);
 
 afterAll(async () => {
-  await appPool.end();
-  await dropDatabase();
+  await closePoolAndDropIntegrationDatabase({
+    pool: appPool,
+    adminDatabaseUrl: baseDatabaseUrl,
+    databaseName: ITEST_DB,
+  });
 });
 
 describe('deploy admin seed', () => {

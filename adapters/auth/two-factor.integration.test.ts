@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { createAuth, type Auth } from '#adapters/auth/create-auth.js';
 import * as schema from '#adapters/db/schema.js';
+import { closePoolAndDropIntegrationDatabase } from '#adapters/db/test-support/integration-database.js';
 
 const ITEST_DB = 'agentproofarch_twofactor_itest';
 const baseDatabaseUrl =
@@ -61,10 +62,6 @@ beforeAll(async () => {
     await migrationPool.end();
   }
   authPool = new pg.Pool({ connectionString: itestUrl });
-  // The FORCE drop in afterAll can terminate a still-open pooled socket; sink the
-  // resulting 'error' so the teardown race never fails the suite (integration
-  // teardown doctrine).
-  authPool.on('error', () => {});
   auth = createAuth(drizzleNodePg(authPool, { schema }), {
     secret: 'two-factor-itest-secret-32-characters',
     baseUrl: BASE_URL,
@@ -77,14 +74,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await authPool.end().catch(() => {});
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  try {
-    await admin.query(`DROP DATABASE IF EXISTS ${ITEST_DB} WITH (FORCE)`);
-  } finally {
-    await admin.end();
-  }
+  await closePoolAndDropIntegrationDatabase({
+    pool: authPool,
+    adminDatabaseUrl: baseDatabaseUrl,
+    databaseName: ITEST_DB,
+  });
 });
 
 const totpEnableSchema = z.object({ totpURI: z.string(), backupCodes: z.array(z.string()) });

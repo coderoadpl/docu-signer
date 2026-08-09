@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTenantDomainRepository } from '#adapters/db/repositories.js';
 import { tenantDomains, tenants } from '#adapters/db/schema.js';
 import * as schema from '#adapters/db/schema.js';
+import { closePoolAndDropIntegrationDatabase } from '#adapters/db/test-support/integration-database.js';
 
 import { buildInternalApp } from './internal-app.js';
 
@@ -48,10 +49,6 @@ beforeAll(async () => {
   }
 
   appPool = new pg.Pool({ connectionString: itestUrl });
-  // Same hazard as repositories.integration.test.ts: afterAll's FORCE drop can
-  // race the pool's socket teardown and a 57P01-terminated client would crash
-  // the run via an unhandled 'error' event.
-  appPool.on('error', () => {});
   db = drizzleNodePg(appPool, { schema });
   await db
     .insert(tenants)
@@ -67,9 +64,10 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await appPool.end();
-  await withAdmin(async (admin) => {
-    await admin.query(`DROP DATABASE IF EXISTS ${ITEST_DB} WITH (FORCE)`);
+  await closePoolAndDropIntegrationDatabase({
+    pool: appPool,
+    adminDatabaseUrl: baseDatabaseUrl,
+    databaseName: ITEST_DB,
   });
 });
 

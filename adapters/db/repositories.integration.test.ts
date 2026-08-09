@@ -7,6 +7,7 @@ import { createDocumentRepository } from './documents-repository.js';
 import { createTenantAccessReader } from './repositories.js';
 import { tenantAdmins, tenants } from './schema.js';
 import * as schema from './schema.js';
+import { closePoolAndDropIntegrationDatabase } from './test-support/integration-database.js';
 
 const ITEST_DB = 'agentproofarch_itest';
 const baseDatabaseUrl =
@@ -39,11 +40,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await pool.end();
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${ITEST_DB} WITH (FORCE)`);
-  await admin.end();
+  await closePoolAndDropIntegrationDatabase({
+    pool,
+    adminDatabaseUrl: baseDatabaseUrl,
+    databaseName: ITEST_DB,
+  });
 });
 
 describe('DocumentRepository', () => {
