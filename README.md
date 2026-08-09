@@ -102,7 +102,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`, dead
   links), and vitest with coverage across
-  **<!--count:test-files-->73<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->74<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → document archive →
@@ -143,6 +143,13 @@ The Vercel serverless target remains available through `vercel.json` and
 `api/index.ts`, with Neon selected by `DB_DRIVER=neon-http`. The deploy seed
 binds `APP_BASE_DOMAIN` to the fixed `default` tenant. This fork does not ship
 tenant-domain management or a self-host deployment package.
+
+## Backups
+
+The pinned [`backup` workflow](.github/workflows/backup.yml) creates a nightly
+full PostgreSQL + private Blob ZIP in a dedicated Google Workspace Shared Drive.
+Setup, retention, guards, and the exact restore procedure are in the
+[backup runbook](docs/backup.md).
 
 ## Operating hygiene for agent-driven repos
 

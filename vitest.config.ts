@@ -52,6 +52,10 @@ export default defineConfig({
         // CI-only programs with GitHub API, git, or filesystem side effects.
         'scripts/visual-report.ts',
         'scripts/visual-verdict-input.ts',
+        // Nightly backup orchestration talks to Drive, Blob, and pg_dump; its
+        // deterministic manifest, retention, naming, and guard logic lives in
+        // backup-logic.ts and is covered without network credentials.
+        'scripts/backup.ts',
         // doc-lint is a check-gate orchestration script (a top-level program that
         // scans docs/config and process.exit()s), run by `pnpm run doc-lint`
         // inside `pnpm run check`, not by vitest. Like the smoke/e2e scripts above
@@ -67,15 +71,15 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-01 after restoring the surviving document query,
-      // route-contract and identity-resolution branches. The database-free run
-      // is statements 76.64%, branches 86.52%, functions 77.19%, and lines
-      // 76.64%; each floor is that measured value rounded down.
+      // Re-measured 2026-08-01 after the backup logic coverage landed on the
+      // stripped document archive. The database-free run is statements 77.32%,
+      // branches 86.63%, functions 77.96%, and lines 77.32%; each floor is that
+      // measured value rounded down.
       thresholds: {
-        statements: 76,
+        statements: 77,
         branches: 86,
         functions: 77,
-        lines: 76,
+        lines: 77,
       },
     },
     projects: [

@@ -1,5 +1,6 @@
-import { BlobNotFoundError, del, get, head, put } from '@vercel/blob';
+import { BlobNotFoundError, del, get, head, list, put } from '@vercel/blob';
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
+import { z } from 'zod';
 
 import {
   err,
@@ -9,7 +10,26 @@ import {
   type AppError,
   type Result,
 } from '#core/domain/index.js';
-import type { StoragePort } from '#core/server/index.js';
+import type { BackupStoragePort, StoragePort } from '#core/server/index.js';
+
+const backupListSchema = z.object({
+  blobs: z.array(
+    z.object({
+      pathname: z.string().min(1),
+      etag: z.string().min(1),
+      size: z.number().int().nonnegative(),
+    }),
+  ),
+  cursor: z.string().min(1).optional(),
+  hasMore: z.boolean(),
+});
+
+const backupGetMetadataSchema = z.object({
+  pathname: z.string().min(1),
+  etag: z.string().min(1),
+  size: z.number().int().nonnegative(),
+  contentType: z.string().min(1),
+});
 
 const storageResult = async <T>(operation: () => Promise<T>): Promise<Result<T, AppError>> => {
   try {
@@ -71,6 +91,39 @@ export const createVercelBlobStorage = (token: string): StoragePort => ({
           'x-vercel-blob-store-id': storeId,
           'x-content-type': contentType,
         },
+      };
+    }),
+});
+
+export const createVercelBlobBackupStorage = (token: string): BackupStoragePort => ({
+  listPage: async (cursor) =>
+    storageResult(async () => {
+      const result = backupListSchema.parse(
+        await list({ limit: 1000, token, ...(cursor === null ? {} : { cursor }) }),
+      );
+      if (result.hasMore && result.cursor === undefined) {
+        throw new Error('Blob list response omitted its pagination cursor');
+      }
+      return {
+        items: result.blobs.map((blob) => ({
+          pathname: blob.pathname,
+          etag: blob.etag,
+          sizeBytes: blob.size,
+        })),
+        nextCursor: result.hasMore ? (result.cursor ?? null) : null,
+      };
+    }),
+  getStream: async (key) =>
+    storageResult(async () => {
+      const result = await get(key, { access: 'private', token, useCache: false });
+      if (!result || result.statusCode !== 200) return null;
+      const metadata = backupGetMetadataSchema.parse(result.blob);
+      return {
+        pathname: metadata.pathname,
+        etag: metadata.etag,
+        sizeBytes: metadata.size,
+        contentType: metadata.contentType,
+        stream: result.stream,
       };
     }),
 });

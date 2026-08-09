@@ -55,6 +55,27 @@ export interface StoragePort {
   createUploadUrl(key: string, contentType: string): Promise<Result<UploadTarget | null, AppError>>;
 }
 
+export interface BackupBlobInventoryItem {
+  pathname: string;
+  etag: string;
+  sizeBytes: number;
+}
+
+export interface BackupBlobPage {
+  items: readonly BackupBlobInventoryItem[];
+  nextCursor: string | null;
+}
+
+export interface BackupBlobContent extends BackupBlobInventoryItem {
+  contentType: string;
+  stream: ReadableStream<Uint8Array>;
+}
+
+export interface BackupStoragePort {
+  listPage(cursor: string | null): Promise<Result<BackupBlobPage, AppError>>;
+  getStream(key: string): Promise<Result<BackupBlobContent | null, AppError>>;
+}
+
 export interface TenantDomainRepository {
   findByDomain(domain: string): Promise<TenantDomain | null>;
   listVerifiedDomains(): Promise<TenantDomain[]>;

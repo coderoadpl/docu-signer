@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   generateClientToken: vi.fn<() => Promise<string>>(),
   get: vi.fn<(key: string, options: unknown) => Promise<unknown>>(),
   head: vi.fn<() => Promise<unknown>>(),
+  list: vi.fn<(options: unknown) => Promise<unknown>>(),
   put: vi.fn<(key: string, body: unknown, options: unknown) => Promise<unknown>>(),
 }));
 
@@ -15,6 +16,7 @@ vi.mock('@vercel/blob', async (importOriginal) => ({
   del: mocks.del,
   get: mocks.get,
   head: mocks.head,
+  list: mocks.list,
   put: mocks.put,
 }));
 
@@ -22,7 +24,7 @@ vi.mock('@vercel/blob/client', () => ({
   generateClientTokenFromReadWriteToken: mocks.generateClientToken,
 }));
 
-import { createVercelBlobStorage } from './vercel-blob.js';
+import { createVercelBlobBackupStorage, createVercelBlobStorage } from './vercel-blob.js';
 
 describe('Vercel Blob storage', () => {
   beforeEach(() => {
@@ -30,6 +32,7 @@ describe('Vercel Blob storage', () => {
     mocks.del.mockReset().mockResolvedValue(undefined);
     mocks.get.mockReset().mockResolvedValue(null);
     mocks.head.mockReset().mockResolvedValue({ contentType: 'application/pdf', size: 3 });
+    mocks.list.mockReset().mockResolvedValue({ blobs: [], hasMore: false });
     mocks.put.mockReset().mockResolvedValue({});
   });
 
@@ -146,5 +149,63 @@ describe('Vercel Blob storage', () => {
       ok: false,
       error: { code: 'internal' },
     });
+  });
+
+  it('paginates backup inventory and streams private content', async () => {
+    const storage = createVercelBlobBackupStorage('vercel_blob_rw_store_secret');
+    mocks.list.mockResolvedValueOnce({
+      blobs: [{ pathname: 'documents/file', etag: 'etag-1', size: 3 }],
+      hasMore: true,
+      cursor: 'next-page',
+    });
+    expect(await storage.listPage(null)).toEqual({
+      ok: true,
+      value: {
+        items: [{ pathname: 'documents/file', etag: 'etag-1', sizeBytes: 3 }],
+        nextCursor: 'next-page',
+      },
+    });
+    expect(mocks.list).toHaveBeenCalledWith({
+      limit: 1000,
+      token: 'vercel_blob_rw_store_secret',
+    });
+
+    const stream = new ReadableStream<Uint8Array>();
+    mocks.get.mockResolvedValueOnce({
+      statusCode: 200,
+      stream,
+      blob: {
+        pathname: 'documents/file',
+        etag: 'etag-1',
+        size: 3,
+        contentType: 'application/pdf',
+      },
+    });
+    expect(await storage.getStream('documents/file')).toEqual({
+      ok: true,
+      value: {
+        pathname: 'documents/file',
+        etag: 'etag-1',
+        sizeBytes: 3,
+        contentType: 'application/pdf',
+        stream,
+      },
+    });
+    expect(mocks.get).toHaveBeenCalledWith('documents/file', {
+      access: 'private',
+      token: 'vercel_blob_rw_store_secret',
+      useCache: false,
+    });
+  });
+
+  it('rejects malformed backup pages and maps missing backup content', async () => {
+    const storage = createVercelBlobBackupStorage('vercel_blob_rw_store_secret');
+    mocks.list.mockResolvedValueOnce({ blobs: [], hasMore: true });
+    expect(await storage.listPage('cursor')).toMatchObject({
+      ok: false,
+      error: { code: 'internal' },
+    });
+    mocks.get.mockResolvedValueOnce(null);
+    expect(await storage.getStream('missing')).toEqual({ ok: true, value: null });
   });
 });
