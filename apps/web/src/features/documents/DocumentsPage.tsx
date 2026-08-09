@@ -26,7 +26,6 @@ import {
   Select,
   Stack,
   SvgIcon,
-  Table,
   TableBody,
   TableCell,
   TableContainer,
@@ -56,7 +55,17 @@ import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { PolishDatePicker } from '../../components/ui/PolishDatePicker.js';
 import { formatPolishDate } from '../../lib/format-date.js';
-import { StickyTableCell } from '../../theme.js';
+import {
+  DocumentMetadataCell,
+  DocumentMetadataText,
+  DocumentPersonTableCell,
+  DocumentPeriodTableCell,
+  DocumentPeriodTitle,
+  DocumentRecordPrimaryCell,
+  DocumentsTable,
+  DocumentTitleText,
+  StickyTableCell,
+} from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import { DocumentTimelineView } from './DocumentTimelineView.js';
 import {
@@ -92,9 +101,9 @@ const FileCounts = ({ files }: { files: Array<{ role: string }> }) => {
     .filter(({ count }) => count > 0);
   if (present.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary">
+      <DocumentMetadataText>
         Brak plików
-      </Typography>
+      </DocumentMetadataText>
     );
   }
   return (
@@ -143,7 +152,6 @@ const EMPTY_DOCUMENT_LIST: DocumentWithFiles[] = [];
 
 const DOCUMENT_COLUMN_IDS = [
   'documentDate',
-  'title',
   'docType',
   'person',
   'tags',
@@ -162,7 +170,6 @@ interface DocumentColumnSettings {
 
 const DOCUMENT_COLUMN_LABELS: Record<DocumentColumnId, string> = {
   documentDate: 'Data podpisania',
-  title: 'Tytuł',
   docType: 'Typ',
   person: 'Osoba',
   tags: 'Tagi',
@@ -173,25 +180,26 @@ const DOCUMENT_COLUMN_LABELS: Record<DocumentColumnId, string> = {
 };
 
 const documentColumnPreferenceSchema = z.object({
-  order: z.array(z.enum(DOCUMENT_COLUMN_IDS)),
-  visible: z.array(z.enum(DOCUMENT_COLUMN_IDS)),
+  order: z.array(z.string()),
+  visible: z.array(z.string()),
 });
 
 const defaultDocumentColumnSettings = (): DocumentColumnSettings => ({
   order: Array.from(DOCUMENT_COLUMN_IDS),
-  visible: ['documentDate', 'title', 'docType', 'person', 'files', 'draft'],
+  visible: ['documentDate', 'docType', 'person', 'files', 'draft'],
 });
 
 const normalizeDocumentColumnSettings = (value: unknown): DocumentColumnSettings => {
   const fallback = defaultDocumentColumnSettings();
   const parsed = documentColumnPreferenceSchema.safeParse(value);
   if (!parsed.success) return fallback;
-  const known = new Set<DocumentColumnId>(DOCUMENT_COLUMN_IDS);
+  const known = new Set<string>(DOCUMENT_COLUMN_IDS);
+  const isKnownColumn = (column: string): column is DocumentColumnId => known.has(column);
   const order = [
-    ...parsed.data.order.filter((column) => known.has(column)),
+    ...parsed.data.order.filter(isKnownColumn),
     ...DOCUMENT_COLUMN_IDS.filter((column) => !parsed.data.order.includes(column)),
   ];
-  const visible = parsed.data.visible.filter((column) => known.has(column));
+  const visible = parsed.data.visible.filter(isKnownColumn);
   return {
     order,
     visible: visible.length > 0 ? visible : fallback.visible,
@@ -492,16 +500,9 @@ export const DocumentsPage = () => {
   ) => {
     if (column === 'documentDate') {
       return (
-        <Typography variant="body2" color="text.secondary" noWrap>
+        <DocumentMetadataText noWrap>
           {formatPolishDate(document.documentDate)}
-        </Typography>
-      );
-    }
-    if (column === 'title') {
-      return (
-        <Typography variant="subtitle2" component="span">
-          {document.title}
-        </Typography>
+        </DocumentMetadataText>
       );
     }
     if (column === 'docType') {
@@ -1018,7 +1019,11 @@ export const DocumentsPage = () => {
           variant="outlined"
           sx={{ display: { xs: 'none', sm: 'block' }, mt: 4, maxWidth: '100%', overflowX: 'auto' }}
         >
-          <Table sx={{ minWidth: '90rem' }}>
+          <DocumentsTable
+            stickyHeader
+            size="small"
+            sx={{ minWidth: '90rem' }}
+          >
             <TableHead>
               <TableRow>
                 <StickyTableCell
@@ -1053,33 +1058,47 @@ export const DocumentsPage = () => {
                 <TableCell align="right">Akcje</TableCell>
               </TableRow>
             </TableHead>
-            <TableBody>
-              {groupedVisibleDocuments.flatMap((periodGroup) => [
-                <TableRow key={`${periodGroup.start}|${periodGroup.end}`}>
-                  <TableCell
+            {groupedVisibleDocuments.flatMap((periodGroup) => [
+              <TableBody key={`${periodGroup.start}|${periodGroup.end}`}>
+                <TableRow>
+                  <DocumentPeriodTableCell
                     colSpan={visibleColumnIds.length + 2}
-                    sx={{ py: 1.25 }}
+                    sx={{
+                      py: 1.25,
+                      position: 'sticky',
+                      top: '3.25rem',
+                      zIndex: 1,
+                    }}
                   >
-                    <Typography variant="h3">
+                    <DocumentPeriodTitle variant="subtitle2">
                       {formatCanonicalDocumentInterval(periodGroup)}
-                    </Typography>
-                  </TableCell>
-                </TableRow>,
-                ...periodGroup.people.flatMap((personGroup) => [
-                  <TableRow key={`${periodGroup.start}|${periodGroup.end}|${personGroup.person}`}>
-                    <TableCell
+                    </DocumentPeriodTitle>
+                  </DocumentPeriodTableCell>
+                </TableRow>
+              </TableBody>,
+              ...periodGroup.people.flatMap((personGroup) => [
+                <TableBody
+                  key={`${periodGroup.start}|${periodGroup.end}|${personGroup.person}`}
+                >
+                  <TableRow>
+                    <DocumentPersonTableCell
                       colSpan={visibleColumnIds.length + 2}
                       sx={{ py: 1, pl: 4 }}
                     >
-                      <Typography variant="subtitle2" color="text.secondary">
+                      <Typography variant="overline" color="text.secondary">
                         {personGroup.person}
                       </Typography>
-                    </TableCell>
-                  </TableRow>,
-                  ...personGroup.documents.map((document) => (
+                    </DocumentPersonTableCell>
+                  </TableRow>
+                </TableBody>,
+                ...personGroup.documents.map((document) => (
+                  <TableBody
+                    key={document.id}
+                    component="tbody"
+                    data-document-record=""
+                    data-selected={selectedIds.includes(document.id) || undefined}
+                  >
                     <TableRow
-                      key={document.id}
-                      hover
                       onClick={() =>
                         void navigate({
                           to: '/app/documents/$id',
@@ -1089,10 +1108,11 @@ export const DocumentsPage = () => {
                       }
                       sx={{ cursor: 'pointer' }}
                     >
-                      <StickyTableCell
+                      <DocumentRecordPrimaryCell
                         padding="checkbox"
+                        rowSpan={2}
                         onClick={(event) => event.stopPropagation()}
-                        sx={{ position: 'sticky', left: 0, zIndex: 1 }}
+                        sx={{ verticalAlign: 'top', pt: 1.5 }}
                       >
                         <Checkbox
                           slotProps={{
@@ -1109,11 +1129,34 @@ export const DocumentsPage = () => {
                             )
                           }
                         />
-                      </StickyTableCell>
-                      {visibleColumnIds.map((column) => (
-                        <TableCell key={column}>{renderDocumentCell(column, document)}</TableCell>
-                      ))}
-                      <TableCell align="right" onClick={(event) => event.stopPropagation()}>
+                      </DocumentRecordPrimaryCell>
+                      <DocumentRecordPrimaryCell
+                        component="th"
+                        scope="rowgroup"
+                        colSpan={visibleColumnIds.length}
+                        sx={{ pt: 1.25, pb: 0.25 }}
+                      >
+                        <Box
+                          sx={{
+                            position: 'sticky',
+                            left: 0,
+                            width: 'fit-content',
+                            maxWidth: '100%',
+                          }}
+                        >
+                          <DocumentTitleText
+                            component="span"
+                          >
+                            {document.title}
+                          </DocumentTitleText>
+                        </Box>
+                      </DocumentRecordPrimaryCell>
+                      <DocumentRecordPrimaryCell
+                        align="right"
+                        rowSpan={2}
+                        onClick={(event) => event.stopPropagation()}
+                        sx={{ verticalAlign: 'middle' }}
+                      >
                         <IconButton
                           size="small"
                           aria-label={`Więcej akcji dla dokumentu ${document.title}`}
@@ -1124,13 +1167,32 @@ export const DocumentsPage = () => {
                         >
                           <MoreVertIcon />
                         </IconButton>
-                      </TableCell>
+                      </DocumentRecordPrimaryCell>
                     </TableRow>
-                  )),
-                ]),
-              ])}
-            </TableBody>
-          </Table>
+                    <TableRow
+                      onClick={() =>
+                        void navigate({
+                          to: '/app/documents/$id',
+                          params: { id: document.id },
+                          search: currentDocumentsSearch,
+                        })
+                      }
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      {visibleColumnIds.map((column) => (
+                        <DocumentMetadataCell
+                          key={column}
+                          sx={{ pt: 0, pb: 1.25 }}
+                        >
+                          {renderDocumentCell(column, document)}
+                        </DocumentMetadataCell>
+                      ))}
+                    </TableRow>
+                  </TableBody>
+                )),
+              ]),
+            ])}
+          </DocumentsTable>
         </TableContainer>
         </>
       ) : null}
