@@ -11,6 +11,7 @@ import {
   isPalmSizedTouch,
   placeInkPoint,
   penPriorityActive,
+  placedInkBounds,
   pointerEventToInkPoints,
   removeSigningStamp,
   pointerToInkPoint,
@@ -145,29 +146,87 @@ describe('pen signing geometry', () => {
     ]);
   });
 
+  it('falls back to the pointer event when coalesced samples are absent or empty', () => {
+    const bounds = { left: 10, top: 20, width: 100, height: 200 };
+
+    expect(
+      pointerEventToInkPoints(
+        { clientX: 60, clientY: 120, pressure: 0.4 },
+        bounds,
+      ),
+    ).toEqual([{ x: 0.5, y: 0.5, pressure: 0.4 }]);
+    expect(
+      pointerEventToInkPoints(
+        {
+          clientX: 110,
+          clientY: 220,
+          pressure: 0.6,
+          getCoalescedEvents: () => [],
+        },
+        bounds,
+      ),
+    ).toEqual([{ x: 1, y: 1, pressure: 0.6 }]);
+  });
+
   it('defines deterministic document gesture and palm rejection rules', () => {
     expect(
       defaultSigningGestureMode({ coarsePointer: true, maxTouchPoints: 0 }),
+    ).toBe('pan');
+    expect(
+      defaultSigningGestureMode({ coarsePointer: false, maxTouchPoints: 2 }),
     ).toBe('pan');
     expect(
       defaultSigningGestureMode({ coarsePointer: false, maxTouchPoints: 0 }),
     ).toBe('draw');
     expect(
       penPriorityActive({
+        activePenPointerId: 7,
+        lastPenSeenAt: undefined,
+        now: 0,
+      }),
+    ).toBe(true);
+    expect(
+      penPriorityActive({
+        activePenPointerId: undefined,
+        lastPenSeenAt: undefined,
+        now: 450,
+      }),
+    ).toBe(false);
+    expect(
+      penPriorityActive({
+        activePenPointerId: undefined,
+        lastPenSeenAt: 500,
+        now: 450,
+      }),
+    ).toBe(false);
+    expect(
+      penPriorityActive({
         activePenPointerId: undefined,
         lastPenSeenAt: 100,
-        now: 450,
+        now: 600,
       }),
     ).toBe(true);
     expect(
       penPriorityActive({
         activePenPointerId: undefined,
         lastPenSeenAt: 100,
-        now: 700,
+        now: 601,
       }),
     ).toBe(false);
     expect(
-      isPalmSizedTouch({ pointerType: 'touch', width: 48, height: 22 }),
+      isPalmSizedTouch({ pointerType: 'mouse', width: 80, height: 80 }),
+    ).toBe(false);
+    expect(
+      isPalmSizedTouch({ pointerType: 'touch', width: 44, height: 31 }),
+    ).toBe(false);
+    expect(
+      isPalmSizedTouch({ pointerType: 'touch', width: 45, height: 22 }),
+    ).toBe(true);
+    expect(
+      isPalmSizedTouch({ pointerType: 'touch', width: 12, height: 45 }),
+    ).toBe(true);
+    expect(
+      isPalmSizedTouch({ pointerType: 'touch', width: 35, height: 40 }),
     ).toBe(true);
     expect(
       documentPointerDrawsInk({
@@ -188,6 +247,14 @@ describe('pen signing geometry', () => {
     expect(
       documentPointerDrawsInk({
         mode: 'draw',
+        fingerDrawing: true,
+        penPriority: false,
+        pointer: { pointerType: 'touch', width: 12, height: 12 },
+      }),
+    ).toBe(true);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
         fingerDrawing: false,
         penPriority: false,
         pointer: { pointerType: 'touch', width: 12, height: 12 },
@@ -201,6 +268,22 @@ describe('pen signing geometry', () => {
         pointer: { pointerType: 'touch', width: 12, height: 12 },
       }),
     ).toBe(false);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: true,
+        penPriority: false,
+        pointer: { pointerType: 'touch', width: 45, height: 12 },
+      }),
+    ).toBe(false);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: false,
+        penPriority: false,
+        pointer: { pointerType: 'mouse', width: 1, height: 1 },
+      }),
+    ).toBe(true);
   });
 
   it('inverts CSS, DPR and the unrotated PDF.js viewport transform', () => {
@@ -267,6 +350,44 @@ describe('pen signing geometry', () => {
     expect(segments).toHaveLength(1);
     expect(segments[0]?.path).toBe('M 35 -147.5 Q 45 -122.5 45 -122.5');
     expect(segments[0]?.width).toBeCloseTo(3.3333);
+  });
+
+  it('renders one- and two-point strokes as PDF curve segments', () => {
+    const valid = {
+      cssWidth: 100,
+      cssHeight: 100,
+      backingWidth: 100,
+      backingHeight: 100,
+      devicePixelRatio: 1,
+      viewportTransform: [1, 0, 0, -1, 0, 100] as const,
+    };
+
+    expect(
+      inkToPdfSegments(
+        [{ points: [{ x: 0.2, y: 0.3, pressure: 0.5 }] }],
+        { offsetX: 0, offsetY: 0, scale: 1 },
+        valid,
+      ),
+    ).toEqual([
+      {
+        path: 'M 20 -70 Q 20 -70 20.01 -70',
+        width: 2.75,
+      },
+    ]);
+    expect(
+      inkToPdfSegments(
+        [
+          {
+            points: [
+              { x: 0.2, y: 0.3, pressure: 0.2 },
+              { x: 0.4, y: 0.5, pressure: 0.8 },
+            ],
+          },
+        ],
+        { offsetX: 0, offsetY: 0, scale: 1 },
+        valid,
+      )[0]?.path,
+    ).toBe('M 20 -70 Q 40 -50 40 -50');
   });
 
   it('rejects invalid canvas transforms and derives an obvious filename', () => {
@@ -359,6 +480,8 @@ describe('pen signing geometry', () => {
     expect(placement.offsetX).toBeCloseTo(0.2);
     expect(placement.offsetY).toBeCloseTo(0.2);
     expect(placement.scale).toBe(1);
+    expect(centeredInkPlacement([])).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
+    expect(placedInkBounds([], { offsetX: 1, offsetY: 1, scale: 2 })).toBeUndefined();
   });
 
   it('stamps every page, updates placement and removes individual stamps', () => {
@@ -419,5 +542,11 @@ describe('pen signing geometry', () => {
     expect(signingStampContainsPoint(stamp, { x: 0.55, y: 0.35 })).toBe(true);
     expect(signingStampContainsPoint(stamp, { x: 0.51, y: 0.29 })).toBe(true);
     expect(signingStampContainsPoint(stamp, { x: 0.8, y: 0.8 })).toBe(false);
+    expect(
+      signingStampContainsPoint(
+        { ...stamp, strokes: [] },
+        { x: 0.55, y: 0.35 },
+      ),
+    ).toBe(false);
   });
 });

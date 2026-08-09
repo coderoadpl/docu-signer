@@ -71,13 +71,13 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-01 after adding the signature pad dialog and
-      // high-fidelity iPad ink gestures. The database-free run is statements
-      // 80.80%, branches 86.59%, functions 78.80%, and lines 80.80%; each
-      // floor is that measured value rounded down.
+      // Re-measured 2026-08-01 after covering the signature pad gesture
+      // branches. The database-free run is statements 80.83%, branches 87.03%,
+      // functions 78.97%, and lines 80.83%; each floor is that measured value
+      // rounded down.
       thresholds: {
         statements: 80,
-        branches: 86,
+        branches: 87,
         functions: 78,
         lines: 80,
       },
