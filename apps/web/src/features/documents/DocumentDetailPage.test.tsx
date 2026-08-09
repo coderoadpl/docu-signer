@@ -153,24 +153,41 @@ describe('DocumentDetailPage', () => {
     expect(screen.getByText('1.0 KB')).toBeInTheDocument();
     expect(screen.getAllByText(/Podpisany skan/).length).toBeGreaterThan(0);
     expect(
-      screen.getByLabelText('Podgląd: oryginal-podpisany.pdf'),
+      screen.getByLabelText('Podgląd pliku oryginal.pdf'),
     ).toHaveAttribute(
-      'data',
-      `/api/documents/${DOCUMENT_ID}/files/${SIGNED_ID}/content`,
+      'href',
+      `/api/documents/${DOCUMENT_ID}/files/${SOURCE_ID}/content`,
     );
     expect(
-      screen.getAllByRole('link', { name: 'Eksportuj' }).at(0),
+      screen.getByLabelText('Podgląd pliku oryginal.pdf'),
+    ).toHaveAttribute('target', '_blank');
+    expect(
+      screen.getByLabelText('Pobierz plik oryginal.pdf'),
+    ).toHaveAttribute(
+      'href',
+      `/api/documents/${DOCUMENT_ID}/files/${SOURCE_ID}/content`,
+    );
+    expect(
+      screen.queryByRole('heading', { name: 'Podgląd' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Powiązane' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Eksportuj' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Podpisz' })).toHaveLength(2);
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'Więcej akcji dla pliku oryginal.pdf',
+      }),
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'Eksportuj' }),
     ).toHaveAttribute(
       'href',
       `/api/documents/${DOCUMENT_ID}/files/${SOURCE_ID}/export`,
     );
-    expect(screen.getAllByRole('button', { name: 'Podpisz' })).toHaveLength(2);
 
-    const deleteButton = screen
-      .getAllByRole('button', { name: 'Usuń' })
-      .at(0);
-    if (!deleteButton) throw new Error('Missing delete file button');
-    await userEvent.click(deleteButton);
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Usuń' }));
     expect(
       screen.getByRole('heading', { name: 'Usunąć plik?' }),
     ).toBeInTheDocument();
@@ -306,7 +323,7 @@ describe('DocumentDetailPage', () => {
     expect(finalize).toHaveBeenCalledOnce();
   });
 
-  it('shows related documents and moves a file to a new document', async () => {
+  it('moves a file to a new document from the overflow menu', async () => {
     const move = vi.fn();
     const movedDocument = {
       ...document,
@@ -341,12 +358,16 @@ describe('DocumentDetailPage', () => {
       },
     ]);
 
-    expect(await screen.findByText('Uchwała powiązana · Uchwała')).toBeInTheDocument();
-    const moveButton = screen
-      .getAllByRole('button', { name: 'Przenieś do nowego dokumentu' })
-      .at(0);
-    if (!moveButton) throw new Error('Missing move file button');
-    await userEvent.click(moveButton);
+    expect(await screen.findByText('oryginal.pdf')).toBeInTheDocument();
+    expect(screen.queryByText('Uchwała powiązana · Uchwała')).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'Więcej akcji dla pliku oryginal.pdf',
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Przenieś do nowego dokumentu' }),
+    );
     const dialog = screen.getByRole('dialog', { name: 'Przenieś do nowego dokumentu' });
     expect(within(dialog).getByRole('textbox', { name: 'Tytuł' })).toHaveValue('oryginal');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Przenieś' }));
