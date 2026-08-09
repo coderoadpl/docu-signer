@@ -210,7 +210,9 @@ describe('DocumentsPage', () => {
     );
     await renderPage();
 
-    expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
+    expect(
+      await screen.findByRole('rowheader', { name: 'Umowa z Anną' }),
+    ).toBeInTheDocument();
     vi.useFakeTimers();
     const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
     fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
@@ -231,7 +233,9 @@ describe('DocumentsPage', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     vi.useRealTimers();
-    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
+    expect(
+      await screen.findByRole('rowheader', { name: 'Protokół odbioru' }),
+    ).toBeInTheDocument();
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
   });
 
@@ -806,7 +810,7 @@ describe('DocumentsPage', () => {
     });
   });
 
-  it('persists column visibility and order and filters from tag chips', async () => {
+  it('preserves known columns from legacy preferences and filters from tag chips', async () => {
     const seen = vi.fn();
     const saved = vi.fn();
     server.use(
@@ -860,7 +864,6 @@ describe('DocumentsPage', () => {
       expect(saved).toHaveBeenCalledWith({
         value: {
           order: [
-            'title',
             'tags',
             'files',
             'documentDate',
@@ -870,19 +873,18 @@ describe('DocumentsPage', () => {
             'signatureStatus',
             'draft',
           ],
-          visible: ['title', 'tags', 'files'],
+          visible: ['tags', 'files'],
         },
       }),
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Przesuń w górę: Tagi' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Przesuń w dół: Tagi' }));
     await waitFor(() =>
       expect(saved).toHaveBeenLastCalledWith({
         value: {
           order: [
-            'tags',
-            'title',
             'files',
+            'tags',
             'documentDate',
             'docType',
             'person',
@@ -890,7 +892,7 @@ describe('DocumentsPage', () => {
             'signatureStatus',
             'draft',
           ],
-          visible: ['title', 'tags', 'files'],
+          visible: ['tags', 'files'],
         },
       }),
     );
