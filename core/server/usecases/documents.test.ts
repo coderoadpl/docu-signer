@@ -15,6 +15,7 @@ import {
 
 import type { DocumentRepository, StoragePort } from '../ports.js';
 import {
+  approveDocument,
   createDocument,
   deleteDocument,
   exportDocuments,
@@ -44,6 +45,7 @@ const staff = (tenantId: string | null, role: 'owner' | 'admin' = 'owner'): Iden
   tenantSlug: tenantId ? 'acme' : null,
   tenantName: tenantId ? 'Acme Inc' : null,
   staffRole: tenantId ? role : null,
+  apiToken: null,
 });
 
 const member: Identity = {
@@ -54,6 +56,7 @@ const member: Identity = {
   tenantSlug: 'acme',
   tenantName: 'Acme Inc',
   staffRole: null,
+  apiToken: null,
 };
 
 const documentRow = (tenantId = 'tenant-acme'): Document => ({
@@ -66,6 +69,7 @@ const documentRow = (tenantId = 'tenant-acme'): Document => ({
   periodEnd: null,
   person: null,
   tags: ['contract'],
+  draft: false,
   createdAt: '2026-07-01T10:00:00.000Z',
   updatedAt: '2026-07-01T10:00:00.000Z',
 });
@@ -116,6 +120,7 @@ const fake = (
     create: async (input) => {
       const created: Document = {
         ...input,
+        draft: input.draft ?? false,
         createdAt: '2026-07-01T10:00:00.000Z',
         updatedAt: '2026-07-01T10:00:00.000Z',
       };
@@ -131,6 +136,16 @@ const fake = (
       const updated = { ...current, ...input, updatedAt: '2026-07-02T10:00:00.000Z' };
       documents[index] = updated;
       return updated;
+    },
+    approve: async (tenantId, id) => {
+      const index = documents.findIndex(
+        (document) => document.tenantId === tenantId && document.id === id,
+      );
+      const current = documents[index];
+      if (!current) return null;
+      const approved = { ...current, draft: false, updatedAt: '2026-07-02T10:00:00.000Z' };
+      documents[index] = approved;
+      return approved;
     },
     delete: async (tenantId, id) => {
       const index = documents.findIndex(
@@ -256,6 +271,10 @@ describe('documents use-cases', () => {
         name: 'updateDocument',
         run: (deps) => updateDocument(ctx(visitor), documentId, createInput, deps),
       },
+      {
+        name: 'approveDocument',
+        run: (deps) => approveDocument(ctx(member), documentId, deps),
+      },
       { name: 'deleteDocument', run: (deps) => deleteDocument(ctx(member), documentId, deps) },
       {
         name: 'requestFileUpload',
@@ -318,6 +337,7 @@ describe('documents use-cases', () => {
         vi.spyOn(state.deps.documents, 'listFilesForDocuments'),
         vi.spyOn(state.deps.documents, 'create'),
         vi.spyOn(state.deps.documents, 'update'),
+        vi.spyOn(state.deps.documents, 'approve'),
         vi.spyOn(state.deps.documents, 'delete'),
         vi.spyOn(state.deps.documents, 'createFile'),
         vi.spyOn(state.deps.documents, 'findFile'),
@@ -362,9 +382,64 @@ describe('documents use-cases', () => {
         state.deps,
       ),
     ).toMatchObject({ ok: true, value: { title: 'Updated' } });
+    const draft = await createDocument(
+      ctx(staff('tenant-acme')),
+      { ...createInput, title: 'Draft', draft: true },
+      state.deps,
+    );
+    expect(draft).toMatchObject({ ok: true, value: { draft: true } });
+    if (!draft.ok) return;
+    expect(await approveDocument(ctx(staff('tenant-acme')), draft.value.id, state.deps)).toMatchObject({
+      ok: true,
+      value: { draft: false },
+    });
     expect(await deleteDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toEqual({
       ok: true,
       value: undefined,
+    });
+  });
+
+  it('enforces write:draft token restrictions on create, modify, delete, and approve', async () => {
+    const draftToken = {
+      ...staff('tenant-acme'),
+      apiToken: { id: '55555555-5555-4555-8555-555555555555', scopes: ['write:draft'] as const },
+    };
+    const state = fake([documentRow(), { ...documentRow(), id: movedDocumentId, draft: true }]);
+    expect(await createDocument(ctx(draftToken), createInput, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(
+      await createDocument(ctx(draftToken), { ...createInput, draft: true }, state.deps),
+    ).toMatchObject({ ok: true, value: { draft: true } });
+    expect(
+      await updateDocument(
+        ctx(draftToken),
+        documentId,
+        { ...createInput, title: 'Nope' },
+        state.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(
+      await serverUpload(
+        ctx(draftToken),
+        movedDocumentId,
+        {
+          fileName: 'draft.pdf',
+          contentType: 'application/pdf',
+          role: 'source',
+          bytes: new Uint8Array([1]),
+        },
+        state.deps,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(await deleteDocument(ctx(draftToken), movedDocumentId, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(await approveDocument(ctx(draftToken), movedDocumentId, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
     });
   });
 

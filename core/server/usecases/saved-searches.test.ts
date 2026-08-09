@@ -19,6 +19,7 @@ const staff = (tenantId: string | null, role: 'owner' | 'admin' = 'owner'): Iden
   tenantSlug: tenantId ? 'default' : null,
   tenantName: tenantId ? 'Archive' : null,
   staffRole: tenantId ? role : null,
+  apiToken: null,
 });
 
 const visitor: Identity = {
@@ -29,6 +30,7 @@ const visitor: Identity = {
   tenantSlug: 'a',
   tenantName: 'A',
   staffRole: null,
+  apiToken: null,
 };
 
 const row = (tenantId = 'tenant-a', id = savedSearchId): SavedSearch => ({

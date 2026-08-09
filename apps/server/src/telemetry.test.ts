@@ -23,6 +23,7 @@ const identity: Identity = {
   tenantSlug: 'acme',
   tenantName: 'Acme',
   staffRole: 'owner',
+  apiToken: null,
 };
 
 type Vars = { Variables: { identity?: Identity } };

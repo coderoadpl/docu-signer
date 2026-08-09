@@ -10,12 +10,16 @@ import {
   createTenantRepository,
 } from '#adapters/db/repositories.js';
 import { createAuth, createAuthPort, type Auth, type GoogleSettings } from '#adapters/auth/create-auth.js';
+import { createApiTokenSecrets } from '#adapters/auth/api-token-secrets.js';
+import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
 import { createLocalFsStorage } from '#adapters/storage/local-fs.js';
 import { createVercelBlobStorage } from '#adapters/storage/vercel-blob.js';
 import type {
   AuthPort,
+  ApiTokenRepository,
+  ApiTokenSecretPort,
   DocumentRepository,
   EmailPort,
   HealthPort,
@@ -32,6 +36,8 @@ import type { Env } from './env.js';
 export interface AppDeps {
   auth: Auth;
   authPort: AuthPort;
+  apiTokens: ApiTokenRepository;
+  apiTokenSecrets: ApiTokenSecretPort;
   documents: DocumentRepository;
   savedSearches: SavedSearchRepository;
   storage: StoragePort;
@@ -153,6 +159,8 @@ export const createDeps = (env: Env): AppDeps => {
   return {
     auth,
     authPort: createAuthPort(auth),
+    apiTokens: createApiTokenRepository(db),
+    apiTokenSecrets: createApiTokenSecrets(),
     documents: createDocumentRepository(db),
     savedSearches: createSavedSearchRepository(db),
     storage,

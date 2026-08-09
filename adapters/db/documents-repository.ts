@@ -62,6 +62,10 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     if (filter.signatureStatus === 'signed') {
       conditions.push(hasSignedFile);
     }
+    if (filter.draft === 'true') conditions.push(eq(documents.draft, true));
+    if (filter.draft === undefined || filter.draft === 'false') {
+      conditions.push(eq(documents.draft, false));
+    }
     const rows = await db
       .select()
       .from(documents)
@@ -106,6 +110,14 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     const rows = await db
       .update(documents)
       .set({ ...input, updatedAt: sql`now()` })
+      .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
+      .returning();
+    return rows[0] ? toDocument(rows[0]) : null;
+  },
+  approve: async (tenantId, documentId) => {
+    const rows = await db
+      .update(documents)
+      .set({ draft: false, updatedAt: sql`now()` })
       .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
       .returning();
     return rows[0] ? toDocument(rows[0]) : null;

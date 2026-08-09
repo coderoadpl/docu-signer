@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 import {
+  apiTokenSchema,
+  createApiTokenSchema,
   createDocumentSchema,
   documentFileSchema,
   documentListFilterSchema,
@@ -77,6 +79,10 @@ export const documentUpdateOutputSchema = z.object({
   document: documentSchema,
 });
 
+export const documentApproveOutputSchema = z.object({
+  document: documentSchema,
+});
+
 export const documentDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
@@ -132,6 +138,21 @@ export const savedSearchDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
+export const apiTokenCreateInputSchema = createApiTokenSchema;
+
+export const apiTokenCreateOutputSchema = z.object({
+  apiToken: apiTokenSchema,
+  value: z.string().min(1),
+});
+
+export const apiTokenListOutputSchema = z.object({
+  apiTokens: z.array(apiTokenSchema),
+});
+
+export const apiTokenRevokeOutputSchema = z.object({
+  revoked: z.literal(true),
+});
+
 export const PUBLIC_API_PREFIX = '/api/public';
 
 export const PUBLIC_API_ROUTES = {
@@ -169,6 +190,7 @@ export const API_ROUTES = {
   documentsCreate: { method: 'POST', path: '/api/documents' },
   document: { method: 'GET', path: '/api/documents/:documentId' },
   documentUpdate: { method: 'PATCH', path: '/api/documents/:documentId' },
+  documentApprove: { method: 'POST', path: '/api/documents/:documentId/approve' },
   documentDelete: { method: 'DELETE', path: '/api/documents/:documentId' },
   documentFileUploadRequest: {
     method: 'POST',
@@ -202,6 +224,9 @@ export const API_ROUTES = {
   savedSearches: { method: 'GET', path: '/api/saved-searches' },
   savedSearchesCreate: { method: 'POST', path: '/api/saved-searches' },
   savedSearchDelete: { method: 'DELETE', path: '/api/saved-searches/:savedSearchId' },
+  apiTokens: { method: 'GET', path: '/api/api-tokens' },
+  apiTokensCreate: { method: 'POST', path: '/api/api-tokens' },
+  apiTokenRevoke: { method: 'POST', path: '/api/api-tokens/:apiTokenId/revoke' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
