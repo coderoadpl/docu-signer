@@ -45,7 +45,6 @@ import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
-  FILE_ROLE_SYMBOLS,
   canSignPdfFile,
   fileNameStem,
   filesByRole,
@@ -267,15 +266,18 @@ const RoleFiles = ({
     if (file) onUpload(file, role);
   };
   return (
-    <Paper component="section" sx={{ p: 2 }}>
+    <Paper component="section" variant="outlined" sx={{ p: 2.5 }}>
       <Stack
         direction="row"
         sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
       >
-        <Typography variant="h2">
-          {FILE_ROLE_SYMBOLS[role]} {FILE_ROLE_LABELS[role]}
-        </Typography>
-        <Button component="label" variant="contained" disabled={uploading}>
+        <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}>
+          <Typography variant="h3" component="h3">
+            {FILE_ROLE_LABELS[role]}
+          </Typography>
+          {files.length ? <Chip size="small" label={files.length} /> : null}
+        </Stack>
+        <Button component="label" variant="outlined" size="small" disabled={uploading}>
           Wgraj plik
           <input
             hidden
@@ -452,7 +454,7 @@ export const DocumentDetailPage = ({
 
   return (
     <PageContainer>
-      <Button onClick={() => void navigate({ to: '/app/documents' })}>
+      <Button size="small" color="inherit" onClick={() => void navigate({ to: '/app/documents' })}>
         ← Dokumenty
       </Button>
       <Stack
@@ -470,12 +472,18 @@ export const DocumentDetailPage = ({
               label={DOCUMENT_TYPE_LABELS[document.docType]}
             />
           </Stack>
-          <Stack sx={{ mt: 1, gap: 0.5 }}>
-            <Typography>
+          <Stack sx={{ mt: 1.5, gap: 0.5 }}>
+            <Typography variant="body2" color="text.secondary">
               Data podpisania: {formatPolishDate(document.documentDate)}
             </Typography>
-            {period ? <Typography>Okres: {period}</Typography> : null}
-            <Typography>{document.person ?? 'Bez przypisanej osoby'}</Typography>
+            {period ? (
+              <Typography variant="body2" color="text.secondary">
+                Okres: {period}
+              </Typography>
+            ) : null}
+            <Typography variant="body2">
+              {document.person ?? 'Bez przypisanej osoby'}
+            </Typography>
           </Stack>
           {document.tags.length ? (
             <Stack
@@ -492,14 +500,14 @@ export const DocumentDetailPage = ({
           <Button variant="contained" onClick={() => setEditOpen(true)}>
             Edytuj
           </Button>
-          <Button color="error" onClick={() => setDeleteDocumentOpen(true)}>
+          <Button variant="outlined" color="error" onClick={() => setDeleteDocumentOpen(true)}>
             Usuń dokument
           </Button>
         </Stack>
       </Stack>
 
       <Divider sx={{ my: 4 }} />
-      <Typography variant="h1" component="h2" sx={{ mb: 3 }}>
+      <Typography variant="h2" component="h2" sx={{ mb: 3 }}>
         Pliki
       </Typography>
       <Stack sx={{ gap: 3 }}>

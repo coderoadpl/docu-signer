@@ -28,6 +28,7 @@ import {
   TableRow,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -48,7 +49,7 @@ import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
-  FILE_ROLE_SYMBOLS,
+  FILE_ROLE_SHORT_LABELS,
   SIGNATURE_STATUS_LABELS,
   documentFilterSummary,
   emptyDocumentFilters,
@@ -61,22 +62,41 @@ import {
   type DocumentFilterValues,
 } from './documents.logic.js';
 
-const FileCounts = ({ files }: { files: Array<{ role: string }> }) => (
-  <Stack direction="row" sx={{ gap: 0.5 }}>
-    {(['source', 'signed-scan', 'signed-digital'] as const).map((role) => {
-      const count = files.filter((file) => file.role === role).length;
-      return (
-        <Chip
+const FileCounts = ({ files }: { files: Array<{ role: string }> }) => {
+  const present = (['source', 'signed-scan', 'signed-digital', 'other'] as const)
+    .map((role) => ({
+      role,
+      count: files.filter((file) => file.role === role).length,
+    }))
+    .filter(({ count }) => count > 0);
+  if (present.length === 0) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        Brak plików
+      </Typography>
+    );
+  }
+  return (
+    <Stack direction="row" sx={{ gap: 0.5, flexWrap: 'wrap' }}>
+      {present.map(({ role, count }) => (
+        <Tooltip
           key={role}
-          size="small"
-          variant="outlined"
-          label={`${FILE_ROLE_SYMBOLS[role]} ${count}`}
-          aria-label={`${FILE_ROLE_LABELS[role]}: ${count}`}
-        />
-      );
-    })}
-  </Stack>
-);
+          title={`${FILE_ROLE_LABELS[role]}: ${count}`}
+          describeChild
+          disableInteractive
+        >
+          <Chip
+            size="small"
+            variant="outlined"
+            color={role === 'signed-scan' || role === 'signed-digital' ? 'success' : 'default'}
+            label={count > 1 ? `${FILE_ROLE_SHORT_LABELS[role]} · ${count}` : FILE_ROLE_SHORT_LABELS[role]}
+            aria-label={`${FILE_ROLE_LABELS[role]}: ${count}`}
+          />
+        </Tooltip>
+      ))}
+    </Stack>
+  );
+};
 
 type DocumentsView = 'list' | 'folders';
 
@@ -200,15 +220,15 @@ export const DocumentsPage = () => {
         </Tabs>
       ) : null}
 
-      {hasDocuments && view === 'list' ? <Paper sx={{ mt: 3, p: 2 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} sx={{ gap: 2 }}>
+      {hasDocuments && view === 'list' ? <Paper variant="outlined" sx={{ mt: 3, p: 2.5 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 2, flexWrap: 'wrap' }}>
           <TextField
             label="Szukaj po tytule"
             value={filters.text}
             onChange={(event) => updateFilter('text', event.target.value)}
-            sx={{ flex: 2 }}
+            sx={{ flex: { sm: '2 1 16rem' } }}
           />
-          <FormControl sx={{ minWidth: '10rem', flex: 1 }}>
+          <FormControl sx={{ minWidth: '10rem', flex: { sm: '1 1 10rem' } }}>
             <InputLabel id="filter-document-type">Typ</InputLabel>
             <Select
               labelId="filter-document-type"
@@ -234,7 +254,7 @@ export const DocumentsPage = () => {
             onChange={(_event, value) => updateFilter('person', value ?? '')}
             onInputChange={(_event, value) => updateFilter('person', value)}
             renderInput={(params) => <TextField {...params} label="Osoba" />}
-            sx={{ flex: 1 }}
+            sx={{ flex: { sm: '1 1 10rem' } }}
           />
           <Autocomplete
             freeSolo
@@ -243,7 +263,7 @@ export const DocumentsPage = () => {
             onChange={(_event, value) => updateFilter('tag', value ?? '')}
             onInputChange={(_event, value) => updateFilter('tag', value)}
             renderInput={(params) => <TextField {...params} label="Tag" />}
-            sx={{ flex: 1 }}
+            sx={{ flex: { sm: '1 1 10rem' } }}
           />
           <TextField
             label="Od"
@@ -251,6 +271,7 @@ export const DocumentsPage = () => {
             value={filters.dateFrom}
             onChange={(event) => updateFilter('dateFrom', event.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ minWidth: '9.5rem', flex: { sm: '1 1 9.5rem' } }}
           />
           <TextField
             label="Do"
@@ -258,8 +279,9 @@ export const DocumentsPage = () => {
             value={filters.dateTo}
             onChange={(event) => updateFilter('dateTo', event.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ minWidth: '9.5rem', flex: { sm: '1 1 9.5rem' } }}
           />
-          <FormControl sx={{ minWidth: '11rem', flex: 1 }}>
+          <FormControl sx={{ minWidth: '11rem', flex: { sm: '1 1 11rem' } }}>
             <InputLabel id="filter-signature-status">Status podpisu</InputLabel>
             <Select
               labelId="filter-signature-status"
@@ -281,12 +303,12 @@ export const DocumentsPage = () => {
               ))}
             </Select>
           </FormControl>
+        </Stack>
+        <Stack direction="row" sx={{ mt: 2, justifyContent: 'flex-end' }}>
           <Button
             variant="outlined"
             disabled={!filtersActive}
             onClick={() => setSavedSearchOpen(true)}
-            sx={{ alignSelf: { xs: 'stretch', md: 'center' } }}
-            style={{ whiteSpace: 'nowrap' }}
           >
             Zapisz teczkę
           </Button>
@@ -376,7 +398,7 @@ export const DocumentsPage = () => {
         sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end' }}
       >
         <Button
-          variant="contained"
+          variant="outlined"
           disabled={selectedIds.length === 0 || exportDocuments.isPending}
           onClick={() => exportDocuments.mutate({ documentIds: selectedIds })}
         >
@@ -484,7 +506,11 @@ export const DocumentsPage = () => {
             </Card>
           ))}
         </Stack>
-        <TableContainer component={Paper} sx={{ display: { xs: 'none', sm: 'block' }, mt: 4 }}>
+        <TableContainer
+          component={Paper}
+          variant="outlined"
+          sx={{ display: { xs: 'none', sm: 'block' }, mt: 4 }}
+        >
           <Table>
             <TableHead>
               <TableRow>
@@ -551,10 +577,19 @@ export const DocumentsPage = () => {
                       }
                     />
                   </TableCell>
-                  <TableCell>{formatPolishDate(document.documentDate)}</TableCell>
-                  <TableCell>{document.title}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary" noWrap>
+                      {formatPolishDate(document.documentDate)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="subtitle2" component="span">
+                      {document.title}
+                    </Typography>
+                  </TableCell>
                   <TableCell>
                     <Chip
+                      size="small"
                       variant="outlined"
                       label={DOCUMENT_TYPE_LABELS[document.docType]}
                     />
