@@ -71,15 +71,15 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-01 after merging main into the dates-and-teczki
-      // branch. The database-free run is statements 79.73%, branches 86.48%,
-      // functions 78.54%, and lines 79.73%; each floor is that measured value
-      // rounded down.
+      // Re-measured 2026-08-01 after merging the dates-and-teczki branch with
+      // the iPad signing gesture update. The database-free run is statements
+      // 80.62%, branches 87.01%, functions 78.62%, and lines 80.62%; each
+      // floor is that measured value rounded down.
       thresholds: {
-        statements: 79,
-        branches: 86,
+        statements: 80,
+        branches: 87,
         functions: 78,
-        lines: 79,
+        lines: 80,
       },
     },
     projects: [

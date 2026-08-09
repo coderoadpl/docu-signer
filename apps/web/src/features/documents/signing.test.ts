@@ -54,6 +54,16 @@ describe('pen signing geometry', () => {
     ).toThrow('positive dimensions');
   });
 
+  it('defines a legible navy ink for canvas and PDF flattening', () => {
+    expect(SIGNING_INK_COLORS[1]).toEqual(
+      expect.objectContaining({
+        id: 'navy',
+        canvasColor: '#2244aa',
+        pdfColor: { red: 0.13, green: 0.27, blue: 0.67 },
+      }),
+    );
+  });
+
   it('smooths a polyline with quadratic midpoints and preserves a dot', () => {
     const stroke: InkStroke = {
       points: [

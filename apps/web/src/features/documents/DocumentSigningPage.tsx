@@ -189,6 +189,7 @@ export const DocumentSigningPage = ({
   const [placement, setPlacement] = useState(DEFAULT_PLACEMENT);
   const [stamps, setStamps] = useState<SigningStamp[]>([]);
   const [selectedStampIndex, setSelectedStampIndex] = useState<number>();
+  const [fingerDrawing, setFingerDrawing] = useState(false);
   const [inkColorId, setInkColorId] = useState<SigningInkColorId>(
     DEFAULT_SIGNING_INK_COLOR.id,
   );
@@ -370,6 +371,9 @@ export const DocumentSigningPage = ({
       event.pressure,
       event.currentTarget.getBoundingClientRect(),
     );
+
+  const pointerDrawsInk = (event: ReactPointerEvent<HTMLCanvasElement>) =>
+    event.pointerType !== 'touch' || fingerDrawing;
 
   const finishPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (placing) {
@@ -567,6 +571,15 @@ export const DocumentSigningPage = ({
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
+            <ToggleButton
+              value="finger-drawing"
+              selected={fingerDrawing}
+              onChange={() => setFingerDrawing((current) => !current)}
+              disabled={committing}
+              aria-label="Rysowanie palcem"
+            >
+              Rysowanie palcem
+            </ToggleButton>
           </Stack>
           {placing ? (
             <Stack direction="row" sx={{ alignItems: 'center', gap: 2, mt: 1 }}>
@@ -645,10 +658,15 @@ export const DocumentSigningPage = ({
           aria-label="Powierzchnia do rysowania podpisu"
           aria-busy={!pageReady}
           tabIndex={0}
-          sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            touchAction: fingerDrawing ? 'none' : 'pan-x pan-y pinch-zoom',
+          }}
           onPointerDown={(event) => {
             if (!pageReady || !metrics || committing) return;
-            event.currentTarget.setPointerCapture(event.pointerId);
             if (placing) {
               const point = pointerPoint(event);
               const hit = signingStampsForPage(stamps, pageIndex)
@@ -664,22 +682,30 @@ export const DocumentSigningPage = ({
                   placement: hit.stamp.placement,
                   stampIndex: hit.stampIndex,
                 };
+                event.currentTarget.setPointerCapture(event.pointerId);
+                event.preventDefault();
                 return;
               }
               setSelectedStampIndex(undefined);
               if (!strokes.length) return;
+              if (!signingStampContainsPoint(draftStamp(pageIndex), point)) return;
               placementDragRef.current = {
                 pointerId: event.pointerId,
                 clientX: event.clientX,
                 clientY: event.clientY,
                 placement,
               };
+              event.currentTarget.setPointerCapture(event.pointerId);
+              event.preventDefault();
               return;
             }
+            if (!pointerDrawsInk(event)) return;
             const stroke = { points: [pointerPoint(event)] };
             activePointerRef.current = event.pointerId;
             currentStrokeRef.current = stroke;
             setActiveStroke(stroke);
+            event.currentTarget.setPointerCapture(event.pointerId);
+            event.preventDefault();
           }}
           onPointerMove={(event) => {
             const drag = placementDragRef.current;
@@ -700,6 +726,7 @@ export const DocumentSigningPage = ({
                   );
                 }
               }
+              event.preventDefault();
               return;
             }
             if (activePointerRef.current !== event.pointerId) return;
@@ -708,6 +735,7 @@ export const DocumentSigningPage = ({
             const next = { points: [...current.points, pointerPoint(event)] };
             currentStrokeRef.current = next;
             setActiveStroke(next);
+            event.preventDefault();
           }}
           onPointerUp={finishPointer}
           onPointerCancel={finishPointer}

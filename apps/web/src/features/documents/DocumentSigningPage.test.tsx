@@ -174,7 +174,35 @@ const enabledButton = async (name: string) => {
   return button;
 };
 
-const drawStroke = async (cancel = false) => {
+class RecordingCanvasContext {
+  strokeStyle = '';
+  lineCap: CanvasLineCap = 'butt';
+  lineJoin: CanvasLineJoin = 'miter';
+  lineWidth = 1;
+  readonly strokeStyles: string[] = [];
+  readonly clearRect = vi.fn();
+  readonly beginPath = vi.fn();
+  readonly moveTo = vi.fn();
+  readonly quadraticCurveTo = vi.fn();
+  readonly stroke = vi.fn(() => {
+    this.strokeStyles.push(this.strokeStyle);
+  });
+  readonly save = vi.fn();
+  readonly restore = vi.fn();
+  readonly setLineDash = vi.fn();
+  readonly strokeRect = vi.fn();
+}
+
+const installRecordingCanvasContext = () => {
+  const context = new RecordingCanvasContext();
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: () => context,
+  });
+  return context;
+};
+
+const signingCanvas = async () => {
   const canvas = await screen.findByRole('application', {
     name: 'Powierzchnia do rysowania podpisu',
   });
@@ -183,21 +211,35 @@ const drawStroke = async (cancel = false) => {
     expect(canvas).toHaveAttribute('width', '400');
     expect(screen.queryByLabelText('Renderowanie strony PDF')).not.toBeInTheDocument();
   });
+  return canvas;
+};
+
+const drawStroke = async (options: {
+  cancel?: boolean;
+  pointerId?: number;
+  pointerType?: string;
+} = {}) => {
+  const canvas = await signingCanvas();
+  const pointerId = options.pointerId ?? 8;
+  const pointerType = options.pointerType ?? 'pen';
   fireEvent.pointerDown(canvas, {
-    pointerId: 8,
+    pointerId,
+    pointerType,
     clientX: 20,
     clientY: 30,
     pressure: 0.25,
   });
-  expect(canvas.setPointerCapture).toHaveBeenCalledWith(8);
+  expect(canvas.setPointerCapture).toHaveBeenCalledWith(pointerId);
   fireEvent.pointerMove(canvas, {
-    pointerId: 8,
+    pointerId,
+    pointerType,
     clientX: 80,
     clientY: 90,
     pressure: 0.75,
   });
-  const finish = new PointerEvent(cancel ? 'pointercancel' : 'pointerup', {
-    pointerId: 8,
+  const finish = new PointerEvent(options.cancel ? 'pointercancel' : 'pointerup', {
+    pointerId,
+    pointerType,
     clientX: 80,
     clientY: 90,
     pressure: 0,
@@ -219,10 +261,71 @@ describe('DocumentSigningPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cofnij kreskę' }));
     expect(save).toBeDisabled();
 
-    await drawStroke(true);
+    await drawStroke({ cancel: true });
     await waitFor(() => expect(save).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Wyczyść' }));
     expect(save).toBeDisabled();
+  });
+
+  it('lets pen draw while touch scrolls by default', async () => {
+    await renderPage();
+    const save = await screen.findByRole('button', {
+      name: 'Zapisz podpisany PDF',
+    });
+    const canvas = await signingCanvas();
+
+    fireEvent.pointerDown(canvas, {
+      pointerId: 11,
+      pointerType: 'touch',
+      clientX: 20,
+      clientY: 30,
+      pressure: 0.5,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 11,
+      pointerType: 'touch',
+      clientX: 80,
+      clientY: 90,
+      pressure: 0.5,
+    });
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 11,
+        pointerType: 'touch',
+        bubbles: true,
+      }),
+    );
+
+    expect(canvas.setPointerCapture).not.toHaveBeenCalledWith(11);
+    expect(save).toBeDisabled();
+
+    await drawStroke({ pointerId: 12, pointerType: 'pen' });
+    await waitFor(() => expect(save).toBeEnabled());
+  });
+
+  it('draws touch strokes when finger drawing is enabled', async () => {
+    await renderPage();
+    const save = await screen.findByRole('button', {
+      name: 'Zapisz podpisany PDF',
+    });
+    expect(save).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rysowanie palcem' }));
+    await drawStroke({ pointerId: 13, pointerType: 'touch' });
+
+    await waitFor(() => expect(save).toBeEnabled());
+  });
+
+  it('uses the selected navy ink for live canvas strokes', async () => {
+    const context = installRecordingCanvasContext();
+    await renderPage();
+
+    await signingCanvas();
+    fireEvent.click(screen.getByRole('button', { name: 'Granatowy' }));
+    await drawStroke();
+
+    await waitFor(() => expect(context.strokeStyles).toContain('#2244aa'));
   });
 
   it('flattens and finalizes a new signed-digital PDF through direct upload', async () => {
@@ -299,7 +402,8 @@ describe('DocumentSigningPage', () => {
             pageIndex: 0,
             inkColor: expect.objectContaining({
               id: 'navy',
-              canvasColor: '#1c2a5e',
+              canvasColor: '#2244aa',
+              pdfColor: { red: 0.13, green: 0.27, blue: 0.67 },
             }),
           }),
           metrics: expect.objectContaining({
@@ -334,6 +438,59 @@ describe('DocumentSigningPage', () => {
     fireEvent.click(await enabledButton('Usuń'));
 
     expect(screen.getByText('Położenie bieżącego rysunku')).toBeInTheDocument();
+  });
+
+  it('drags an existing stamp with touch in placement mode', async () => {
+    installUploadHandlers();
+    await renderPage();
+    await drawStroke();
+
+    fireEvent.click(await enabledButton('Przybij na tej stronie'));
+    expect(
+      await screen.findByText('Wybrany odcisk: strona 1'),
+    ).toBeInTheDocument();
+
+    const canvas = await signingCanvas();
+    fireEvent.pointerDown(canvas, {
+      pointerId: 14,
+      pointerType: 'touch',
+      clientX: 50,
+      clientY: 60,
+      pressure: 0.5,
+    });
+    expect(canvas.setPointerCapture).toHaveBeenCalledWith(14);
+    fireEvent.pointerMove(canvas, {
+      pointerId: 14,
+      pointerType: 'touch',
+      clientX: 70,
+      clientY: 90,
+      pressure: 0.5,
+    });
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 14,
+        pointerType: 'touch',
+        bubbles: true,
+      }),
+    );
+
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+    await waitFor(() =>
+      expect(pdfMocks.flatten).toHaveBeenCalledWith(
+        expect.any(Uint8Array),
+        [
+          expect.objectContaining({
+            stamp: expect.objectContaining({
+              placement: expect.objectContaining({
+                offsetX: 0.1,
+                offsetY: 0.1,
+              }),
+            }),
+          }),
+        ],
+      ),
+    );
   });
 
   it('stamps the draft on every page before flattening', async () => {
