@@ -2,6 +2,7 @@ import type { ReadResult, WriteResult } from './http.js';
 
 export interface AuthSessionResult {
   token: string | null;
+  twoFactorRequired?: boolean;
 }
 
 /** A social identity provider the app can offer (FR-26). */
@@ -59,7 +60,7 @@ export interface AuthClientPort {
   /** US-028a: turn on TOTP 2FA, returning the enrolment URI + backup codes. */
   enableTwoFactor(input: { password: string }): Promise<WriteResult<TwoFactorEnableResult>>;
   /** US-028a: confirm enrolment (or step-up) with a code from the authenticator. */
-  verifyTotp(input: { code: string }): Promise<WriteResult<void>>;
+  verifyTotp(input: { code: string }): Promise<WriteResult<AuthSessionResult>>;
   /** US-028a: turn off TOTP 2FA (re-auth with the account password). */
   disableTwoFactor(input: { password: string }): Promise<WriteResult<void>>;
   /** US-028a: register a new passkey (WebAuthn ceremony) under a display name. */

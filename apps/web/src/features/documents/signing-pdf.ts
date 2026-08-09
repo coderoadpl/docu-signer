@@ -1,7 +1,8 @@
-import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { z } from 'zod';
 
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+// Safari/WebKit lacks Map.getOrInsertComputed, which pdf.js' modern build uses.
+import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 import {
   inkToPdfSegments,
@@ -30,7 +31,7 @@ export interface SigningStampWithMetrics {
 }
 
 export const loadSourcePdf = async (bytes: Uint8Array): Promise<LoadedSourcePdf> => {
-  const pdfjs = await import('pdfjs-dist');
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   const loading = pdfjs.getDocument({ data: bytes.slice() });
   const document = await loading.promise;

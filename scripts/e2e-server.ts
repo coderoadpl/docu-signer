@@ -1,4 +1,4 @@
-import { exec, spawn } from 'node:child_process';
+import { exec, spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 import { join } from 'node:path';
 
@@ -92,22 +92,30 @@ const isPortFree = (port: number): Promise<boolean> =>
     probe.listen(port, '0.0.0.0');
   });
 
+const forceFreePort = (port: number): Promise<void> =>
+  new Promise((resolve) => {
+    const command =
+      process.platform === 'win32'
+        ? `for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port}') do taskkill /F /PID %a`
+        : `lsof -ti tcp:${port} | xargs kill -TERM`;
+    exec(command, () => resolve());
+  });
+
 // A hardcoded port keeps the Playwright baseURL static, but on CI a leftover
 // listener or a TIME_WAIT socket from an earlier run in the same job makes the
 // server's bind fail with EADDRINUSE — killing the whole e2e job before any
 // test runs, which `retries` cannot recover. Wait the transient out, and after
-// a grace period force-free the port (fuser is Linux-only; the exec no-ops
-// elsewhere — dev reuses the existing server anyway).
+// a grace period force-free the dedicated e2e port.
 const ensurePortFree = async (port: number): Promise<void> => {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     if (await isPortFree(port)) return;
-    if (attempt === 4) await new Promise<void>((resolve) => exec(`fuser -k ${port}/tcp`, () => resolve()));
+    if (attempt === 4) await forceFreePort(port);
     await delay(500);
   }
   throw new SmokeFailure(`port ${port} is still occupied after 10s; cannot boot the e2e server`);
 };
 
-const bootServer = (): void => {
+const bootServer = (): ChildProcess => {
   const child = spawn(tsxBin, ['apps/server/src/entry.node.ts'], {
     cwd: rootDir,
     stdio: 'inherit',
@@ -134,11 +142,12 @@ const bootServer = (): void => {
   };
   process.on('SIGTERM', () => forward('SIGTERM'));
   process.on('SIGINT', () => forward('SIGINT'));
+  return child;
 };
 
 const waitForHealth = async (): Promise<void> => {
   const healthUrl = `http://localhost:${PORT}/api/health`;
-  const deadline = Date.now() + 20000;
+  const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
     try {
       const response = await fetch(healthUrl);
@@ -148,8 +157,10 @@ const waitForHealth = async (): Promise<void> => {
     }
     await delay(300);
   }
-  throw new SmokeFailure(`e2e server did not become ready within 20s on port ${PORT}`);
+  throw new SmokeFailure(`e2e server did not become ready within 60s on port ${PORT}`);
 };
+
+let serverChild: ChildProcess | undefined;
 
 try {
   console.log('e2e: preparing isolated database...');
@@ -164,10 +175,11 @@ try {
   await buildWeb();
   await ensurePortFree(PORT);
   console.log(`e2e: booting server on port ${PORT}...`);
-  bootServer();
+  serverChild = bootServer();
   await waitForHealth();
   console.log(`e2e: server ready on http://localhost:${PORT}`);
 } catch (error) {
+  serverChild?.kill('SIGTERM');
   const message = error instanceof SmokeFailure ? error.message : String(error);
   console.error(`\ne2e setup: FAIL\n${message}`);
   process.exit(1);

@@ -124,12 +124,14 @@ configuration applies a three-day (`4320` minute) minimum-release-age cooldown.
 
 Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
 <!--count:integration-tests-->12<!--/count--> integration tests against a real
-Postgres and <!--count:e2e-tests-->9<!--/count--> Playwright tests across
-<!--count:e2e-specs-->5<!--/count--> spec files:
+Postgres and <!--count:e2e-tests-->10<!--/count--> Playwright test executions
+across <!--count:e2e-specs-->5<!--/count--> spec files: Chromium covers all
+five, and WebKit reruns `documents.spec.ts` to pin the Safari/pdf.js legacy
+regression.
 
 ```bash
 pnpm run test:integration   # repositories, against a real Postgres
-pnpm run e2e                # real Chromium over the real stack
+pnpm run e2e                # Chromium all specs + WebKit documents over the real stack
 ```
 
 <!--count:config-regression-->40<!--/count--> config-regression probes guard the

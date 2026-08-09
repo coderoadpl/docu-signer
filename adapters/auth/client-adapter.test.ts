@@ -73,11 +73,12 @@ interface JsonCall {
   method: string | undefined;
   origin: string | null;
   authorization: string | null;
+  cookie: string | null;
   body: unknown;
 }
 
 const mockJsonFetch = (
-  responder: (call: JsonCall) => { ok: boolean; status: number; json?: unknown; headers?: Record<string, string> },
+  responder: (call: JsonCall) => { ok: boolean; status: number; json?: unknown; headers?: Record<string, string>; setCookie?: string[] },
 ): (() => JsonCall | null) => {
   let captured: JsonCall | null = null;
   vi.stubGlobal(
@@ -89,15 +90,20 @@ const mockJsonFetch = (
         method: init?.method,
         origin: headers.get('origin'),
         authorization: headers.get('authorization'),
+        cookie: headers.get('cookie'),
         body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
       };
       const res = responder(captured);
+      const responseHeaders = new Headers(res.headers ?? {});
       return Promise.resolve({
         ok: res.ok,
         status: res.status,
         json: async () => Promise.resolve(res.json ?? {}),
         text: async () => Promise.resolve(''),
-        headers: new Headers(res.headers ?? {}),
+        headers: {
+          get: (name: string) => responseHeaders.get(name),
+          getSetCookie: () => res.setCookie ?? [],
+        },
       });
     }),
   );
@@ -162,8 +168,51 @@ describe('createCliAuthAdapter social + 2FA', () => {
   it('verifyTotp and disableTwoFactor return ok on success', async () => {
     mockJsonFetch(() => ({ ok: true, status: 200, json: {} }));
     const adapter = createCliAuthAdapter('http://localhost:47100', () => {}, () => 'tok-1');
-    expect(await adapter.verifyTotp({ code: '123456' })).toEqual({ ok: true, value: undefined });
+    expect(await adapter.verifyTotp({ code: '123456' })).toEqual({ ok: true, value: { token: null } });
     expect(await adapter.disableTwoFactor({ password: 'pw' })).toEqual({ ok: true, value: undefined });
+  });
+
+  it('replays the temporary two-factor cookie and stores the verified session token', async () => {
+    const calls: JsonCall[] = [];
+    let savedToken: string | null = null;
+    mockJsonFetch((call) => {
+      calls.push(call);
+      if (call.url.endsWith('/api/auth/sign-in/email')) {
+        return {
+          ok: true,
+          status: 200,
+          json: { twoFactorRedirect: true, twoFactorMethods: ['totp'] },
+          setCookie: ['better-auth.two_factor=tmp-2fa; Path=/; HttpOnly'],
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: { token: 'tok-2fa' },
+        headers: { 'set-auth-token': 'tok-2fa' },
+      };
+    });
+    const adapter = createCliAuthAdapter('http://localhost:47100', (token) => {
+      savedToken = token;
+    }, () => 'old-token');
+
+    await expect(adapter.signIn({ email: 'tfa@example.com', password: 'pw' })).resolves.toEqual({
+      ok: true,
+      value: { token: null, twoFactorRequired: true },
+    });
+    await expect(adapter.verifyTotp({ code: '123456' })).resolves.toEqual({
+      ok: true,
+      value: { token: 'tok-2fa' },
+    });
+
+    expect(calls[0]).toMatchObject({ authorization: null, cookie: null });
+    expect(calls[1]).toMatchObject({
+      url: 'http://localhost:47100/api/auth/two-factor/verify-totp',
+      authorization: null,
+      cookie: 'better-auth.two_factor=tmp-2fa',
+      body: { code: '123456' },
+    });
+    expect(savedToken).toBe('tok-2fa');
   });
 });
 
@@ -209,7 +258,7 @@ describe('createBetterAuthClientAdapter (web)', () => {
   it('verifyTotp and disableTwoFactor resolve ok on success', async () => {
     stubJsonResponse({ status: true });
     const adapter = createBetterAuthClientAdapter('http://localhost:47100');
-    expect((await adapter.verifyTotp({ code: '123456' })).ok).toBe(true);
+    expect(await adapter.verifyTotp({ code: '123456' })).toEqual({ ok: true, value: { token: null } });
     expect((await adapter.disableTwoFactor({ password: 'pw' })).ok).toBe(true);
   });
 });

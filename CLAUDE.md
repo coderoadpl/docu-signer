@@ -57,10 +57,12 @@ TEST: the retry-plus-trace config itself surfaces and records every flake ·
 REVIEW+AI: the PR-template line; a rerun-to-green merge without a filed P1 is
 rejected.)
 
-- `pnpm run e2e` = the **browser** gate: Playwright drives a real Chromium over
+- `pnpm run e2e` = the **browser** gate: Playwright drives real browsers over
   the real stack (isolated `agentproofarch_e2e` DB, `localhost` registered as a
-  single-tenant custom domain, `entry.node.ts` serving the built bundle) across
-  five spec files (9 tests): `app.spec.ts` (login → archive navigation →
+  single-tenant custom domain, `entry.node.ts` serving the built bundle): Chromium
+  covers all five spec files (9 tests), and WebKit reruns `documents.spec.ts` to
+  pin the Safari/pdf.js legacy regression (10 test executions total):
+  `app.spec.ts` (login → archive navigation →
   failed-login → cache headers → liveness/readiness → anonymous redirect to login),
   `documents.spec.ts` (create → role uploads → paired preview → export),
   `magic-link.spec.ts` (trusted-user sign-in), `passkey.spec.ts`
