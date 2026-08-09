@@ -1,82 +1,33 @@
 import { MutationObserver, QueryClient } from '@tanstack/query-core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { err, internal, ok } from '#core/domain/index.js';
-
-import type { AuthClientPort } from './auth-port.js';
-import { ApiError, type ApiClient } from './http.js';
+import { ApiError, createApiClient } from './http.js';
 import {
-  addCardMutation,
-  addTodoInvalidates,
-  addTodoMutation,
-  cardsInvalidates,
-  cardsQuery,
-  cardsScopes,
   createDocumentMutation,
-  createTenantMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
   directFileUploadMutation,
   documentQuery,
   documentsInvalidates,
   documentsQuery,
-  documentsScopes,
-  ensureMemberInvalidates,
-  ensureMemberMutation,
   exportDocumentsMutation,
   finalizeFileUploadMutation,
-  membersQuery,
-  membersScopes,
   meQuery,
-  meScopes,
-  moveCardMutation,
-  passkeysQuery,
-  registerPasskeyMutation,
-  removePasskeyMutation,
   requestFileUploadMutation,
-  signInMutation,
-  signInPasskeyMutation,
-  signOutMutation,
-  signUpMutation,
-  tenantsQuery,
-  tenantsScopes,
-  todosQuery,
-  todosScopes,
   updateDocumentMutation,
   uploadDocumentFileMutation,
 } from './queries.js';
 
-const todo = {
-  id: 'todo-1',
-  tenantId: 't-acme',
-  title: 'Ship it',
-  createdBy: 'u1',
-  createdAt: '2026-07-03T00:00:00.000Z',
-};
-
-const card = {
-  id: 'card-1',
-  tenantId: 't-acme',
-  title: 'Card one',
-  board: 'personal' as const,
-  column: 'todo',
-  position: 0,
-  visited: ['todo'],
-  createdAt: '2026-07-03T00:00:00.000Z',
-};
-
-const tenant = { id: 't-acme', slug: 'acme', name: 'Acme Inc' };
-
 const document = {
   id: '11111111-1111-4111-8111-111111111111',
-  tenantId: 't-acme',
-  title: 'Agreement',
+  tenantId: 'tenant-default',
+  title: 'Umowa',
   docType: 'umowa-uod' as const,
-  documentDate: '2026-07-01',
+  documentDate: '2026-08-01',
   person: null,
   tags: [],
-  createdAt: '2026-07-03T00:00:00.000Z',
-  updatedAt: '2026-07-03T00:00:00.000Z',
+  createdAt: '2026-08-01T00:00:00.000Z',
+  updatedAt: '2026-08-01T00:00:00.000Z',
 };
 
 const documentFile = {
@@ -86,276 +37,90 @@ const documentFile = {
   fileName: 'agreement.pdf',
   contentType: 'application/pdf',
   sizeBytes: 3,
-  storageKey: 'documents/t-acme/document/file',
-  createdAt: '2026-07-03T00:00:00.000Z',
+  storageKey: 'documents/tenant-default/document/file',
+  createdAt: '2026-08-01T00:00:00.000Z',
 };
 
-const member = {
-  id: 'member-1',
-  tenantId: 't-acme',
-  userId: null,
-  email: 'alice@example.com',
-  displayName: 'Alice',
-  tags: ['vip'],
-  marketingConsents: [],
-  externalCustomerIds: [],
-  createdAt: '2026-07-03T00:00:00.000Z',
-  lastSeenAt: null,
-};
+const response = (data: unknown) =>
+  Promise.resolve(new Response(JSON.stringify({ ok: true, data }), { status: 200 }));
 
-const happyApi: ApiClient = {
-  health: async () => ok({ status: 'ok', version: '0.1.0', sha: 'test-sha', database: 'up' }),
-  healthLive: async () => ok({ status: 'ok', version: '0.1.0', sha: 'test-sha' }),
-  healthReady: async () => ok({ status: 'ok', version: '0.1.0', sha: 'test-sha', database: 'up' }),
-  config: async () => ok({ googleEnabled: false }),
-  me: async () => ok({ userId: 'u1', email: 'demo@example.com', name: 'Demo', tenant: null }),
-  listTenants: async () => ok({ tenants: [{ tenant, staffRole: 'owner' }] }),
-  createTenant: async (input) => ok({ tenant: { id: 't-new', slug: input.slug, name: input.name } }),
-  listTodos: async () => ok({ todos: [todo] }),
-  addTodo: async (input) => ok({ todo: { ...todo, title: input.title } }),
-  listDocuments: async () => ok({ documents: [{ ...document, files: [] }] }),
-  createDocument: async (input) =>
-    ok({
-      document: {
-        ...document,
-        ...input,
-        person: input.person ?? null,
-        tags: input.tags ?? [],
-      },
-    }),
-  getDocument: async () => ok({ document: { ...document, files: [] } }),
-  updateDocument: async (_id, input) =>
-    ok({
-      document: {
-        ...document,
-        ...input,
-        person: input.person ?? null,
-        tags: input.tags ?? [],
-      },
-    }),
-  deleteDocument: async () => ok({ deleted: true }),
-  requestFileUpload: async () =>
-    ok({ upload: { kind: 'server', key: documentFile.storageKey } }),
-  finalizeFileUpload: async () => ok({ file: documentFile }),
-  uploadDocumentFile: async () => ok({ file: documentFile }),
-  deleteDocumentFile: async () => ok({ deleted: true }),
-  downloadDocumentFile: async () => err(internal('unused')),
-  exportDocumentFile: async () => err(internal('unused')),
-  exportDocuments: async () =>
-    ok({
-      bytes: new Uint8Array([1]),
-      contentType: 'application/zip',
-      fileName: 'documents.zip',
-    }),
-  documentFileContentUrl: () => '/content',
-  documentFileExportUrl: () => '/export',
-  directFileUpload: async () => ok(undefined),
-  listCards: async () => ok({ cards: [card] }),
-  addCard: async (input) => ok({ card: { ...card, title: input.title, column: input.column } }),
-  moveCard: async (input) => ok({ card: { ...card, column: input.toColumn, position: input.toIndex } }),
-  listMembers: async () => ok({ items: [member], members: [member], nextCursor: null }),
-  ensureMember: async (input) => ok({ member: { ...member, email: input.email }, created: true }),
-  updateMember: async (input) => ok({ member: { ...member, id: input.id } }),
-  removeMember: async (input) => ok({ memberId: input.id, deleted: { members: 1 } }),
-  exportMember: async (id) => ok({ exportedAt: '2026-07-10T00:00:00.000Z', tenantId: 't-acme', member: { ...member, id } }),
-  listStaff: async () => {
-    const staff = [{ id: 'g-1', userId: 'u1', email: 'demo@example.com', name: 'Demo', role: 'owner' as const }];
-    return ok({ items: staff, staff, nextCursor: null });
-  },
-  grantStaff: async (input) => ok({ staff: { id: 'g-new', userId: 'u-new', email: input.email, name: 'New', role: 'admin' }, granted: true }),
-  revokeStaff: async (input) => ok({ userId: input.userId ?? 'u-x', revoked: 1 }),
-  listDomains: async () =>
-    ok({
-      domains: [{ id: 'd-1', tenantId: 't-acme', domain: 'shop.acme.com', kind: 'custom', verified: true }],
-      target: { cname: 'apps.example.com', ip: null },
-    }),
-  addDomain: async (input) =>
-    ok({ domain: { id: 'd-new', tenantId: 't-acme', domain: input.domain, kind: 'custom', verified: false } }),
-  checkDomain: async (input) =>
-    ok({
-      domain: { id: 'd-1', tenantId: 't-acme', domain: input.domain, kind: 'custom', verified: true },
-      check: { resolved: true, detail: 'ok' },
-    }),
-  removeDomain: async (input) => ok({ domain: input.domain, removed: 1 }),
-  publicTenantDiscovery: async (slug) => ok({ slug, contentVersion: 'v1' }),
-  publicTenantProfile: async (slug) => ok({ slug, displayName: 'Acme Inc', contentVersion: 'v1' }),
-};
-
-const sadApi: ApiClient = {
-  health: async () => err(internal('boom')),
-  healthLive: async () => err(internal('boom')),
-  healthReady: async () => err({ code: 'unavailable', message: 'db down' }),
-  me: async () => err({ code: 'unauthorized', message: 'Login required' }),
-  listTenants: async () => err(internal('boom')),
-  createTenant: async () => err({ code: 'conflict', message: 'Already exists' }),
-  config: async () => err(internal('boom')),
-  listTodos: async () => err(internal('boom')),
-  addTodo: async () => err(internal('boom')),
-  listDocuments: async () => err(internal('boom')),
-  createDocument: async () => err(internal('boom')),
-  getDocument: async () => err(internal('boom')),
-  updateDocument: async () => err(internal('boom')),
-  deleteDocument: async () => err(internal('boom')),
-  requestFileUpload: async () => err(internal('boom')),
-  finalizeFileUpload: async () => err(internal('boom')),
-  uploadDocumentFile: async () => err(internal('boom')),
-  deleteDocumentFile: async () => err(internal('boom')),
-  downloadDocumentFile: async () => err(internal('boom')),
-  exportDocumentFile: async () => err(internal('boom')),
-  exportDocuments: async () => err(internal('boom')),
-  documentFileContentUrl: () => '/content',
-  documentFileExportUrl: () => '/export',
-  directFileUpload: async () => err(internal('boom')),
-  listCards: async () => err(internal('boom')),
-  addCard: async () => err(internal('boom')),
-  moveCard: async () => err(internal('boom')),
-  listMembers: async () => err(internal('boom')),
-  ensureMember: async () => err(internal('boom')),
-  updateMember: async () => err(internal('boom')),
-  removeMember: async () => err(internal('boom')),
-  exportMember: async () => err(internal('boom')),
-  listStaff: async () => err(internal('boom')),
-  grantStaff: async () => err(internal('boom')),
-  revokeStaff: async () => err(internal('boom')),
-  listDomains: async () => err(internal('boom')),
-  addDomain: async () => err(internal('boom')),
-  checkDomain: async () => err(internal('boom')),
-  removeDomain: async () => err(internal('boom')),
-  publicTenantDiscovery: async () => err(internal('boom')),
-  publicTenantProfile: async () => err(internal('boom')),
-};
+const errorResponse = (code: 'conflict' | 'unauthorized', message: string) =>
+  Promise.resolve(
+    new Response(JSON.stringify({ ok: false, error: { code, message } }), { status: 400 }),
+  );
 
 const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-describe('query descriptors', () => {
-  it('carry the resource scope as their query key', () => {
-    expect(meQuery(happyApi).queryKey).toEqual(meScopes.all());
-    expect(tenantsQuery(happyApi).queryKey).toEqual(tenantsScopes.all());
-    expect(todosQuery(happyApi).queryKey).toEqual(todosScopes.lists());
-    expect(documentsQuery(happyApi).queryKey).toEqual(
-      documentsScopes.list({}),
+describe('document query descriptors', () => {
+  it('executes the list queryFn and unwraps its API result', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => response({ documents: [] }));
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+    const query = documentsQuery(api, { text: 'umowa' });
+
+    expect(query.queryKey).toEqual(['documents', 'list', { text: 'umowa' }]);
+    await expect(newClient().fetchQuery(query)).resolves.toEqual({ documents: [] });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('/api/documents?text=umowa');
+    expect(documentsInvalidates()).toEqual({ queryKey: ['documents'] });
+  });
+
+  it('executes the detail queryFn and builds identity scope', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      response({ document: { ...document, files: [] } }),
     );
-    expect(documentQuery(happyApi, document.id).queryKey).toEqual(
-      documentsScopes.detail(document.id),
-    );
-    expect(cardsQuery(happyApi).queryKey).toEqual(cardsScopes.list('personal'));
-    expect(membersQuery(happyApi).queryKey).toEqual(membersScopes.lists());
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+    const query = documentQuery(api, document.id);
+
+    expect(meQuery(api).queryKey).toEqual(['me']);
+    expect(query.queryKey).toEqual(['documents', 'detail', document.id]);
+    await expect(newClient().fetchQuery(query)).resolves.toEqual({
+      document: { ...document, files: [] },
+    });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(`/api/documents/${document.id}`);
   });
 
-  it('unwrap the Result value through the queryFn on success', async () => {
-    const client = newClient();
+  it('propagates a failed read as ApiError', async () => {
+    const api = createApiClient({
+      baseUrl: '',
+      fetchImpl: () => errorResponse('unauthorized', 'Sign in'),
+    });
 
-    await expect(client.fetchQuery(meQuery(happyApi))).resolves.toEqual({
-      userId: 'u1',
-      email: 'demo@example.com',
-      name: 'Demo',
-      tenant: null,
+    await expect(newClient().fetchQuery(documentsQuery(api))).rejects.toMatchObject({
+      name: 'ApiError',
+      appError: { code: 'unauthorized', message: 'Sign in' },
     });
-    await expect(client.fetchQuery(tenantsQuery(happyApi))).resolves.toEqual({
-      tenants: [{ tenant, staffRole: 'owner' }],
-    });
-    await expect(client.fetchQuery(todosQuery(happyApi))).resolves.toEqual({ todos: [todo] });
-    await expect(client.fetchQuery(documentsQuery(happyApi))).resolves.toEqual({
-      documents: [{ ...document, files: [] }],
-    });
-    await expect(
-      client.fetchQuery(documentQuery(happyApi, document.id)),
-    ).resolves.toEqual({ document: { ...document, files: [] } });
-    await expect(client.fetchQuery(cardsQuery(happyApi))).resolves.toEqual({ cards: [card] });
-    await expect(client.fetchQuery(membersQuery(happyApi))).resolves.toEqual({
-      items: [member],
-      members: [member],
-      nextCursor: null,
-    });
-  });
-
-  it('follows member cursors until null for web roster consumers', async () => {
-    const calls: unknown[] = [];
-    const second = { ...member, id: 'member-2', email: 'bob@example.com' };
-    const pagedApi: ApiClient = {
-      ...happyApi,
-      listMembers: async (query) => {
-        calls.push(query);
-        return query?.cursor === undefined
-          ? ok({ items: [member], members: [member], nextCursor: 'page-2' })
-          : ok({ items: [second], members: [second], nextCursor: null });
-      },
-    };
-
-    await expect(newClient().fetchQuery(membersQuery(pagedApi))).resolves.toEqual({
-      items: [member, second],
-      members: [member, second],
-      nextCursor: null,
-    });
-    expect(calls).toEqual([{}, { cursor: 'page-2' }]);
-  });
-
-  it('throw an ApiError carrying the AppError when the call fails', async () => {
-    const client = newClient();
-
-    await expect(client.fetchQuery(meQuery(sadApi))).rejects.toBeInstanceOf(ApiError);
-    await expect(client.fetchQuery(meQuery(sadApi))).rejects.toMatchObject({
-      appError: { code: 'unauthorized' },
-    });
+    await expect(newClient().fetchQuery(documentsQuery(api))).rejects.toBeInstanceOf(ApiError);
   });
 });
 
-describe('mutation descriptors', () => {
-  it('carry a create-suffixed mutation key', () => {
-    expect(createTenantMutation(happyApi).mutationKey).toEqual([...tenantsScopes.all(), 'create']);
-    expect(addTodoMutation(happyApi).mutationKey).toEqual([...todosScopes.all(), 'create']);
-    expect(addCardMutation(happyApi).mutationKey).toEqual([...cardsScopes.all(), 'create']);
-    expect(moveCardMutation(happyApi).mutationKey).toEqual([...cardsScopes.all(), 'move']);
-    expect(ensureMemberMutation(happyApi).mutationKey).toEqual([...membersScopes.all(), 'ensure']);
-    expect(ensureMemberInvalidates()).toEqual({ queryKey: membersScopes.lists() });
-  });
-
-  it('unwrap the write Result through the mutationFn on success', async () => {
-    const client = newClient();
-
-    await expect(
-      new MutationObserver(client, createTenantMutation(happyApi)).mutate({ slug: 'new-co', name: 'New Co' }),
-    ).resolves.toEqual({ tenant: { id: 't-new', slug: 'new-co', name: 'New Co' } });
-
-    await expect(
-      new MutationObserver(client, addTodoMutation(happyApi)).mutate({ title: 'Ship it' }),
-    ).resolves.toEqual({ todo: { ...todo, title: 'Ship it' } });
-
-    await expect(
-      new MutationObserver(client, addCardMutation(happyApi)).mutate({ title: 'New card', column: 'doing' }),
-    ).resolves.toEqual({ card: { ...card, title: 'New card', column: 'doing' } });
-
-    await expect(
-      new MutationObserver(client, moveCardMutation(happyApi)).mutate({ cardId: 'card-1', toColumn: 'done', toIndex: 2 }),
-    ).resolves.toEqual({ card: { ...card, column: 'done', position: 2 } });
-
-    await expect(
-      new MutationObserver(client, ensureMemberMutation(happyApi)).mutate({ email: 'bob@example.com' }),
-    ).resolves.toEqual({ member: { ...member, email: 'bob@example.com' }, created: true });
-  });
-
-  it('throw an ApiError from the mutationFn when the call fails', async () => {
-    const client = newClient();
-
-    await expect(
-      new MutationObserver(client, createTenantMutation(sadApi)).mutate({ slug: 'acme', name: 'Dup' }),
-    ).rejects.toBeInstanceOf(ApiError);
-  });
-
-  it('invalidates the todo lists after a successful add', () => {
-    expect(addTodoInvalidates()).toEqual({ queryKey: todosScopes.lists() });
-  });
-
-  it('invalidates the card lists after a successful add or move', () => {
-    expect(cardsInvalidates()).toEqual({ queryKey: cardsScopes.lists() });
-  });
-
-  it('binds the complete document command surface', async () => {
+describe('document mutation descriptors', () => {
+  it('executes every surviving mutationFn and unwraps successful API results', async () => {
+    const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      const url = String(input);
+      if (url === 'https://upload.example') return Promise.resolve(new Response(null, { status: 200 }));
+      if (url.endsWith('/api/export')) {
+        return Promise.resolve(
+          new Response('zip', {
+            status: 200,
+            headers: {
+              'content-type': 'application/zip',
+              'content-disposition': 'attachment; filename="documents.zip"',
+            },
+          }),
+        );
+      }
+      if (url.includes('/files/upload-request')) {
+        return response({ upload: { kind: 'server', key: documentFile.storageKey } });
+      }
+      if (url.includes('/files/finalize') || url.includes('/files/upload?')) {
+        return response({ file: documentFile });
+      }
+      if (init?.method === 'DELETE') return response({ deleted: true });
+      return response({ document });
+    });
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
     const client = newClient();
     const observe = <TData, TVariables>(
-      descriptor: ConstructorParameters<
-        typeof MutationObserver<TData, Error, TVariables>
-      >[1],
+      descriptor: ConstructorParameters<typeof MutationObserver<TData, Error, TVariables>>[1],
     ) => new MutationObserver(client, descriptor);
     const input = {
       title: document.title,
@@ -363,20 +128,17 @@ describe('mutation descriptors', () => {
       documentDate: document.documentDate,
     };
 
+    const create = createDocumentMutation(api);
+    expect(create.mutationKey).toEqual(['documents', 'create']);
+    await expect(observe(create).mutate(input)).resolves.toEqual({ document });
     await expect(
-      observe(createDocumentMutation(happyApi)).mutate(input),
-    ).resolves.toMatchObject({ document });
+      observe(updateDocumentMutation(api)).mutate({ documentId: document.id, input }),
+    ).resolves.toEqual({ document });
+    await expect(observe(deleteDocumentMutation(api)).mutate(document.id)).resolves.toEqual({
+      deleted: true,
+    });
     await expect(
-      observe(updateDocumentMutation(happyApi)).mutate({
-        documentId: document.id,
-        input,
-      }),
-    ).resolves.toMatchObject({ document });
-    await expect(
-      observe(deleteDocumentMutation(happyApi)).mutate(document.id),
-    ).resolves.toEqual({ deleted: true });
-    await expect(
-      observe(requestFileUploadMutation(happyApi)).mutate({
+      observe(requestFileUploadMutation(api)).mutate({
         documentId: document.id,
         input: {
           fileName: documentFile.fileName,
@@ -384,9 +146,9 @@ describe('mutation descriptors', () => {
           role: documentFile.role,
         },
       }),
-    ).resolves.toMatchObject({ upload: { kind: 'server' } });
+    ).resolves.toEqual({ upload: { kind: 'server', key: documentFile.storageKey } });
     await expect(
-      observe(finalizeFileUploadMutation(happyApi)).mutate({
+      observe(finalizeFileUploadMutation(api)).mutate({
         documentId: document.id,
         input: {
           key: documentFile.storageKey,
@@ -398,7 +160,7 @@ describe('mutation descriptors', () => {
       }),
     ).resolves.toEqual({ file: documentFile });
     await expect(
-      observe(uploadDocumentFileMutation(happyApi)).mutate({
+      observe(uploadDocumentFileMutation(api)).mutate({
         documentId: document.id,
         input: {
           fileName: documentFile.fileName,
@@ -409,7 +171,7 @@ describe('mutation descriptors', () => {
       }),
     ).resolves.toEqual({ file: documentFile });
     await expect(
-      observe(directFileUploadMutation(happyApi)).mutate({
+      observe(directFileUploadMutation(api)).mutate({
         url: 'https://upload.example',
         method: 'PUT',
         headers: {},
@@ -417,96 +179,38 @@ describe('mutation descriptors', () => {
       }),
     ).resolves.toBeUndefined();
     await expect(
-      observe(deleteDocumentFileMutation(happyApi)).mutate({
+      observe(deleteDocumentFileMutation(api)).mutate({
         documentId: document.id,
         fileId: documentFile.id,
       }),
     ).resolves.toEqual({ deleted: true });
     await expect(
-      observe(exportDocumentsMutation(happyApi)).mutate({
-        documentIds: [document.id],
-      }),
-    ).resolves.toMatchObject({ fileName: 'documents.zip' });
-    expect(documentsInvalidates()).toEqual({
-      queryKey: documentsScopes.all(),
+      observe(exportDocumentsMutation(api)).mutate({ documentIds: [document.id] }),
+    ).resolves.toMatchObject({ fileName: 'documents.zip', contentType: 'application/zip' });
+
+    const createRequest = fetchImpl.mock.calls.find(
+      ([request, init]) => String(request).endsWith('/api/documents') && init?.method === 'POST',
+    );
+    expect(createRequest?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify(input) });
+    expect(fetchImpl).toHaveBeenCalledTimes(9);
+  });
+
+  it('propagates a failed write as ApiError', async () => {
+    const api = createApiClient({
+      baseUrl: '',
+      fetchImpl: () => errorResponse('conflict', 'Already exists'),
     });
-  });
-});
-
-const fakeAuth = (): AuthClientPort => ({
-  signUp: async () => ok({ token: 'signed-up' }),
-  signIn: async () => ok({ token: 'signed-in' }),
-  signOut: async () => ok(undefined),
-  requestMagicLink: async () => ok(undefined),
-  signInSocial: async () => ok({ url: 'https://accounts.google.example/authorize' }),
-  enableTwoFactor: async () => ok({ totpURI: 'otpauth://totp/demo', backupCodes: ['aaaa-bbbb'] }),
-  verifyTotp: async () => ok(undefined),
-  disableTwoFactor: async () => ok(undefined),
-  registerPasskey: async () => ok(undefined),
-  listPasskeys: async () => ok([{ id: 'pk-1', name: 'Laptop', createdAt: '2026-07-03T00:00:00.000Z' }]),
-  removePasskey: async () => ok(undefined),
-  signInPasskey: async () => ok({ token: null }),
-});
-
-describe('auth mutation descriptors', () => {
-  it('wrap each auth side effect as a mutation over the port', async () => {
-    const client = newClient();
-    const auth = fakeAuth();
+    const mutation = new MutationObserver(newClient(), createDocumentMutation(api));
 
     await expect(
-      new MutationObserver(client, signUpMutation(auth)).mutate({
-        name: 'Demo',
-        email: 'demo@example.com',
-        password: 'demo1234',
+      mutation.mutate({
+        title: document.title,
+        docType: document.docType,
+        documentDate: document.documentDate,
       }),
-    ).resolves.toEqual({ token: 'signed-up' });
-    await expect(
-      new MutationObserver(client, signInMutation(auth)).mutate({ email: 'demo@example.com', password: 'demo1234' }),
-    ).resolves.toEqual({ token: 'signed-in' });
-    await expect(
-      new MutationObserver(client, signOutMutation(auth)).mutate(),
-    ).resolves.toBeUndefined();
-  });
-
-  it('propagate port failures as ApiError', async () => {
-    const client = newClient();
-    const auth: AuthClientPort = {
-      ...fakeAuth(),
-      signIn: async () => err({ code: 'unauthorized', message: 'Bad credentials' }),
-    };
-
-    await expect(
-      new MutationObserver(client, signInMutation(auth)).mutate({ email: 'demo@example.com', password: 'wrong' }),
-    ).rejects.toBeInstanceOf(ApiError);
-  });
-});
-
-describe('passkey descriptors', () => {
-  it('read the roster through a query and wrap register/remove/sign-in as commands', async () => {
-    const client = newClient();
-    const auth = fakeAuth();
-
-    await expect(client.fetchQuery(passkeysQuery(auth))).resolves.toEqual([
-      { id: 'pk-1', name: 'Laptop', createdAt: '2026-07-03T00:00:00.000Z' },
-    ]);
-    await expect(
-      new MutationObserver(client, registerPasskeyMutation(auth)).mutate({ name: 'Laptop' }),
-    ).resolves.toBeUndefined();
-    await expect(
-      new MutationObserver(client, removePasskeyMutation(auth)).mutate({ id: 'pk-1' }),
-    ).resolves.toBeUndefined();
-    await expect(
-      new MutationObserver(client, signInPasskeyMutation(auth)).mutate(),
-    ).resolves.toEqual({ token: null });
-  });
-
-  it('propagate a passkey list failure as ApiError', async () => {
-    const client = newClient();
-    const auth: AuthClientPort = {
-      ...fakeAuth(),
-      listPasskeys: async () => err(internal('boom')),
-    };
-
-    await expect(client.fetchQuery(passkeysQuery(auth))).rejects.toBeInstanceOf(ApiError);
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      appError: { code: 'conflict', message: 'Already exists' },
+    });
   });
 });

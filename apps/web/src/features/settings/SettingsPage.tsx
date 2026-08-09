@@ -1,98 +1,17 @@
-import { Alert, Box, Chip, Container, Divider, Link, Paper, Stack, Typography } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
-import { Link as RouterLink } from '@tanstack/react-router';
+import { Container, Typography } from '@mui/material';
 
-import { actions } from '../../api.js';
-import { CreateTenantForm } from './CreateTenantForm.js';
 import { PasskeySection } from './PasskeySection.js';
 import { TwoFactorSection } from './TwoFactorSection.js';
-import { tenantUrl } from '../../lib/tenant.js';
 
-const roleLabel = (role: string | null): string =>
-  role === 'owner'
-    ? 'właściciel'
-    : role === 'admin'
-      ? 'administrator'
-      : 'członek';
-
-/**
- * Settings home (US-017): the current tenant and the caller's staff role (read
- * from `/api/me`), links into the staff and domain sub-settings, and the
- * tenant-management surface (switch to another tenant, or create a new one).
- */
-export const SettingsPage = () => {
-  const me = useQuery(actions.me);
-  const tenants = useQuery(actions.tenants);
-  const tenant = me.data?.tenant ?? null;
-  const isOwner = tenant?.staffRole === 'owner';
-  const isStaff = tenant?.staffRole !== null && tenant?.staffRole !== undefined;
-
-  return (
-    <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', py: '2.5rem' }}>
-      <Typography variant="h1" sx={{ mb: '1.5rem' }}>
-        Ustawienia
-      </Typography>
-
-      <Paper variant="outlined" sx={{ p: '1.25rem', mb: '1.5rem' }}>
-        <Typography variant="overline">Bieżąca firma</Typography>
-        {tenant ? (
-          <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.8rem', mt: '0.3rem' }}>
-            <Typography variant="h2" component="p">
-              {tenant.name}
-            </Typography>
-            <Typography variant="caption">{tenant.slug}</Typography>
-            <Box sx={{ flex: 1 }} />
-            <Chip size="small" variant="outlined" label={roleLabel(tenant.staffRole)} />
-          </Stack>
-        ) : (
-          <Typography variant="body2" sx={{ mt: '0.3rem' }}>
-            Na tym adresie nie wybrano firmy
-          </Typography>
-        )}
-        {isStaff ? (
-          <Stack direction="row" useFlexGap sx={{ columnGap: '1.2rem', mt: '1rem' }}>
-            <Link component={RouterLink} to="/app/settings/staff" variant="body2">
-              zespół →
-            </Link>
-            <Link component={RouterLink} to="/app/settings/domains" variant="body2">
-              domeny →
-            </Link>
-          </Stack>
-        ) : null}
-        {isStaff && !isOwner ? (
-          <Alert severity="info" sx={{ mt: '1rem' }}>
-            Jesteś administratorem. Nadawanie uprawnień i zmiana domen są dostępne tylko dla właściciela.
-          </Alert>
-        ) : null}
-      </Paper>
-
-      <Paper variant="outlined" sx={{ p: '1.25rem' }}>
-        <Typography variant="overline">Twoje firmy</Typography>
-        <Stack useFlexGap spacing="0.4rem" sx={{ mt: '0.4rem' }}>
-          {tenants.data?.tenants.map((m) => {
-            const url = tenantUrl(m.tenant.slug);
-            const active = m.tenant.slug === tenant?.slug;
-            const label = `${m.tenant.name} (${roleLabel(m.staffRole)})${active ? ' — bieżąca' : ''}`;
-            return url === null || active ? (
-              <Typography key={m.tenant.id} variant="body2" aria-current={active}>
-                {label}
-              </Typography>
-            ) : (
-              <Link key={m.tenant.id} href={url} variant="body2">
-                {label} →
-              </Link>
-            );
-          })}
-        </Stack>
-        <Divider sx={{ my: '1.2rem' }} />
-        <Typography variant="overline" sx={{ display: 'block', mb: '0.6rem' }}>
-          Utwórz nową firmę
-        </Typography>
-        <CreateTenantForm />
-      </Paper>
-
-      <TwoFactorSection />
-      <PasskeySection />
-    </Container>
-  );
-};
+export const SettingsPage = () => (
+  <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', py: '2.5rem' }}>
+    <Typography variant="h1" sx={{ mb: '0.5rem' }}>
+      Konto
+    </Typography>
+    <Typography variant="body2" color="text.secondary" sx={{ mb: '1.5rem' }}>
+      Zarządzaj zabezpieczeniami swojego konta.
+    </Typography>
+    <TwoFactorSection />
+    <PasskeySection />
+  </Container>
+);

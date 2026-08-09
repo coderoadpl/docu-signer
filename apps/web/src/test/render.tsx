@@ -3,7 +3,7 @@ import { render, type RenderOptions } from '@testing-library/react';
 
 import type { ReactElement, ReactNode } from 'react';
 
-export const createTestQueryClient = () =>
+const createTestQueryClient = () =>
   new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },

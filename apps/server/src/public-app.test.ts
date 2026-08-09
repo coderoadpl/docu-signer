@@ -33,17 +33,13 @@ const acmeVersion = tenantContentVersion(acme);
 const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   auth,
   authPort: { getAuthenticatedUser: async () => null },
-  email: { sendMail: async () => {} },
-  googleEnabled: false,
-  todos: { listByTenant: async () => [], create: async () => {} },
-  cards: { listByTenant: async () => [], create: async () => {}, updatePositions: async () => {} },
   documents: {
     listByTenant: async () => [],
     findById: async () => null,
     listFiles: async () => [],
     listFilesForDocuments: async () => [],
     create: async () => {
-      throw new Error('not implemented in fake');
+      throw new Error('not implemented');
     },
     update: async () => null,
     delete: async () => false,
@@ -58,61 +54,17 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     delete: async () => ok(undefined),
     createUploadUrl: async () => ok(null),
   },
-  members: {
-    listPageByTenant: async () => ({ items: [], nextCursor: null }),
-    findByEmail: async () => null,
-    findByTenantAndId: async () => null,
-    create: async () => {},
-    update: async () => {},
-    deleteByTenantAndId: async () => 0,
-  },
-  staff: {
-    listPageByTenant: async () => ({ items: [], nextCursor: null }),
-    findGrant: async () => null,
-    grant: async () => {},
-    revokeLastOwnerSafe: async () => 0,
-  },
-  users: { findByEmail: async () => null },
   tenantDomains: {
     findByDomain: async () => null,
     listVerifiedDomains: async () => [],
-    listByTenant: async () => [],
-    findAnyByDomain: async () => null,
-    findByTenantAndDomain: async () => null,
-    add: async (input) => input,
-    setVerified: async () => null,
-    removeByTenantAndDomain: async () => 0,
   },
-  domainTarget: { cname: null, ip: null },
-  domainPort: {
-    provision: async () => {},
-    remove: async () => {},
-    check: async () => ({ resolved: true, detail: 'noop' }),
-  },
-  tenants: {
-    findById: async () => null,
-    findBySlug,
-    createTenantWithOwner: async () => {
-      throw new Error('not implemented in fake');
-    },
-    deleteTenant: async () => {},
-  },
-  tenantAccess: {
-    listTenantsForStaff: async () => [],
-    findStaffGrant: async () => null,
-    findMember: async () => null,
-  },
+  email: { sendMail: async () => {} },
+  googleEnabled: false,
+  tenants: { findById: async () => null, findBySlug },
+  tenantAccess: { findStaffGrant: async () => null },
   health: { pingDatabase: async () => true },
-  backfills: {
-    loadCheckpoint: async () => null,
-    saveCheckpoint: async () => {},
-    normalizeMemberEmails: async () => ({ processed: 0, nextCursor: null, done: true }),
-  },
-  backfillSecret: null,
   ids: { nextId: () => 'test-id' },
-  clock: { nowIso: () => '2026-07-15T00:00:00.000Z' },
   baseDomain: 'localhost',
-  tenantCreationMode: 'open',
   commitSha: 'test-sha',
 });
 

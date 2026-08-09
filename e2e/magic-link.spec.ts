@@ -2,31 +2,26 @@ import { expect, test } from '@playwright/test';
 
 import { fetchMagicLink } from '../scripts/mailpit.js';
 
-// US-026 end to end over the real stack: a provisioned member (seeded
-// `mag@example.com`, null userId in the acme tenant) requests a passwordless
-// magic link from the login page. The real smtp transport delivers to the dev/CI
-// Mailpit (no dev route); the test reads the captured message back over Mailpit's
-// HTTP API, follows the link, and lands authenticated with the member bound.
-const PROVISIONED_MEMBER = 'mag@example.com';
+const MAGIC_USER = 'mag@example.com';
 const MAILPIT_API_URL = 'http://localhost:47980';
 
-test('magic link signs in a provisioned member and binds them to the tenant', async ({ page }) => {
+test('magic link signs in a trusted archive user', async ({ page }) => {
   await page.goto('/login');
-  await page.locator('#login-email').fill(PROVISIONED_MEMBER);
+  await page.locator('#login-email').fill(MAGIC_USER);
   await page.getByRole('button', { name: 'Wyślij link do logowania' }).click();
 
   await expect(page.getByText(/znajdziesz w Mailpit/i)).toBeVisible();
 
-  const link = await fetchMagicLink(MAILPIT_API_URL, PROVISIONED_MEMBER);
+  const link = await fetchMagicLink(MAILPIT_API_URL, MAGIC_USER);
   expect(link).toContain('magic-link/verify');
 
   await page.goto(link);
 
-  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toContainText(/acme/i);
+  await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
 
   const me = await page.request.get('/api/me');
   const meBody = await me.json();
   expect(meBody.ok).toBe(true);
-  expect(meBody.data.email).toBe(PROVISIONED_MEMBER);
-  expect(meBody.data.tenant.memberId).toBe('member-acme-mag');
+  expect(meBody.data.email).toBe(MAGIC_USER);
+  expect(meBody.data.tenant.slug).toBe('default');
 });

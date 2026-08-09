@@ -72,7 +72,6 @@ jobs:
       # local `smoke` script, which must stay fast) before the runtime smoke.
       - run: pnpm run test:integration
       - run: pnpm run smoke
-      - run: pnpm run quickstart:probe
 
   e2e:
     runs-on: ubuntu-latest

@@ -56,7 +56,7 @@ const fixtures = {
   },
   crossFeature: {
     rel: join(featureDir, 'cross-probe.ts'),
-    content: "import '../todos/TodosPage.js';\n",
+    content: "import '../documents/DocumentsPage.js';\n",
   },
   queryHook: {
     rel: join(featureDir, 'query-probe.tsx'),
@@ -91,7 +91,7 @@ const dcFixtures = [
   { rel: join(featureCoreDir, 'react-probe.ts'), content: "import 'react';\n" },
   {
     rel: join(layoutDir, 'feature-probe.ts'),
-    content: "import '../../../features/todos/TodosPage.js';\n",
+    content: "import '../../../features/documents/DocumentsPage.js';\n",
   },
 ] satisfies Array<{ rel: string; content: string }>;
 
@@ -258,7 +258,7 @@ describe('custom plugin rules stay registered as errors', () => {
     async () => {
       const eslint = new ESLint({ cwd: demoRoot });
       const config: Linter.Config = await eslint.calculateConfigForFile(
-        join('apps', 'web', 'src', 'features', 'todos', 'TodosPage.tsx'),
+        join('apps', 'web', 'src', 'features', 'documents', 'DocumentsPage.tsx'),
       );
       const rules = config.rules ?? {};
       expect(severityOf(rules['agentproofarch/query-descriptors-only'])).toBe(2);

@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { z } from 'zod';
 import { PDFDocument } from 'pdf-lib';
+import { z } from 'zod';
 
-import { EXIT_CODE_BY_ERROR_CODE, publicCacheControl } from '#core/contract/index.js';
 import { probeSignInCookies } from '#adapters/auth/client-adapter.js';
+import { EXIT_CODE_BY_ERROR_CODE, publicCacheControl } from '#core/contract/index.js';
 
 import { fetchMagicLink } from './mailpit.js';
 import {
@@ -27,9 +27,11 @@ export const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 export const fail = (message: string): never => {
   throw new SmokeFailure(message);
 };
+
 export function assert(condition: boolean, message: string): asserts condition {
   assertSmoke(condition, message);
 }
+
 export const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -38,6 +40,7 @@ export interface Run {
   stdout: string;
   stderr: string;
 }
+
 export const run = (
   cmd: string,
   args: string[],
@@ -54,906 +57,303 @@ export const run = (
     child.stderr?.on('data', (chunk) => {
       stderr += String(chunk);
     });
-    child.on('error', (cause) => resolve({ code: 1, stdout, stderr: `${stderr}${String(cause)}` }));
+    child.on('error', (cause) =>
+      resolve({ code: 1, stdout, stderr: `${stderr}${String(cause)}` }),
+    );
     child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
   });
 
-const okEnvelope = z.object({ ok: z.literal(true), data: z.unknown() });
-const errEnvelope = z.object({
-  ok: z.literal(false),
-  error: z.object({ code: z.string(), message: z.string() }),
-});
-const envelope = z.discriminatedUnion('ok', [okEnvelope, errEnvelope]);
-
+const envelope = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), data: z.unknown() }),
+  z.object({
+    ok: z.literal(false),
+    error: z.object({ code: z.string(), message: z.string() }),
+  }),
+]);
 const healthSchema = z.object({
-  status: z.string(),
-  database: z.string(),
+  status: z.literal('ok'),
+  database: z.literal('up'),
   version: z.string(),
   sha: z.string(),
 });
-const todoItemSchema = z.object({ id: z.string(), title: z.string() });
-const todosSchema = z.object({ todos: z.array(todoItemSchema) });
-const addSchema = z.object({ todo: todoItemSchema });
-const documentItemSchema = z.object({
+const meSchema = z.object({
+  email: z.string(),
+  tenant: z.object({ slug: z.string(), staffRole: z.string() }).nullable(),
+});
+const documentSchema = z.object({
   id: z.uuid(),
   title: z.string(),
-  files: z.array(z.object({ id: z.uuid() })).optional(),
+  files: z.array(z.object({ id: z.uuid(), fileName: z.string() })).optional(),
 });
-const documentWriteSchema = z.object({ document: documentItemSchema });
-const documentsSchema = z.object({ documents: z.array(documentItemSchema) });
-const documentFileWriteSchema = z.object({
+const documentsSchema = z.object({ documents: z.array(documentSchema) });
+const documentWriteSchema = z.object({ document: documentSchema });
+const fileWriteSchema = z.object({
   file: z.object({ id: z.uuid(), fileName: z.string() }),
 });
-const documentExportSchema = z.object({
+const exportSchema = z.object({
   path: z.string(),
   fileName: z.string(),
   sizeBytes: z.number().positive(),
 });
-
-const cardItemSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  board: z.string(),
-  column: z.string(),
-  position: z.number(),
-  visited: z.array(z.string()),
-});
-const cardsSchema = z.object({ cards: z.array(cardItemSchema) });
-const cardWriteSchema = z.object({ card: cardItemSchema });
-
-const memberItemSchema = z.object({
-  id: z.string(),
-  email: z.string(),
-  displayName: z.string().nullable(),
-  tags: z.array(z.string()),
-});
-const membersSchema = z.object({ members: z.array(memberItemSchema) });
-const memberEnsureSchema = z.object({ member: memberItemSchema, created: z.boolean() });
-const memberExportSchema = z.object({
-  exportedAt: z.string(),
-  tenantId: z.string(),
-  member: memberItemSchema,
-});
-const memberRemoveSchema = z.object({ memberId: z.string(), deleted: z.object({ members: z.number() }) });
-
-const meSchema = z.object({
-  email: z.string(),
-  tenant: z.object({ slug: z.string(), memberId: z.string().nullable() }).nullable(),
-});
-const magicLinkFollowSchema = z.object({ signedIn: z.literal(true), email: z.string() });
-
-const staffItemSchema = z.object({
-  id: z.string(),
-  userId: z.string(),
-  email: z.string(),
-  name: z.string(),
-  role: z.string(),
-});
-const staffListSchema = z.object({ staff: z.array(staffItemSchema) });
-const staffGrantSchema = z.object({ staff: staffItemSchema, granted: z.boolean() });
-const staffRevokeSchema = z.object({ userId: z.string(), revoked: z.number() });
-
-const readEnvelope = (result: Run, label: string): unknown => {
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    return fail(
-      `${label}: stdout was not a JSON envelope.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
-    );
-  }
-};
-const expectOk = (result: Run, label: string): unknown => {
-  assert(
-    result.code === 0,
-    `${label}: expected exit 0, got ${result.code}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
-  );
-  const parsed = envelope.parse(readEnvelope(result, label));
-  assert(parsed.ok, `${label}: expected an ok envelope, got an error.`);
-  return parsed.data;
-};
-const expectError = (
-  result: Run,
-  label: string,
-  exitCode: number,
-  errorCode: string,
-): { code: string; message: string } => {
-  assert(
-    result.code === exitCode,
-    `${label}: expected exit ${exitCode}, got ${result.code}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
-  );
-  const parsed = envelope.parse(readEnvelope(result, label));
-  assert(!parsed.ok, `${label}: expected an error envelope, got ok.`);
-  assert(
-    parsed.error.code === errorCode,
-    `${label}: expected error code "${errorCode}", got "${parsed.error.code}".`,
-  );
-  return parsed.error;
-};
-
-export interface SmokeTarget extends AttestedSmokeTarget {
-  // WHY: production has no canary account until the owner provisions one, so a
-  // secret-less remote drive can only exercise the unauthenticated surface.
-  anonymousOnly?: boolean;
-  /**
-   * Mailpit HTTP-API base URL (local/CI only). When set, the magic-link phase
-   * requests a link, recovers it from Mailpit and follows it. Absent for
-   * `smoke:remote`, where a real relay delivers and there is no capture inbox —
-   * the phase is skipped there.
-   */
-  mailpitApiUrl?: string;
-}
-
-/**
- * Security/caching headers are part of the runtime contract (architecture
- * §Security baseline, §HTTP caching): tenant-scoped JSON is never stored by
- * any cache, and the security headers must survive every deploy target.
- */
-const assertResponseHeaders = async (baseUrl: string): Promise<void> => {
-  const response = await fetch(`${baseUrl}/api/health`);
-  const cacheControl = response.headers.get('cache-control') ?? '(missing)';
-  assert(
-    cacheControl === 'no-store',
-    `API cache-control must be "no-store", got "${cacheControl}"`,
-  );
-  const nosniff = response.headers.get('x-content-type-options') ?? '(missing)';
-  assert(nosniff === 'nosniff', `x-content-type-options must be "nosniff", got "${nosniff}"`);
-  const csp = response.headers.get('content-security-policy') ?? '(missing)';
-  assert(
-    csp.includes("script-src 'self'"),
-    `content-security-policy must pin script-src 'self', got "${csp}"`,
-  );
-  // CSRF/CORS doctrine (architecture §Security baseline): no CORS middleware on
-  // the authenticated /api/* surface, so no Access-Control-Allow-Origin may
-  // appear. Mounting cors() here would regress the same-origin session boundary.
-  const acao = response.headers.get('access-control-allow-origin');
-  assert(
-    acao === null,
-    `authenticated /api/* must not enable CORS, got access-control-allow-origin: "${acao}"`,
-  );
-};
-
-/**
- * The SPA shell must carry Vercel's revalidate-always default explicitly on
- * self-host (architecture §HTTP caching): hashed assets are immutable, but
- * index.html is served with `public, max-age=0, must-revalidate` so a new
- * deploy is picked up immediately. Parity with the `vercel.json` behaviour.
- */
-const assertIndexHtmlCacheHeader = async (baseUrl: string): Promise<void> => {
-  const response = await fetch(`${baseUrl}/`);
-  assert(response.ok, `GET / (index.html) must serve the SPA shell, got ${response.status}`);
-  const cacheControl = response.headers.get('cache-control') ?? '(missing)';
-  assert(
-    cacheControl === 'public, max-age=0, must-revalidate',
-    `index.html cache-control must be "public, max-age=0, must-revalidate" (Vercel revalidate-always parity), got "${cacheControl}"`,
-  );
-};
-
-/**
- * The session cookie's hardening is the load-bearing half of the CSRF/CORS
- * doctrine (architecture §Security baseline): the primary session boundary is
- * `SameSite=Lax` cookies on a same-origin SPA with **no** CORS middleware on the
- * authenticated `/api/*` surface — so a cross-site page cannot ride the session.
- * Adding `cors()` or relaxing `SameSite` would silently regress that boundary,
- * so we assert the attributes Better Auth actually emits on a live sign-in. The
- * sign-in is a raw POST (not the CLI, which authenticates by bearer token) so
- * the assertion reads the real `Set-Cookie` a browser would receive. `Secure` is
- * required only on https — it is off by design on plaintext `*.localhost` dev.
- */
-const assertSessionCookieHardening = async (target: SmokeTarget): Promise<void> => {
-  const { baseUrl } = target;
-  const probe = await probeSignInCookies(baseUrl, {
-    email: target.email,
-    password: target.password,
-  });
-  assert(probe.ok, `sign-in for the cookie assertion failed: ${probe.status} ${probe.body}`);
-  const cookies = probe.setCookie;
-  const sessionCookie = cookies.find((cookie) => /session_token=/i.test(cookie));
-  assert(
-    sessionCookie !== undefined,
-    `sign-in set no session cookie; Set-Cookie: ${cookies.join(' | ') || '(none)'}`,
-  );
-  const attributes = sessionCookie.split(';').map((part) => part.trim().toLowerCase());
-  assert(attributes.includes('httponly'), `session cookie must be HttpOnly: ${sessionCookie}`);
-  assert(
-    attributes.includes('samesite=lax'),
-    `session cookie must be SameSite=Lax (the CSRF boundary): ${sessionCookie}`,
-  );
-  const isHttps = new URL(baseUrl).protocol === 'https:';
-  assert(
-    attributes.includes('secure') === isHttps,
-    `session cookie Secure flag must match the transport (https=${isHttps}): ${sessionCookie}`,
-  );
-};
-
-const publicDiscoverySchema = z.object({ slug: z.string(), contentVersion: z.string() });
-const publicProfileSchema = z.object({
+const discoverySchema = z.object({ slug: z.string(), contentVersion: z.string() });
+const profileSchema = z.object({
   slug: z.string(),
   displayName: z.string(),
   contentVersion: z.string(),
 });
 
-/**
- * The public contract group (US-028, FR-23/FR-24, §Public surface): unauthenticated
- * GET, open CORS on this prefix ONLY, cacheable via the one shared helper, and
- * content-version-keyed busting. The requests carry a FOREIGN `Origin` header —
- * the curl-from-another-origin CORS proof — and assert `Access-Control-Allow-Origin`
- * is echoed as `*`, while an error stays uncached and the authenticated
- * `/api/health` surface remains CORS-closed under the same foreign Origin.
- */
-const assertPublicSurface = async (baseUrl: string, tenant: string): Promise<void> => {
-  const foreignOrigin = 'https://someone-elses-site.example';
-  const readOk = async (res: Response, label: string): Promise<unknown> => {
-    const parsed = envelope.parse(await res.json());
-    assert(parsed.ok, `${label}: expected an ok envelope, got an error.`);
-    return parsed.data;
-  };
-  const assertPublicCache = async (
-    res: Response,
-    profile: Parameters<typeof publicCacheControl>[0],
-    refetch: () => Promise<Response>,
-    label: string,
-  ): Promise<void> => {
-    const got = res.headers.get('cache-control');
-    if (res.headers.get('x-vercel-id') === null) {
-      assert(
-        got === publicCacheControl(profile),
-        `${label} cache-control must be the ${profile} helper output, got "${got}"`,
-      );
-      return;
-    }
-    assert(
-      got === 'public, max-age=0',
-      `${label} behind the Vercel CDN must keep "public, max-age=0" after edge directives are consumed, got "${got}"`,
+const readEnvelope = (result: Run, label: string) => {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(result.stdout);
+  } catch {
+    return fail(
+      `${label}: stdout was not JSON.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
     );
-    const repeat = await refetch();
-    await repeat.arrayBuffer();
-    const edge = repeat.headers.get('x-vercel-cache');
-    assert(
-      edge === 'HIT' || edge === 'STALE',
-      `${label} must be edge-cached behind Vercel; expected x-vercel-cache HIT/STALE on a repeat request, got "${edge}"`,
-    );
-  };
+  }
+  return envelope.parse(raw);
+};
 
-  const discoveryRes = await fetch(`${baseUrl}/api/public/tenants/${tenant}`, {
-    headers: { origin: foreignOrigin },
-  });
-  assert(discoveryRes.status === 200, `public discovery must be 200, got ${discoveryRes.status}`);
+const expectOk = (result: Run, label: string): unknown => {
   assert(
-    discoveryRes.headers.get('access-control-allow-origin') === '*',
-    `public discovery must open CORS, got "${discoveryRes.headers.get('access-control-allow-origin')}"`,
+    result.code === 0,
+    `${label}: expected exit 0, got ${String(result.code)}.\n${result.stdout}${result.stderr}`,
   );
-  await assertPublicCache(
-    discoveryRes,
-    'discovery',
-    () => fetch(`${baseUrl}/api/public/tenants/${tenant}`, { headers: { origin: foreignOrigin } }),
-    'public discovery',
-  );
-  const discovery = publicDiscoverySchema.parse(await readOk(discoveryRes, 'public discovery'));
-  assert(discovery.slug === tenant, `public discovery echoed the wrong slug: ${discovery.slug}`);
+  const parsed = readEnvelope(result, label);
+  assert(parsed.ok, `${label}: expected an ok envelope`);
+  return parsed.data;
+};
 
-  const profileRes = await fetch(
-    `${baseUrl}/api/public/tenants/${tenant}/v/${discovery.contentVersion}`,
-    { headers: { origin: foreignOrigin } },
-  );
-  assert(profileRes.status === 200, `public profile must be 200, got ${profileRes.status}`);
+const expectError = (
+  result: Run,
+  label: string,
+  exitCode: number,
+  errorCode: string,
+): void => {
   assert(
-    profileRes.headers.get('access-control-allow-origin') === '*',
-    `public profile must open CORS, got "${profileRes.headers.get('access-control-allow-origin')}"`,
+    result.code === exitCode,
+    `${label}: expected exit ${String(exitCode)}, got ${String(result.code)}.\n${result.stdout}${result.stderr}`,
   );
-  await assertPublicCache(
-    profileRes,
-    'profile',
-    () =>
-      fetch(`${baseUrl}/api/public/tenants/${tenant}/v/${discovery.contentVersion}`, {
-        headers: { origin: foreignOrigin },
-      }),
-    'public profile',
-  );
-  const profile = publicProfileSchema.parse(await readOk(profileRes, 'public profile'));
+  const parsed = readEnvelope(result, label);
+  assert(!parsed.ok, `${label}: expected an error envelope`);
   assert(
-    profile.slug === tenant && profile.displayName.length > 0,
-    `public profile carried the wrong safe fields: ${JSON.stringify(profile)}`,
-  );
-
-  const preflight = await fetch(`${baseUrl}/api/public/tenants/${tenant}/v/${discovery.contentVersion}`, {
-    method: 'OPTIONS',
-    headers: { origin: foreignOrigin, 'access-control-request-method': 'GET' },
-  });
-  assert(
-    preflight.headers.get('access-control-allow-origin') === '*',
-    `public CORS preflight must echo the origin as *, got "${preflight.headers.get('access-control-allow-origin')}"`,
-  );
-
-  const unknownRes = await fetch(`${baseUrl}/api/public/tenants/ghost-${randomUUID().slice(0, 8)}`, {
-    headers: { origin: foreignOrigin },
-  });
-  assert(unknownRes.status === 404, `unknown public tenant must be 404, got ${unknownRes.status}`);
-  assert(
-    unknownRes.headers.get('cache-control') === 'no-store',
-    `an errored public response must stay no-store, got "${unknownRes.headers.get('cache-control')}"`,
-  );
-  const unknownBody = envelope.parse(await unknownRes.json());
-  assert(!unknownBody.ok, 'unknown public tenant must return an error envelope.');
-  assert(
-    unknownBody.error.code === 'not_found',
-    `unknown public tenant must be not_found, got "${unknownBody.error.code}"`,
-  );
-
-  // The separation proof: the SAME foreign Origin against the authenticated
-  // surface must NOT enable CORS (architecture §Security baseline).
-  const authedRes = await fetch(`${baseUrl}/api/health`, { headers: { origin: foreignOrigin } });
-  assert(
-    authedRes.headers.get('access-control-allow-origin') === null,
-    `authenticated /api/* must stay CORS-closed under a foreign Origin, got "${authedRes.headers.get('access-control-allow-origin')}"`,
+    parsed.error.code === errorCode,
+    `${label}: expected ${errorCode}, got ${parsed.error.code}`,
   );
 };
 
-/**
- * The runtime contract every deploy target must satisfy, driven purely through
- * the CLI: health → sign-in → todos list/add/list → cards add/list/move (→done)
- * (verifying the moved card persists at its new column and index) → the team
- * board (add lands in todo → illegal todo→done rejected with a named rule at
- * exit 2 → the full legal chain todo→in-dev→review→done at exit 0 → list
- * surfaces board + visited) → members (ensure → idempotent re-ensure → list →
- * export → remove, each run creating and removing its own uniquely-emailed
- * member) → staff (FR-8: register a second account → owner grants it admin →
- * idempotent re-grant → the granted user lists todos as admin → admin-cannot-grant
- * (exit 4) → last-owner-revoke blocked (exit 2) → revoke → the revoked user loses
- * tenant access (exit 7), self-cleaning) → unauthorized (exit 3), plus the
- * security/caching response headers and the session-cookie hardening assertion.
- * With `anonymousOnly` the drive stops after health + deploy attestation —
- * headers, the public surface and health are still asserted, everything from
- * the cookie-hardening sign-in onward is skipped (no canary account exists).
- *
- * Non-self-poisoning property (architecture §Environments, smoke-account
- * doctrine): every card this run creates is parked in an **unbounded** column
- * (`done` on both boards — absent from `TEAM_WIP_LIMITS`) before the run ends, so
- * repeated production runs can never saturate the `in-dev`/`review` WIP limits
- * and turn the deploy gate false-red.
- * `homes` collects the temp HOME dirs so the caller can clean them up.
- */
-export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<void> => {
-  const { baseUrl } = target;
-  await assertResponseHeaders(baseUrl);
-  await assertIndexHtmlCacheHeader(baseUrl);
-  await assertPublicSurface(baseUrl, target.tenant);
-  const authedHome = mkdtempSync(join(tmpdir(), 'smoke-cli-'));
-  const anonHome = mkdtempSync(join(tmpdir(), 'smoke-anon-'));
-  homes.push(authedHome, anonHome);
-  const cli = (args: string[], home: string): Promise<Run> =>
-    run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: home });
+export interface SmokeTarget extends AttestedSmokeTarget {
+  mailpitApiUrl?: string;
+}
 
-  const health = healthSchema.parse(
-    expectOk(await cli(['--json', '--api-url', baseUrl, 'health'], authedHome), 'health'),
+const assertHeaders = async (baseUrl: string): Promise<void> => {
+  const health = await fetch(`${baseUrl}/api/health`, {
+    headers: { origin: 'https://foreign.example' },
+  });
+  assert(health.headers.get('cache-control') === 'no-store', 'health must be no-store');
+  assert(
+    health.headers.get('x-content-type-options') === 'nosniff',
+    'health must set nosniff',
   );
   assert(
-    health.status === 'ok' && health.database === 'up',
-    `health degraded: status=${health.status} database=${health.database}`,
+    health.headers.get('content-security-policy')?.includes("script-src 'self'") === true,
+    'health must set the script CSP',
   );
-  if (assertHealthAttestation(health.sha, target) === 'anonymous-only') return;
-  await assertSessionCookieHardening(target);
+  assert(
+    health.headers.get('access-control-allow-origin') === null,
+    'authenticated API must stay CORS-closed',
+  );
 
+  const index = await fetch(`${baseUrl}/`);
+  assert(index.ok, `index.html must be served, got ${String(index.status)}`);
+  assert(
+    index.headers.get('cache-control') === 'public, max-age=0, must-revalidate',
+    'index.html must revalidate',
+  );
+};
+
+const assertPublicSurface = async (baseUrl: string, tenant: string): Promise<void> => {
+  const origin = 'https://foreign.example';
+  const discoveryResponse = await fetch(`${baseUrl}/api/public/tenants/${tenant}`, {
+    headers: { origin },
+  });
+  assert(discoveryResponse.status === 200, 'public discovery must be available');
+  assert(
+    discoveryResponse.headers.get('access-control-allow-origin') === '*',
+    'public discovery must allow cross-origin reads',
+  );
+  if (discoveryResponse.headers.get('x-vercel-id') === null) {
+    assert(
+      discoveryResponse.headers.get('cache-control') === publicCacheControl('discovery'),
+      'public discovery must use the shared cache policy',
+    );
+  }
+  const discoveryEnvelope = envelope.parse(await discoveryResponse.json());
+  assert(discoveryEnvelope.ok, 'public discovery must return an ok envelope');
+  const discovery = discoverySchema.parse(discoveryEnvelope.data);
+
+  const profileResponse = await fetch(
+    `${baseUrl}/api/public/tenants/${tenant}/v/${discovery.contentVersion}`,
+    { headers: { origin } },
+  );
+  assert(profileResponse.status === 200, 'public profile must be available');
+  const profileEnvelope = envelope.parse(await profileResponse.json());
+  assert(profileEnvelope.ok, 'public profile must return an ok envelope');
+  const profile = profileSchema.parse(profileEnvelope.data);
+  assert(profile.slug === tenant && profile.displayName.length > 0, 'public profile mismatch');
+
+  const missing = await fetch(`${baseUrl}/api/public/tenants/missing-${randomUUID()}`);
+  assert(missing.status === 404, 'unknown public tenant must be not_found');
+  assert(missing.headers.get('cache-control') === 'no-store', 'public errors must be no-store');
+};
+
+const assertSessionCookie = async (target: SmokeTarget): Promise<void> => {
+  const probe = await probeSignInCookies(target.baseUrl, {
+    email: target.email,
+    password: target.password,
+  });
+  assert(probe.ok, `cookie sign-in failed: ${String(probe.status)} ${probe.body}`);
+  const cookie = probe.setCookie.find((value) => /session_token=/i.test(value));
+  assert(cookie !== undefined, 'sign-in did not set a session cookie');
+  const attributes = cookie.split(';').map((part) => part.trim().toLowerCase());
+  assert(attributes.includes('httponly'), 'session cookie must be HttpOnly');
+  assert(attributes.includes('samesite=lax'), 'session cookie must be SameSite=Lax');
+  assert(
+    attributes.includes('secure') === (new URL(target.baseUrl).protocol === 'https:'),
+    'session cookie Secure flag must match transport',
+  );
+};
+
+export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<void> => {
+  await assertHeaders(target.baseUrl);
+  await assertPublicSurface(target.baseUrl, target.tenant);
+
+  const authHome = mkdtempSync(join(tmpdir(), 'smoke-cli-auth-'));
+  const anonHome = mkdtempSync(join(tmpdir(), 'smoke-cli-anon-'));
+  homes.push(authHome, anonHome);
+  const cli = (args: string[], home = authHome): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', target.baseUrl, ...args], {
+      HOME: home,
+    });
+
+  const health = healthSchema.parse(expectOk(await cli(['health']), 'health'));
+  if (assertHealthAttestation(health.sha, target) === 'anonymous-only') return;
+
+  await assertSessionCookie(target);
   expectOk(
-    await cli(
-      ['--json', '--api-url', baseUrl, 'login', '--email', target.email, '--password', target.password],
-      authedHome,
-    ),
+    await cli([
+      'login',
+      '--email',
+      target.email,
+      '--password',
+      target.password,
+    ]),
     'login',
   );
+  const me = meSchema.parse(expectOk(await cli(['whoami']), 'whoami'));
+  assert(me.email === target.email, 'whoami returned the wrong account');
+  assert(me.tenant?.slug === target.tenant, 'whoami did not resolve the archive');
 
-  const before = todosSchema.parse(
+  const before = documentsSchema.parse(
+    expectOk(await cli(['document', 'list']), 'document list before'),
+  );
+  const title = `Smoke ${randomUUID()}`;
+  const created = documentWriteSchema.parse(
     expectOk(
-      await cli(['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'todo', 'list'], authedHome),
-      'todo list (before)',
-    ),
-  );
-
-  const title = `smoke check ${randomUUID()}`;
-  const added = addSchema.parse(
-    expectOk(
-      await cli(
-        ['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'todo', 'add', title],
-        authedHome,
-      ),
-      'todo add',
-    ),
-  );
-  assert(added.todo.title === title, `todo add echoed the wrong title: ${added.todo.title}`);
-
-  const after = todosSchema.parse(
-    expectOk(
-      await cli(['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'todo', 'list'], authedHome),
-      'todo list (after)',
-    ),
-  );
-  assert(
-    after.todos.some((todo) => todo.id === added.todo.id),
-    'the added todo did not appear in the second list',
-  );
-  assert(
-    after.todos.length === before.todos.length + 1,
-    `expected exactly one more todo (${before.todos.length} -> ${after.todos.length})`,
-  );
-
-  const documentTitle = `Archive smoke ${randomUUID()}`;
-  const createdDocument = documentWriteSchema.parse(
-    expectOk(
-      await cli(
-        [
-          '--json',
-          '--api-url',
-          baseUrl,
-          '--tenant',
-          target.tenant,
-          'document',
-          'add',
-          '--type',
-          'umowa-uod',
-          '--date',
-          '2026-07-27',
-          documentTitle,
-        ],
-        authedHome,
-      ),
+      await cli([
+        'document',
+        'add',
+        title,
+        '--type',
+        'umowa-uod',
+        '--date',
+        '2026-08-01',
+      ]),
       'document add',
     ),
+  ).document;
+  const after = documentsSchema.parse(
+    expectOk(await cli(['document', 'list']), 'document list after'),
   );
+  assert(
+    after.documents.length === before.documents.length + 1,
+    'document create did not add exactly one row',
+  );
+  assert(after.documents.some((document) => document.id === created.id), 'created document missing');
+
+  const assetDir = mkdtempSync(join(tmpdir(), 'smoke-document-'));
+  homes.push(assetDir);
+  const pdfPath = join(assetDir, 'smoke.pdf');
   const pdf = await PDFDocument.create();
-  pdf.setTitle('metadata removed by export');
-  pdf.addPage();
-  const uploadPath = join(authedHome, 'archive-smoke.pdf');
-  writeFileSync(uploadPath, await pdf.save());
-  const uploadedDocumentFile = documentFileWriteSchema.parse(
+  pdf.addPage([200, 200]);
+  writeFileSync(pdfPath, await pdf.save());
+  const uploaded = fileWriteSchema.parse(
     expectOk(
-      await cli(
-        [
-          '--json',
-          '--api-url',
-          baseUrl,
-          '--tenant',
-          target.tenant,
-          'document',
-          'upload',
-          createdDocument.document.id,
-          uploadPath,
-          '--role',
-          'source',
-        ],
-        authedHome,
-      ),
+      await cli([
+        'document',
+        'upload',
+        created.id,
+        pdfPath,
+        '--role',
+        'source',
+        '--content-type',
+        'application/pdf',
+      ]),
       'document upload',
     ),
   );
-  assert(
-    uploadedDocumentFile.file.fileName === 'archive-smoke.pdf',
-    'document upload returned the wrong file name',
-  );
-  const documentList = documentsSchema.parse(
+  assert(uploaded.file.fileName === 'smoke.pdf', 'uploaded file name mismatch');
+
+  const exportPath = join(assetDir, 'archive.zip');
+  const exported = exportSchema.parse(
     expectOk(
-      await cli(
-        ['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'document', 'list'],
-        authedHome,
-      ),
-      'document list',
-    ),
-  );
-  assert(
-    documentList.documents.some((document) => document.id === createdDocument.document.id),
-    'the archive document did not appear in the document list',
-  );
-  const exportPath = join(authedHome, 'archive-export.zip');
-  const exportedDocument = documentExportSchema.parse(
-    expectOk(
-      await cli(
-        [
-          '--json',
-          '--api-url',
-          baseUrl,
-          '--tenant',
-          target.tenant,
-          'document',
-          'export',
-          createdDocument.document.id,
-          '--output',
-          exportPath,
-        ],
-        authedHome,
-      ),
+      await cli(['document', 'export', created.id, '--output', exportPath]),
       'document export',
     ),
   );
-  assert(exportedDocument.path === exportPath, 'document export returned the wrong path');
-  assert(statSync(exportPath).size === exportedDocument.sizeBytes, 'document export size mismatch');
+  assert(statSync(exportPath).size === exported.sizeBytes, 'export size mismatch');
 
-  const cardTitle = `smoke card ${randomUUID()}`;
-  const addedCard = cardWriteSchema.parse(
-    expectOk(
-      await cli(
-        ['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'card', 'add', '--column', 'doing', cardTitle],
-        authedHome,
-      ),
-      'card add',
-    ),
+  expectError(
+    await cli(['document', 'list'], anonHome),
+    'anonymous document list',
+    EXIT_CODE_BY_ERROR_CODE.unauthorized,
+    'unauthorized',
   );
-  assert(
-    addedCard.card.title === cardTitle && addedCard.card.column === 'doing',
-    `card add echoed the wrong card: ${JSON.stringify(addedCard.card)}`,
-  );
-
-  const cardsAfterAdd = cardsSchema.parse(
-    expectOk(
-      await cli(['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'card', 'list'], authedHome),
-      'card list (after add)',
-    ),
-  );
-  assert(
-    cardsAfterAdd.cards.some((card) => card.id === addedCard.card.id && card.column === 'doing'),
-    'the added card did not appear in "doing" in the card list',
-  );
-
-  const movedCard = cardWriteSchema.parse(
-    expectOk(
-      await cli(
-        [
-          '--json',
-          '--api-url',
-          baseUrl,
-          '--tenant',
-          target.tenant,
-          'card',
-          'move',
-          addedCard.card.id,
-          '--to',
-          'todo',
-          '--index',
-          '0',
-        ],
-        authedHome,
-      ),
-      'card move',
-    ),
-  );
-  assert(
-    movedCard.card.column === 'todo' && movedCard.card.position === 0,
-    `card move did not land at todo#0: ${JSON.stringify(movedCard.card)}`,
-  );
-
-  const cardsAfterMove = cardsSchema.parse(
-    expectOk(
-      await cli(['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'card', 'list'], authedHome),
-      'card list (after move)',
-    ),
-  );
-  const persisted = cardsAfterMove.cards.find((card) => card.id === addedCard.card.id);
-  assert(persisted !== undefined, 'the moved card vanished from the card list');
-  assert(
-    persisted.column === 'todo' && persisted.position === 0,
-    `the moved card did not persist at todo#0: ${JSON.stringify(persisted)}`,
-  );
-
-  // Park the personal card in `done` (unbounded — the personal board has no WIP
-  // limits) so this run leaves nothing that a later run's WIP guard could trip.
-  const parkedCard = cardWriteSchema.parse(
-    expectOk(
-      await cli(
-        ['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'card', 'move', addedCard.card.id, '--to', 'done'],
-        authedHome,
-      ),
-      'personal card move to done',
-    ),
-  );
-  assert(
-    parkedCard.card.column === 'done',
-    `personal card did not park in done: ${JSON.stringify(parkedCard.card)}`,
-  );
-
-  // --- team board: ordered columns + WIP limits, enforced server-side ---
-  const teamTitle = `smoke team ${randomUUID()}`;
-  const teamCard = cardWriteSchema.parse(
-    expectOk(
-      await cli(
-        ['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'card', 'add', '--board', 'team', teamTitle],
-        authedHome,
-      ),
-      'team card add',
-    ),
-  );
-  assert(
-    teamCard.card.board === 'team' &&
-      teamCard.card.column === 'todo' &&
-      teamCard.card.visited.includes('todo'),
-    `team card add did not land in todo on the team board: ${JSON.stringify(teamCard.card)}`,
-  );
-
-  // Illegal: todo -> done skips the ordered path — rejected (validation, exit 2), rule named.
-  const rejected = expectError(
-    await cli(
-      [
-        '--json',
-        '--api-url',
-        baseUrl,
-        '--tenant',
-        target.tenant,
-        'card',
-        'move',
-        teamCard.card.id,
-        '--board',
-        'team',
-        '--to',
-        'done',
-      ],
-      authedHome,
-    ),
-    'illegal team move todo->done',
+  expectError(
+    await cli(['document', 'add', 'invalid']),
+    'invalid document command',
     EXIT_CODE_BY_ERROR_CODE.validation,
     'validation',
   );
-  assert(
-    rejected.message.includes('rule'),
-    `illegal team move did not name the broken rule: ${rejected.message}`,
-  );
-
-  // Legal: walk the full ordered chain todo -> in-dev -> review -> done (exit 0
-  // each). The run leaves the card in `done`, which is absent from
-  // TEAM_WIP_LIMITS (unbounded), so repeated production runs never accumulate in
-  // the bounded `in-dev`/`review` columns and can never trip a WIP guard.
-  const teamMove = async (to: string, label: string): Promise<void> => {
-    const moved = cardWriteSchema.parse(
-      expectOk(
-        await cli(
-          ['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'card', 'move', teamCard.card.id, '--board', 'team', '--to', to],
-          authedHome,
-        ),
-        label,
-      ),
-    );
-    assert(moved.card.column === to, `${label} did not land in ${to}: ${JSON.stringify(moved.card)}`);
-  };
-  await teamMove('in-dev', 'legal team move todo->in-dev');
-  await teamMove('review', 'legal team move in-dev->review');
-  await teamMove('done', 'legal team move review->done');
-
-  const teamCards = cardsSchema.parse(
-    expectOk(
-      await cli(
-        ['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'card', 'list', '--board', 'team'],
-        authedHome,
-      ),
-      'team card list',
-    ),
-  );
-  const teamPersisted = teamCards.cards.find((card) => card.id === teamCard.card.id);
-  assert(teamPersisted !== undefined, 'the team card vanished from the team board list');
-  assert(
-    teamPersisted.board === 'team' &&
-      teamPersisted.column === 'done' &&
-      ['todo', 'in-dev', 'review'].every((column) => teamPersisted.visited.includes(column)),
-    `team card list did not surface board/visited correctly: ${JSON.stringify(teamPersisted)}`,
-  );
-
-  // --- members: the staff-managed end-customer roster (ensure→list→export→remove) ---
-  // Self-contained and non-self-poisoning: each run ensures a uniquely-emailed
-  // member and removes it before finishing, so repeated production runs leave the
-  // roster exactly as they found it.
-  const memberArgs = (...args: string[]): string[] => [
-    '--json',
-    '--api-url',
-    baseUrl,
-    '--tenant',
-    target.tenant,
-    'member',
-    ...args,
-  ];
-  const memberEmail = `smoke-${randomUUID()}@example.com`;
-
-  const ensured = memberEnsureSchema.parse(
-    expectOk(
-      await cli(memberArgs('ensure', memberEmail, '--name', 'Smoke Member', '--tag', 'smoke'), authedHome),
-      'member ensure',
-    ),
-  );
-  assert(
-    ensured.created && ensured.member.email === memberEmail,
-    `member ensure did not create ${memberEmail}: ${JSON.stringify(ensured)}`,
-  );
-
-  const reEnsured = memberEnsureSchema.parse(
-    expectOk(await cli(memberArgs('ensure', memberEmail), authedHome), 'member ensure (idempotent)'),
-  );
-  assert(
-    !reEnsured.created && reEnsured.member.id === ensured.member.id,
-    `member ensure was not idempotent by (tenant, email): ${JSON.stringify(reEnsured)}`,
-  );
-
-  const memberList = membersSchema.parse(
-    expectOk(await cli(memberArgs('list'), authedHome), 'member list'),
-  );
-  assert(
-    memberList.members.some((m) => m.id === ensured.member.id),
-    'the ensured member did not appear in the member list',
-  );
-
-  const exported = memberExportSchema.parse(
-    expectOk(await cli(memberArgs('export', ensured.member.id), authedHome), 'member export'),
-  );
-  assert(
-    exported.member.email === memberEmail && exported.tenantId.length > 0,
-    `member export dumped the wrong member: ${JSON.stringify(exported)}`,
-  );
-
-  const removed = memberRemoveSchema.parse(
-    expectOk(await cli(memberArgs('remove', ensured.member.id), authedHome), 'member remove'),
-  );
-  assert(
-    removed.memberId === ensured.member.id && removed.deleted.members === 1,
-    `member remove did not report the cascade: ${JSON.stringify(removed)}`,
-  );
-
-  const afterRemove = membersSchema.parse(
-    expectOk(await cli(memberArgs('list'), authedHome), 'member list (after remove)'),
-  );
-  assert(
-    !afterRemove.members.some((m) => m.id === ensured.member.id),
-    'the removed member is still present in the roster',
-  );
-
-  // --- magic link + member binding (US-026): provision a member, sign them in
-  // via a passwordless magic link, and prove the provisioned (null userId) member
-  // row is claimed on first sign-in. The real smtp adapter delivers to a local
-  // Mailpit (no dev transport); the link is recovered over Mailpit's HTTP API and
-  // followed, exactly as a human would from the inbox. Skipped for smoke:remote
-  // (a real relay delivers there, no capture inbox). Self-cleaning: the
-  // provisioned member is removed before finishing; the magic sign-in creates one
-  // account (unique email) as the only residue.
-  if (target.mailpitApiUrl !== undefined) {
-    const mailpitApiUrl = target.mailpitApiUrl;
-    const magicEmail = `smoke-magic-${randomUUID()}@example.com`;
-    const magicHome = mkdtempSync(join(tmpdir(), 'smoke-magic-'));
-    homes.push(magicHome);
-
-    const provisioned = memberEnsureSchema.parse(
-      expectOk(await cli(memberArgs('ensure', magicEmail, '--name', 'Magic Smoke'), authedHome), 'magic member ensure'),
-    );
-    assert(
-      provisioned.created && provisioned.member.email === magicEmail,
-      `magic member was not provisioned: ${JSON.stringify(provisioned)}`,
-    );
-
-    expectOk(
-      await cli(['--json', '--api-url', baseUrl, 'login-link', '--email', magicEmail], magicHome),
-      'magic link request',
-    );
-    const link = await fetchMagicLink(mailpitApiUrl, magicEmail);
-    const followed = magicLinkFollowSchema.parse(
-      expectOk(
-        await cli(['--json', '--api-url', baseUrl, 'login-link', '--email', magicEmail, '--link', link], magicHome),
-        'magic link follow',
-      ),
-    );
-    assert(followed.email === magicEmail, `magic link signed in the wrong email: ${followed.email}`);
-
-    const magicMe = meSchema.parse(
-      expectOk(
-        await cli(['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'whoami'], magicHome),
-        'magic whoami',
-      ),
-    );
-    assert(
-      magicMe.email === magicEmail &&
-        magicMe.tenant?.slug === target.tenant &&
-        magicMe.tenant?.memberId === provisioned.member.id,
-      `magic-link sign-in did not bind the provisioned member: ${JSON.stringify(magicMe)}`,
-    );
-
-    expectOk(await cli(memberArgs('remove', provisioned.member.id), authedHome), 'magic member cleanup');
-  }
-
-  // --- staff (FR-8): owner grants a second REGISTERED user admin, then revokes ---
-  // Self-cleaning: the grant is revoked before the run ends, so tenant_admins is
-  // left as found. The second account is registered under a unique email (FR-8
-  // grants an account that must ALREADY exist — no invitations) and is the only
-  // residue; it holds no access after the revoke.
-  const adminHome = mkdtempSync(join(tmpdir(), 'smoke-admin-'));
-  homes.push(adminHome);
-  const adminEmail = `smoke-admin-${randomUUID()}@example.com`;
-  const staffArgs = (...args: string[]): string[] => [
-    '--json',
-    '--api-url',
-    baseUrl,
-    '--tenant',
-    target.tenant,
-    'staff',
-    ...args,
-  ];
-
-  expectOk(
-    await cli(
-      ['--json', '--api-url', baseUrl, 'register', '--name', 'Smoke Admin', '--email', adminEmail, '--password', 'smoke-admin-1234'],
-      adminHome,
-    ),
-    'register second user',
-  );
-
-  // Granting an email with no account is refused (no invitations, exit 5).
   expectError(
-    await cli(staffArgs('grant', `nobody-${randomUUID()}@example.com`), authedHome),
-    'staff grant unknown email',
+    await cli(['document', 'show', '00000000-0000-4000-8000-000000000000']),
+    'missing document',
     EXIT_CODE_BY_ERROR_CODE.not_found,
     'not_found',
   );
 
-  const granted = staffGrantSchema.parse(expectOk(await cli(staffArgs('grant', adminEmail), authedHome), 'staff grant'));
-  assert(
-    granted.granted && granted.staff.role === 'admin' && granted.staff.email === adminEmail,
-    `staff grant did not create the admin: ${JSON.stringify(granted)}`,
-  );
-
-  const reGranted = staffGrantSchema.parse(
-    expectOk(await cli(staffArgs('grant', adminEmail), authedHome), 'staff grant (idempotent)'),
-  );
-  assert(!reGranted.granted, `staff grant was not idempotent on re-grant: ${JSON.stringify(reGranted)}`);
-
-  const roster = staffListSchema.parse(expectOk(await cli(staffArgs('list'), authedHome), 'staff list'));
-  assert(
-    roster.staff.some((s) => s.email === adminEmail && s.role === 'admin') &&
-      roster.staff.some((s) => s.role === 'owner'),
-    `staff list did not surface the owner + new admin: ${JSON.stringify(roster.staff)}`,
-  );
-
-  // The granted user can now act as admin: list todos in the tenant.
-  expectOk(
-    await cli(['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'todo', 'list'], adminHome),
-    'granted admin lists todos',
-  );
-
-  // Granting is owner-only: the admin is forbidden (exit 4).
-  expectError(
-    await cli(staffArgs('grant', adminEmail), adminHome),
-    'admin cannot grant (owner-only)',
-    EXIT_CODE_BY_ERROR_CODE.forbidden,
-    'forbidden',
-  );
-
-  // Lockout guard: the sole owner cannot revoke themselves (validation, exit 2).
-  expectError(
-    await cli(staffArgs('revoke', '--email', target.email), authedHome),
-    'last-owner revoke blocked',
-    EXIT_CODE_BY_ERROR_CODE.validation,
-    'validation',
-  );
-
-  const revoked = staffRevokeSchema.parse(
-    expectOk(await cli(staffArgs('revoke', '--email', adminEmail), authedHome), 'staff revoke'),
-  );
-  assert(revoked.revoked === 1, `staff revoke did not remove exactly one grant: ${JSON.stringify(revoked)}`);
-
-  // After revocation the user is neither staff nor a member, so tenant resolution
-  // denies the request before any use-case runs (tenant_not_found, exit 7) — the
-  // membership check is upstream of authorization.
-  expectError(
-    await cli(['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'todo', 'list'], adminHome),
-    'revoked admin loses tenant access',
-    EXIT_CODE_BY_ERROR_CODE.tenant_not_found,
-    'tenant_not_found',
-  );
-
-  // Public surface via the CLI with NO session: anonHome holds no token, so
-  // `public profile` proves the group is reachable unauthenticated (US-028).
-  const publicProfile = publicProfileSchema.parse(
+  if (target.mailpitApiUrl) {
+    const magicHome = mkdtempSync(join(tmpdir(), 'smoke-cli-magic-'));
+    homes.push(magicHome);
     expectOk(
-      await cli(['--json', '--api-url', baseUrl, 'public', 'profile', target.tenant], anonHome),
-      'public profile (no session)',
-    ),
+      await cli(['login-link', '--email', 'mag@example.com'], magicHome),
+      'magic-link request',
+    );
+    const link = await fetchMagicLink(target.mailpitApiUrl, 'mag@example.com');
+    expectOk(
+      await cli(['login-link', '--email', 'mag@example.com', '--link', link], magicHome),
+      'magic-link follow',
+    );
+    const magicMe = meSchema.parse(expectOk(await cli(['whoami'], magicHome), 'magic whoami'));
+    assert(magicMe.tenant?.slug === target.tenant, 'magic-link account lacks archive access');
+  }
+
+  expectOk(await cli(['document', 'remove', created.id]), 'document cleanup');
+  const cleaned = documentsSchema.parse(
+    expectOk(await cli(['document', 'list']), 'document list after cleanup'),
   );
   assert(
-    publicProfile.slug === target.tenant && publicProfile.displayName.length > 0,
-    `CLI public profile echoed the wrong safe fields: ${JSON.stringify(publicProfile)}`,
-  );
-
-  expectError(
-    await cli(['--json', '--api-url', baseUrl, '--tenant', target.tenant, 'todo', 'list'], anonHome),
-    'unauthorized todo list',
-    EXIT_CODE_BY_ERROR_CODE.unauthorized,
-    'unauthorized',
+    cleaned.documents.length === before.documents.length,
+    'smoke left a document behind',
   );
 };

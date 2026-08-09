@@ -1,5 +1,9 @@
 # Frontend lint plan
 
+> **Foundation history.** Board/todo fixtures and scaffolder references below
+> document how the rules were proven upstream; those product surfaces and scripts
+> are not shipped by Podpisy.
+
 Enforcement spec for `architecture.md` §Frontend. Method: **warn → fix →
 error** — a rule lands at `warn`, violations are fixed in the same or next
 session, then it is promoted; a rule only counts once it fails `pnpm run check`.
@@ -168,25 +172,20 @@ carries no tolerated debt.
 
 ## Phase 5 — island-core rules (ADR-0005)
 
-Enforcement for the island-core model
-([architecture.md](architecture.md) §Client application state,
-[ADR-0005](decisions/0005-client-application-state.md)). Every rule ships
-with a config-regression probe, like every boundary rule before it. Five of
-the six are wired — bus confinement is the only one still pending. Real island
-cores now exist (the two `board`/`team-board` features), but the probes
-(`config-regression/island-core.test.ts`) still synthesize violating fixtures
-under a throwaway `features/<name>/core/` path and assert each rule fires, so
-enforcement is proven on the exact shape a core takes, independent of the
-committed cores. The Status column records what is wired versus still pending,
-and why.
+The demo strip removed every island core and its dedicated
+`config-regression/island-core.test.ts` probes. The table records the remaining
+dormant lint configuration for a future island-core trigger; it does not claim
+that the shipped archive exercises an island-core model. Generic feature
+isolation and the dependency-cruiser framework-import fixture remain covered by
+`config-regression/gates.test.ts`.
 
 | Rule | Mechanism | Status |
 |---|---|---|
-| Event suffix taxonomy: island event-union members end in an approved intent suffix (the 12-suffix list under Phase 4; imperative names unwritable) | `agentproofarch/event-suffix-taxonomy` (custom plugin rule, RuleTester-tested); semantic half stays review + AI tier | **wired** — probe asserts `deleteCard` fails in a future `core/events.ts` |
-| Core purity: no `react`, no `react-dom`, no `@tanstack/react-query` (nor the store React bindings `@xstate/store/react`/`@xstate/react`) in `features/*/core/**` (`@tanstack/query-core` and the vanilla `@xstate/store`/`xstate` stay allowed) | `no-restricted-imports` in the island-core override, mirroring the `core/**` framework ban, **plus** a depcruise mirror (`island-core-is-framework-agnostic`) now that real cores exist | **wired** — ESLint probes per banned import (incl. the `@xstate/store/react` binding); depcruise mirror probed in `gates.test.ts` |
-| Persistence bans in islands: no store persist middleware, no `localStorage`/`sessionStorage` (mechanical proxy of "local state dies on reload") | `no-restricted-imports` (persist entrypoint) + the Phase-3 storage rule (absolute everywhere in `apps/web`) | **wired** — probes for persist and `localStorage` |
-| `queryClient.setQueryData` only inside the island's `optimistic.ts` | `no-restricted-syntax` + path-scoped override | **wired** — probes both ways (fires outside, silent inside `optimistic.ts`) |
-| Store-library confinement: `@xstate/store` and `xstate` importable only in `features/*/core/**` — rescopes the Phase-3 blanket ban on state libraries (which stays for all other paths; `zustand`, a spike candidate only, returns to the blanket ban) | `no-restricted-imports` with path-scoped override | **wired** — the machine spike resolved (ADR-0005): `@xstate/store` is the rung-2 store, rung 3 is an XState machine derived from the `core/domain` transition table. The vanilla store/machine is importable in a core; their React bindings are banned everywhere (incl. cores). Probes assert `@xstate/store`/`xstate` fire outside a core and pass inside |
+| Event suffix taxonomy: island event-union members end in an approved intent suffix (the 12-suffix list under Phase 4; imperative names unwritable) | `agentproofarch/event-suffix-taxonomy` (custom plugin rule, RuleTester-tested); semantic half stays review + AI tier | Configured and RuleTester-tested; no island events ship |
+| Core purity: no `react`, no `react-dom`, no `@tanstack/react-query` (nor the store React bindings `@xstate/store/react`/`@xstate/react`) in `features/*/core/**` (`@tanstack/query-core` and the vanilla `@xstate/store`/`xstate` stay allowed) | `no-restricted-imports` in the island-core override, mirroring the `core/**` framework ban, plus dependency-cruiser `island-core-is-framework-agnostic` | Configured; dependency-cruiser's React-import fixture remains, but the dedicated ESLint probe file is gone |
+| Persistence bans in islands: no store persist middleware, no `localStorage`/`sessionStorage` (mechanical proxy of "local state dies on reload") | `no-restricted-imports` (persist entrypoint) + the Phase-3 storage rule (absolute everywhere in `apps/web`) | Configured; no dedicated island-core probe remains |
+| `queryClient.setQueryData` only inside the island's `optimistic.ts` | `no-restricted-syntax` + path-scoped override | Configured; no dedicated island-core probe remains |
+| Store-library confinement: `@xstate/store` and `xstate` importable only in `features/*/core/**` — rescopes the Phase-3 blanket ban on state libraries (which stays for all other paths; `zustand`, a spike candidate only, returns to the blanket ban) | `no-restricted-imports` with path-scoped override | Configured; no dedicated island-core probe remains |
 | Bus confinement: the typed-signal-bus module importable only from `features/*/core/**` (views never see the bus) | `no-restricted-imports` / boundaries element | planned — lands with the first bus event |
 
 ## Suppression policy (from the hardening guide, verbatim intent)

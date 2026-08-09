@@ -1,5 +1,8 @@
 # ADR-0010: Tenant-creation policy — an env-selected `TENANT_CREATION` mode
 
+> **Superseded in Podpisy on 2026-08-01.** Tenant creation and switching surfaces
+> were removed; the fixed `default` tenant is provisioned operationally.
+
 Date: 2026-07-26 · Status: accepted (owner-approved) · Builds on
 [ADR-0002](0002-member-identity-and-idp.md) (one global account pool, per-request
 identity resolution) and the capability model in

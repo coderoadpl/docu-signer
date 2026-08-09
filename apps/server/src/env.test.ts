@@ -14,7 +14,6 @@ beforeEach(() => {
   vi.stubEnv('APP_BASE_URL', undefined);
   vi.stubEnv('VERCEL_URL', undefined);
   vi.stubEnv('SECURE_COOKIES', undefined);
-  vi.stubEnv('TENANT_CREATION', undefined);
 });
 
 afterEach(() => {
@@ -53,13 +52,6 @@ describe('loadEnv', () => {
     expect(loadEnv().APP_COMMIT_SHA).toBeUndefined();
     vi.stubEnv('APP_COMMIT_SHA', 'deadbeef');
     expect(loadEnv().APP_COMMIT_SHA).toBe('deadbeef');
-  });
-
-  it('defaults tenant creation to open and accepts only declared modes', () => {
-    expect(loadEnv().TENANT_CREATION).toBe('open');
-    expect(parseEnv({ ...localDev(), TENANT_CREATION: 'staff' }).success).toBe(true);
-    expect(parseEnv({ ...localDev(), TENANT_CREATION: 'closed' }).success).toBe(true);
-    expect(parseEnv({ ...localDev(), TENANT_CREATION: 'invalid' }).success).toBe(false);
   });
 
   it('keeps sign-up enabled by default and parses the production switch', () => {
@@ -163,46 +155,6 @@ describe('production env hardening (B2)', () => {
     it('leaves node-postgres untouched off Vercel', () => {
       expect(parseEnv({ ...localDev(), DB_DRIVER: 'node-postgres' }).success).toBe(true);
     });
-  });
-});
-
-describe('domain provisioner selection (US-020)', () => {
-  it('defaults to noop and leaves the Vercel credential block unset', () => {
-    const result = parseEnv(localDev());
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.DOMAIN_PROVISIONER).toBe('noop');
-      expect(result.data.VERCEL_TOKEN).toBeUndefined();
-      expect(result.data.VERCEL_PROJECT_ID).toBeUndefined();
-      expect(result.data.VERCEL_TEAM_ID).toBeUndefined();
-    }
-  });
-
-  it('takes vercel with its credential block (the composition root enforces completeness)', () => {
-    const result = parseEnv({
-      ...localDev(),
-      DOMAIN_PROVISIONER: 'vercel',
-      VERCEL_TOKEN: 'token-value',
-      VERCEL_PROJECT_ID: 'prj_123',
-      VERCEL_TEAM_ID: 'team_42',
-    });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.DOMAIN_PROVISIONER).toBe('vercel');
-      expect(result.data.VERCEL_PROJECT_ID).toBe('prj_123');
-    }
-  });
-
-  it('refuses an unknown provisioner', () => {
-    expect(parseEnv({ ...localDev(), DOMAIN_PROVISIONER: 'cloudflare' }).success).toBe(false);
-  });
-
-  // The platform's own VERCEL flag says nothing about domain provisioning: it
-  // carries no API token, so it must not select the vercel adapter.
-  it('stays on noop on a Vercel deployment that set no provisioner', () => {
-    const result = parseEnv(deployed());
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.DOMAIN_PROVISIONER).toBe('noop');
   });
 });
 

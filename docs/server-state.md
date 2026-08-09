@@ -39,8 +39,8 @@ a `defineInfiniteQuery` helper lands with the first infinite list, not before.
   Commands are not a data source for rendering: after a command the UI reads
   through queries (invalidation → refetch); a command's return value feeds
   `setQueryData` only in the complete-single-resource case. Naming: queries
-  are nouns (`todos.list(params)`), commands are imperative verbs
-  (`todos.add`, `auth.signIn`). Every client interface consumes the same
+  are nouns (`documents.list(params)`), commands are imperative verbs
+  (`documents.create`, `auth.signIn`). Every client interface consumes the same
   partition — the CLI maps commands to verbs and queries to reads.
   Enforcement is type-level: contract routes carry their HTTP method, client
   method types carry a read/write tag, and `defineQuery`/`defineMutation`
@@ -51,7 +51,8 @@ a `defineInfiniteQuery` helper lands with the first infinite list, not before.
 - Query keys are the **public API of a feature** and exist only in
   `core/client/queries.ts` factories (lint). Never hand-copy a key.
 - Hierarchy is general → specific with a scope helper per resource:
-  `todos.all()` → `todos.lists()` → `todos.list(params)` → `todos.detail(id)`.
+  `documents.all()` → `documents.lists()` → `documents.list(params)` →
+  `documents.detail(id)`.
   Invalidation and per-prefix defaults work by prefix matching; sloppy
   hierarchy degenerates into ad-hoc predicates.
 - **Everything `queryFn` reads is in the key — by construction**: factories
@@ -114,7 +115,7 @@ a `defineInfiniteQuery` helper lands with the first infinite list, not before.
   and since [ADR-0005](decisions/0005-client-application-state.md) such cache
   writes live in the owning island's `optimistic.ts`, where lint confines
   `queryClient.setQueryData` (architecture.md §Client application state).
-- `invalidateQueries` takes a filter object (`{ queryKey: todos.lists() }`),
+- `invalidateQueries` takes a filter object (`{ queryKey: documents.lists() }`),
   never a bare array. Invalidation refetches active queries and marks the rest
   stale; `refetchType: 'all'` needs justification.
 - Optimistic updates are reserved for instant-feedback interactions (toggles,

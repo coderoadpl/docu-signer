@@ -16,7 +16,7 @@ try {
   console.log(`smoke:remote: driving the CLI against ${baseUrl}...`);
   if (target.anonymousOnly === true) {
     console.log(
-      'smoke:remote: no SMOKE_EMAIL — unauthenticated surface only (headers, public API, health, attestation); set SMOKE_EMAIL/SMOKE_PASSWORD/SMOKE_TENANT for the full canary drive',
+      'smoke:remote: no SMOKE_EMAIL — unauthenticated surface only (headers, public API, health, attestation); set SMOKE_EMAIL/SMOKE_PASSWORD for the full canary drive',
     );
   }
   await driveCli(target, homes);

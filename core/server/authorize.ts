@@ -19,7 +19,7 @@ import type { Ctx } from './context.js';
  * a discipline the tests and review enforce, not the compiler.
  */
 export const authorize = (ctx: Ctx, capability: Capability): AppError | null => {
-  const verdict = decide(ctx.identity, capability, ctx.tenantCreationMode);
+  const verdict = decide(ctx.identity, capability);
   return verdict.allowed ? null : forbidden(verdict.reason);
 };
 

@@ -13,7 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import { BOARD_IDS } from '#core/domain/index.js';
+const LEGACY_BOARD_IDS = ['personal', 'team'] as const;
 
 export const tenants = pgTable(
   'tenants',
@@ -109,7 +109,7 @@ export const cards = pgTable(
     // Which board this card lives on. Defaults to 'personal' so every card that
     // predates the team board — and every payload that omits `board` — stays on
     // the personal board with no backfill.
-    board: text('board', { enum: BOARD_IDS }).notNull().default('personal'),
+    board: text('board', { enum: LEGACY_BOARD_IDS }).notNull().default('personal'),
     // Board-agnostic: the legal column set is data of a board, validated at the
     // use-case boundary, so the substrate stores a plain string.
     column: text('column').notNull(),
@@ -207,11 +207,6 @@ export const tenantDomains = pgTable(
   ],
 );
 
-// C4 backfill executor (§Backfills): one durable checkpoint row per registered
-// backfill, so a cron-driven batch run resumes exactly where the last invocation
-// stopped. NEW table → §Data conventions shape: uuid PK + timestamptz. `name` is
-// the registry key (unique); `cursor` is the opaque resume token the backfill
-// advances; `done` latches when the backfill has processed every row.
 export const backfillCheckpoints = pgTable('backfill_checkpoints', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull().unique(),

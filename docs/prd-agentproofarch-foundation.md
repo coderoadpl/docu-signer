@@ -1,5 +1,10 @@
 # PRD: Agentproofarch — Agent-First Full-Stack Foundation
 
+> **Upstream historical specification.** Podpisy retains its structural rules,
+> but the demo product requirements for todos, boards, members, staff, tenant
+> management, domain management and scaffolders were removed by the owner on
+> 2026-08-01. See [FOUNDATION.md](../FOUNDATION.md).
+
 > **Status (owner decision, 2026-07-20, DECIDE A1):** the **full PRD scope is
 > ACCEPTED for build** — nothing here is demoted to roadmap. The not-yet-built
 > stories land as a multi-PR program; the sub-packages and their order are

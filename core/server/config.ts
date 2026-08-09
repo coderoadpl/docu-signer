@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { DEFAULT_DEV_PORT } from '#core/contract/index.js';
-import { TENANT_CREATION_MODES } from '#core/domain/index.js';
 
 /**
  * The single source of environment configuration (DECIDE F4). One module owns
@@ -41,28 +40,10 @@ export const serverEnvSchema = z.object({
   // published; unset elsewhere, so the internal app does not start (dev, smoke,
   // e2e and Vercel never expose the domain-check surface).
   INTERNAL_PORT: z.coerce.number().int().positive().optional(),
-  // Domain-provisioning adapter selector (composition root). `caddy` on the
-  // self-host target (on-demand TLS + DNS check), `vercel` on the Vercel target
-  // (per-host attach over the Domains API), `noop` everywhere else.
-  DOMAIN_PROVISIONER: z.enum(['vercel', 'caddy', 'noop']).default('noop'),
-  // The public target self-host tenants must point a custom domain at; the caddy
-  // DomainPort's `check` verifies DNS resolves here. Set one, not both.
-  SELF_HOST_TARGET_CNAME: z.string().optional(),
-  SELF_HOST_TARGET_IP: z.string().optional(),
-  // Vercel Domains API credentials, read only when DOMAIN_PROVISIONER=vercel is
-  // selected explicitly — presence of the platform's own VERCEL* vars never
-  // selects the provisioner, because the platform env carries no API token.
-  // Optional here (every other target runs without them) and required by the
-  // composition root, which refuses to boot on an incomplete block.
-  VERCEL_TOKEN: z.string().optional(),
-  VERCEL_PROJECT_ID: z.string().optional(),
-  // Only for a team-owned project; omitted on a personal one.
-  VERCEL_TEAM_ID: z.string().optional(),
   DATABASE_URL: databaseUrlField,
   DB_DRIVER: dbDriverField,
   APP_BASE_DOMAIN: appBaseDomainField.default('localhost'),
   APP_BASE_URL: z.url().optional(),
-  TENANT_CREATION: z.enum(TENANT_CREATION_MODES).default('open'),
   // Set by Vercel on every deployment (`VERCEL=1`). Presence is the "we are
   // deployed on Vercel" signal the hardening refinements key off.
   VERCEL: z.string().optional(),
@@ -91,7 +72,7 @@ export const serverEnvSchema = z.object({
   STORAGE_DRIVER: z.enum(['local-fs', 'vercel-blob']).default('local-fs'),
   STORAGE_LOCAL_PATH: z.string().default('/tmp/podpisy-storage'),
   BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
-  // Email transport selector (composition root), like DOMAIN_PROVISIONER. `smtp`
+  // Email transport selector (composition root). `smtp`
   // (default): any RFC SMTP relay via the SMTP_* block — Amazon SES SMTP creds
   // included, and in dev/CI a local Mailpit that captures real sends instead of
   // delivering (no separate dev transport). `ses`: Amazon SES directly over the
@@ -123,12 +104,6 @@ export const serverEnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   WEB_DIST_DIR: z.string().default('dist/web'),
-  // C4 backfill executor (§Backfills). On self-host the batch endpoint lives on
-  // the network-isolated INTERNAL_PORT app; on Vercel (no private port) the same
-  // batch runs behind an authenticated route on the public app, gated by this
-  // strong shared secret. Unset → the public backfill route does not mount, so a
-  // deploy without a secret cannot expose it. Min length keeps it un-guessable.
-  INTERNAL_BACKFILL_SECRET: z.string().min(24).optional(),
 });
 
 export type ServerEnvParsed = z.output<typeof serverEnvSchema>;

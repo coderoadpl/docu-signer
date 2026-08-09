@@ -23,7 +23,6 @@ const identity: Identity = {
   tenantSlug: 'acme',
   tenantName: 'Acme',
   staffRole: 'owner',
-  memberId: null,
 };
 
 type Vars = { Variables: { identity?: Identity } };

@@ -36,8 +36,8 @@ adapter and app is written against.
 - Every tenant-scoped use-case authorizes FIRST — its opening statement is the
   capability predicate (`authorize`/`authorizeTenant`, default-deny; see
   [architecture §Authorization](../docs/architecture.md#authorization)) —
-  before any repository access. A self-scoped read carrying no capability
-  (e.g. `listMyTenants`) is the only allowlisted exception.
+  before any repository access. There are no allowlisted exceptions today; any
+  future authentication-only exception must be named and reasoned explicitly.
 - Every tenant-scoped use-case takes `ctx: { identity }` first.
 
 ## Verify you didn't break this layer

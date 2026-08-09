@@ -1,5 +1,9 @@
 # ADR-0004: No-exceptions enforcement — CI gates, post-deploy verification, and config-regression probes
 
+> **Current mechanism, historical examples.** Podpisy retains the gates and
+> doc/config checks; smoke now drives documents and removed island/scaffolder
+> probes are no longer part of the count.
+
 Date: 2026-07-17 · Status: accepted (2026-07-17), with one sub-decision deferred to the owner (see Consequences)
 
 ## Context
@@ -30,16 +34,20 @@ green.
 1. **Both gates are required CI checks on every PR.** A GitHub Actions
    workflow (`ci`) runs on `pull_request` and on `push` to `main`:
    - **`check`** — `pnpm install --frozen-lockfile && pnpm run check`, the static gate, from a clean
-     install. Its eight members are: typecheck + island typecheck + ESLint
-     (layer boundaries) + lock-lint + dependency-cruiser + knip + doc-lint +
-     vitest with coverage.
+     install. Its seven members are: typecheck + ESLint (layer boundaries) +
+     lock-lint + dependency-cruiser + knip + doc-lint + vitest with coverage.
    - **`smoke`** — `pnpm install --frozen-lockfile && pnpm run smoke` against a `postgres:16` service
      container, the runtime gate: it verifies the installed tree matches
      `pnpm-lock.yaml`, drops+recreates the isolated `agentproofarch_smoke`
      database, migrates, seeds, boots the real server and drives
-     health → sign-in → todos → unauthorized through the CLI. A clean CI
+     health → sign-in → documents → unauthorized through the CLI. A clean CI
      checkout structurally cannot carry stale local state, which closes the
      second failure class.
+
+   The former fresh-clone `quickstart:probe` CI step is no longer a gate. It
+   was removed with the demo verticals it drove; the README quickstart remains
+   operator convention rather than an executable guarantee (see
+   `FOUNDATION.md`).
 
 2. **Post-deploy verification against real production.** A second workflow
    (`post-deploy-smoke`) listens for the `deployment_status` event and, when a

@@ -18,35 +18,42 @@ const stripComments = (source: string): string =>
 const publicApp = read('apps', 'server', 'src', 'public-app.ts');
 const publicAppCode = stripComments(publicApp);
 const publicUseCase = read('core', 'server', 'usecases', 'public.ts');
+const documentUseCases = read('core', 'server', 'usecases', 'documents.ts');
 
 /**
- * The identity-bearing surface a public handler must never reach: every
- * tenant-scoped use-case (mirrors config-regression/authorization.test.ts's known
- * list) plus the identity/authorization primitives. If a new tenant-scoped
- * use-case is added, add it here too — the same discipline both probes share.
+ * The surviving identity-bearing surface a public handler must never reach:
+ * every tenant-scoped document use-case plus identity/authorization primitives.
+ * The existence probe below prevents deleted names from making this scan vacuous.
  */
+const TENANT_SCOPED_USE_CASES = [
+  'createDocument',
+  'listDocuments',
+  'getDocument',
+  'updateDocument',
+  'deleteDocument',
+  'requestFileUpload',
+  'finalizeFileUpload',
+  'serverUpload',
+  'removeFile',
+  'getFileContent',
+  'getFileExport',
+  'exportDocuments',
+];
+
 const IDENTITY_BEARING = [
-  'listTodos',
-  'addTodo',
-  'listCards',
-  'addCard',
-  'moveCard',
-  'createTenant',
-  'listMyTenants',
-  'listStaff',
-  'grantAdmin',
-  'revokeAdmin',
-  'listMembers',
-  'ensureMember',
-  'updateMember',
-  'removeMember',
-  'exportMember',
+  ...TENANT_SCOPED_USE_CASES,
   'resolveIdentity',
   'authorize',
   'authorizeTenant',
 ];
 
 describe('public routes sit before identity resolution and never authorize (US-028 AC)', () => {
+  it('guards the complete surviving tenant-scoped document surface', () => {
+    for (const name of TENANT_SCOPED_USE_CASES) {
+      expect(documentUseCases).toMatch(new RegExp(`export const ${name}\\b`));
+    }
+  });
+
   it('the public handler references no identity-bearing use-case or authz primitive', () => {
     const reached = IDENTITY_BEARING.filter((name) =>
       new RegExp(`\\b${name}\\b`).test(publicAppCode),

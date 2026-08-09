@@ -1,5 +1,10 @@
 # ADR-0005: Client application state — island cores with a ladder of machines
 
+> **Historical decision; implementation removed on 2026-08-01.** Podpisy ships
+> no island cores or island/resource scaffolders. The dedicated no-DOM typecheck,
+> portable-core dependency-cruiser rule, and api-import regression probe described
+> below were removed too; generic feature isolation and framework bans remain.
+
 Date: 2026-07-19 · Status: accepted (2026-07-19); the two machine choices
 were resolved by the owner on 2026-07-19 after a code spike (see the final
 Decision block)

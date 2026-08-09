@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const MAX_DOCUMENT_FILE_BYTES = 25 * 1024 * 1024;
-export const MAX_DOCUMENT_EXPORT_DOCUMENTS = 100;
+const MAX_DOCUMENT_EXPORT_DOCUMENTS = 100;
 export const MAX_DOCUMENT_EXPORT_FILES = 100;
 export const MAX_DOCUMENT_EXPORT_BYTES = 256 * 1024 * 1024;
 
@@ -15,7 +15,7 @@ export const documentTypeSchema = z.enum([
 
 export type DocumentType = z.infer<typeof documentTypeSchema>;
 
-export const documentFileRoleSchema = z.enum([
+const documentFileRoleSchema = z.enum([
   'source',
   'signed-scan',
   'signed-digital',
@@ -86,7 +86,7 @@ export const documentListFilterSchema = z
 
 export type DocumentListFilter = z.input<typeof documentListFilterSchema>;
 
-export const isAllowedDocumentContentType = (contentType: string): boolean => {
+const isAllowedDocumentContentType = (contentType: string): boolean => {
   const normalized = contentType.trim().toLowerCase();
   return (
     normalized === 'application/pdf' ||
@@ -94,7 +94,7 @@ export const isAllowedDocumentContentType = (contentType: string): boolean => {
   );
 };
 
-export const documentUploadContentTypeSchema = z
+const documentUploadContentTypeSchema = z
   .string()
   .trim()
   .min(1)

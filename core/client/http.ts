@@ -3,9 +3,6 @@ import { type z } from 'zod';
 import {
   API_ROUTES,
   authConfigOutputSchema,
-  cardCreateOutputSchema,
-  cardMoveOutputSchema,
-  cardsListOutputSchema,
   documentCreateOutputSchema,
   documentDeleteOutputSchema,
   documentFileDeleteOutputSchema,
@@ -13,45 +10,19 @@ import {
   documentGetOutputSchema,
   documentListOutputSchema,
   documentUpdateOutputSchema,
-  domainAddOutputSchema,
-  domainCheckOutputSchema,
-  domainListOutputSchema,
-  domainRemoveOutputSchema,
   fileUploadRequestOutputSchema,
   looseEnvelopeSchema,
   healthLiveOutputSchema,
   healthOutputSchema,
   healthReadyOutputSchema,
-  memberEnsureOutputSchema,
-  memberExportOutputSchema,
-  memberListOutputSchema,
-  memberRemoveOutputSchema,
-  memberUpdateOutputSchema,
   meOutputSchema,
   PUBLIC_API_ROUTES,
   publicTenantDiscoveryOutputSchema,
   publicTenantDiscoveryPath,
   publicTenantProfileOutputSchema,
   publicTenantProfilePath,
-  staffGrantOutputSchema,
-  staffListOutputSchema,
-  staffRevokeOutputSchema,
-  tenantCreateOutputSchema,
-  tenantListOutputSchema,
-  todoCreateOutputSchema,
-  todoListOutputSchema,
-  type DomainAddInput,
-  type DomainCheckInput,
-  type DomainRemoveInput,
   type HttpMethod,
-  type MemberEnsureInput,
-  type MemberRemoveInput,
-  type MemberUpdateInput,
-  type PaginationQuery,
   type ReadMethod,
-  type StaffGrantInput,
-  type StaffRevokeInput,
-  type TenantCreateInput,
   type WriteMethod,
 } from '#core/contract/index.js';
 import {
@@ -59,15 +30,11 @@ import {
   internal,
   ok,
   type AppError,
-  type BoardId,
-  type CardMove,
   type CreateDocument,
   type DocumentListFilter,
   type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
-  type NewCard,
-  type NewTodo,
   type Result,
   type UpdateDocument,
 } from '#core/domain/index.js';
@@ -159,14 +126,6 @@ const queryString = (filter: DocumentListFilter): string => {
   for (const [key, value] of Object.entries(filter)) {
     if (value !== undefined) params.set(key, value);
   }
-  const encoded = params.toString();
-  return encoded.length > 0 ? `?${encoded}` : '';
-};
-
-const paginationQueryString = (query: Partial<PaginationQuery>): string => {
-  const params = new URLSearchParams();
-  if (query.cursor !== undefined) params.set('cursor', query.cursor);
-  if (query.limit !== undefined) params.set('limit', String(query.limit));
   const encoded = params.toString();
   return encoded.length > 0 ? `?${encoded}` : '';
 };
@@ -266,21 +225,6 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.config.method, API_ROUTES.config.path, authConfigOutputSchema, undefined, signal),
   me: (signal?: AbortSignal) =>
     request(options, API_ROUTES.me.method, API_ROUTES.me.path, meOutputSchema, undefined, signal),
-  listTenants: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.tenants.method, API_ROUTES.tenants.path, tenantListOutputSchema, undefined, signal),
-  createTenant: (input: TenantCreateInput, signal?: AbortSignal) =>
-    request(
-      options,
-      API_ROUTES.tenantsCreate.method,
-      API_ROUTES.tenantsCreate.path,
-      tenantCreateOutputSchema,
-      input,
-      signal,
-    ),
-  listTodos: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.todos.method, API_ROUTES.todos.path, todoListOutputSchema, undefined, signal),
-  addTodo: (input: NewTodo, signal?: AbortSignal) =>
-    request(options, API_ROUTES.todosCreate.method, API_ROUTES.todosCreate.path, todoCreateOutputSchema, input, signal),
   listDocuments: (filter: DocumentListFilter = {}, signal?: AbortSignal) =>
     request(
       options,
@@ -416,64 +360,6 @@ export const createApiClient = (options: ApiClientOptions) => ({
     `${options.baseUrl}${pathWith(API_ROUTES.documentFileExport.path, { documentId, fileId })}`,
   directFileUpload: (input: DirectFileUploadInput, signal?: AbortSignal) =>
     directFileUpload(options, input, signal),
-  listCards: (board: BoardId = 'personal', signal?: AbortSignal) =>
-    request(
-      options,
-      API_ROUTES.cards.method,
-      `${API_ROUTES.cards.path}?board=${encodeURIComponent(board)}`,
-      cardsListOutputSchema,
-      undefined,
-      signal,
-    ),
-  addCard: (input: NewCard, signal?: AbortSignal) =>
-    request(options, API_ROUTES.cardsCreate.method, API_ROUTES.cardsCreate.path, cardCreateOutputSchema, input, signal),
-  moveCard: (input: CardMove, signal?: AbortSignal) =>
-    request(options, API_ROUTES.cardsMove.method, API_ROUTES.cardsMove.path, cardMoveOutputSchema, input, signal),
-  listMembers: (query: Partial<PaginationQuery> = {}, signal?: AbortSignal) =>
-    request(
-      options,
-      API_ROUTES.members.method,
-      `${API_ROUTES.members.path}${paginationQueryString(query)}`,
-      memberListOutputSchema,
-      undefined,
-      signal,
-    ),
-  ensureMember: (input: MemberEnsureInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.membersEnsure.method, API_ROUTES.membersEnsure.path, memberEnsureOutputSchema, input, signal),
-  updateMember: (input: MemberUpdateInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.membersUpdate.method, API_ROUTES.membersUpdate.path, memberUpdateOutputSchema, input, signal),
-  removeMember: (input: MemberRemoveInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.membersRemove.method, API_ROUTES.membersRemove.path, memberRemoveOutputSchema, input, signal),
-  exportMember: (id: string, signal?: AbortSignal) =>
-    request(
-      options,
-      API_ROUTES.membersExport.method,
-      `${API_ROUTES.membersExport.path}?id=${encodeURIComponent(id)}`,
-      memberExportOutputSchema,
-      undefined,
-      signal,
-    ),
-  listStaff: (query: Partial<PaginationQuery> = {}, signal?: AbortSignal) =>
-    request(
-      options,
-      API_ROUTES.staff.method,
-      `${API_ROUTES.staff.path}${paginationQueryString(query)}`,
-      staffListOutputSchema,
-      undefined,
-      signal,
-    ),
-  grantStaff: (input: StaffGrantInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.staffGrant.method, API_ROUTES.staffGrant.path, staffGrantOutputSchema, input, signal),
-  revokeStaff: (input: StaffRevokeInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.staffRevoke.method, API_ROUTES.staffRevoke.path, staffRevokeOutputSchema, input, signal),
-  listDomains: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.domains.method, API_ROUTES.domains.path, domainListOutputSchema, undefined, signal),
-  addDomain: (input: DomainAddInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.domainsAdd.method, API_ROUTES.domainsAdd.path, domainAddOutputSchema, input, signal),
-  checkDomain: (input: DomainCheckInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.domainsCheck.method, API_ROUTES.domainsCheck.path, domainCheckOutputSchema, input, signal),
-  removeDomain: (input: DomainRemoveInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.domainsRemove.method, API_ROUTES.domainsRemove.path, domainRemoveOutputSchema, input, signal),
   publicTenantDiscovery: (slug: string, signal?: AbortSignal) =>
     request(
       options,

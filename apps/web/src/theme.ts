@@ -45,22 +45,11 @@ type AsElement = { component?: ElementType };
 
 const CardTitle = styled(Typography)({ fontSize: '1.6rem' });
 
-export const TenantName = styled('span')({ fontWeight: 700 });
-
 export const Wordmark = styled(CardTitle)({ letterSpacing: 'normal' });
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
 export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
-
-export const EntryIndex = styled(Typography)(({ theme }) => ({
-  fontSize: '0.78rem',
-  color: theme.palette.primary.dark,
-}));
-
-export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>({
-  whiteSpace: 'nowrap',
-});
 
 export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
 

@@ -1,5 +1,8 @@
 # ADR-0003: Vercel environments — dev, staging, prod + previews on Hobby
 
+> **Partially superseded in Podpisy on 2026-08-01.** Vercel/Neon deployment and
+> attestation remain; tenant-domain provisioning and todo-based smoke do not.
+
 Status: accepted (2026-07-14); **release and storage topology superseded
 (2026-07-24, 2026-07-27)** — see note below and
 [architecture.md](../architecture.md) §Environments (normative).

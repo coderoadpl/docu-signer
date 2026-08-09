@@ -155,10 +155,10 @@ try {
   console.log('smoke: driving the CLI...');
   await driveCli(
     {
-      baseUrl: `http://localhost:${port}`,
+      baseUrl: `http://default.localhost:${port}`,
       email: 'demo@agentproofarch.dev',
       password: 'demo1234',
-      tenant: 'acme',
+      tenant: 'default',
       mailpitApiUrl: MAILPIT_API_URL,
     },
     homes,
