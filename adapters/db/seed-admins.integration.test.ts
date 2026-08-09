@@ -5,7 +5,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Db } from './client.js';
-import { configuredSeedAdmins, ensureSeedAdmins } from './seed-admins.js';
+import { configuredSeedAdmins, ensureDeploySeed, ensureSeedAdmins } from './seed-admins.js';
 import {
   account,
   members,
@@ -74,7 +74,12 @@ describe('deploy admin seed', () => {
     const absent = configuredSeedAdmins({});
     expect(absent).toEqual([]);
     expect(await ensureSeedAdmins(db, absent)).toEqual([]);
+    expect(await ensureDeploySeed(db, absent, 'docu-signer-nine.vercel.app')).toEqual({
+      admins: [],
+      domain: null,
+    });
     expect(await db.select().from(tenants)).toEqual([]);
+    expect(await db.select().from(tenantDomains)).toEqual([]);
 
     const initial = configuredSeedAdmins({
       SEED_ADMIN1_EMAIL: 'owner@deploy.example',
@@ -125,5 +130,29 @@ describe('deploy admin seed', () => {
     expect(await db.select().from(members)).toEqual([]);
     expect(await db.select().from(todos)).toEqual([]);
     expect(await db.select().from(tenantDomains)).toEqual([]);
+
+    const withoutDomain = await ensureDeploySeed(db, rerun);
+    expect(withoutDomain.domain).toBeNull();
+    expect(await db.select().from(tenantDomains)).toEqual([]);
+
+    const withDomain = await ensureDeploySeed(db, rerun, 'docu-signer-nine.vercel.app');
+    expect(withDomain.domain).toEqual({
+      domain: 'docu-signer-nine.vercel.app',
+      status: 'created',
+    });
+    const repeated = await ensureDeploySeed(db, rerun, 'docu-signer-nine.vercel.app');
+    expect(repeated.domain).toEqual({
+      domain: 'docu-signer-nine.vercel.app',
+      status: 'exists',
+    });
+
+    const domainRows = await db.select().from(tenantDomains);
+    expect(domainRows).toHaveLength(1);
+    expect(domainRows[0]).toMatchObject({
+      tenantId: 'tenant-default',
+      domain: 'docu-signer-nine.vercel.app',
+      kind: 'custom',
+      verified: true,
+    });
   });
 });

@@ -39,6 +39,8 @@ each.
 - Admin accounts self-seed at deploy time from `SEED_ADMIN{1,2}_*` env
   (`db:seed:deploy` in `vercel-build`); env is the source of truth for their
   passwords.
+- The deploy seed binds `APP_BASE_DOMAIN` to the default tenant because the web
+  shell is single-tenant per domain.
 - Registration closed in production via `AUTH_DISABLE_SIGNUP`; single tenant
   `default`; `TENANT_CREATION=closed`.
 - ai-review gate budget set by repo variables (`claude-opus-5`, 120 turns,

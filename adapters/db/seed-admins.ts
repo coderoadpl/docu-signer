@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { hashPassword } from 'better-auth/crypto';
 
 import type { Db } from './client.js';
-import { account, tenantAdmins, tenants, user } from './schema.js';
+import { account, tenantAdmins, tenantDomains, tenants, user } from './schema.js';
 
 export interface SeedAdmin {
   readonly slot: '1' | '2';
@@ -17,6 +17,16 @@ export interface SeedAdminResult {
   readonly email: string;
   readonly role: SeedAdmin['role'];
   readonly status: 'created' | 'exists';
+}
+
+interface SeedTenantDomainResult {
+  readonly domain: string;
+  readonly status: 'created' | 'exists';
+}
+
+interface DeploySeedResult {
+  readonly admins: readonly SeedAdminResult[];
+  readonly domain: SeedTenantDomainResult | null;
 }
 
 interface SeedAdminEnvironment {
@@ -137,4 +147,42 @@ export const ensureSeedAdmins = async (
     results.push({ email: admin.email, role: admin.role, status: ensured.status });
   }
   return results;
+};
+
+const ensureDefaultTenantDomain = async (
+  db: Db,
+  domain: string,
+): Promise<SeedTenantDomainResult> => {
+  const inserted = await db
+    .insert(tenantDomains)
+    .values({
+      id: randomUUID(),
+      tenantId: 'tenant-default',
+      domain,
+      kind: 'custom',
+      verified: true,
+    })
+    .onConflictDoNothing({ target: tenantDomains.domain })
+    .returning({ domain: tenantDomains.domain });
+  if (inserted.length > 0) return { domain, status: 'created' };
+
+  await db
+    .update(tenantDomains)
+    .set({ tenantId: 'tenant-default', kind: 'custom', verified: true })
+    .where(eq(tenantDomains.domain, domain));
+  return { domain, status: 'exists' };
+};
+
+export const ensureDeploySeed = async (
+  db: Db,
+  admins: readonly SeedAdmin[],
+  appBaseDomain?: string,
+): Promise<DeploySeedResult> => {
+  if (admins.length === 0) return { admins: [], domain: null };
+
+  const adminResults = await ensureSeedAdmins(db, admins);
+  const domain = appBaseDomain
+    ? await ensureDefaultTenantDomain(db, appBaseDomain)
+    : null;
+  return { admins: adminResults, domain };
 };
