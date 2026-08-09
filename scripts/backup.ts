@@ -31,6 +31,7 @@ import {
   monthKey,
   monthlyTransferGuard,
   parseArchiveName,
+  pgEnvFromDatabaseUrl,
   selectRetention,
   type BlobInventoryItem,
   type BlobManifestItem,
@@ -197,6 +198,17 @@ const captureCommand = async (
       else rejectPromise(commandFailure(command, code, stderr, options.redact ?? []));
     });
   });
+
+const pgCommandOptions = (
+  databaseUrl: string,
+): Pick<CommandOptions, 'env' | 'redact'> => {
+  // libpq does not expand connection URIs supplied through PGDATABASE.
+  const pgEnv = pgEnvFromDatabaseUrl(databaseUrl);
+  return {
+    env: { ...process.env, ...pgEnv },
+    redact: [databaseUrl, pgEnv.PGPASSWORD],
+  };
+};
 
 const sha256File = async (path: string): Promise<string> => {
   const handle = await open(path, 'r');
@@ -645,10 +657,7 @@ const databaseDetails = async (
       '--command',
       "SELECT current_database() || E'\\t' || pg_database_size(current_database())::text || E'\\t' || current_setting('server_version')",
     ],
-    {
-      env: { ...process.env, PGDATABASE: databaseUrl },
-      redact: [databaseUrl],
-    },
+    pgCommandOptions(databaseUrl),
   );
   const match = /^([^\t]+)\t(\d+)\t(.+)$/.exec(output.trim());
   if (!match?.[1] || !match[2] || !match[3]) {
@@ -666,10 +675,7 @@ const dumpDatabase = async (databaseUrl: string, target: string): Promise<void> 
   await runCommand(
     'pg_dump',
     ['--format=plain', '--no-owner', '--no-acl', `--file=${target}`],
-    {
-      env: { ...process.env, PGDATABASE: databaseUrl },
-      redact: [databaseUrl],
-    },
+    pgCommandOptions(databaseUrl),
   );
 };
 
