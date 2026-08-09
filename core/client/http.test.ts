@@ -49,7 +49,7 @@ describe('API client', () => {
       }),
     );
     const api = createApiClient({ baseUrl: '', fetchImpl });
-    await api.listDocuments({ person: 'Jan', dateFrom: '2026-01-01' });
+    await api.listDocuments({ person: 'Jan', tag: 'podpis', dateFrom: '2026-01-01' });
     await api.createDocument({
       title: 'Umowa',
       docType: 'umowa-uod',
@@ -60,7 +60,7 @@ describe('API client', () => {
     });
 
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(
-      '/api/documents?person=Jan&dateFrom=2026-01-01',
+      '/api/documents?person=Jan&tag=podpis&dateFrom=2026-01-01',
     );
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
       method: 'POST',

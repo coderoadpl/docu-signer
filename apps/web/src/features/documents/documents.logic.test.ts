@@ -6,9 +6,12 @@ import {
   filesByRole,
   formatFileSize,
   suggestDocumentDate,
+  tagFolders,
   toDocumentFilter,
   toDocumentInput,
+  uniqueDocumentTags,
   uploadErrorMessage,
+  yearFolders,
 } from './documents.logic.js';
 
 describe('document view logic', () => {
@@ -87,6 +90,7 @@ describe('document view logic', () => {
         text: ' umowa ',
         docType: '',
         person: ' ',
+        tag: '',
         dateFrom: '',
         dateTo: '2026-12-31',
       }),
@@ -96,12 +100,14 @@ describe('document view logic', () => {
         text: '',
         docType: 'uchwala',
         person: 'Anna',
+        tag: ' ważne ',
         dateFrom: '2026-01-01',
         dateTo: '',
       }),
     ).toEqual({
       docType: 'uchwala',
       person: 'Anna',
+      tag: 'ważne',
       dateFrom: '2026-01-01',
     });
     const file = {
@@ -118,6 +124,34 @@ describe('document view logic', () => {
     expect(formatFileSize(1024)).toBe('1.0 KB');
     expect(formatFileSize(2 * 1024 * 1024)).toBe('2.0 MB');
     expect(formatFileSize(10)).toBe('10 B');
+  });
+
+  it('builds folder counts from tags and covered years', () => {
+    const documents = [
+      {
+        tags: ['ważne', 'podpis'],
+        documentDate: '2026-07-18',
+        periodStart: '2025-12-01',
+        periodEnd: '2026-01-15',
+      },
+      {
+        tags: ['ważne'],
+        documentDate: '2027-03-01',
+        periodStart: null,
+        periodEnd: null,
+      },
+    ];
+
+    expect(uniqueDocumentTags(documents)).toEqual(['podpis', 'ważne']);
+    expect(tagFolders(documents)).toEqual([
+      { label: 'podpis', count: 1 },
+      { label: 'ważne', count: 2 },
+    ]);
+    expect(yearFolders(documents)).toEqual([
+      { label: '2027', count: 1 },
+      { label: '2026', count: 1 },
+      { label: '2025', count: 1 },
+    ]);
   });
 
   it('maps API errors to Polish upload messages', () => {

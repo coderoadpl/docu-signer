@@ -228,6 +228,7 @@ export const buildApp = (deps: AppDeps) => {
     const parsed = documentListInputSchema.safeParse({
       docType: c.req.query('docType'),
       person: c.req.query('person'),
+      tag: c.req.query('tag'),
       text: c.req.query('text'),
       dateFrom: c.req.query('dateFrom'),
       dateTo: c.req.query('dateTo'),

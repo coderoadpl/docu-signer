@@ -37,6 +37,7 @@ import {
   filesByRole,
   formatFileSize,
   toDocumentInput,
+  uniqueDocumentTags,
   uploadErrorMessage,
 } from './documents.logic.js';
 import { uploadDocumentFile } from './upload.logic.js';
@@ -274,6 +275,7 @@ export const DocumentDetailPage = ({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
+  const folderDocuments = useQuery(actions.documents({}));
   const [editOpen, setEditOpen] = useState(false);
   const [deleteDocumentOpen, setDeleteDocumentOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<DocumentFile>();
@@ -334,6 +336,7 @@ export const DocumentDetailPage = ({
 
   const document = documentQuery.data.document;
   const grouped = filesByRole(document.files);
+  const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
   const period =
     document.periodStart || document.periodEnd
       ? [
@@ -456,6 +459,7 @@ export const DocumentDetailPage = ({
         }}
         pending={updateDocument.isPending}
         error={updateDocument.error?.message}
+        tagOptions={tagOptions}
         onClose={() => setEditOpen(false)}
         onSubmit={(values) =>
           updateDocument.mutate({

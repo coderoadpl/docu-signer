@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, gte, ilike, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, exists, ilike, inArray, sql, type SQL } from 'drizzle-orm';
 
 import {
   documentFileSchema,
@@ -26,9 +26,14 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     const conditions: SQL[] = [eq(documents.tenantId, tenantId)];
     if (filter.docType) conditions.push(eq(documents.docType, filter.docType));
     if (filter.person) conditions.push(ilike(documents.person, `%${filter.person}%`));
+    if (filter.tag) conditions.push(sql`${documents.tags} @> ${JSON.stringify([filter.tag])}::jsonb`);
     if (filter.text) conditions.push(ilike(documents.title, `%${filter.text}%`));
-    if (filter.dateFrom) conditions.push(gte(documents.documentDate, filter.dateFrom));
-    if (filter.dateTo) conditions.push(lte(documents.documentDate, filter.dateTo));
+    if (filter.dateFrom) {
+      conditions.push(sql`coalesce(${documents.periodEnd}, ${documents.documentDate}) >= ${filter.dateFrom}`);
+    }
+    if (filter.dateTo) {
+      conditions.push(sql`coalesce(${documents.periodStart}, ${documents.documentDate}) <= ${filter.dateTo}`);
+    }
     const rows = await db
       .select()
       .from(documents)

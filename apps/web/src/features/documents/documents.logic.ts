@@ -1,11 +1,13 @@
 import { ApiError } from '#core/client/index.js';
-import type {
-  CreateDocument,
-  DocumentFile,
-  DocumentFileRole,
-  DocumentListFilter,
-  DocumentType,
-  UpdateDocument,
+import {
+  documentCoveredYears,
+  type CreateDocument,
+  type DocumentFile,
+  type DocumentFileRole,
+  type DocumentListFilter,
+  type DocumentType,
+  type DocumentWithFiles,
+  type UpdateDocument,
 } from '#core/domain/index.js';
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
@@ -85,15 +87,51 @@ export const toDocumentFilter = (values: {
   text: string;
   docType: DocumentType | '';
   person: string;
+  tag: string;
   dateFrom: string;
   dateTo: string;
 }): DocumentListFilter => ({
   ...(values.text.trim() ? { text: values.text.trim() } : {}),
   ...(values.docType ? { docType: values.docType } : {}),
   ...(values.person.trim() ? { person: values.person.trim() } : {}),
+  ...(values.tag.trim() ? { tag: values.tag.trim() } : {}),
   ...(values.dateFrom ? { dateFrom: values.dateFrom } : {}),
   ...(values.dateTo ? { dateTo: values.dateTo } : {}),
 });
+
+export interface FolderTile {
+  label: string;
+  count: number;
+}
+
+export const uniqueDocumentTags = (
+  documents: Array<Pick<DocumentWithFiles, 'tags'>>,
+): string[] =>
+  Array.from(new Set(documents.flatMap((document) => document.tags))).sort((left, right) =>
+    left.localeCompare(right, 'pl'),
+  );
+
+export const tagFolders = (
+  documents: Array<Pick<DocumentWithFiles, 'tags'>>,
+): FolderTile[] =>
+  uniqueDocumentTags(documents).map((tag) => ({
+    label: tag,
+    count: documents.filter((document) => document.tags.includes(tag)).length,
+  }));
+
+export const yearFolders = (
+  documents: Array<Pick<DocumentWithFiles, 'documentDate' | 'periodStart' | 'periodEnd'>>,
+): FolderTile[] => {
+  const counts = new Map<number, number>();
+  for (const document of documents) {
+    for (const year of documentCoveredYears(document)) {
+      counts.set(year, (counts.get(year) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .sort(([left], [right]) => right - left)
+    .map(([year, count]) => ({ label: String(year), count }));
+};
 
 export const filesByRole = (
   files: DocumentFile[],

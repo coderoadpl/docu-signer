@@ -207,6 +207,56 @@ describe('DocumentsPage', () => {
     ).toBeEnabled();
   });
 
+  it('shows teczki by tags and years and applies folder filters', async () => {
+    const seen = vi.fn();
+    const protocol = {
+      ...document,
+      id: '22222222-2222-4222-8222-222222222222',
+      title: 'Protokół odbioru',
+      docType: 'protokol',
+      documentDate: '2026-01-15',
+      periodStart: '2025-12-15',
+      periodEnd: '2026-01-15',
+      tags: ['odbiór'],
+    };
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen(Object.fromEntries(params.entries()));
+        if (params.get('tag') === 'odbiór') {
+          return HttpResponse.json({ ok: true, data: { documents: [protocol] } });
+        }
+        if (params.get('dateFrom') === '2025-01-01') {
+          return HttpResponse.json({ ok: true, data: { documents: [protocol] } });
+        }
+        return HttpResponse.json({
+          ok: true,
+          data: { documents: [document, protocol] },
+        });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
+    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
+    expect(screen.getByRole('heading', { name: 'Tagi' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Lata' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('odbiór'));
+    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(seen).toHaveBeenCalledWith({ tag: 'odbiór' }));
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
+    await userEvent.click(screen.getByText('2025'));
+    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        dateFrom: '2025-01-01',
+        dateTo: '2025-12-31',
+      }),
+    );
+  });
+
   it('creates a document and navigates to its detail', async () => {
     const create = vi.fn();
     server.use(

@@ -14,12 +14,14 @@ import {
   Paper,
   Select,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
@@ -37,8 +39,12 @@ import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   FILE_ROLE_SYMBOLS,
+  tagFolders,
   toDocumentFilter,
   toDocumentInput,
+  uniqueDocumentTags,
+  yearFolders,
+  type FolderTile,
 } from './documents.logic.js';
 
 const FileCounts = ({ files }: { files: Array<{ role: string }> }) => (
@@ -62,9 +68,46 @@ interface DocumentFilters {
   text: string;
   docType: DocumentType | '';
   person: string;
+  tag: string;
   dateFrom: string;
   dateTo: string;
 }
+
+type DocumentsView = 'list' | 'folders';
+
+const FolderGrid = ({
+  title,
+  tiles,
+  onSelect,
+}: {
+  title: string;
+  tiles: FolderTile[];
+  onSelect: (label: string) => void;
+}) => (
+  <Box component="section" sx={{ mt: 3 }}>
+    <Typography variant="h2" sx={{ mb: 2 }}>
+      {title}
+    </Typography>
+    {tiles.length ? (
+      <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
+        {tiles.map((tile) => (
+          <Card key={tile.label} variant="outlined" sx={{ width: 180 }}>
+            <CardActionArea onClick={() => onSelect(tile.label)}>
+              <CardContent>
+                <Typography variant="h2">{tile.label}</Typography>
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Dokumenty: {tile.count}
+                </Typography>
+              </CardContent>
+            </CardActionArea>
+          </Card>
+        ))}
+      </Stack>
+    ) : (
+      <Typography variant="body2">Brak teczek.</Typography>
+    )}
+  </Box>
+);
 
 const saveDownload = (download: {
   bytes: Uint8Array;
@@ -85,16 +128,20 @@ export const DocumentsPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [view, setView] = useState<DocumentsView>('list');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [archiveHasDocuments, setArchiveHasDocuments] = useState(false);
   const [filters, setFilters] = useState<DocumentFilters>({
     text: '',
     docType: '',
     person: '',
+    tag: '',
     dateFrom: '',
     dateTo: '',
   });
-  const documents = useQuery(actions.documents(toDocumentFilter(filters)));
+  const documentFilter = toDocumentFilter(filters);
+  const documents = useQuery(actions.documents(documentFilter));
+  const folderDocuments = useQuery(actions.documents({}));
   const createDocument = useMutation({
     ...actions.createDocument,
     onSuccess: async ({ document }) => {
@@ -115,19 +162,39 @@ export const DocumentsPage = () => {
     setFilters((current) => ({ ...current, [name]: value }));
   const filtersActive = Object.values(filters).some((value) => value.length > 0);
   const visibleDocuments = documents.data?.documents ?? [];
+  const allDocuments = folderDocuments.data?.documents ?? visibleDocuments;
+  const tagOptions = uniqueDocumentTags(allDocuments);
+  const tagTiles = tagFolders(allDocuments);
+  const yearTiles = yearFolders(allDocuments);
 
   useEffect(() => {
-    if (visibleDocuments.length > 0) setArchiveHasDocuments(true);
-  }, [visibleDocuments.length]);
+    if (allDocuments.length > 0) setArchiveHasDocuments(true);
+  }, [allDocuments.length]);
 
   const clearFilters = () =>
     setFilters({
       text: '',
       docType: '',
       person: '',
+      tag: '',
       dateFrom: '',
       dateTo: '',
     });
+
+  const selectTagFolder = (tag: string) => {
+    setFilters((current) => ({ ...current, tag, dateFrom: '', dateTo: '' }));
+    setView('list');
+  };
+
+  const selectYearFolder = (year: string) => {
+    setFilters((current) => ({
+      ...current,
+      tag: '',
+      dateFrom: `${year}-01-01`,
+      dateTo: `${year}-12-31`,
+    }));
+    setView('list');
+  };
 
   return (
     <PageContainer>
@@ -146,7 +213,18 @@ export const DocumentsPage = () => {
         ) : null}
       </Stack>
 
-      {archiveHasDocuments ? <Paper sx={{ mt: 4, p: 2 }}>
+      {archiveHasDocuments ? (
+        <Tabs
+          value={view}
+          onChange={(_event, value: DocumentsView) => setView(value)}
+          sx={{ mt: 4 }}
+        >
+          <Tab value="list" label="Lista" />
+          <Tab value="folders" label="Teczki" />
+        </Tabs>
+      ) : null}
+
+      {archiveHasDocuments && view === 'list' ? <Paper sx={{ mt: 3, p: 2 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} sx={{ gap: 2 }}>
           <TextField
             label="Szukaj po tytule"
@@ -176,6 +254,14 @@ export const DocumentsPage = () => {
             onChange={(event) => updateFilter('person', event.target.value)}
             sx={{ flex: 1 }}
           />
+          {filters.tag ? (
+            <TextField
+              label="Tag"
+              value={filters.tag}
+              onChange={(event) => updateFilter('tag', event.target.value)}
+              sx={{ flex: 1 }}
+            />
+          ) : null}
           <TextField
             label="Od"
             type="date"
@@ -193,7 +279,14 @@ export const DocumentsPage = () => {
         </Stack>
       </Paper> : null}
 
-      {archiveHasDocuments ? <Stack
+      {archiveHasDocuments && view === 'folders' ? (
+        <Box sx={{ mt: 3 }}>
+          <FolderGrid title="Tagi" tiles={tagTiles} onSelect={selectTagFolder} />
+          <FolderGrid title="Lata" tiles={yearTiles} onSelect={selectYearFolder} />
+        </Box>
+      ) : null}
+
+      {archiveHasDocuments && view === 'list' ? <Stack
         direction="row"
         sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end' }}
       >
@@ -209,12 +302,12 @@ export const DocumentsPage = () => {
         <Alert severity="error" sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert>
       ) : null}
 
-      {documents.isPending ? (
+      {view === 'list' && documents.isPending ? (
         <Box sx={{ mt: 4 }}>
           <StatusView state={{ kind: 'loading', label: 'Ładowanie dokumentów…' }} />
         </Box>
       ) : null}
-      {documents.isError ? (
+      {view === 'list' && documents.isError ? (
         <Box sx={{ mt: 4 }}>
           <StatusView
             state={{
@@ -231,6 +324,7 @@ export const DocumentsPage = () => {
       {visibleDocuments.length === 0 &&
       filtersActive &&
       archiveHasDocuments &&
+      view === 'list' &&
       documents.isSuccess ? (
         <Box sx={{ mt: 4 }}>
           <StatusView
@@ -246,7 +340,7 @@ export const DocumentsPage = () => {
           />
         </Box>
       ) : null}
-      {visibleDocuments.length === 0 && !filtersActive && documents.isSuccess ? (
+      {visibleDocuments.length === 0 && !filtersActive && view === 'list' && documents.isSuccess ? (
         <Box sx={{ mt: 4 }}>
           <StatusView
             state={{
@@ -262,7 +356,7 @@ export const DocumentsPage = () => {
           />
         </Box>
       ) : null}
-      {visibleDocuments.length > 0 ? (
+      {visibleDocuments.length > 0 && view === 'list' ? (
         <>
         <Stack sx={{ display: { xs: 'flex', sm: 'none' }, mt: 4, gap: 2 }}>
           {visibleDocuments.map((document) => (
@@ -398,6 +492,7 @@ export const DocumentsPage = () => {
         submitLabel="Dodaj dokument"
         pending={createDocument.isPending}
         error={createDocument.error?.message}
+        tagOptions={tagOptions}
         onClose={() => setCreateOpen(false)}
         onSubmit={(values) => createDocument.mutate(toDocumentInput(values))}
       />

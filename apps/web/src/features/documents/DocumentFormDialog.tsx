@@ -31,6 +31,7 @@ export const DocumentFormDialog = ({
   title,
   submitLabel,
   initialValues,
+  tagOptions = [],
   pending,
   error,
   onClose,
@@ -40,6 +41,7 @@ export const DocumentFormDialog = ({
   title: string;
   submitLabel: string;
   initialValues?: DocumentFormValues;
+  tagOptions?: string[];
   pending: boolean;
   error?: string | undefined;
   onClose: () => void;
@@ -197,7 +199,13 @@ export const DocumentFormDialog = ({
             helperText="Oddziel tagi przecinkami"
             value={values.tags}
             onChange={(event) => field('tags', event.target.value)}
+            slotProps={{ htmlInput: { list: 'document-tag-options' } }}
           />
+          <datalist id="document-tag-options">
+            {tagOptions.map((tag) => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
           {error ? <Alert severity="error">{error}</Alert> : null}
         </Stack>
       </DialogContent>

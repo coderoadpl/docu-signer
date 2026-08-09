@@ -68,6 +68,11 @@ const document = {
 };
 
 const renderPage = async () => {
+  server.use(
+    http.get('/api/documents', () =>
+      HttpResponse.json({ ok: true, data: { documents: [document] } }),
+    ),
+  );
   const root = createRootRoute();
   const detail = createRoute({
     getParentRoute: () => root,

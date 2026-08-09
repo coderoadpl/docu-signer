@@ -100,6 +100,7 @@ export const documentListFilterSchema = z
   .object({
     docType: documentTypeSchema.optional(),
     person: z.string().trim().min(1).optional(),
+    tag: z.string().trim().min(1).optional(),
     text: z.string().trim().min(1).optional(),
     dateFrom: z.iso.date().optional(),
     dateTo: z.iso.date().optional(),
