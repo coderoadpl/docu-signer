@@ -351,6 +351,77 @@ const pointerEventAt = (
 };
 
 describe('DocumentSigningPage', () => {
+  it('creates and closes a QR pad session from the signing toolbar', async () => {
+    let closed = 0;
+    server.use(
+      http.post('/api/pad-sessions', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            secret: 'pad_secret',
+            session: {
+              id: '55555555-5555-4555-8555-555555555555',
+              tenantId: 'tenant-1',
+              createdBy: 'user-owner',
+              status: 'active',
+              createdAt: '2026-08-04T10:00:00.000Z',
+              expiresAt: '2026-08-04T14:00:00.000Z',
+              currentRequest: null,
+            },
+          },
+        }),
+      ),
+      http.post('/api/pad-sessions/:sessionId/close', () => {
+        closed += 1;
+        return HttpResponse.json({ ok: true, data: { closed: true } });
+      }),
+    );
+
+    await renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Pad QR' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
+    expect(await screen.findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
+    expect(screen.getByText(/Zeskanuj kod/u)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Zamknij sesję' }));
+    await waitFor(() => expect(closed).toBe(1));
+  });
+
+  it('closes an active QR pad session when leaving the signing page', async () => {
+    let closed = 0;
+    server.use(
+      http.post('/api/pad-sessions', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            secret: 'pad_secret',
+            session: {
+              id: '55555555-5555-4555-8555-555555555555',
+              tenantId: 'tenant-1',
+              createdBy: 'user-owner',
+              status: 'active',
+              createdAt: '2026-08-04T10:00:00.000Z',
+              expiresAt: '2026-08-04T14:00:00.000Z',
+              currentRequest: null,
+            },
+          },
+        }),
+      ),
+      http.post('/api/pad-sessions/:sessionId/close', () => {
+        closed += 1;
+        return HttpResponse.json({ ok: true, data: { closed: true } });
+      }),
+    );
+
+    const { unmount } = await renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Pad QR' }));
+    expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
+    expect(await screen.findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
+    unmount();
+
+    await waitFor(() => expect(closed).toBe(1));
+  });
+
   it('captures pointer strokes and supports undo, pointercancel and clear', async () => {
     await renderPage();
     const save = await screen.findByRole('button', {

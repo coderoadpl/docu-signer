@@ -10,6 +10,13 @@ const documentCreateResponseSchema = z.object({
     document: z.object({ id: z.string() }),
   }),
 });
+const padSessionCreateResponseSchema = z.object({
+  ok: z.literal(true),
+  data: z.object({
+    secret: z.string(),
+    session: z.object({ id: z.string() }),
+  }),
+});
 
 const validPdfBuffer = async () => {
   const pdf = await PDFDocument.create();
@@ -611,6 +618,81 @@ test.describe('signature pad dialog', () => {
       ],
     });
   });
+});
+
+test('mass signing can receive a signature from a QR pad browser context', async ({ browser, page }) => {
+  const stamp = Date.now();
+  const title = `QR pad e2e ${stamp}`;
+  const sourceName = `qr-pad-${stamp}.pdf`;
+
+  await signIn(page);
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
+  await createSourceDocument(page, title, sourceName, 'Umowa UoD');
+  await page.getByRole('button', { name: '← Dokumenty' }).click();
+  await page.getByLabel('Szukaj po tytule').fill(title);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('q'))
+    .toBe(title);
+  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Masowe podpisywanie' }).click();
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expectReviewPdfFitsViewport(page);
+
+  const createPadResponse = page.waitForResponse(
+    (response) => {
+      const url = new URL(response.url());
+      return url.pathname === '/api/pad-sessions' && response.request().method() === 'POST';
+    },
+  );
+  await page.getByRole('button', { name: 'Pad QR' }).click();
+  await expect(page.getByRole('dialog', { name: 'Pad QR' })).toBeVisible();
+  const created = padSessionCreateResponseSchema.parse(await (await createPadResponse).json());
+  const padUrl = new URL(
+    `/pad/${created.data.session.id}#s=${encodeURIComponent(created.data.secret)}`,
+    page.url(),
+  ).toString();
+  await page.getByRole('button', { name: 'Zamknij', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Pad QR' })).toBeHidden();
+
+  const padContext = await browser.newContext();
+  try {
+    const padPage = await padContext.newPage();
+    await signIn(padPage);
+    await padPage.goto(padUrl);
+    await expect(
+      padPage.getByRole('heading', { name: 'Czekam na dokument…' }).first(),
+    ).toBeVisible();
+
+    const desktopCanvas = page.getByRole('application', {
+      name: 'Powierzchnia do rysowania podpisu',
+    });
+    const before = await canvasInkState(desktopCanvas);
+    await page.getByRole('button', { name: 'Poproś pad o podpis' }).click();
+    await expect(page.getByText('Pad: rysuje')).toBeVisible();
+    await expect(padPage.getByRole('heading', { name: title })).toBeVisible();
+    const padCanvas = padPage.getByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    await dispatchPointerStroke({
+      canvas: padCanvas,
+      pointerType: 'touch',
+      points: [
+        { x: 0.18, y: 0.54 },
+        { x: 0.34, y: 0.38 },
+        { x: 0.52, y: 0.58 },
+        { x: 0.74, y: 0.42 },
+      ],
+    });
+    await expect(padPage.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
+    await padPage.getByRole('button', { name: 'Zatwierdź' }).click();
+    await expectCanvasInkGrew(desktopCanvas, before);
+    await expect(page.getByText('Pad: oczekuje')).toBeVisible();
+    await page.getByRole('button', { name: 'Przejdź' }).click();
+    await expect(page.getByRole('heading', { name: 'Podsumowanie' })).toBeVisible();
+    await expect(page.getByText('Podpisano 1')).toBeVisible();
+  } finally {
+    await padContext.close();
+  }
 });
 
 test('mass signing signs, skips and signs an already signed document', async ({ page }) => {

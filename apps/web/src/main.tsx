@@ -25,6 +25,7 @@ import { DocumentsRoute, documentsSearchSchema } from './routes/documents.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
 import { LoginRoute } from './routes/login.js';
 import { NotFoundRoute } from './routes/not-found.js';
+import { PadRoute } from './routes/pad.js';
 import { RegisterRoute } from './routes/register.js';
 import { ResetPasswordRoute, resetPasswordSearchSchema } from './routes/reset-password.js';
 import { SettingsRoute } from './routes/settings.js';
@@ -82,6 +83,11 @@ const resetPasswordRoute = createRoute({
   validateSearch: resetPasswordSearchSchema,
   component: ResetPasswordRoute,
 });
+const padRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/pad/$sessionId',
+  component: PadRoute,
+});
 
 // The authenticated layout owns `/app/*`: it guards auth, redirects anonymous
 // visitors to `/login`, and renders the active child through its `Outlet`.
@@ -131,6 +137,7 @@ const router = createRouter({
     registerRoute,
     forgotPasswordRoute,
     resetPasswordRoute,
+    padRoute,
     appLayoutRoute.addChildren([
       appIndexRoute,
       documentsRoute,

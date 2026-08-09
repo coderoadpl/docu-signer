@@ -5,6 +5,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import QRCode from 'qrcode';
 import {
   Alert,
   Box,
@@ -25,6 +26,8 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+
+import type { PadSubmittedStrokes } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SigningShell } from '../../components/layout/SigningShell.js';
@@ -131,6 +134,32 @@ const dialogSelectionLockSx = {
 const BusyButtonProgress = () => (
   <CircularProgress size={18} color="inherit" aria-hidden="true" />
 );
+
+type RemotePadStatus = 'oczekuje' | 'rysuje';
+
+interface RemotePadSession {
+  id: string;
+  secret: string;
+  url: string;
+  status: RemotePadStatus;
+}
+
+const REMOTE_PAD_POLL_MS = 1200;
+
+const padUrlForSession = (sessionId: string, secret: string): string => {
+  // WHY: the pad secret lives in the fragment so normal HTTP requests and server logs never receive it.
+  return `${window.location.origin}/pad/${encodeURIComponent(sessionId)}#s=${encodeURIComponent(secret)}`;
+};
+
+const remoteStrokesToInkStrokes = (
+  strokes: PadSubmittedStrokes['strokes'],
+): InkStroke[] =>
+  strokes.map((stroke) => ({
+    ...(stroke.simulatePressure === undefined
+      ? {}
+      : { simulatePressure: stroke.simulatePressure }),
+    points: stroke.points.map((point) => ({ ...point })),
+  }));
 
 interface InkLayer {
   strokes: InkStroke[];
@@ -449,6 +478,57 @@ const SignaturePadDialog = ({
   );
 };
 
+export const PadQrDialog = ({
+  error,
+  loading,
+  onClose,
+  onCloseSession,
+  open,
+  qrDataUrl,
+  sessionUrl,
+}: {
+  error?: string;
+  loading: boolean;
+  onClose: () => void;
+  onCloseSession: () => void;
+  open: boolean;
+  qrDataUrl?: string;
+  sessionUrl?: string;
+}) => (
+  <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+    <DialogTitle>Pad QR</DialogTitle>
+    <DialogContent>
+      <Stack sx={{ alignItems: 'center', gap: 2, py: 1 }}>
+        {loading ? <CircularProgress aria-label="Tworzenie sesji pada" /> : null}
+        {error ? <Alert severity="error">{error}</Alert> : null}
+        {qrDataUrl ? (
+          <Box
+            component="img"
+            src={qrDataUrl}
+            alt="Kod QR pada podpisu"
+            sx={{
+              width: 220,
+              height: 220,
+              imageRendering: 'pixelated',
+            }}
+          />
+        ) : null}
+        {sessionUrl ? (
+          <Typography variant="body2" color="text.secondary" align="center">
+            Zeskanuj kod zalogowanym iPhone’em albo iPadem. Ten kod działa tylko dla tej sesji podpisywania.
+          </Typography>
+        ) : null}
+      </Stack>
+    </DialogContent>
+    <DialogActions>
+      <Button onClick={onClose}>Zamknij</Button>
+      <Button color="error" onClick={onCloseSession} disabled={!sessionUrl}>
+        Zamknij sesję
+      </Button>
+    </DialogActions>
+  </Dialog>
+);
+
 const PageHeader = ({
   fileName,
   onClose,
@@ -655,7 +735,19 @@ export const DocumentSigningPage = ({
   const directUpload = useMutation(actions.directFileUpload);
   const finalizeUpload = useMutation(actions.finalizeFileUpload);
   const serverUpload = useMutation(actions.uploadDocumentFile);
+  const createRemotePadSession = useMutation(actions.createPadSession);
+  const requestRemotePadSignature = useMutation(actions.requestPadSignature);
+  const consumeRemotePadStrokes = useMutation(actions.consumePadStrokes);
+  const closeRemotePadSessionMutation = useMutation(actions.closePadSession);
   const [committing, setCommitting] = useState(false);
+  const [remotePadQrOpen, setRemotePadQrOpen] = useState(false);
+  const [remotePadSession, setRemotePadSession] = useState<RemotePadSession>();
+  const [remotePadQrDataUrl, setRemotePadQrDataUrl] = useState<string>();
+  const [remotePadError, setRemotePadError] = useState<string>();
+  const consumingRemotePadRef = useRef(false);
+  const closedRemotePadIdsRef = useRef<Set<string>>(new Set());
+  const remotePadSessionIdRef = useRef<string | undefined>(undefined);
+  const closeRemotePadMutateRef = useRef(closeRemotePadSessionMutation.mutate);
 
   const queueTargets = signingQueueFromSearch(signingSearch);
   const massMode = signingSearch.tryb === 'masowe';
@@ -671,12 +763,25 @@ export const DocumentSigningPage = ({
   const sequenceTotal = signingSearch.razem ?? 0;
   const listSearch = documentsSearchFromSigningSearch(signingSearch);
 
-  const close = () =>
+  const closeRemotePadSession = useCallback(
+    (sessionId = remotePadSessionIdRef.current) => {
+      if (!sessionId || closedRemotePadIdsRef.current.has(sessionId)) return;
+      closedRemotePadIdsRef.current.add(sessionId);
+      closeRemotePadMutateRef.current(sessionId);
+      setRemotePadSession((current) => (current?.id === sessionId ? undefined : current));
+      setRemotePadQrDataUrl(undefined);
+    },
+    [],
+  );
+
+  const close = () => {
+    closeRemotePadSession();
     void navigate({
       to: '/app/documents/$id',
       params: { id: documentId },
       search: listSearch,
     });
+  };
 
   useEffect(() => {
     if (massStateValid) return;
@@ -687,12 +792,74 @@ export const DocumentSigningPage = ({
     });
   }, [listSearch, massStateValid, navigate]);
 
-  const returnToList = () =>
+  useEffect(() => {
+    if (massComplete) closeRemotePadSession();
+  }, [closeRemotePadSession, massComplete]);
+
+  const openRemotePadQr = () => {
+    setRemotePadQrOpen(true);
+    setRemotePadError(undefined);
+    if (remotePadSession || createRemotePadSession.isPending) return;
+    void createRemotePadSession
+      .mutateAsync(undefined)
+      .then(({ session, secret }) => {
+        const url = padUrlForSession(session.id, secret);
+        setRemotePadSession({ id: session.id, secret, url, status: 'oczekuje' });
+      })
+      .catch((error: unknown) => {
+        setRemotePadError(error instanceof Error ? error.message : 'Nie udało się utworzyć sesji pada.');
+      });
+  };
+
+  useEffect(() => {
+    if (!remotePadSession?.url) {
+      setRemotePadQrDataUrl(undefined);
+      return;
+    }
+    let current = true;
+    void QRCode.toDataURL(remotePadSession.url, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 220,
+    })
+      .then((dataUrl) => {
+        if (current) setRemotePadQrDataUrl(dataUrl);
+      })
+      .catch((error: unknown) => {
+        if (current) setRemotePadError(error instanceof Error ? error.message : 'Nie udało się utworzyć kodu QR.');
+      });
+    return () => {
+      current = false;
+    };
+  }, [remotePadSession?.url]);
+
+  useEffect(() => {
+    remotePadSessionIdRef.current = remotePadSession?.id;
+  }, [remotePadSession?.id]);
+
+  useEffect(() => {
+    closeRemotePadMutateRef.current = closeRemotePadSessionMutation.mutate;
+  }, [closeRemotePadSessionMutation.mutate]);
+
+  useEffect(
+    () => () => {
+      const sessionId = remotePadSessionIdRef.current;
+      if (sessionId && !closedRemotePadIdsRef.current.has(sessionId)) {
+        closedRemotePadIdsRef.current.add(sessionId);
+        closeRemotePadMutateRef.current(sessionId);
+      }
+    },
+    [],
+  );
+
+  const returnToList = () => {
+    closeRemotePadSession();
     void navigate({
       to: '/app/documents',
       search: listSearch,
       replace: true,
     });
+  };
 
   const sourceFile = documentQuery.data?.document.files.find(
     (file) => file.id === fileId,
@@ -895,6 +1062,70 @@ export const DocumentSigningPage = ({
     }
   }, [pageIndex, selectedStampIndex, stamps]);
 
+  const materializePadStrokes = useCallback(
+    (
+      padStrokes: InkStroke[],
+      sourceSize: { width: number; height: number },
+      remoteInkColorId: SigningInkColorId = inkColorId,
+    ): boolean => {
+      if (!pageReady || !metrics || !padStrokes.length) return false;
+      const padInkColor = signingInkColorById(remoteInkColorId);
+      const fittedStrokes = fitInkStrokesToPage({
+        strokes: padStrokes,
+        sourceSize,
+        pageSize: { width: metrics.cssWidth, height: metrics.cssHeight },
+      });
+      const stamp = createSigningStamp({
+        pageIndex,
+        strokes: fittedStrokes,
+        placement: defaultSignaturePlacement({
+          previouslySignedSource,
+          strokes: fittedStrokes,
+        }),
+        inkColor: padInkColor,
+      });
+      setInkColorId(remoteInkColorId);
+      setStamps((current) => {
+        const next = appendSigningStamp(current, stamp);
+        setSelectedStampIndex(next.length - 1);
+        return next;
+      });
+      setPlacing(true);
+      return true;
+    },
+    [inkColorId, metrics, pageIndex, pageReady, previouslySignedSource],
+  );
+
+  useEffect(() => {
+    const sessionId = remotePadSession?.id;
+    if (!sessionId) return;
+    const interval = window.setInterval(() => {
+      if (consumingRemotePadRef.current) return;
+      consumingRemotePadRef.current = true;
+      void consumeRemotePadStrokes
+        .mutateAsync(sessionId)
+        .then(({ submittedStrokes }) => {
+          if (!submittedStrokes) return;
+          const materialized = materializePadStrokes(
+            remoteStrokesToInkStrokes(submittedStrokes.strokes),
+            submittedStrokes.sourceSize,
+            submittedStrokes.inkColor,
+          );
+          if (!materialized) return;
+          setRemotePadSession((current) =>
+            current?.id === sessionId ? { ...current, status: 'oczekuje' } : current,
+          );
+        })
+        .catch((error: unknown) => {
+          setRemotePadError(error instanceof Error ? error.message : 'Nie udało się odebrać podpisu z pada.');
+        })
+        .finally(() => {
+          consumingRemotePadRef.current = false;
+        });
+    }, REMOTE_PAD_POLL_MS);
+    return () => window.clearInterval(interval);
+  }, [consumeRemotePadStrokes, materializePadStrokes, remotePadSession?.id]);
+
   if (massComplete) {
     return (
       <MassSummary
@@ -1063,25 +1294,23 @@ export const DocumentSigningPage = ({
     padStrokes: InkStroke[],
     sourceSize: { width: number; height: number },
   ) => {
-    if (!pageReady || !metrics || !padStrokes.length) return;
-    const fittedStrokes = fitInkStrokesToPage({
-      strokes: padStrokes,
-      sourceSize,
-      pageSize: { width: metrics.cssWidth, height: metrics.cssHeight },
-    });
-    const next = appendSigningStamp(
-      stamps,
-      createSigningStamp({
-        pageIndex,
-        strokes: fittedStrokes,
-        placement: defaultPlacementFor(fittedStrokes),
-        inkColor,
-      }),
-    );
-    setStamps(next);
-    setSelectedStampIndex(next.length - 1);
-    setPlacing(true);
-    setSignaturePadOpen(false);
+    if (materializePadStrokes(padStrokes, sourceSize)) setSignaturePadOpen(false);
+  };
+
+  const requestSignatureFromRemotePad = async () => {
+    if (!remotePadSession) return;
+    setRemotePadError(undefined);
+    try {
+      await requestRemotePadSignature.mutateAsync({
+        sessionId: remotePadSession.id,
+        input: { documentTitle: documentQuery.data.document.title },
+      });
+      setRemotePadSession((current) =>
+        current?.id === remotePadSession.id ? { ...current, status: 'rysuje' } : current,
+      );
+    } catch (error) {
+      setRemotePadError(error instanceof Error ? error.message : 'Nie udało się poprosić pada o podpis.');
+    }
   };
 
   const stampAllPages = () => {
@@ -1323,6 +1552,37 @@ export const DocumentSigningPage = ({
               >
                 {signingPadBusy ? 'Renderowanie…' : 'Złóż podpis'}
               </Button>
+              <Button
+                variant="outlined"
+                onClick={openRemotePadQr}
+                disabled={committing || createRemotePadSession.isPending}
+                startIcon={createRemotePadSession.isPending ? <BusyButtonProgress /> : undefined}
+                sx={buttonTouchSx}
+              >
+                Pad QR
+              </Button>
+              {remotePadSession ? (
+                <>
+                  <Button
+                    variant="outlined"
+                    onClick={() => void requestSignatureFromRemotePad()}
+                    disabled={
+                      signingPadBlocked ||
+                      requestRemotePadSignature.isPending ||
+                      remotePadSession.status === 'rysuje'
+                    }
+                    startIcon={requestRemotePadSignature.isPending ? <BusyButtonProgress /> : undefined}
+                    sx={buttonTouchSx}
+                  >
+                    Poproś pad o podpis
+                  </Button>
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`Pad: ${remotePadSession.status}`}
+                  />
+                </>
+              ) : null}
               <ToggleButtonGroup
                 exclusive
                 size="small"
@@ -1479,6 +1739,33 @@ export const DocumentSigningPage = ({
                 >
                   {signingPadBusy ? 'Renderowanie…' : 'Złóż podpis'}
                 </Button>
+                <Button
+                  variant="outlined"
+                  onClick={openRemotePadQr}
+                  disabled={committing || createRemotePadSession.isPending}
+                  startIcon={createRemotePadSession.isPending ? <BusyButtonProgress /> : undefined}
+                  sx={buttonTouchSx}
+                >
+                  Pad QR
+                </Button>
+                {remotePadSession ? (
+                  <Button
+                    variant="outlined"
+                    onClick={() => void requestSignatureFromRemotePad()}
+                    disabled={
+                      signingPadBlocked ||
+                      requestRemotePadSignature.isPending ||
+                      remotePadSession.status === 'rysuje'
+                    }
+                    startIcon={requestRemotePadSignature.isPending ? <BusyButtonProgress /> : undefined}
+                    sx={buttonTouchSx}
+                  >
+                    Poproś pad o podpis
+                  </Button>
+                ) : null}
+                {remotePadSession ? (
+                  <Chip size="small" variant="outlined" label={`Pad: ${remotePadSession.status}`} />
+                ) : null}
                 <Button
                   variant="contained"
                   onClick={() => void proceedMassSigning()}
@@ -1693,6 +1980,15 @@ export const DocumentSigningPage = ({
           />
         </SigningPageSurface>
       </Box>
+      <PadQrDialog
+        open={remotePadQrOpen}
+        loading={createRemotePadSession.isPending}
+        onClose={() => setRemotePadQrOpen(false)}
+        onCloseSession={() => closeRemotePadSession()}
+        {...(remotePadError === undefined ? {} : { error: remotePadError })}
+        {...(remotePadQrDataUrl === undefined ? {} : { qrDataUrl: remotePadQrDataUrl })}
+        {...(remotePadSession?.url === undefined ? {} : { sessionUrl: remotePadSession.url })}
+      />
       <SignaturePadDialog
         open={signaturePadOpen}
         inkColorId={inkColorId}
