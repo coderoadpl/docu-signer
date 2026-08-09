@@ -59,6 +59,7 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { PolishDatePicker } from '../../components/ui/PolishDatePicker.js';
 import { formatPolishDate } from '../../lib/format-date.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
+import { DocumentTimelineView } from './DocumentTimelineView.js';
 import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
@@ -69,6 +70,7 @@ import {
   documentsSearchFromState,
   documentsViewFromSearch,
   emptyDocumentFilters,
+  hasSignedDocumentFile,
   hasDocumentFilter,
   toDocumentFilter,
   toDocumentFilterValues,
@@ -201,7 +203,7 @@ const toColumnPreferenceValue = (
 });
 
 const signedStatus = (document: DocumentWithFiles) =>
-  document.files.some((file) => file.role === 'signed-scan' || file.role === 'signed-digital')
+  hasSignedDocumentFile(document)
     ? 'signed'
     : 'needs-signature';
 
@@ -833,18 +835,6 @@ export const DocumentsPage = () => {
         </Box>
       ) : null}
 
-      {hasDocuments && view === 'timeline' ? (
-        <Box sx={{ mt: 3 }}>
-          <StatusView
-            state={{
-              kind: 'empty',
-              title: 'Os czasu',
-              body: 'Widok osi czasu będzie używał tych samych filtrów co lista.',
-            }}
-          />
-        </Box>
-      ) : null}
-
       {view === 'trash' ? (
         <Box sx={{ mt: 3 }}>
           {trashError ? <Alert severity="error">{trashError}</Alert> : null}
@@ -1208,12 +1198,12 @@ export const DocumentsPage = () => {
         <Alert severity="error" sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert>
       ) : null}
 
-      {view === 'list' && documents.isPending ? (
+      {(view === 'list' || view === 'timeline') && documents.isPending ? (
         <Box sx={{ mt: 4 }}>
           <StatusView state={{ kind: 'loading', label: 'Ładowanie dokumentów…' }} />
         </Box>
       ) : null}
-      {view === 'list' && documents.isError ? (
+      {(view === 'list' || view === 'timeline') && documents.isError ? (
         <Box sx={{ mt: 4 }}>
           <StatusView
             state={{
@@ -1230,7 +1220,7 @@ export const DocumentsPage = () => {
       {visibleDocuments.length === 0 &&
       filtersActive &&
       hasDocuments &&
-      view === 'list' &&
+      (view === 'list' || view === 'timeline') &&
       documents.isSuccess ? (
         <Box sx={{ mt: 4 }}>
           <StatusView
@@ -1246,7 +1236,10 @@ export const DocumentsPage = () => {
           />
         </Box>
       ) : null}
-      {visibleDocuments.length === 0 && !filtersActive && view === 'list' && documents.isSuccess ? (
+      {visibleDocuments.length === 0 &&
+      !filtersActive &&
+      (view === 'list' || view === 'timeline') &&
+      documents.isSuccess ? (
         <Box sx={{ mt: 4 }}>
           <StatusView
             state={{
@@ -1401,6 +1394,19 @@ export const DocumentsPage = () => {
           </Table>
         </TableContainer>
         </>
+      ) : null}
+
+      {visibleDocuments.length > 0 && view === 'timeline' ? (
+        <DocumentTimelineView
+          documents={visibleDocuments}
+          onOpenDocument={(id) =>
+            void navigate({
+              to: '/app/documents/$id',
+              params: { id },
+              search: currentDocumentsSearch,
+            })
+          }
+        />
       ) : null}
 
       <Menu

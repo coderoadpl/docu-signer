@@ -268,6 +268,10 @@ test('creates, uploads, previews and exports an archived document', async ({
 
   await page.getByRole('button', { name: '← Dokumenty' }).click();
   await page.getByLabel('Tag').fill('e2e');
+  await page.getByRole('tab', { name: 'Os czasu' }).click();
+  await expect(page.getByRole('img', { name: 'Os czasu dokumentów' })).toBeVisible();
+  await expect(page.getByRole('button', { name: new RegExp(title, 'u') })).toBeVisible();
+  await page.getByRole('tab', { name: 'Lista' }).click();
   await page.getByRole('button', { name: 'Zapisz teczkę' }).click();
   const savedSearchDialog = page.getByRole('dialog', { name: 'Zapisz teczkę' });
   await savedSearchDialog.getByLabel('Nazwa').fill(`E2E ${stamp}`);

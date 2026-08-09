@@ -237,7 +237,79 @@ describe('DocumentsPage', () => {
     expect(
       await screen.findByRole('tab', { name: 'Os czasu', selected: true }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Os czasu' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Os czasu dokumentów' })).toBeInTheDocument();
+  });
+
+  it('renders timeline sections, interval gaps and signature status markers', async () => {
+    const signedFile = {
+      id: '66666666-6666-4666-8666-666666666666',
+      documentId: '22222222-2222-4222-8222-222222222222',
+      role: 'signed-digital' as const,
+      fileName: 'podpis.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 12,
+      storageKey: 'signed',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const january = {
+      ...document,
+      id: '22222222-2222-4222-8222-222222222222',
+      title: 'Styczniowa umowa',
+      documentDate: '2026-01-15',
+      periodStart: '2026-01-01',
+      periodEnd: '2026-01-31',
+      person: 'Anna Nowak',
+      files: [signedFile],
+    };
+    const march = {
+      ...document,
+      id: '33333333-3333-4333-8333-333333333333',
+      title: 'Marcowy protokół',
+      docType: 'protokol',
+      documentDate: '2026-03-15',
+      periodStart: '2026-03-01',
+      periodEnd: '2026-03-31',
+      person: 'Anna Nowak',
+      files: [],
+    };
+    const noPerson = {
+      ...document,
+      id: '44444444-4444-4444-8444-444444444444',
+      title: 'Jednorazowa notatka',
+      docType: 'inny',
+      documentDate: '2026-02-10',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      files: [],
+    };
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [january, march, noPerson] } }),
+      ),
+    );
+    const { router } = await renderPage('/app/documents?tab=os-czasu');
+
+    expect(await screen.findByText('Anna Nowak')).toBeInTheDocument();
+    expect(screen.getByText('Bez osoby')).toBeInTheDocument();
+    expect(screen.getAllByTestId('timeline-band-Anna Nowak')).toHaveLength(2);
+    expect(screen.getByTestId('timeline-document-44444444-4444-4444-8444-444444444444')).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: 'Status podpisu Styczniowa umowa: Podpisane' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: 'Status podpisu Marcowy protokół: Do podpisania' }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Otwórz dokument Marcowy protokół, Do podpisania' }),
+    );
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        '/app/documents/33333333-3333-4333-8333-333333333333',
+      ),
+    );
+    expect(router.state.location.search).toMatchObject({ tab: 'os-czasu' });
   });
 
   it('keeps the draft-filtered list after a detail roundtrip', async () => {
