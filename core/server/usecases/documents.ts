@@ -310,7 +310,10 @@ export const moveDocumentFile = async (
     file.id,
     created.id,
   );
-  if (!moved) return err(notFound('Document file not found'));
+  if (!moved) {
+    await deps.documents.delete(scope.value, created.id);
+    return err(notFound('Document file not found'));
+  }
   return ok({ ...created, files: [moved] });
 };
 

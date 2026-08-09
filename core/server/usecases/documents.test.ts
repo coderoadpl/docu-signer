@@ -463,6 +463,23 @@ describe('documents use-cases', () => {
     expect(missingFile.documents).toHaveLength(1);
   });
 
+  it('cleans up the move target when the file move reports not_found', async () => {
+    const state = fake([documentRow()], [fileRow()], [movedDocumentId]);
+    expect(
+      await moveDocumentFile(
+        ctx(staff('tenant-acme')),
+        documentId,
+        fileId,
+        { title: 'Moved file', docType: 'protokol' },
+        {
+          ...state.deps,
+          documents: { ...state.deps.documents, moveFileToDocument: async () => null },
+        },
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(state.documents.map((document) => document.id)).toEqual([documentId]);
+  });
+
   it('finalizes only tenant-owned existing storage keys and exports stored files', async () => {
     const state = fake([documentRow()], [fileRow()]);
     expect(

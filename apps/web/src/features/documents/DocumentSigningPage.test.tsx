@@ -173,7 +173,10 @@ const drawStroke = async (cancel = false) => {
   const canvas = await screen.findByRole('application', {
     name: 'Powierzchnia do rysowania podpisu',
   });
-  await waitFor(() => expect(canvas).toHaveAttribute('width', '400'));
+  await waitFor(() => {
+    expect(canvas).toHaveAttribute('width', '400');
+    expect(screen.queryByLabelText('Renderowanie strony PDF')).not.toBeInTheDocument();
+  });
   fireEvent.pointerDown(canvas, {
     pointerId: 8,
     clientX: 20,

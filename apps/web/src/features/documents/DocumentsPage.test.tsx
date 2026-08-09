@@ -183,7 +183,7 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     await screen.findAllByText('Uchwała zarządu');
-    const emptyExport = screen.getByRole('button', {
+    const emptyExport = await screen.findByRole('button', {
       name: 'Eksportuj zaznaczone (0)',
     });
     expect(emptyExport).toBeDisabled();
