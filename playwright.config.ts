@@ -28,6 +28,11 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'webkit-documents',
+      testMatch: /documents\.spec\.ts/u,
+      use: { ...devices['Desktop Safari'] },
+    },
   ],
   webServer: {
     command: 'tsx scripts/e2e-server.ts',
