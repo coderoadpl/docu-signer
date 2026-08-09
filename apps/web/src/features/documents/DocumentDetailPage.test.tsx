@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -269,8 +269,7 @@ describe('DocumentDetailPage', () => {
     );
     const editDialog = screen.getByRole('dialog');
     const title = within(editDialog).getByRole('textbox', { name: 'Tytuł' });
-    await userEvent.clear(title);
-    await userEvent.type(title, 'Zmieniony tytuł');
+    fireEvent.change(title, { target: { value: 'Zmieniony tytuł' } });
     await userEvent.click(
       within(editDialog).getByRole('button', { name: 'Zapisz' }),
     );

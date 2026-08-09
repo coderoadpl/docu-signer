@@ -3,9 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError, createApiClient } from './http.js';
 import {
+  changePasswordMutation,
   createDocumentMutation,
+  createSavedSearchMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
+  deleteSavedSearchMutation,
   directFileUploadMutation,
   documentQuery,
   documentsInvalidates,
@@ -14,10 +17,16 @@ import {
   finalizeFileUploadMutation,
   meQuery,
   moveDocumentFileMutation,
+  requestPasswordResetMutation,
+  resetPasswordMutation,
   requestFileUploadMutation,
+  savedSearchesInvalidates,
+  savedSearchesQuery,
   updateDocumentMutation,
   uploadDocumentFileMutation,
 } from './queries.js';
+import { ok, type Result, type AppError } from '#core/domain/index.js';
+import type { AuthClientPort, AuthSessionResult, PasskeyInfo } from './auth-port.js';
 
 const document = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -41,6 +50,14 @@ const documentFile = {
   contentType: 'application/pdf',
   sizeBytes: 3,
   storageKey: 'documents/tenant-default/document/file',
+  createdAt: '2026-08-01T00:00:00.000Z',
+};
+
+const savedSearch = {
+  id: '33333333-3333-4333-8333-333333333333',
+  tenantId: 'tenant-default',
+  name: 'Protokoły',
+  filter: { docType: 'protokol' as const, tag: 'odbiór' },
   createdAt: '2026-08-01T00:00:00.000Z',
 };
 
@@ -227,5 +244,84 @@ describe('document mutation descriptors', () => {
       name: 'ApiError',
       appError: { code: 'conflict', message: 'Already exists' },
     });
+  });
+});
+
+describe('saved search query descriptors', () => {
+  it('executes list/create/delete through their own cache scope', async () => {
+    const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/saved-searches') && init?.method === 'GET') {
+        return response({ savedSearches: [savedSearch] });
+      }
+      if (url.endsWith('/api/saved-searches') && init?.method === 'POST') {
+        return response({ savedSearch });
+      }
+      return response({ deleted: true });
+    });
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+    const client = newClient();
+    const observe = <TData, TVariables>(
+      descriptor: ConstructorParameters<typeof MutationObserver<TData, Error, TVariables>>[1],
+    ) => new MutationObserver(client, descriptor);
+
+    const list = savedSearchesQuery(api);
+    expect(list.queryKey).toEqual(['saved-searches', 'list']);
+    await expect(client.fetchQuery(list)).resolves.toEqual({ savedSearches: [savedSearch] });
+    expect(savedSearchesInvalidates()).toEqual({ queryKey: ['saved-searches'] });
+    await expect(
+      observe(createSavedSearchMutation(api)).mutate({
+        name: savedSearch.name,
+        filter: savedSearch.filter,
+      }),
+    ).resolves.toEqual({ savedSearch });
+    await expect(
+      observe(deleteSavedSearchMutation(api)).mutate(savedSearch.id),
+    ).resolves.toEqual({ deleted: true });
+  });
+});
+
+type AuthWrite<T> = Promise<Result<T, AppError>>;
+
+const auth: AuthClientPort = {
+  signUp: async (): AuthWrite<AuthSessionResult> => ok({ token: 'signed-up' }),
+  signIn: async (): AuthWrite<AuthSessionResult> => ok({ token: 'signed-in' }),
+  signOut: async (): AuthWrite<void> => ok(undefined),
+  changePassword: async (): AuthWrite<void> => ok(undefined),
+  requestMagicLink: async (): AuthWrite<void> => ok(undefined),
+  requestPasswordReset: async (): AuthWrite<void> => ok(undefined),
+  resetPassword: async (): AuthWrite<void> => ok(undefined),
+  signInSocial: async () => ok({ url: 'https://accounts.example/auth' }),
+  enableTwoFactor: async () => ok({ totpURI: 'otpauth://totp/demo', backupCodes: [] }),
+  verifyTotp: async (): AuthWrite<AuthSessionResult> => ok({ token: 'verified' }),
+  disableTwoFactor: async (): AuthWrite<void> => ok(undefined),
+  registerPasskey: async (): AuthWrite<void> => ok(undefined),
+  listPasskeys: async (): Promise<Result<PasskeyInfo[], AppError>> => ok([]),
+  removePasskey: async (): AuthWrite<void> => ok(undefined),
+  signInPasskey: async (): AuthWrite<AuthSessionResult> => ok({ token: 'passkey' }),
+};
+
+describe('auth mutation descriptors', () => {
+  it('executes password change and reset mutations through AuthClientPort', async () => {
+    const client = newClient();
+    await expect(
+      new MutationObserver(client, changePasswordMutation(auth)).mutate({
+        currentPassword: 'demo1234',
+        newPassword: 'changed1234',
+        revokeOtherSessions: true,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      new MutationObserver(client, requestPasswordResetMutation(auth)).mutate({
+        email: 'demo@example.com',
+        redirectTo: 'https://podpisy.example/reset-password',
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      new MutationObserver(client, resetPasswordMutation(auth)).mutate({
+        token: 'reset-token',
+        newPassword: 'changed1234',
+      }),
+    ).resolves.toBeUndefined();
   });
 });

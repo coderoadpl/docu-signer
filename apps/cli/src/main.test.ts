@@ -22,6 +22,7 @@ describe('CLI command surface', () => {
   it('exposes document, auth, health, public, and origin commands only', () => {
     const result = run('--help');
     expect(result.status).toBe(0);
+    expect(result.stdout).toContain('account');
     expect(result.stdout).toContain('document');
     expect(result.stdout).toContain('login');
     expect(result.stdout).toContain('health');
@@ -33,6 +34,11 @@ describe('CLI command surface', () => {
     const loginHelp = run('login', '--help');
     expect(loginHelp.status).toBe(0);
     expect(loginHelp.stdout).toContain('--code <totp>');
+
+    const accountHelp = run('account', '--help');
+    expect(accountHelp.status).toBe(0);
+    expect(accountHelp.stdout).toContain('change-password');
+    expect(accountHelp.stdout).toContain('request-password-reset');
   }, CLI_TEST_TIMEOUT_MS);
 
   it('maps an unknown removed command to the validation exit code', () => {

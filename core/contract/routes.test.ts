@@ -13,12 +13,14 @@ import {
   healthReadyOutputSchema,
   meOutputSchema,
   publicVersionSchema,
+  savedSearchCreateInputSchema,
+  savedSearchListOutputSchema,
   publicTenantDiscoveryPath,
   publicTenantProfilePath,
 } from './routes.js';
 
 describe('API route contract', () => {
-  it('contains health, identity, and document routes only', () => {
+  it('contains health, identity, document, and saved search routes only', () => {
     expect(Object.keys(API_PATHS).sort()).toEqual([
       'config',
       'documents',
@@ -35,6 +37,14 @@ describe('API route contract', () => {
     expect(API_ROUTES.documentFileMove).toEqual({
       method: 'POST',
       path: '/api/documents/:documentId/files/:fileId/move',
+    });
+    expect(API_ROUTES.savedSearches).toEqual({
+      method: 'GET',
+      path: '/api/saved-searches',
+    });
+    expect(API_ROUTES.savedSearchDelete).toEqual({
+      method: 'DELETE',
+      path: '/api/saved-searches/:savedSearchId',
     });
   });
 
@@ -105,6 +115,12 @@ describe('API route contract', () => {
         .success,
     ).toBe(false);
     expect(
+      documentListInputSchema.safeParse({ signatureStatus: 'needs-signature' }).success,
+    ).toBe(true);
+    expect(
+      documentListInputSchema.safeParse({ signatureStatus: 'unknown' }).success,
+    ).toBe(false);
+    expect(
       documentCreateInputSchema.safeParse({
         title: '   ',
         docType: 'umowa-uod',
@@ -123,6 +139,44 @@ describe('API route contract', () => {
         title: 'Umowa',
         docType: 'umowa-uod',
         documentDate: '01-08-2026',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates saved search payloads and responses', () => {
+    expect(
+      savedSearchCreateInputSchema.parse({
+        name: 'Protokoły',
+        filter: { docType: 'protokol', tag: 'odbiór', signatureStatus: 'signed' },
+      }),
+    ).toEqual({
+      name: 'Protokoły',
+      filter: { docType: 'protokol', tag: 'odbiór', signatureStatus: 'signed' },
+    });
+    expect(
+      savedSearchListOutputSchema.safeParse({
+        savedSearches: [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            tenantId: 'tenant-default',
+            name: 'Protokoły',
+            filter: { docType: 'protokol', signatureStatus: 'needs-signature' },
+            createdAt: '2026-08-01T00:00:00.000Z',
+          },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(savedSearchCreateInputSchema.safeParse({ name: '', filter: {} }).success).toBe(false);
+    expect(
+      savedSearchCreateInputSchema.safeParse({
+        name: 'Błędny typ',
+        filter: { docType: 'contract' },
+      }).success,
+    ).toBe(false);
+    expect(
+      savedSearchCreateInputSchema.safeParse({
+        name: 'Błędne daty',
+        filter: { dateFrom: '2026-08-02', dateTo: '2026-08-01' },
       }).success,
     ).toBe(false);
   });

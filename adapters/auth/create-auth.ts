@@ -33,6 +33,8 @@ export interface AuthSettings {
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 
 const magicLinkSubject = 'Your Agentproofarch sign-in link';
+const passwordResetSubject = 'Reset your Agentproofarch password';
+const PASSWORD_RESET_TOKEN_TTL_SECONDS = 60 * 60;
 
 export const createAuth = (db: Db, settings: AuthSettings) =>
   betterAuth({
@@ -40,7 +42,20 @@ export const createAuth = (db: Db, settings: AuthSettings) =>
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
-    emailAndPassword: { enabled: true, disableSignUp: settings.disableSignUp ?? false },
+    emailAndPassword: {
+      enabled: true,
+      disableSignUp: settings.disableSignUp ?? false,
+      resetPasswordTokenExpiresIn: PASSWORD_RESET_TOKEN_TTL_SECONDS,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url }) => {
+        await settings.email.sendMail({
+          to: user.email,
+          subject: passwordResetSubject,
+          text: `Reset your Agentproofarch password:\n\n${url}\n\nThe link opens the reset form and expires in an hour. If you did not ask for it, ignore this email.`,
+          link: url,
+        });
+      },
+    },
     ...(settings.google
       ? { socialProviders: { google: { clientId: settings.google.clientId, clientSecret: settings.google.clientSecret } } }
       : {}),

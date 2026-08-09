@@ -71,15 +71,13 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-01 after merging the backup index coverage and
-      // the signature pad gesture coverage. Both sides measured floors of
-      // 80/87/78/80 independently (branches 87.62% and 87.03%); the merged
-      // tree keeps each floor at that measured value rounded down.
+      // Re-measured 2026-08-02 after merging password parity, saved search
+      // presets, and detail cleanup: 81.48/87.29/80.46/81.48, rounded down.
       thresholds: {
-        statements: 80,
+        statements: 81,
         branches: 87,
-        functions: 78,
-        lines: 80,
+        functions: 80,
+        lines: 81,
       },
     },
     projects: [

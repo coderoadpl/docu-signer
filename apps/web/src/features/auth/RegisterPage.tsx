@@ -19,12 +19,13 @@ import { z } from 'zod';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
+import { passwordSchema } from '../../lib/password.js';
 import { Eyebrow, Wordmark } from '../../theme.js';
 
 const registerSchema = z.object({
   name: z.string().trim().min(1, 'Wpisz imię i nazwisko'),
   email: z.string().trim().pipe(z.email('Wpisz prawidłowy adres e-mail')),
-  password: z.string().min(8, 'Hasło musi mieć co najmniej 8 znaków'),
+  password: passwordSchema,
 });
 
 type Field = 'name' | 'email' | 'password';

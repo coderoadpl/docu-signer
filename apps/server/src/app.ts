@@ -13,6 +13,7 @@ import {
   exportDocumentsInputSchema,
   fileUploadRequestInputSchema,
   finalizeFileUploadInputSchema,
+  savedSearchCreateInputSchema,
   serverUploadMetadataSchema,
 } from '#core/contract/index.js';
 import {
@@ -26,13 +27,16 @@ import {
 } from '#core/domain/index.js';
 import {
   createDocument,
+  createSavedSearch,
   deleteDocument,
+  deleteSavedSearch,
   exportDocuments,
   finalizeFileUpload,
   getDocument,
   getFileContent,
   getFileExport,
   listDocuments,
+  listSavedSearches,
   moveDocumentFile,
   removeFile,
   resolveIdentity,
@@ -180,7 +184,10 @@ export const buildApp = (deps: AppDeps) => {
   // Unauthenticated client config (which optional auth methods are wired), read
   // by the pre-auth login/register pages. Flags only, never a secret. Mounted
   // above the `/api/*` tenant middleware so it answers without a session.
-  app.get(API_PATHS.config, () => respond(ok({ googleEnabled: deps.googleEnabled })));
+  app.get(API_PATHS.config, () => respond(ok({
+    googleEnabled: deps.googleEnabled,
+    passwordResetEnabled: deps.passwordResetEnabled,
+  })));
 
   // The public, unauthenticated contract group (US-028, §Public surface). Mounted
   // HERE — before the `/api/*` tenant-resolution middleware below — so a request
@@ -234,6 +241,7 @@ export const buildApp = (deps: AppDeps) => {
       text: c.req.query('text'),
       dateFrom: c.req.query('dateFrom'),
       dateTo: c.req.query('dateTo'),
+      signatureStatus: c.req.query('signatureStatus'),
     });
     if (!parsed.success) {
       return respond(err(validation('Invalid document filters', parsed.error.flatten())));
@@ -408,6 +416,30 @@ export const buildApp = (deps: AppDeps) => {
     return new Response(zipResponseStream(entries), {
       headers: attachmentHeaders('eksport-dokumentow.zip', 'application/zip'),
     });
+  });
+
+  app.get(API_ROUTES.savedSearches.path, async (c) => {
+    const result = await listSavedSearches(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ savedSearches: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.savedSearchesCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = savedSearchCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid saved search payload', parsed.error.flatten())));
+    }
+    const result = await createSavedSearch(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result.ok ? ok({ savedSearch: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.savedSearchDelete.path, async (c) => {
+    const result = await deleteSavedSearch(
+      ctxOf(c.get('identity')),
+      c.req.param('savedSearchId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
   });
 
   // Total the API surface: any /api/* request that reached here matched no route

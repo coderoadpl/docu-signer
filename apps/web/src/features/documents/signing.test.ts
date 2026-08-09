@@ -168,7 +168,7 @@ describe('pen signing geometry', () => {
     ).toEqual([{ x: 1, y: 1, pressure: 0.6 }]);
   });
 
-  it('defines deterministic document gesture and palm rejection rules', () => {
+  it('defines deterministic document gesture and pen priority rules', () => {
     expect(
       defaultSigningGestureMode({ coarsePointer: true, maxTouchPoints: 0 }),
     ).toBe('pan');
@@ -233,7 +233,7 @@ describe('pen signing geometry', () => {
         mode: 'pan',
         fingerDrawing: true,
         penPriority: false,
-        pointer: { pointerType: 'pen', width: 1, height: 1 },
+        pointer: { pointerType: 'pen' },
       }),
     ).toBe(false);
     expect(
@@ -241,7 +241,7 @@ describe('pen signing geometry', () => {
         mode: 'draw',
         fingerDrawing: false,
         penPriority: false,
-        pointer: { pointerType: 'pen', width: 1, height: 1 },
+        pointer: { pointerType: 'pen' },
       }),
     ).toBe(true);
     expect(
@@ -249,7 +249,7 @@ describe('pen signing geometry', () => {
         mode: 'draw',
         fingerDrawing: true,
         penPriority: false,
-        pointer: { pointerType: 'touch', width: 12, height: 12 },
+        pointer: { pointerType: 'touch' },
       }),
     ).toBe(true);
     expect(
@@ -257,7 +257,7 @@ describe('pen signing geometry', () => {
         mode: 'draw',
         fingerDrawing: false,
         penPriority: false,
-        pointer: { pointerType: 'touch', width: 12, height: 12 },
+        pointer: { pointerType: 'touch' },
       }),
     ).toBe(false);
     expect(
@@ -265,7 +265,7 @@ describe('pen signing geometry', () => {
         mode: 'draw',
         fingerDrawing: true,
         penPriority: true,
-        pointer: { pointerType: 'touch', width: 12, height: 12 },
+        pointer: { pointerType: 'touch' },
       }),
     ).toBe(false);
     expect(
@@ -273,15 +273,15 @@ describe('pen signing geometry', () => {
         mode: 'draw',
         fingerDrawing: true,
         penPriority: false,
-        pointer: { pointerType: 'touch', width: 45, height: 12 },
+        pointer: { pointerType: 'touch' },
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       documentPointerDrawsInk({
         mode: 'draw',
         fingerDrawing: false,
         penPriority: false,
-        pointer: { pointerType: 'mouse', width: 1, height: 1 },
+        pointer: { pointerType: 'mouse' },
       }),
     ).toBe(true);
   });

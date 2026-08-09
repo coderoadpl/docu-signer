@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { createDb } from '#adapters/db/client.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
+import { createSavedSearchRepository } from '#adapters/db/saved-searches-repository.js';
 import {
   createHealthPort,
   createTenantAccessReader,
@@ -19,6 +20,7 @@ import type {
   EmailPort,
   HealthPort,
   IdGenerator,
+  SavedSearchRepository,
   StoragePort,
   TenantAccessReader,
   TenantDomainRepository,
@@ -31,16 +33,19 @@ export interface AppDeps {
   auth: Auth;
   authPort: AuthPort;
   documents: DocumentRepository;
+  savedSearches: SavedSearchRepository;
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
    * Outbound email: the real `smtp` relay (dev/CI point it at a local Mailpit
    * that captures sends) or Amazon SES direct (`ses`). There is no dev transport;
-   * dev magic links are read from Mailpit's UI/API, not an in-app route.
+   * dev auth links are read from Mailpit's UI/API, not an in-app route.
    */
   email: EmailPort;
   /** Whether Google social sign-in is wired (FR-26); surfaced to the login page. */
   googleEnabled: boolean;
+  /** Whether password-reset email is safe to offer in this environment. */
+  passwordResetEnabled: boolean;
   tenants: TenantRepository;
   tenantAccess: TenantAccessReader;
   health: HealthPort;
@@ -86,6 +91,15 @@ export const selectGoogleSettings = (env: Env): GoogleSettings | undefined =>
     ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
     : undefined;
 
+export const selectPasswordResetEnabled = (env: Env): boolean => {
+  const deployed = env.VERCEL !== undefined || env.SECURE_COOKIES;
+  if (!deployed) return true;
+  if (env.EMAIL_TRANSPORT === 'ses') {
+    return Boolean(env.AWS_REGION && env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY);
+  }
+  return env.SMTP_HOST !== 'localhost' && env.EMAIL_FROM !== 'Agentproofarch <no-reply@localhost>';
+};
+
 export const selectStoragePort = (env: Env): StoragePort => {
   if (env.STORAGE_DRIVER === 'vercel-blob') {
     if (!env.BLOB_READ_WRITE_TOKEN) {
@@ -101,6 +115,7 @@ export const createDeps = (env: Env): AppDeps => {
   const tenantDomains = createTenantDomainRepository(db);
   const email = selectEmailPort(env);
   const google = selectGoogleSettings(env);
+  const passwordResetEnabled = selectPasswordResetEnabled(env);
   const storage = selectStoragePort(env);
 
   const baseTrustedOrigins = [
@@ -139,10 +154,12 @@ export const createDeps = (env: Env): AppDeps => {
     auth,
     authPort: createAuthPort(auth),
     documents: createDocumentRepository(db),
+    savedSearches: createSavedSearchRepository(db),
     storage,
     tenantDomains,
     email,
     googleEnabled: google !== undefined,
+    passwordResetEnabled,
     tenants: createTenantRepository(db),
     tenantAccess: createTenantAccessReader(db),
     health: createHealthPort(db),

@@ -24,6 +24,28 @@ const toDocumentFile = (row: typeof documentFiles.$inferSelect): DocumentFile =>
 export const createDocumentRepository = (db: Db): DocumentRepository => ({
   listByTenant: async (tenantId, filter) => {
     const conditions: SQL[] = [eq(documents.tenantId, tenantId)];
+    const hasSourceFile = exists(
+      db
+        .select({ id: documentFiles.id })
+        .from(documentFiles)
+        .where(
+          and(
+            eq(documentFiles.documentId, documents.id),
+            eq(documentFiles.role, 'source'),
+          ),
+        ),
+    );
+    const hasSignedFile = exists(
+      db
+        .select({ id: documentFiles.id })
+        .from(documentFiles)
+        .where(
+          and(
+            eq(documentFiles.documentId, documents.id),
+            inArray(documentFiles.role, ['signed-scan', 'signed-digital']),
+          ),
+        ),
+    );
     if (filter.docType) conditions.push(eq(documents.docType, filter.docType));
     if (filter.person) conditions.push(ilike(documents.person, `%${filter.person}%`));
     if (filter.tag) conditions.push(sql`${documents.tags} @> ${JSON.stringify([filter.tag])}::jsonb`);
@@ -33,6 +55,12 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     }
     if (filter.dateTo) {
       conditions.push(sql`coalesce(${documents.periodStart}, ${documents.documentDate}) <= ${filter.dateTo}`);
+    }
+    if (filter.signatureStatus === 'needs-signature') {
+      conditions.push(sql`${hasSourceFile} AND NOT ${hasSignedFile}`);
+    }
+    if (filter.signatureStatus === 'signed') {
+      conditions.push(hasSignedFile);
     }
     const rows = await db
       .select()

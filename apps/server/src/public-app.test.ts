@@ -48,6 +48,14 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
   },
+  savedSearches: {
+    listByTenant: async () => [],
+    create: async (input) => ({
+      ...input,
+      createdAt: '2026-08-01T00:00:00.000Z',
+    }),
+    delete: async () => false,
+  },
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),
@@ -61,6 +69,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   },
   email: { sendMail: async () => {} },
   googleEnabled: false,
+  passwordResetEnabled: true,
   tenants: { findById: async () => null, findBySlug },
   tenantAccess: { findStaffGrant: async () => null },
   health: { pingDatabase: async () => true },

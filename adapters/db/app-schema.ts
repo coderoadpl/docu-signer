@@ -13,6 +13,8 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
+import type { SavedSearchFilter } from '#core/domain/index.js';
+
 const LEGACY_BOARD_IDS = ['personal', 'team'] as const;
 
 export const tenants = pgTable(
@@ -192,6 +194,23 @@ export const documentFiles = pgTable(
       sql`${table.role} IN ('source', 'signed-scan', 'signed-digital', 'other')`,
     ),
     check('document_files_size_check', sql`${table.sizeBytes} >= 0 AND ${table.sizeBytes} <= 26214400`),
+  ],
+);
+
+export const savedSearches = pgTable(
+  'saved_searches',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    filter: jsonb('filter').$type<SavedSearchFilter>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('saved_searches_tenant_created_idx').on(table.tenantId, table.createdAt),
+    check('saved_searches_name_length_check', sql`length(${table.name}) BETWEEN 1 AND 120`),
   ],
 );
 

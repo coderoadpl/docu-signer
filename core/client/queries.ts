@@ -10,6 +10,7 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
+  CreateSavedSearch,
   CreateDocument,
   DocumentListFilter,
   ExportDocuments,
@@ -19,7 +20,15 @@ import type {
   UpdateDocument,
 } from '#core/domain/index.js';
 
-import type { AuthClientPort, AuthSessionResult, MagicLinkRequest, SocialSignInInput } from './auth-port.js';
+import type {
+  AuthClientPort,
+  AuthSessionResult,
+  ChangePasswordInput,
+  MagicLinkRequest,
+  PasswordResetCompletion,
+  PasswordResetRequest,
+  SocialSignInInput,
+} from './auth-port.js';
 import {
   unwrap,
   type ApiClient,
@@ -99,6 +108,11 @@ const documentsScopes = {
   detail: (documentId: string) => ['documents', 'detail', documentId] as const,
   file: (documentId: string, fileId: string) =>
     ['documents', 'detail', documentId, 'file', fileId] as const,
+};
+
+const savedSearchScopes = {
+  all: () => ['saved-searches'] as const,
+  lists: () => ['saved-searches', 'list'] as const,
 };
 
 const authScopes = {
@@ -230,6 +244,26 @@ export const exportDocumentsMutation = (api: ApiClient) =>
 
 export const documentsInvalidates = () => ({ queryKey: documentsScopes.all() });
 
+export const savedSearchesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: savedSearchScopes.lists(),
+    call: ({ signal }) => api.listSavedSearches(signal),
+  });
+
+export const createSavedSearchMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...savedSearchScopes.all(), 'create'],
+    call: (input: CreateSavedSearch) => api.createSavedSearch(input),
+  });
+
+export const deleteSavedSearchMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...savedSearchScopes.all(), 'delete'],
+    call: (savedSearchId: string) => api.deleteSavedSearch(savedSearchId),
+  });
+
+export const savedSearchesInvalidates = () => ({ queryKey: savedSearchScopes.all() });
+
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any
  * other action — never hand-rolled pending/error state around a port call.
@@ -252,10 +286,28 @@ export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, 
     call: () => auth.signOut(),
   });
 
+export const changePasswordMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'change-password'],
+    call: (input: ChangePasswordInput) => auth.changePassword(input),
+  });
+
 export const requestMagicLinkMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'magic-link'],
     call: (input: MagicLinkRequest) => auth.requestMagicLink(input),
+  });
+
+export const requestPasswordResetMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'password-reset', 'request'],
+    call: (input: PasswordResetRequest) => auth.requestPasswordReset(input),
+  });
+
+export const resetPasswordMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'password-reset', 'complete'],
+    call: (input: PasswordResetCompletion) => auth.resetPassword(input),
   });
 
 export const signInSocialMutation = (auth: AuthClientPort) =>

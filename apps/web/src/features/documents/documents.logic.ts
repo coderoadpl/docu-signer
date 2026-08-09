@@ -1,14 +1,16 @@
 import { ApiError } from '#core/client/index.js';
 import {
-  documentCoveredYears,
   type CreateDocument,
   type DocumentFile,
   type DocumentFileRole,
   type DocumentListFilter,
+  type DocumentSignatureStatus,
+  type SavedSearchFilter,
   type DocumentType,
   type DocumentWithFiles,
   type UpdateDocument,
 } from '#core/domain/index.js';
+import { formatPolishDate } from '../../lib/format-date.js';
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   'umowa-uod': 'Umowa UoD',
@@ -32,6 +34,11 @@ export const FILE_ROLE_SYMBOLS: Record<DocumentFileRole, string> = {
   other: '•',
 };
 
+export const SIGNATURE_STATUS_LABELS: Record<DocumentSignatureStatus, string> = {
+  'needs-signature': 'Do podpisania',
+  signed: 'Podpisane',
+};
+
 export interface DocumentFormValues {
   title: string;
   docType: DocumentType;
@@ -39,8 +46,28 @@ export interface DocumentFormValues {
   periodStart: string;
   periodEnd: string;
   person: string;
-  tags: string;
+  tags: string[];
 }
+
+export interface DocumentFilterValues {
+  text: string;
+  docType: DocumentType | '';
+  person: string;
+  tag: string;
+  dateFrom: string;
+  dateTo: string;
+  signatureStatus: DocumentSignatureStatus | '';
+}
+
+export const emptyDocumentFilters = (): DocumentFilterValues => ({
+  text: '',
+  docType: '',
+  person: '',
+  tag: '',
+  dateFrom: '',
+  dateTo: '',
+  signatureStatus: '',
+});
 
 export const emptyDocumentForm = (): DocumentFormValues => ({
   title: '',
@@ -49,7 +76,7 @@ export const emptyDocumentForm = (): DocumentFormValues => ({
   periodStart: '',
   periodEnd: '',
   person: '',
-  tags: '',
+  tags: [],
 });
 
 export const toDocumentInput = (
@@ -61,10 +88,7 @@ export const toDocumentInput = (
   periodStart: values.periodStart || null,
   periodEnd: values.periodEnd || null,
   ...(values.person.trim() ? { person: values.person.trim() } : {}),
-  tags: values.tags
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean),
+  tags: Array.from(new Set(values.tags.map((tag) => tag.trim()).filter(Boolean))),
 });
 
 export const suggestDocumentDate = (
@@ -90,6 +114,7 @@ export const toDocumentFilter = (values: {
   tag: string;
   dateFrom: string;
   dateTo: string;
+  signatureStatus: DocumentSignatureStatus | '';
 }): DocumentListFilter => ({
   ...(values.text.trim() ? { text: values.text.trim() } : {}),
   ...(values.docType ? { docType: values.docType } : {}),
@@ -97,12 +122,47 @@ export const toDocumentFilter = (values: {
   ...(values.tag.trim() ? { tag: values.tag.trim() } : {}),
   ...(values.dateFrom ? { dateFrom: values.dateFrom } : {}),
   ...(values.dateTo ? { dateTo: values.dateTo } : {}),
+  ...(values.signatureStatus ? { signatureStatus: values.signatureStatus } : {}),
 });
 
-export interface FolderTile {
-  label: string;
-  count: number;
-}
+export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilterValues => ({
+  text: filter.text ?? '',
+  docType: filter.docType ?? '',
+  person: filter.person ?? '',
+  tag: filter.tag ?? '',
+  dateFrom: filter.dateFrom ?? '',
+  dateTo: filter.dateTo ?? '',
+  signatureStatus: filter.signatureStatus ?? '',
+});
+
+export const hasDocumentFilter = (filter: DocumentListFilter): boolean =>
+  Object.values(filter).some((value) => value !== undefined && value.length > 0);
+
+export const documentFilterSummary = (filter: SavedSearchFilter): string => {
+  const parts = [
+    filter.text ? `Tytuł: ${filter.text}` : '',
+    filter.docType ? `Typ: ${DOCUMENT_TYPE_LABELS[filter.docType]}` : '',
+    filter.person ? `Osoba: ${filter.person}` : '',
+    filter.tag ? `Tag: ${filter.tag}` : '',
+    filter.dateFrom ? `Od: ${formatPolishDate(filter.dateFrom)}` : '',
+    filter.dateTo ? `Do: ${formatPolishDate(filter.dateTo)}` : '',
+    filter.signatureStatus
+      ? `Status podpisu: ${SIGNATURE_STATUS_LABELS[filter.signatureStatus]}`
+      : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'Wszystkie dokumenty';
+};
+
+export const uniqueDocumentPersons = (
+  documents: Array<Pick<DocumentWithFiles, 'person'>>,
+): string[] =>
+  Array.from(
+    new Set(
+      documents
+        .map((document) => document.person?.trim())
+        .filter((person): person is string => Boolean(person)),
+    ),
+  ).sort((left, right) => left.localeCompare(right, 'pl'));
 
 export const uniqueDocumentTags = (
   documents: Array<Pick<DocumentWithFiles, 'tags'>>,
@@ -110,28 +170,6 @@ export const uniqueDocumentTags = (
   Array.from(new Set(documents.flatMap((document) => document.tags))).sort((left, right) =>
     left.localeCompare(right, 'pl'),
   );
-
-export const tagFolders = (
-  documents: Array<Pick<DocumentWithFiles, 'tags'>>,
-): FolderTile[] =>
-  uniqueDocumentTags(documents).map((tag) => ({
-    label: tag,
-    count: documents.filter((document) => document.tags.includes(tag)).length,
-  }));
-
-export const yearFolders = (
-  documents: Array<Pick<DocumentWithFiles, 'documentDate' | 'periodStart' | 'periodEnd'>>,
-): FolderTile[] => {
-  const counts = new Map<number, number>();
-  for (const document of documents) {
-    for (const year of documentCoveredYears(document)) {
-      counts.set(year, (counts.get(year) ?? 0) + 1);
-    }
-  }
-  return Array.from(counts.entries())
-    .sort(([left], [right]) => right - left)
-    .map(([year, count]) => ({ label: String(year), count }));
-};
 
 export const fileNameStem = (fileName: string): string => {
   const trimmed = fileName.trim();
