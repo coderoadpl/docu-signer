@@ -391,6 +391,92 @@ describe('DocumentsPage', () => {
     );
   });
 
+  it('shows bulk progress and summarizes partial failures', async () => {
+    const updates = vi.fn();
+    const releaseFirst: { current: (() => void) | null } = { current: null };
+    const firstUpdate = new Promise<void>((resolve) => {
+      releaseFirst.current = resolve;
+    });
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              document,
+              {
+                ...document,
+                id: '22222222-2222-4222-8222-222222222222',
+                title: 'Uchwała zarządu',
+              },
+            ],
+          },
+        }),
+      ),
+      http.patch('/api/documents/:id', async ({ params, request }) => {
+        updates(params.id, await request.json());
+        if (params.id === DOCUMENT_ID) {
+          await firstUpdate;
+          return HttpResponse.json({ ok: true, data: { document } });
+        }
+        return HttpResponse.json(
+          { ok: false, error: { code: 'internal', message: 'Błąd zapisu' } },
+          { status: 500 },
+        );
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Uchwała zarządu');
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Umowa z Anną' }).at(0) ??
+        screen.getByLabelText('Zaznacz dokument: Umowa z Anną'),
+    );
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Uchwała zarządu' }).at(0) ??
+        screen.getByLabelText('Zaznacz dokument: Uchwała zarządu'),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Ustaw osobę' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ustaw osobę' });
+    expect(within(dialog).getByText('Nadpiszesz osobę w 2 dokumentach.')).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole('combobox', { name: 'Osoba' }), 'Jan Kowalski');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Zastosuj' }));
+
+    expect(await screen.findByLabelText('Postęp operacji zbiorczej')).toBeInTheDocument();
+    if (!releaseFirst.current) throw new Error('Missing pending update release');
+    releaseFirst.current();
+    expect(
+      await screen.findByText('Operacje zbiorcze: 1 zmieniono, 1 błędów.'),
+    ).toBeInTheDocument();
+    expect(updates).toHaveBeenCalledWith(
+      DOCUMENT_ID,
+      expect.objectContaining({ person: 'Jan Kowalski' }),
+    );
+  });
+
+  it('opens the row overflow menu and moves a document to trash', async () => {
+    const remove = vi.fn();
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+      http.delete('/api/documents/:id', ({ params }) => {
+        remove(params.id);
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Więcej akcji dla dokumentu Umowa z Anną' }),
+    );
+    expect(screen.getByRole('menuitem', { name: 'Otwórz' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Do kosza' }));
+
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(DOCUMENT_ID));
+  });
+
   it('saves, applies and deletes teczki presets', async () => {
     const seen = vi.fn();
     const savedCreate = vi.fn();

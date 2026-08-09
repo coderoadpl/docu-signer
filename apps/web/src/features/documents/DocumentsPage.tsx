@@ -19,6 +19,7 @@ import {
   IconButton,
   InputLabel,
   LinearProgress,
+  Menu,
   MenuItem,
   Paper,
   Popover,
@@ -44,9 +45,11 @@ import { z } from 'zod';
 import {
   documentSignatureStatusSchema,
   documentTypeSchema,
+  type DocumentType,
   type DocumentWithFiles,
   type SavedSearch,
   type SavedSearchFilter,
+  type UpdateDocument,
   type UserPreferenceValue,
 } from '#core/domain/index.js';
 
@@ -116,6 +119,12 @@ const ArrowUpIcon = () => (
 const ArrowDownIcon = () => (
   <SvgIcon fontSize="small">
     <path d="M7 10l5 5 5-5H7Z" />
+  </SvgIcon>
+);
+
+const MoreVertIcon = () => (
+  <SvgIcon fontSize="small">
+    <path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
   </SvgIcon>
 );
 
@@ -190,6 +199,26 @@ const signedStatus = (document: DocumentWithFiles) =>
     ? 'signed'
     : 'needs-signature';
 
+type BulkDialog = 'add-tags' | 'remove-tag' | 'person' | 'type';
+
+interface BulkSummary {
+  changed: number;
+  errors: number;
+}
+
+const toUpdateDocumentInput = (
+  document: DocumentWithFiles,
+  overrides: Partial<Pick<UpdateDocument, 'docType' | 'person' | 'tags'>>,
+): UpdateDocument => ({
+  title: document.title,
+  docType: overrides.docType ?? document.docType,
+  documentDate: document.documentDate,
+  periodStart: document.periodStart,
+  periodEnd: document.periodEnd,
+  person: overrides.person ?? document.person,
+  tags: overrides.tags ?? document.tags,
+});
+
 type DocumentsView = 'list' | 'folders' | 'trash';
 
 const trashErrorMessage = (error: unknown): string =>
@@ -221,6 +250,15 @@ export const DocumentsPage = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [view, setView] = useState<DocumentsView>('list');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
+  const [bulkTags, setBulkTags] = useState<string[]>([]);
+  const [bulkRemoveTag, setBulkRemoveTag] = useState('');
+  const [bulkPerson, setBulkPerson] = useState('');
+  const [bulkDocType, setBulkDocType] = useState<DocumentType>('umowa-uod');
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [bulkSummary, setBulkSummary] = useState<BulkSummary | null>(null);
+  const [rowMenuAnchor, setRowMenuAnchor] = useState<HTMLElement | null>(null);
+  const [rowMenuDocument, setRowMenuDocument] = useState<DocumentWithFiles | null>(null);
   const [trashConfirmDocument, setTrashConfirmDocument] = useState<DocumentWithFiles | null>(null);
   const [trashBusyIds, setTrashBusyIds] = useState<string[]>([]);
   const [trashError, setTrashError] = useState<string | null>(null);
@@ -254,6 +292,8 @@ export const DocumentsPage = () => {
     ...actions.exportDocuments,
     onSuccess: saveDownload,
   });
+  const bulkUpdateDocument = useMutation(actions.updateDocument);
+  const bulkDeleteDocument = useMutation(actions.deleteDocument);
   const createSavedSearch = useMutation({
     ...savedSearchActions.createSavedSearch,
     onSuccess: async () => {
@@ -294,9 +334,14 @@ export const DocumentsPage = () => {
   const personOptions = uniqueDocumentPersons(allDocuments);
   const tagOptions = uniqueDocumentTags(allDocuments);
   const savedSearchItems: SavedSearch[] = savedSearches.data?.savedSearches ?? [];
+  const selectedDocuments = visibleDocuments.filter((document) =>
+    selectedIds.includes(document.id),
+  );
+  const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
   const visibleColumnIds = columnSettings.order.filter((column) =>
     columnSettings.visible.includes(column),
   );
+  const bulkBusy = bulkProgress !== null;
 
   useEffect(() => {
     if (allDocuments.length > 0) setArchiveHasDocuments(true);
@@ -339,6 +384,53 @@ export const DocumentsPage = () => {
     order[index] = next;
     order[target] = current;
     saveColumnSettings({ ...columnSettings, order });
+  };
+
+  const openBulkDialog = (dialog: BulkDialog) => {
+    setBulkSummary(null);
+    setBulkDialog(dialog);
+    if (dialog === 'add-tags') setBulkTags([]);
+    if (dialog === 'remove-tag') setBulkRemoveTag(selectedTagOptions[0] ?? '');
+    if (dialog === 'person') setBulkPerson('');
+    if (dialog === 'type') setBulkDocType(selectedDocuments[0]?.docType ?? 'umowa-uod');
+  };
+
+  const runBulk = async (
+    action: (document: DocumentWithFiles) => Promise<void>,
+  ) => {
+    if (selectedDocuments.length === 0 || bulkBusy) return;
+    let changed = 0;
+    let errors = 0;
+    setBulkSummary(null);
+    setBulkProgress({ done: 0, total: selectedDocuments.length });
+    for (const document of selectedDocuments) {
+      try {
+        await action(document);
+        changed += 1;
+      } catch {
+        errors += 1;
+      } finally {
+        setBulkProgress((current) =>
+          current ? { ...current, done: current.done + 1 } : current,
+        );
+      }
+    }
+    setBulkProgress(null);
+    setBulkDialog(null);
+    setBulkSummary({ changed, errors });
+    setSelectedIds([]);
+    await queryClient.invalidateQueries(actions.documentsInvalidates());
+  };
+
+  const closeRowMenu = () => {
+    setRowMenuAnchor(null);
+    setRowMenuDocument(null);
+  };
+
+  const moveOneToTrash = async (documentId: string) => {
+    setBulkSummary(null);
+    await bulkDeleteDocument.mutateAsync(documentId);
+    await queryClient.invalidateQueries(actions.documentsInvalidates());
   };
 
   const saveCurrentSearch = () => {
@@ -917,7 +1009,7 @@ export const DocumentsPage = () => {
 
       {hasDocuments && view === 'list' ? <Stack
         direction="row"
-        sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}
+        sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}
       >
         <Button
           variant="outlined"
@@ -927,12 +1019,69 @@ export const DocumentsPage = () => {
         </Button>
         <Button
           variant="outlined"
-          disabled={selectedIds.length === 0 || exportDocuments.isPending}
+          color="error"
+          disabled={selectedIds.length === 0 || bulkBusy}
+          onClick={() =>
+            void runBulk(async (document) => {
+              await bulkDeleteDocument.mutateAsync(document.id);
+            })
+          }
+        >
+          Do kosza ({selectedIds.length})
+        </Button>
+        <Button
+          variant="outlined"
+          disabled={selectedIds.length === 0 || bulkBusy}
+          onClick={() => openBulkDialog('add-tags')}
+        >
+          Dodaj tagi
+        </Button>
+        <Button
+          variant="outlined"
+          disabled={selectedIds.length === 0 || selectedTagOptions.length === 0 || bulkBusy}
+          onClick={() => openBulkDialog('remove-tag')}
+        >
+          Usuń tag
+        </Button>
+        <Button
+          variant="outlined"
+          disabled={selectedIds.length === 0 || bulkBusy}
+          onClick={() => openBulkDialog('person')}
+        >
+          Ustaw osobę
+        </Button>
+        <Button
+          variant="outlined"
+          disabled={selectedIds.length === 0 || bulkBusy}
+          onClick={() => openBulkDialog('type')}
+        >
+          Ustaw typ
+        </Button>
+        <Button
+          variant="outlined"
+          disabled={selectedIds.length === 0 || exportDocuments.isPending || bulkBusy}
           onClick={() => exportDocuments.mutate({ documentIds: selectedIds })}
         >
           Eksportuj zaznaczone ({selectedIds.length})
         </Button>
       </Stack> : null}
+      {bulkProgress ? (
+        <Box sx={{ mt: 2 }}>
+          <LinearProgress
+            variant="determinate"
+            value={(bulkProgress.done / bulkProgress.total) * 100}
+            aria-label="Postęp operacji zbiorczej"
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+            Przetworzono {bulkProgress.done} z {bulkProgress.total}.
+          </Typography>
+        </Box>
+      ) : null}
+      {bulkSummary ? (
+        <Alert severity={bulkSummary.errors > 0 ? 'warning' : 'success'} sx={{ mt: 2 }}>
+          Operacje zbiorcze: {bulkSummary.changed} zmieniono, {bulkSummary.errors} błędów.
+        </Alert>
+      ) : null}
       <Popover
         open={Boolean(columnsAnchor)}
         anchorEl={columnsAnchor}
@@ -1136,6 +1285,7 @@ export const DocumentsPage = () => {
                 {visibleColumnIds.map((column) => (
                   <TableCell key={column}>{DOCUMENT_COLUMN_LABELS[column]}</TableCell>
                 ))}
+                <TableCell align="right">Akcje</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1174,6 +1324,18 @@ export const DocumentsPage = () => {
                   {visibleColumnIds.map((column) => (
                     <TableCell key={column}>{renderDocumentCell(column, document)}</TableCell>
                   ))}
+                  <TableCell align="right" onClick={(event) => event.stopPropagation()}>
+                    <IconButton
+                      size="small"
+                      aria-label={`Więcej akcji dla dokumentu ${document.title}`}
+                      onClick={(event) => {
+                        setRowMenuAnchor(event.currentTarget);
+                        setRowMenuDocument(document);
+                      }}
+                    >
+                      <MoreVertIcon />
+                    </IconButton>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1181,6 +1343,183 @@ export const DocumentsPage = () => {
         </TableContainer>
         </>
       ) : null}
+
+      <Menu
+        anchorEl={rowMenuAnchor}
+        open={Boolean(rowMenuAnchor)}
+        onClose={closeRowMenu}
+      >
+        <MenuItem
+          onClick={() => {
+            const document = rowMenuDocument;
+            closeRowMenu();
+            if (!document) return;
+            void navigate({
+              to: '/app/documents/$id',
+              params: { id: document.id },
+            });
+          }}
+        >
+          Otwórz
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            const document = rowMenuDocument;
+            closeRowMenu();
+            if (!document) return;
+            void moveOneToTrash(document.id);
+          }}
+        >
+          <Typography color="error">Do kosza</Typography>
+        </MenuItem>
+      </Menu>
+
+      <Dialog
+        open={bulkDialog !== null}
+        onClose={bulkBusy ? undefined : () => setBulkDialog(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          {bulkDialog === 'add-tags'
+            ? 'Dodaj tagi'
+            : bulkDialog === 'remove-tag'
+              ? 'Usuń tag'
+              : bulkDialog === 'person'
+                ? 'Ustaw osobę'
+                : 'Ustaw typ'}
+        </DialogTitle>
+        <DialogContent>
+          <Stack sx={{ gap: 2, pt: 1 }}>
+            {bulkDialog === 'add-tags' ? (
+              <Autocomplete
+                multiple
+                freeSolo
+                options={tagOptions}
+                value={bulkTags}
+                onChange={(_event, value) => setBulkTags(value)}
+                renderInput={(params) => <TextField {...params} label="Tagi" />}
+              />
+            ) : null}
+            {bulkDialog === 'remove-tag' ? (
+              <FormControl fullWidth>
+                <InputLabel id="bulk-remove-tag-label">Tag</InputLabel>
+                <Select
+                  labelId="bulk-remove-tag-label"
+                  label="Tag"
+                  value={bulkRemoveTag}
+                  onChange={(event) => setBulkRemoveTag(String(event.target.value))}
+                >
+                  {selectedTagOptions.map((tag) => (
+                    <MenuItem key={tag} value={tag}>
+                      {tag}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : null}
+            {bulkDialog === 'person' ? (
+              <>
+                <Alert severity="warning">
+                  Nadpiszesz osobę w {selectedDocuments.length} dokumentach.
+                </Alert>
+                <Autocomplete
+                  freeSolo
+                  options={personOptions}
+                  value={bulkPerson}
+                  onChange={(_event, value) => setBulkPerson(value ?? '')}
+                  onInputChange={(_event, value) => setBulkPerson(value)}
+                  renderInput={(params) => <TextField {...params} label="Osoba" />}
+                />
+              </>
+            ) : null}
+            {bulkDialog === 'type' ? (
+              <>
+                <Alert severity="warning">
+                  Nadpiszesz typ w {selectedDocuments.length} dokumentach.
+                </Alert>
+                <FormControl fullWidth>
+                  <InputLabel id="bulk-document-type-label">Typ</InputLabel>
+                  <Select
+                    labelId="bulk-document-type-label"
+                    label="Typ"
+                    value={bulkDocType}
+                    onChange={(event) =>
+                      setBulkDocType(documentTypeSchema.parse(event.target.value))
+                    }
+                  >
+                    {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>
+                        {label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={bulkBusy} onClick={() => setBulkDialog(null)}>
+            Anuluj
+          </Button>
+          <Button
+            variant="contained"
+            disabled={
+              bulkBusy ||
+              selectedDocuments.length === 0 ||
+              (bulkDialog === 'add-tags' && bulkTags.map((tag) => tag.trim()).filter(Boolean).length === 0) ||
+              (bulkDialog === 'remove-tag' && !bulkRemoveTag) ||
+              (bulkDialog === 'person' && bulkPerson.trim().length === 0)
+            }
+            onClick={() => {
+              if (bulkDialog === 'add-tags') {
+                const tags = bulkTags.map((tag) => tag.trim()).filter(Boolean);
+                void runBulk(async (document) => {
+                  await bulkUpdateDocument.mutateAsync({
+                    documentId: document.id,
+                    input: toUpdateDocumentInput(document, {
+                      tags: Array.from(new Set([...document.tags, ...tags])),
+                    }),
+                  });
+                });
+                return;
+              }
+              if (bulkDialog === 'remove-tag') {
+                void runBulk(async (document) => {
+                  await bulkUpdateDocument.mutateAsync({
+                    documentId: document.id,
+                    input: toUpdateDocumentInput(document, {
+                      tags: document.tags.filter((tag) => tag !== bulkRemoveTag),
+                    }),
+                  });
+                });
+                return;
+              }
+              if (bulkDialog === 'person') {
+                const person = bulkPerson.trim();
+                void runBulk(async (document) => {
+                  await bulkUpdateDocument.mutateAsync({
+                    documentId: document.id,
+                    input: toUpdateDocumentInput(document, { person }),
+                  });
+                });
+                return;
+              }
+              if (bulkDialog === 'type') {
+                void runBulk(async (document) => {
+                  await bulkUpdateDocument.mutateAsync({
+                    documentId: document.id,
+                    input: toUpdateDocumentInput(document, { docType: bulkDocType }),
+                  });
+                });
+              }
+            }}
+          >
+            Zastosuj
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <DocumentFormDialog
         open={createOpen}
