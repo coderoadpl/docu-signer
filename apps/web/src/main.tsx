@@ -22,7 +22,7 @@ import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { DocumentDetailRoute } from './routes/document-detail.js';
-import { DocumentsRoute } from './routes/documents.js';
+import { DocumentsRoute, documentsSearchSchema } from './routes/documents.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
 import { LoginRoute } from './routes/login.js';
 import { NotFoundRoute } from './routes/not-found.js';
@@ -105,11 +105,13 @@ const appIndexRoute = createRoute({
 const documentsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: 'documents',
+  validateSearch: documentsSearchSchema,
   component: DocumentsRoute,
 });
 const documentDetailRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: 'documents/$id',
+  validateSearch: documentsSearchSchema,
   component: DocumentDetailRoute,
 });
 const documentSigningRoute = createRoute({

@@ -15,6 +15,7 @@ import { documentCreateInputSchema } from '#core/contract/index.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentsPage } from './DocumentsPage.js';
+import { documentsSearchSchema } from './documents.logic.js';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -42,21 +43,23 @@ const trashedDocument = {
   deletedAt: '2026-08-02T09:00:00.000Z',
 };
 
-const renderPage = async () => {
+const renderPage = async (initialEntry = '/app/documents') => {
   const root = createRootRoute();
   const list = createRoute({
     getParentRoute: () => root,
     path: '/app/documents',
+    validateSearch: documentsSearchSchema,
     component: DocumentsPage,
   });
   const detail = createRoute({
     getParentRoute: () => root,
     path: '/app/documents/$id',
+    validateSearch: documentsSearchSchema,
     component: () => <div>Szczegóły dokumentu</div>,
   });
   const router = createRouter({
     routeTree: root.addChildren([list, detail]),
-    history: createMemoryHistory({ initialEntries: ['/app/documents'] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   return { router, ...renderWithProviders(<RouterProvider router={router} />) };
@@ -189,6 +192,88 @@ describe('DocumentsPage', () => {
     );
   });
 
+  it('restores filter controls from a deep link', async () => {
+    const seen = vi.fn();
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        if (params.get('draft') !== 'all') seen(Object.fromEntries(params.entries()));
+        return HttpResponse.json({ ok: true, data: { documents: [document] } });
+      }),
+    );
+    await renderPage(
+      '/app/documents?q=umowa&typ=umowa-uod&osoba=Anna&tag=ważne&status=needs-signature&szkice=true&od=2026-01-01&do=2026-12-31',
+    );
+
+    expect(await screen.findByLabelText('Szukaj po tytule')).toHaveValue('umowa');
+    expect(screen.getByRole('combobox', { name: 'Osoba' })).toHaveValue('Anna');
+    expect(screen.getByRole('combobox', { name: 'Tag' })).toHaveValue('ważne');
+    expect(screen.getByText('Do podpisania')).toBeInTheDocument();
+    expect(screen.getByText('Tylko szkice')).toBeInTheDocument();
+    expect(dateField(window.document.body, 'Od')).toHaveTextContent('01.01.2026');
+    expect(dateField(window.document.body, 'Do')).toHaveTextContent('31.12.2026');
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        text: 'umowa',
+        docType: 'umowa-uod',
+        person: 'Anna',
+        tag: 'ważne',
+        signatureStatus: 'needs-signature',
+        draft: 'true',
+        dateFrom: '2026-01-01',
+        dateTo: '2026-12-31',
+      }),
+    );
+  });
+
+  it('restores non-list tabs from deep links', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+    );
+    await renderPage('/app/documents?tab=os-czasu&tag=ważne');
+
+    expect(
+      await screen.findByRole('tab', { name: 'Os czasu', selected: true }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Os czasu' })).toBeInTheDocument();
+  });
+
+  it('keeps the draft-filtered list after a detail roundtrip', async () => {
+    const seen = vi.fn();
+    const draft = {
+      ...document,
+      id: '55555555-5555-4555-8555-555555555555',
+      title: 'Szkic importu',
+      draft: true,
+    };
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        if (params.get('draft') !== 'all') seen(Object.fromEntries(params.entries()));
+        return HttpResponse.json({ ok: true, data: { documents: [draft] } });
+      }),
+    );
+    const { router } = await renderPage('/app/documents?szkice=true&q=Szkic');
+
+    expect((await screen.findAllByText('Szkic importu')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(seen).toHaveBeenCalledWith({ text: 'Szkic', draft: 'true' }));
+    const firstTitle = screen.getAllByText('Szkic importu').at(0);
+    if (!firstTitle) throw new Error('Missing draft title');
+    await userEvent.click(firstTitle);
+    expect(await screen.findByText('Szczegóły dokumentu')).toBeInTheDocument();
+
+    router.history.back();
+
+    expect((await screen.findAllByText('Szkic importu')).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Szukaj po tytule')).toHaveValue('Szkic');
+    expect(screen.getByText('Tylko szkice')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ q: 'Szkic', szkice: 'true' }),
+    );
+  });
+
   it('shows one dominant create action and no tools for an empty archive', async () => {
     server.use(
       http.get('/api/documents', () =>
@@ -224,7 +309,7 @@ describe('DocumentsPage', () => {
         });
       }),
     );
-    await renderPage();
+    const { router } = await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
     fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
@@ -589,6 +674,11 @@ describe('DocumentsPage', () => {
         draft: 'all',
       }),
     );
+    expect(router.state.location.search).toMatchObject({
+      tag: 'odbiór',
+      status: 'signed',
+      szkice: 'all',
+    });
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
     await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));

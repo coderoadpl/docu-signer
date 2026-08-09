@@ -1,8 +1,15 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
+import { z } from 'zod';
 
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
 const DEMO_PASSWORD = 'demo1234';
+const documentCreateResponseSchema = z.object({
+  ok: z.literal(true),
+  data: z.object({
+    document: z.object({ id: z.string() }),
+  }),
+});
 
 const validPdfBuffer = async () => {
   const pdf = await PDFDocument.create();
@@ -378,6 +385,44 @@ test('moves a document to trash and restores it', async ({ page }) => {
 
   await page.getByRole('tab', { name: 'Lista' }).click();
   await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+});
+
+test('keeps draft filters after approving a draft and returning to the list', async ({ page }) => {
+  const stamp = Date.now();
+  const title = `Szkic e2e ${stamp}`;
+
+  await signIn(page);
+  const response = await page.request.post('/api/documents', {
+    data: {
+      title,
+      docType: 'inny',
+      documentDate: '2026-08-03',
+      person: 'Jan Kowalski',
+      tags: ['e2e-draft'],
+      draft: true,
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const created = documentCreateResponseSchema.parse(await response.json());
+
+  await page.goto(`/app/documents?szkice=true&q=${encodeURIComponent(title)}`);
+  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('cell', { name: title, exact: true }).click();
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByText('Szkic. Dokument jest widoczny')).toBeVisible();
+  expect(page.url()).toContain(`q=${encodeURIComponent(title)}`);
+  expect(page.url()).toContain('szkice=true');
+
+  await page.getByRole('button', { name: 'Zatwierdź' }).click();
+  await expect(page.getByText('Szkic. Dokument jest widoczny')).toBeHidden();
+  await page.getByRole('button', { name: '← Dokumenty' }).click();
+
+  await expect(page.getByLabel('Szukaj po tytule')).toHaveValue(title);
+  await expect(page.getByLabel('Szkice')).toContainText('Tylko szkice');
+  await expect(page.getByRole('heading', { name: 'Brak wyników dla tych filtrów' })).toBeVisible();
+  expect(page.url()).toContain(`q=${encodeURIComponent(title)}`);
+  expect(page.url()).toContain('szkice=true');
+  expect(created.data.document.id.length).toBeGreaterThan(0);
 });
 
 test.describe('signature pad dialog', () => {

@@ -1,4 +1,5 @@
 import { ApiError } from '#core/client/index.js';
+import { z } from 'zod';
 import {
   type CreateDocument,
   type DocumentFile,
@@ -9,6 +10,8 @@ import {
   type DocumentType,
   type DocumentWithFiles,
   type UpdateDocument,
+  documentSignatureStatusSchema,
+  documentTypeSchema,
 } from '#core/domain/index.js';
 import { formatPolishDate } from '../../lib/format-date.js';
 
@@ -60,6 +63,36 @@ export interface DocumentFilterValues {
   draft: 'false' | 'true' | 'all';
 }
 
+export type DocumentsView = 'list' | 'folders' | 'timeline' | 'trash';
+
+const dateParamSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().catch(undefined);
+const textParamSchema = z.preprocess(
+  (value: unknown) => (typeof value === 'string' ? value : undefined),
+  z.string().trim().min(1).optional(),
+).catch(undefined);
+const draftParamSchema = z.preprocess(
+  (value: unknown) => (value === true ? 'true' : value),
+  z.enum(['true', 'all']).optional(),
+).catch(undefined);
+const documentsSearchInputSchema = z.object({
+  tab: z.enum(['teczki', 'os-czasu', 'kosz']).optional().catch(undefined),
+  q: textParamSchema,
+  typ: documentTypeSchema.optional().catch(undefined),
+  osoba: textParamSchema,
+  tag: textParamSchema,
+  status: documentSignatureStatusSchema.optional().catch(undefined),
+  szkice: draftParamSchema,
+  od: dateParamSchema,
+  do: dateParamSchema,
+});
+
+export const documentsSearchSchema = z.preprocess(
+  (value) => (typeof value === 'object' && value !== null ? value : {}),
+  documentsSearchInputSchema,
+);
+
+export type DocumentsSearchParams = z.infer<typeof documentsSearchSchema>;
+
 export const emptyDocumentFilters = (): DocumentFilterValues => ({
   text: '',
   docType: '',
@@ -69,6 +102,43 @@ export const emptyDocumentFilters = (): DocumentFilterValues => ({
   dateTo: '',
   signatureStatus: '',
   draft: 'false',
+});
+
+export const documentsViewFromSearch = (search: DocumentsSearchParams): DocumentsView => {
+  if (search.tab === 'teczki') return 'folders';
+  if (search.tab === 'os-czasu') return 'timeline';
+  if (search.tab === 'kosz') return 'trash';
+  return 'list';
+};
+
+export const documentFiltersFromSearch = (
+  search: DocumentsSearchParams,
+): DocumentFilterValues => ({
+  text: search.q ?? '',
+  docType: search.typ ?? '',
+  person: search.osoba ?? '',
+  tag: search.tag ?? '',
+  dateFrom: search.od ?? '',
+  dateTo: search.do ?? '',
+  signatureStatus: search.status ?? '',
+  draft: search.szkice ?? 'false',
+});
+
+export const documentsSearchFromState = (
+  view: DocumentsView,
+  values: DocumentFilterValues,
+): DocumentsSearchParams => ({
+  ...(view === 'folders' ? { tab: 'teczki' as const } : {}),
+  ...(view === 'timeline' ? { tab: 'os-czasu' as const } : {}),
+  ...(view === 'trash' ? { tab: 'kosz' as const } : {}),
+  ...(values.text.trim() ? { q: values.text.trim() } : {}),
+  ...(values.docType ? { typ: values.docType } : {}),
+  ...(values.person.trim() ? { osoba: values.person.trim() } : {}),
+  ...(values.tag.trim() ? { tag: values.tag.trim() } : {}),
+  ...(values.signatureStatus ? { status: values.signatureStatus } : {}),
+  ...(values.draft === 'false' ? {} : { szkice: values.draft }),
+  ...(values.dateFrom ? { od: values.dateFrom } : {}),
+  ...(values.dateTo ? { do: values.dateTo } : {}),
 });
 
 export const emptyDocumentForm = (): DocumentFormValues => ({

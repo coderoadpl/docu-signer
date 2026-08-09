@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentDetailPage } from './DocumentDetailPage.js';
+import { documentsSearchSchema } from './documents.logic.js';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const SOURCE_ID = '22222222-2222-4222-8222-222222222222';
@@ -67,7 +68,10 @@ const document = {
   files,
 };
 
-const renderPage = async (documentList = [document]) => {
+const renderPage = async (
+  documentList = [document],
+  initialEntry = `/app/documents/${DOCUMENT_ID}`,
+) => {
   server.use(
     http.get('/api/documents', () =>
       HttpResponse.json({ ok: true, data: { documents: documentList } }),
@@ -77,17 +81,19 @@ const renderPage = async (documentList = [document]) => {
   const detail = createRoute({
     getParentRoute: () => root,
     path: '/app/documents/$id',
+    validateSearch: documentsSearchSchema,
     component: () => <DocumentDetailPage documentId={DOCUMENT_ID} />,
   });
   const list = createRoute({
     getParentRoute: () => root,
     path: '/app/documents',
+    validateSearch: documentsSearchSchema,
     component: () => <p>Lista dokumentów</p>,
   });
   const router = createRouter({
     routeTree: root.addChildren([detail, list]),
     history: createMemoryHistory({
-      initialEntries: [`/app/documents/${DOCUMENT_ID}`],
+      initialEntries: [initialEntry],
     }),
   });
   await router.load();
@@ -95,6 +101,24 @@ const renderPage = async (documentList = [document]) => {
 };
 
 describe('DocumentDetailPage', () => {
+  it('returns to documents with the preserved list search params', async () => {
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+    );
+    const { router } = await renderPage(
+      [document],
+      `/app/documents/${DOCUMENT_ID}?q=Szkic&szkice=true`,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Umowa z Anną' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '← Dokumenty' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app/documents'));
+    expect(router.state.location.search).toMatchObject({ q: 'Szkic', szkice: 'true' });
+  });
+
   it('surfaces a failed document query and retries it', async () => {
     const requests = vi.fn();
     server.use(

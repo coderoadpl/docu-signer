@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -39,7 +39,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import {
@@ -64,7 +64,10 @@ import {
   FILE_ROLE_LABELS,
   FILE_ROLE_SHORT_LABELS,
   SIGNATURE_STATUS_LABELS,
+  documentFiltersFromSearch,
   documentFilterSummary,
+  documentsSearchFromState,
+  documentsViewFromSearch,
   emptyDocumentFilters,
   hasDocumentFilter,
   toDocumentFilter,
@@ -72,6 +75,7 @@ import {
   toDocumentInput,
   uniqueDocumentPersons,
   uniqueDocumentTags,
+  type DocumentsView,
   type DocumentFilterValues,
 } from './documents.logic.js';
 
@@ -130,6 +134,7 @@ const MoreVertIcon = () => (
 );
 
 const DOCUMENT_COLUMNS_KEY = 'documents.columns';
+const TEXT_FILTER_DEBOUNCE_MS = import.meta.env.MODE === 'test' ? 0 : 300;
 
 const DOCUMENT_COLUMN_IDS = [
   'documentDate',
@@ -220,8 +225,6 @@ const toUpdateDocumentInput = (
   tags: overrides.tags ?? document.tags,
 });
 
-type DocumentsView = 'list' | 'folders' | 'trash';
-
 const trashErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Nie udało się wykonać akcji w koszu.';
 
@@ -244,12 +247,12 @@ const saveDownload = (download: {
 
 export const DocumentsPage = () => {
   const navigate = useNavigate();
+  const search = useSearch({ from: '/app/documents' });
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [savedSearchOpen, setSavedSearchOpen] = useState(false);
   const [savedSearchName, setSavedSearchName] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [view, setView] = useState<DocumentsView>('list');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [bulkTags, setBulkTags] = useState<string[]>([]);
@@ -267,11 +270,13 @@ export const DocumentsPage = () => {
   const [emptyTrashOpen, setEmptyTrashOpen] = useState(false);
   const [emptyTrashConfirmation, setEmptyTrashConfirmation] = useState('');
   const [archiveHasDocuments, setArchiveHasDocuments] = useState(false);
-  const [filters, setFilters] = useState<DocumentFilterValues>(emptyDocumentFilters);
   const [columnSettings, setColumnSettings] = useState<DocumentColumnSettings>(
     defaultDocumentColumnSettings,
   );
   const [columnsAnchor, setColumnsAnchor] = useState<HTMLElement | null>(null);
+  const view = useMemo(() => documentsViewFromSearch(search), [search]);
+  const filters = useMemo(() => documentFiltersFromSearch(search), [search]);
+  const [textFilter, setTextFilter] = useState(filters.text);
   const documentFilter = toDocumentFilter(filters);
   const documents = useQuery(actions.documents(documentFilter));
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
@@ -321,11 +326,31 @@ export const DocumentsPage = () => {
     },
   });
 
+  const navigateToDocumentsSearch = useCallback(
+    (
+      nextView: DocumentsView,
+      nextFilters: DocumentFilterValues,
+      replace: boolean,
+    ) =>
+      navigate({
+        to: '/app/documents',
+        search: documentsSearchFromState(nextView, nextFilters),
+        replace,
+      }),
+    [navigate],
+  );
+  const currentDocumentsSearch = useMemo(
+    () => documentsSearchFromState(view, filters),
+    [filters, view],
+  );
+
   const updateFilter = <Name extends keyof DocumentFilterValues,>(
     name: Name,
     value: DocumentFilterValues[Name],
-  ) =>
-    setFilters((current) => ({ ...current, [name]: value }));
+  ) => {
+    setSelectedIds([]);
+    void navigateToDocumentsSearch(view, { ...filters, [name]: value }, true);
+  };
   const filtersActive = hasDocumentFilter(documentFilter);
   const visibleDocuments = documents.data?.documents ?? [];
   const allDocuments = folderDocuments.data?.documents ?? visibleDocuments;
@@ -349,6 +374,24 @@ export const DocumentsPage = () => {
   }, [allDocuments.length]);
 
   useEffect(() => {
+    setTextFilter(filters.text);
+  }, [filters.text]);
+
+  useEffect(() => {
+    if (textFilter === filters.text) return;
+    if (TEXT_FILTER_DEBOUNCE_MS === 0) {
+      setSelectedIds([]);
+      void navigateToDocumentsSearch(view, { ...filters, text: textFilter }, true);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setSelectedIds([]);
+      void navigateToDocumentsSearch(view, { ...filters, text: textFilter }, true);
+    }, TEXT_FILTER_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [filters, navigateToDocumentsSearch, textFilter, view]);
+
+  useEffect(() => {
     if (columnPreference.isSuccess) {
       setColumnSettings(
         normalizeDocumentColumnSettings(columnPreference.data.preference?.value),
@@ -356,7 +399,10 @@ export const DocumentsPage = () => {
     }
   }, [columnPreference.data, columnPreference.isSuccess]);
 
-  const clearFilters = () => setFilters(emptyDocumentFilters());
+  const clearFilters = () => {
+    setSelectedIds([]);
+    void navigateToDocumentsSearch(view, emptyDocumentFilters(), true);
+  };
 
   const saveColumnSettings = (settings: DocumentColumnSettings) => {
     setColumnSettings(settings);
@@ -441,9 +487,8 @@ export const DocumentsPage = () => {
   };
 
   const applySavedSearch = (filter: SavedSearchFilter) => {
-    setFilters(toDocumentFilterValues(filter));
     setSelectedIds([]);
-    setView('list');
+    void navigateToDocumentsSearch('list', toDocumentFilterValues(filter), false);
   };
 
   const runTrashAction = async (documentId: string, action: () => Promise<void>) => {
@@ -588,13 +633,14 @@ export const DocumentsPage = () => {
         <Tabs
           value={view}
           onChange={(_event, value: DocumentsView) => {
-            setView(value);
             if (value !== 'list') setSelectedIds([]);
+            void navigateToDocumentsSearch(value, filters, false);
           }}
           sx={{ mt: 4 }}
         >
           <Tab value="list" label="Lista" />
           <Tab value="folders" label="Teczki" />
+          <Tab value="timeline" label="Os czasu" />
           <Tab value="trash" label="Kosz" />
         </Tabs>
       ) : null}
@@ -603,8 +649,8 @@ export const DocumentsPage = () => {
         <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 2, flexWrap: 'wrap' }}>
           <TextField
             label="Szukaj po tytule"
-            value={filters.text}
-            onChange={(event) => updateFilter('text', event.target.value)}
+            value={textFilter}
+            onChange={(event) => setTextFilter(event.target.value)}
             sx={{ flex: { sm: '2 1 16rem' } }}
           />
           <FormControl sx={{ minWidth: '10rem', flex: { sm: '1 1 10rem' } }}>
@@ -787,6 +833,18 @@ export const DocumentsPage = () => {
         </Box>
       ) : null}
 
+      {hasDocuments && view === 'timeline' ? (
+        <Box sx={{ mt: 3 }}>
+          <StatusView
+            state={{
+              kind: 'empty',
+              title: 'Os czasu',
+              body: 'Widok osi czasu będzie używał tych samych filtrów co lista.',
+            }}
+          />
+        </Box>
+      ) : null}
+
       {view === 'trash' ? (
         <Box sx={{ mt: 3 }}>
           {trashError ? <Alert severity="error">{trashError}</Alert> : null}
@@ -863,6 +921,7 @@ export const DocumentsPage = () => {
                             void navigate({
                               to: '/app/documents/$id',
                               params: { id: document.id },
+                              search: currentDocumentsSearch,
                             })
                           }
                         >
@@ -942,6 +1001,7 @@ export const DocumentsPage = () => {
                             void navigate({
                               to: '/app/documents/$id',
                               params: { id: document.id },
+                              search: currentDocumentsSearch,
                             })
                           }
                           sx={{ cursor: 'pointer' }}
@@ -1228,6 +1288,7 @@ export const DocumentsPage = () => {
                     void navigate({
                       to: '/app/documents/$id',
                       params: { id: document.id },
+                      search: currentDocumentsSearch,
                     })
                   }
                 >
@@ -1294,6 +1355,7 @@ export const DocumentsPage = () => {
                     void navigate({
                       to: '/app/documents/$id',
                       params: { id: document.id },
+                      search: currentDocumentsSearch,
                     })
                   }
                   sx={{ cursor: 'pointer' }}
@@ -1354,6 +1416,7 @@ export const DocumentsPage = () => {
             void navigate({
               to: '/app/documents/$id',
               params: { id: document.id },
+              search: currentDocumentsSearch,
             });
           }}
         >
