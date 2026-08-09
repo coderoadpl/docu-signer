@@ -63,7 +63,7 @@ export interface DocumentFilterValues {
   draft: 'false' | 'true' | 'all';
 }
 
-export type DocumentsView = 'list' | 'folders' | 'timeline' | 'trash';
+export type DocumentsView = 'list' | 'timeline';
 
 const dateParamSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().catch(undefined);
 const textParamSchema = z.preprocess(
@@ -79,7 +79,7 @@ const draftParamSchema = z.preprocess(
   z.union([z.literal(true), z.literal('all')]).optional(),
 ).catch(undefined);
 const documentsSearchInputSchema = z.object({
-  tab: z.enum(['teczki', 'os-czasu', 'kosz']).optional().catch(undefined),
+  widok: z.literal('os-czasu').optional().catch(undefined),
   q: textParamSchema,
   typ: documentTypeSchema.optional().catch(undefined),
   osoba: textParamSchema,
@@ -136,10 +136,7 @@ export const emptyDocumentFilters = (): DocumentFilterValues => ({
 });
 
 export const documentsViewFromSearch = (search: DocumentsSearchParams): DocumentsView => {
-  if (search.tab === 'teczki') return 'folders';
-  if (search.tab === 'os-czasu') return 'timeline';
-  if (search.tab === 'kosz') return 'trash';
-  return 'list';
+  return search.widok === 'os-czasu' ? 'timeline' : 'list';
 };
 
 export const documentFiltersFromSearch = (
@@ -159,9 +156,7 @@ export const documentsSearchFromState = (
   view: DocumentsView,
   values: DocumentFilterValues,
 ): DocumentsSearchParams => ({
-  ...(view === 'folders' ? { tab: 'teczki' as const } : {}),
-  ...(view === 'timeline' ? { tab: 'os-czasu' as const } : {}),
-  ...(view === 'trash' ? { tab: 'kosz' as const } : {}),
+  ...(view === 'timeline' ? { widok: 'os-czasu' as const } : {}),
   ...(values.text.trim() ? { q: values.text.trim() } : {}),
   ...(values.docType ? { typ: values.docType } : {}),
   ...(values.person.trim() ? { osoba: values.person.trim() } : {}),
@@ -506,7 +501,7 @@ export const documentsSearchFromSigningSearch = (
   search: DocumentSigningSearchParams,
 ): DocumentsSearchParams =>
   documentsSearchSchema.parse({
-    tab: search.tab,
+    widok: search.widok,
     q: search.q,
     typ: search.typ,
     osoba: search.osoba,

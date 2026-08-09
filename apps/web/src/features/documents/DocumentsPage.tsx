@@ -26,16 +26,16 @@ import {
   Select,
   Stack,
   SvgIcon,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   Tooltip,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -47,8 +47,6 @@ import {
   documentTypeSchema,
   type DocumentType,
   type DocumentWithFiles,
-  type SavedSearch,
-  type SavedSearchFilter,
   type UpdateDocument,
   type UserPreferenceValue,
 } from '#core/domain/index.js';
@@ -78,7 +76,6 @@ import {
   massSigningQueueSearch,
   massSigningQueueTargets,
   toDocumentFilter,
-  toDocumentFilterValues,
   toDocumentInput,
   uniqueDocumentPersons,
   uniqueDocumentTags,
@@ -234,11 +231,6 @@ const toUpdateDocumentInput = (
   tags: overrides.tags ?? document.tags,
 });
 
-const trashErrorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : 'Nie udało się wykonać akcji w koszu.';
-
-const TRASH_EMPTY_CONFIRMATION = 'OPRÓŻNIJ KOSZ';
-
 const saveDownload = (download: {
   bytes: Uint8Array;
   contentType: string;
@@ -261,7 +253,6 @@ export const DocumentsPage = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [savedSearchOpen, setSavedSearchOpen] = useState(false);
   const [savedSearchName, setSavedSearchName] = useState('');
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null);
   const [bulkTags, setBulkTags] = useState<string[]>([]);
@@ -272,13 +263,6 @@ export const DocumentsPage = () => {
   const [bulkSummary, setBulkSummary] = useState<BulkSummary | null>(null);
   const [rowMenuAnchor, setRowMenuAnchor] = useState<HTMLElement | null>(null);
   const [rowMenuDocument, setRowMenuDocument] = useState<DocumentWithFiles | null>(null);
-  const [trashConfirmDocument, setTrashConfirmDocument] = useState<DocumentWithFiles | null>(null);
-  const [trashBusyIds, setTrashBusyIds] = useState<string[]>([]);
-  const [trashError, setTrashError] = useState<string | null>(null);
-  const [trashSummary, setTrashSummary] = useState<{ deleted: number; errors: number } | null>(null);
-  const [emptyTrashOpen, setEmptyTrashOpen] = useState(false);
-  const [emptyTrashConfirmation, setEmptyTrashConfirmation] = useState('');
-  const [archiveHasDocuments, setArchiveHasDocuments] = useState(false);
   const [columnSettings, setColumnSettings] = useState<DocumentColumnSettings>(
     defaultDocumentColumnSettings,
   );
@@ -289,8 +273,6 @@ export const DocumentsPage = () => {
   const documentFilter = toDocumentFilter(filters);
   const documents = useQuery(actions.documents(documentFilter));
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
-  const trashedDocuments = useQuery(actions.trashedDocuments);
-  const savedSearches = useQuery(savedSearchActions.savedSearches);
   const columnPreference = useQuery(preferenceActions.userPreference(DOCUMENT_COLUMNS_KEY));
   const createDocument = useMutation({
     ...actions.createDocument,
@@ -318,15 +300,6 @@ export const DocumentsPage = () => {
       await queryClient.invalidateQueries(savedSearchActions.savedSearchesInvalidates());
     },
   });
-  const deleteSavedSearch = useMutation({
-    ...savedSearchActions.deleteSavedSearch,
-    onSuccess: async () => {
-      setConfirmDeleteId(null);
-      await queryClient.invalidateQueries(savedSearchActions.savedSearchesInvalidates());
-    },
-  });
-  const restoreDocument = useMutation(actions.restoreDocument);
-  const purgeDocument = useMutation(actions.purgeDocument);
   const setColumnPreference = useMutation({
     ...preferenceActions.setUserPreference,
     onSuccess: async () => {
@@ -368,12 +341,9 @@ export const DocumentsPage = () => {
     [visibleDocuments],
   );
   const allDocuments = folderDocuments.data?.documents ?? visibleDocuments;
-  const trashedItems = trashedDocuments.data?.documents ?? [];
-  const hasDocuments = archiveHasDocuments || allDocuments.length > 0;
-  const hasArchiveSurface = hasDocuments || trashedItems.length > 0;
+  const hasDocuments = allDocuments.length > 0;
   const personOptions = uniqueDocumentPersons(allDocuments);
   const tagOptions = uniqueDocumentTags(allDocuments);
-  const savedSearchItems: SavedSearch[] = savedSearches.data?.savedSearches ?? [];
   const selectedDocuments = visibleDocuments.filter((document) =>
     selectedIds.includes(document.id),
   );
@@ -384,10 +354,6 @@ export const DocumentsPage = () => {
     columnSettings.visible.includes(column),
   );
   const bulkBusy = bulkProgress !== null;
-
-  useEffect(() => {
-    if (allDocuments.length > 0) setArchiveHasDocuments(true);
-  }, [allDocuments.length]);
 
   useEffect(() => {
     setTextFilter(filters.text);
@@ -520,66 +486,6 @@ export const DocumentsPage = () => {
     createSavedSearch.mutate({ name, filter: documentFilter });
   };
 
-  const applySavedSearch = (filter: SavedSearchFilter) => {
-    setSelectedIds([]);
-    void navigateToDocumentsSearch('list', toDocumentFilterValues(filter), false);
-  };
-
-  const runTrashAction = async (documentId: string, action: () => Promise<void>) => {
-    setTrashError(null);
-    setTrashBusyIds((current) =>
-      current.includes(documentId) ? current : [...current, documentId],
-    );
-    try {
-      await action();
-      await queryClient.invalidateQueries(actions.documentsInvalidates());
-    } catch (error) {
-      setTrashError(trashErrorMessage(error));
-    } finally {
-      setTrashBusyIds((current) => current.filter((id) => id !== documentId));
-    }
-  };
-
-  const restoreFromTrash = (documentId: string) => {
-    setTrashSummary(null);
-    void runTrashAction(documentId, async () => {
-      await restoreDocument.mutateAsync(documentId);
-    });
-  };
-
-  const purgeFromTrash = (documentId: string) => {
-    setTrashSummary(null);
-    void runTrashAction(documentId, async () => {
-      await purgeDocument.mutateAsync(documentId);
-      setTrashConfirmDocument(null);
-      setTrashSummary({ deleted: 1, errors: 0 });
-    });
-  };
-
-  const emptyTrash = async () => {
-    setTrashError(null);
-    setTrashSummary(null);
-    let deleted = 0;
-    let errors = 0;
-    for (const document of trashedItems) {
-      setTrashBusyIds((current) =>
-        current.includes(document.id) ? current : [...current, document.id],
-      );
-      try {
-        await purgeDocument.mutateAsync(document.id);
-        deleted += 1;
-      } catch {
-        errors += 1;
-      } finally {
-        setTrashBusyIds((current) => current.filter((id) => id !== document.id));
-      }
-    }
-    setEmptyTrashOpen(false);
-    setEmptyTrashConfirmation('');
-    setTrashSummary({ deleted, errors });
-    await queryClient.invalidateQueries(actions.documentsInvalidates());
-  };
-
   const renderDocumentCell = (
     column: DocumentColumnId,
     document: DocumentWithFiles,
@@ -658,28 +564,12 @@ export const DocumentsPage = () => {
           <Typography variant="overline">Archiwum</Typography>
           <Typography variant="h1">Dokumenty</Typography>
         </Box>
-        {hasArchiveSurface ? (
+        {hasDocuments ? (
           <Button variant="contained" onClick={() => setCreateOpen(true)}>
             Dodaj dokument
           </Button>
         ) : null}
       </Stack>
-
-      {hasArchiveSurface ? (
-        <Tabs
-          value={view}
-          onChange={(_event, value: DocumentsView) => {
-            if (value !== 'list') setSelectedIds([]);
-            void navigateToDocumentsSearch(value, filters, false);
-          }}
-          sx={{ mt: 4 }}
-        >
-          <Tab value="list" label="Lista" />
-          <Tab value="folders" label="Teczki" />
-          <Tab value="timeline" label="Os czasu" />
-          <Tab value="trash" label="Kosz" />
-        </Tabs>
-      ) : null}
 
       {search.podpisano !== undefined && search.razem !== undefined ? (
         <Alert severity="success" sx={{ mt: 3 }}>
@@ -687,7 +577,7 @@ export const DocumentsPage = () => {
         </Alert>
       ) : null}
 
-      {hasDocuments && view === 'list' ? <Paper variant="outlined" sx={{ mt: 3, p: 2.5 }}>
+      {hasDocuments ? <Paper variant="outlined" sx={{ mt: 3, p: 2.5 }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 2, flexWrap: 'wrap' }}>
           <TextField
             label="Szukaj po tytule"
@@ -797,382 +687,116 @@ export const DocumentsPage = () => {
         </Stack>
       </Paper> : null}
 
-      {hasDocuments && view === 'folders' ? (
-        <Box sx={{ mt: 3 }}>
-          {savedSearches.isPending ? (
-            <StatusView state={{ kind: 'loading', label: 'Ładowanie teczek…' }} />
-          ) : null}
-          {savedSearches.isError ? (
-            <StatusView
-              state={{
-                kind: 'error',
-                message: savedSearches.error.message,
-                retry: {
-                  label: 'Spróbuj ponownie',
-                  onRetry: () => void savedSearches.refetch(),
-                },
-              }}
-            />
-          ) : null}
-          {savedSearches.isSuccess && savedSearchItems.length === 0 ? (
-            <StatusView
-              state={{
-                kind: 'empty',
-                title: 'Brak teczek',
-                body: 'Zapisz filtry z listy dokumentów.',
-              }}
-            />
-          ) : null}
-          {savedSearchItems.length > 0 ? (
-            <Stack sx={{ gap: 2 }}>
-              {savedSearchItems.map((savedSearch) => (
-                <Card key={savedSearch.id} variant="outlined">
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}
-                  >
-                    <CardActionArea onClick={() => applySavedSearch(savedSearch.filter)}>
-                      <CardContent>
-                        <Typography variant="h2">{savedSearch.name}</Typography>
-                        <Typography variant="body2" sx={{ mt: 1 }}>
-                          {documentFilterSummary(savedSearch.filter)}
-                        </Typography>
-                      </CardContent>
-                    </CardActionArea>
-                    <Stack
-                      direction="row"
-                      sx={{ gap: 1, p: 2, pt: { xs: 0, sm: 2 }, alignItems: 'center' }}
-                    >
-                      {confirmDeleteId === savedSearch.id ? (
-                        <>
-                          <Button
-                            size="small"
-                            color="error"
-                            disabled={deleteSavedSearch.isPending}
-                            onClick={() => deleteSavedSearch.mutate(savedSearch.id)}
-                          >
-                            Potwierdź
-                          </Button>
-                          <Button size="small" onClick={() => setConfirmDeleteId(null)}>
-                            Anuluj
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          size="small"
-                          color="error"
-                          onClick={() => setConfirmDeleteId(savedSearch.id)}
-                        >
-                          Usuń
-                        </Button>
-                      )}
-                    </Stack>
-                  </Stack>
-                </Card>
-              ))}
+      {hasDocuments ? (
+        <Stack
+          direction="row"
+          sx={{
+            mt: 3,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            flexWrap: 'wrap',
+          }}
+        >
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={view}
+            aria-label="Widok dokumentów"
+            onChange={(_event, value: DocumentsView | null) => {
+              if (!value) return;
+              if (value === 'timeline') setSelectedIds([]);
+              void navigateToDocumentsSearch(value, filters, false);
+            }}
+          >
+            <ToggleButton value="list">Lista</ToggleButton>
+            <ToggleButton value="timeline">Oś czasu</ToggleButton>
+          </ToggleButtonGroup>
+          {view === 'list' ? (
+            <Stack
+              direction="row"
+              sx={{ alignItems: 'center', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}
+            >
+              <Button
+                variant="contained"
+                disabled={selectedDocuments.length === 0 || bulkBusy}
+                onClick={startMassSigning}
+              >
+                Masowe podpisywanie ({selectedDocuments.length})
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={(event) => setColumnsAnchor(event.currentTarget)}
+              >
+                Kolumny
+              </Button>
+              <Button
+                variant="contained"
+                disabled={selectedDraftDocuments.length === 0 || bulkBusy}
+                onClick={() =>
+                  void runBulk(
+                    async (document) => {
+                      await bulkApproveDocument.mutateAsync(document.id);
+                    },
+                    { documents: selectedDraftDocuments, summaryKind: 'approved' },
+                  )
+                }
+              >
+                Zatwierdź ({selectedDraftDocuments.length})
+              </Button>
+              <Button
+                variant="outlined"
+                color="error"
+                disabled={selectedIds.length === 0 || bulkBusy}
+                onClick={() =>
+                  void runBulk(async (document) => {
+                    await bulkDeleteDocument.mutateAsync(document.id);
+                  })
+                }
+              >
+                Do kosza ({selectedIds.length})
+              </Button>
+              <Button
+                variant="outlined"
+                disabled={selectedIds.length === 0 || bulkBusy}
+                onClick={() => openBulkDialog('add-tags')}
+              >
+                Dodaj tagi
+              </Button>
+              <Button
+                variant="outlined"
+                disabled={
+                  selectedIds.length === 0 || selectedTagOptions.length === 0 || bulkBusy
+                }
+                onClick={() => openBulkDialog('remove-tag')}
+              >
+                Usuń tag
+              </Button>
+              <Button
+                variant="outlined"
+                disabled={selectedIds.length === 0 || bulkBusy}
+                onClick={() => openBulkDialog('person')}
+              >
+                Ustaw osobę
+              </Button>
+              <Button
+                variant="outlined"
+                disabled={selectedIds.length === 0 || bulkBusy}
+                onClick={() => openBulkDialog('type')}
+              >
+                Ustaw typ
+              </Button>
+              <Button
+                variant="outlined"
+                disabled={selectedIds.length === 0 || exportDocuments.isPending || bulkBusy}
+                onClick={() => exportDocuments.mutate({ documentIds: selectedIds })}
+              >
+                Eksportuj zaznaczone ({selectedIds.length})
+              </Button>
             </Stack>
           ) : null}
-        </Box>
+        </Stack>
       ) : null}
-
-      {view === 'trash' ? (
-        <Box sx={{ mt: 3 }}>
-          {trashError ? <Alert severity="error">{trashError}</Alert> : null}
-          {trashSummary ? (
-            <Alert
-              severity={trashSummary.errors > 0 ? 'warning' : 'success'}
-              sx={{ mt: trashError ? 2 : 0 }}
-            >
-              Kosz: {trashSummary.deleted} usunięto, {trashSummary.errors} błędów.
-            </Alert>
-          ) : null}
-          {trashedDocuments.isPending ? (
-            <Box sx={{ mt: 3 }}>
-              <StatusView state={{ kind: 'loading', label: 'Ładowanie kosza…' }} />
-            </Box>
-          ) : null}
-          {trashedDocuments.isError ? (
-            <Box sx={{ mt: 3 }}>
-              <StatusView
-                state={{
-                  kind: 'error',
-                  message: trashedDocuments.error.message,
-                  retry: {
-                    label: 'Spróbuj ponownie',
-                    onRetry: () => void trashedDocuments.refetch(),
-                  },
-                }}
-              />
-            </Box>
-          ) : null}
-          {trashedDocuments.isSuccess && trashedItems.length === 0 ? (
-            <Box sx={{ mt: 3 }}>
-              <StatusView
-                state={{
-                  kind: 'empty',
-                  title: 'Kosz jest pusty',
-                  body: 'Kosz jest pusty. Kosz nigdy nie opróżnia się sam.',
-                }}
-              />
-            </Box>
-          ) : null}
-          {trashedItems.length > 0 ? (
-            <>
-              <Stack
-                direction={{ xs: 'column', sm: 'row' }}
-                sx={{
-                  mt: 3,
-                  alignItems: { xs: 'stretch', sm: 'center' },
-                  justifyContent: 'space-between',
-                  gap: 2,
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  Dokumenty w koszu można przywrócić albo usunąć trwale.
-                </Typography>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  disabled={trashBusyIds.length > 0}
-                  onClick={() => setEmptyTrashOpen(true)}
-                >
-                  Opróżnij kosz
-                </Button>
-              </Stack>
-              <Stack sx={{ display: { xs: 'flex', sm: 'none' }, mt: 3, gap: 2 }}>
-                {trashedItems.map((document) => {
-                  const busy = trashBusyIds.includes(document.id);
-                  return (
-                    <Card key={document.id} variant="outlined">
-                      <Stack direction="row" sx={{ alignItems: 'stretch' }}>
-                        <CardActionArea
-                          disabled={busy}
-                          onClick={() =>
-                            void navigate({
-                              to: '/app/documents/$id',
-                              params: { id: document.id },
-                              search: currentDocumentsSearch,
-                            })
-                          }
-                        >
-                          <CardContent>
-                            <Typography variant="h2">{document.title}</Typography>
-                            <Stack
-                              direction="row"
-                              sx={{ mt: 1, gap: 0.75, flexWrap: 'wrap' }}
-                            >
-                              <Chip
-                                size="small"
-                                variant="outlined"
-                                label={DOCUMENT_TYPE_LABELS[document.docType]}
-                              />
-                              <Chip
-                                size="small"
-                                variant="outlined"
-                                label={`Usunięto: ${formatPolishDate(document.deletedAt ?? '')}`}
-                              />
-                            </Stack>
-                            <Typography variant="body2" sx={{ mt: 1 }}>
-                              {document.person ?? 'Bez przypisanej osoby'}
-                            </Typography>
-                          </CardContent>
-                        </CardActionArea>
-                      </Stack>
-                      <Stack direction="row" sx={{ gap: 1, p: 2, pt: 0 }}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          disabled={busy}
-                          onClick={() => restoreFromTrash(document.id)}
-                        >
-                          Przywróć
-                        </Button>
-                        <Button
-                          size="small"
-                          color="error"
-                          disabled={busy}
-                          onClick={() => setTrashConfirmDocument(document)}
-                        >
-                          Usuń trwale
-                        </Button>
-                      </Stack>
-                      {busy ? (
-                        <LinearProgress
-                          aria-label={`Przetwarzanie dokumentu ${document.title}`}
-                        />
-                      ) : null}
-                    </Card>
-                  );
-                })}
-              </Stack>
-              <TableContainer
-                component={Paper}
-                variant="outlined"
-                sx={{ display: { xs: 'none', sm: 'block' }, mt: 3 }}
-              >
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Usunięto</TableCell>
-                      <TableCell>Tytuł</TableCell>
-                      <TableCell>Typ</TableCell>
-                      <TableCell>Osoba</TableCell>
-                      <TableCell align="right">Akcje</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {trashedItems.map((document) => {
-                      const busy = trashBusyIds.includes(document.id);
-                      return (
-                        <TableRow
-                          key={document.id}
-                          hover
-                          onClick={() =>
-                            void navigate({
-                              to: '/app/documents/$id',
-                              params: { id: document.id },
-                              search: currentDocumentsSearch,
-                            })
-                          }
-                          sx={{ cursor: 'pointer' }}
-                        >
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary" noWrap>
-                              {formatPolishDate(document.deletedAt ?? '')}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="subtitle2" component="span">
-                              {document.title}
-                            </Typography>
-                            {busy ? (
-                              <LinearProgress
-                                aria-label={`Przetwarzanie dokumentu ${document.title}`}
-                                sx={{ mt: 1 }}
-                              />
-                            ) : null}
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              variant="outlined"
-                              label={DOCUMENT_TYPE_LABELS[document.docType]}
-                            />
-                          </TableCell>
-                          <TableCell>{document.person ?? '—'}</TableCell>
-                          <TableCell align="right" onClick={(event) => event.stopPropagation()}>
-                            <Stack
-                              direction="row"
-                              sx={{ gap: 1, justifyContent: 'flex-end' }}
-                            >
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                disabled={busy}
-                                onClick={() => restoreFromTrash(document.id)}
-                              >
-                                Przywróć
-                              </Button>
-                              <Button
-                                size="small"
-                                color="error"
-                                disabled={busy}
-                                onClick={() => setTrashConfirmDocument(document)}
-                              >
-                                Usuń trwale
-                              </Button>
-                            </Stack>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </>
-          ) : null}
-        </Box>
-      ) : null}
-
-      {hasDocuments && view === 'list' ? <Stack
-        direction="row"
-        sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}
-      >
-        <Button
-          variant="contained"
-          disabled={selectedDocuments.length === 0 || bulkBusy}
-          onClick={startMassSigning}
-        >
-          Masowe podpisywanie ({selectedDocuments.length})
-        </Button>
-        <Button
-          variant="outlined"
-          onClick={(event) => setColumnsAnchor(event.currentTarget)}
-        >
-          Kolumny
-        </Button>
-        <Button
-          variant="contained"
-          disabled={selectedDraftDocuments.length === 0 || bulkBusy}
-          onClick={() =>
-            void runBulk(
-              async (document) => {
-                await bulkApproveDocument.mutateAsync(document.id);
-              },
-              { documents: selectedDraftDocuments, summaryKind: 'approved' },
-            )
-          }
-        >
-          Zatwierdź ({selectedDraftDocuments.length})
-        </Button>
-        <Button
-          variant="outlined"
-          color="error"
-          disabled={selectedIds.length === 0 || bulkBusy}
-          onClick={() =>
-            void runBulk(async (document) => {
-              await bulkDeleteDocument.mutateAsync(document.id);
-            })
-          }
-        >
-          Do kosza ({selectedIds.length})
-        </Button>
-        <Button
-          variant="outlined"
-          disabled={selectedIds.length === 0 || bulkBusy}
-          onClick={() => openBulkDialog('add-tags')}
-        >
-          Dodaj tagi
-        </Button>
-        <Button
-          variant="outlined"
-          disabled={selectedIds.length === 0 || selectedTagOptions.length === 0 || bulkBusy}
-          onClick={() => openBulkDialog('remove-tag')}
-        >
-          Usuń tag
-        </Button>
-        <Button
-          variant="outlined"
-          disabled={selectedIds.length === 0 || bulkBusy}
-          onClick={() => openBulkDialog('person')}
-        >
-          Ustaw osobę
-        </Button>
-        <Button
-          variant="outlined"
-          disabled={selectedIds.length === 0 || bulkBusy}
-          onClick={() => openBulkDialog('type')}
-        >
-          Ustaw typ
-        </Button>
-        <Button
-          variant="outlined"
-          disabled={selectedIds.length === 0 || exportDocuments.isPending || bulkBusy}
-          onClick={() => exportDocuments.mutate({ documentIds: selectedIds })}
-        >
-          Eksportuj zaznaczone ({selectedIds.length})
-        </Button>
-      </Stack> : null}
       {bulkProgress ? (
         <Box sx={{ mt: 2 }}>
           <LinearProgress
@@ -1744,85 +1368,6 @@ export const DocumentsPage = () => {
             onClick={saveCurrentSearch}
           >
             Zapisz teczkę
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog
-        open={Boolean(trashConfirmDocument)}
-        onClose={() => setTrashConfirmDocument(null)}
-        fullWidth
-        maxWidth="xs"
-      >
-        <DialogTitle>Usunąć trwale?</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Dokument „{trashConfirmDocument?.title ?? ''}” i wszystkie jego pliki
-            zostaną trwale usunięte z magazynu blob. Tej operacji nie można
-            cofnąć.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTrashConfirmDocument(null)}>Anuluj</Button>
-          <Button
-            variant="contained"
-            color="error"
-            disabled={
-              !trashConfirmDocument ||
-              trashBusyIds.includes(trashConfirmDocument.id)
-            }
-            onClick={() => {
-              if (trashConfirmDocument) purgeFromTrash(trashConfirmDocument.id);
-            }}
-          >
-            Usuń trwale
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog
-        open={emptyTrashOpen}
-        onClose={() => {
-          setEmptyTrashOpen(false);
-          setEmptyTrashConfirmation('');
-        }}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Opróżnić kosz?</DialogTitle>
-        <DialogContent>
-          <Stack sx={{ gap: 2, pt: 1 }}>
-            <Typography>
-              Wszystkie dokumenty widoczne w koszu i ich pliki zostaną trwale
-              usunięte z magazynu blob. Tej operacji nie można cofnąć.
-            </Typography>
-            <TextField
-              label={`Wpisz ${TRASH_EMPTY_CONFIRMATION}`}
-              value={emptyTrashConfirmation}
-              onChange={(event) => setEmptyTrashConfirmation(event.target.value)}
-              fullWidth
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            disabled={trashBusyIds.length > 0}
-            onClick={() => {
-              setEmptyTrashOpen(false);
-              setEmptyTrashConfirmation('');
-            }}
-          >
-            Anuluj
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            disabled={
-              emptyTrashConfirmation !== TRASH_EMPTY_CONFIRMATION ||
-              trashedItems.length === 0 ||
-              trashBusyIds.length > 0
-            }
-            onClick={() => void emptyTrash()}
-          >
-            Opróżnij kosz
           </Button>
         </DialogActions>
       </Dialog>
