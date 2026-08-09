@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  appendSigningStamp,
   canvasCssPointToPdf,
+  createSigningStamp,
   inkToPdfSegments,
   placeInkPoint,
+  removeSigningStamp,
   pointerToInkPoint,
+  signingStampContainsPoint,
+  signingStampsForPage,
   signedFileName,
   smoothStroke,
+  stampEveryPage,
+  updateSigningStampPlacement,
+  DEFAULT_SIGNING_INK_COLOR,
+  SIGNING_INK_COLORS,
   type CanvasPdfMetrics,
   type InkStroke,
 } from './signing.js';
@@ -184,5 +193,94 @@ describe('pen signing geometry', () => {
       'umowa-podpisany-3.pdf',
     );
     expect(signedFileName('.pdf')).toBe('dokument-podpisany.pdf');
+  });
+
+  it('creates immutable stamp snapshots and groups them by page', () => {
+    const stroke: InkStroke = {
+      points: [
+        { x: 0.1, y: 0.2, pressure: 0.4 },
+        { x: 0.2, y: 0.3, pressure: 0.7 },
+      ],
+    };
+    const stamp = createSigningStamp({
+      pageIndex: 1,
+      strokes: [stroke],
+      inkColor: DEFAULT_SIGNING_INK_COLOR,
+      placement: { offsetX: 0.1, offsetY: 0.2, scale: 0.8 },
+    });
+    stroke.points[0] = { x: 0.9, y: 0.9, pressure: 1 };
+
+    const stamps = appendSigningStamp([], stamp);
+
+    expect(stamps).toEqual([stamp]);
+    expect(stamps[0]?.strokes[0]?.points[0]).toEqual({
+      x: 0.1,
+      y: 0.2,
+      pressure: 0.4,
+    });
+    expect(signingStampsForPage(stamps, 0)).toEqual([]);
+    expect(signingStampsForPage(stamps, 1)).toEqual([
+      { stamp: stamps[0], stampIndex: 0 },
+    ]);
+  });
+
+  it('stamps every page, updates placement and removes individual stamps', () => {
+    const stroke: InkStroke = {
+      points: [
+        { x: 0.2, y: 0.3, pressure: 0.5 },
+        { x: 0.4, y: 0.5, pressure: 0.5 },
+      ],
+    };
+    const draft = {
+      strokes: [stroke],
+      inkColor: SIGNING_INK_COLORS[1],
+      placement: { offsetX: 0, offsetY: 0, scale: 1 },
+    };
+    const stamps = stampEveryPage(
+      [],
+      draft,
+      3,
+    );
+
+    expect(stamps.map((stamp) => stamp.pageIndex)).toEqual([0, 1, 2]);
+    expect(stamps.every((stamp) => stamp.inkColor.id === 'navy')).toBe(true);
+    expect(stampEveryPage(stamps, draft, -1)).toHaveLength(3);
+
+    const moved = updateSigningStampPlacement(stamps, 1, {
+      offsetX: 0.2,
+      offsetY: -0.1,
+      scale: 1.5,
+    });
+    expect(moved[1]?.placement).toEqual({
+      offsetX: 0.2,
+      offsetY: -0.1,
+      scale: 1.5,
+    });
+    expect(moved[0]?.placement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
+
+    expect(removeSigningStamp(moved, 1).map((stamp) => stamp.pageIndex)).toEqual([
+      0,
+      2,
+    ]);
+  });
+
+  it('hit-tests placed stamps with touch-friendly padding', () => {
+    const stamp = createSigningStamp({
+      pageIndex: 0,
+      strokes: [
+        {
+          points: [
+            { x: 0.4, y: 0.4, pressure: 0.5 },
+            { x: 0.5, y: 0.5, pressure: 0.5 },
+          ],
+        },
+      ],
+      inkColor: DEFAULT_SIGNING_INK_COLOR,
+      placement: { offsetX: 0.1, offsetY: -0.1, scale: 1 },
+    });
+
+    expect(signingStampContainsPoint(stamp, { x: 0.55, y: 0.35 })).toBe(true);
+    expect(signingStampContainsPoint(stamp, { x: 0.51, y: 0.29 })).toBe(true);
+    expect(signingStampContainsPoint(stamp, { x: 0.8, y: 0.8 })).toBe(false);
   });
 });

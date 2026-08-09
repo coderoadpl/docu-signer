@@ -7,28 +7,55 @@ const DEMO_PASSWORD = 'demo1234';
 const validPdfBuffer = async () => {
   const pdf = await PDFDocument.create();
   pdf.addPage([200, 200]);
+  pdf.addPage([200, 200]);
   return Buffer.from(await pdf.save());
 };
 
-const signVisiblePdf = async (page: Page) => {
-  await expect(
-    page.getByRole('heading', { name: 'Podpisz dokument' }),
-  ).toBeVisible();
-  await expect(page.getByText('Strona 1 z 1')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Czarny' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Granatowy' })).toBeVisible();
-  await page.getByRole('button', { name: 'Granatowy' }).click();
+const drawOnSigningSurface = async (
+  page: Page,
+  points: Array<{ x: number; y: number }>,
+) => {
   const canvas = page.getByRole('application', {
     name: 'Powierzchnia do rysowania podpisu',
   });
   await expect(canvas).toBeVisible();
   const box = await canvas.boundingBox();
   if (!box) throw new Error('Missing signing surface bounds');
-  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.55);
+  const [first, ...rest] = points;
+  if (!first) throw new Error('Signing stroke needs at least one point');
+  await page.mouse.move(box.x + box.width * first.x, box.y + box.height * first.y);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.45);
-  await page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.58);
+  for (const point of rest) {
+    await page.mouse.move(box.x + box.width * point.x, box.y + box.height * point.y);
+  }
   await page.mouse.up();
+};
+
+const signVisiblePdf = async (page: Page) => {
+  await expect(
+    page.getByRole('heading', { name: 'Podpisz dokument' }),
+  ).toBeVisible();
+  await expect(page.getByText('Strona 1 z 2')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Czarny' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Granatowy' })).toBeVisible();
+  await page.getByRole('button', { name: 'Granatowy' }).click();
+
+  await drawOnSigningSurface(page, [
+    { x: 0.25, y: 0.18 },
+    { x: 0.35, y: 0.12 },
+    { x: 0.45, y: 0.2 },
+  ]);
+  await page.getByRole('button', { name: 'Przybij na tej stronie' }).click();
+  await page.getByRole('button', { name: 'Następna' }).click();
+  await expect(page.getByText('Strona 2 z 2')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Wyczyść' }).click();
+  await drawOnSigningSurface(page, [
+    { x: 0.25, y: 0.55 },
+    { x: 0.45, y: 0.45 },
+    { x: 0.65, y: 0.58 },
+  ]);
+  await page.getByRole('button', { name: 'Przybij na tej stronie' }).click();
   const save = page.getByRole('button', { name: 'Zapisz podpisany PDF' });
   await expect(save).toBeEnabled();
   await save.click();

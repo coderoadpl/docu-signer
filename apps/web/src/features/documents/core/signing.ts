@@ -14,6 +14,13 @@ export interface SignaturePlacement {
   scale: number;
 }
 
+export interface SigningStamp {
+  pageIndex: number;
+  strokes: InkStroke[];
+  inkColor: SigningInkColor;
+  placement: SignaturePlacement;
+}
+
 export interface CanvasPdfMetrics {
   cssWidth: number;
   cssHeight: number;
@@ -76,6 +83,11 @@ const midpoint = (first: InkPoint, second: InkPoint): InkPoint => ({
   pressure: (first.pressure + second.pressure) / 2,
 });
 
+const cloneStrokes = (strokes: InkStroke[]): InkStroke[] =>
+  strokes.map((stroke) => ({
+    points: stroke.points.map((point) => ({ ...point })),
+  }));
+
 export const pointerToInkPoint = (
   clientX: number,
   clientY: number,
@@ -130,6 +142,36 @@ const inkBounds = (strokes: InkStroke[]) => {
   );
 };
 
+export const placedInkBounds = (
+  strokes: InkStroke[],
+  placement: SignaturePlacement,
+) => {
+  const bounds = inkBounds(strokes);
+  if (!bounds) return undefined;
+  const corners = [
+    { x: bounds.left, y: bounds.top, pressure: 0.5 },
+    { x: bounds.right, y: bounds.top, pressure: 0.5 },
+    { x: bounds.right, y: bounds.bottom, pressure: 0.5 },
+    { x: bounds.left, y: bounds.bottom, pressure: 0.5 },
+  ].map((point) => placeInkPoint(point, strokes, placement));
+  const first = corners[0];
+  if (!first) return undefined;
+  return corners.slice(1).reduce(
+    (current, point) => ({
+      left: Math.min(current.left, point.x),
+      right: Math.max(current.right, point.x),
+      top: Math.min(current.top, point.y),
+      bottom: Math.max(current.bottom, point.y),
+    }),
+    {
+      left: first.x,
+      right: first.x,
+      top: first.y,
+      bottom: first.y,
+    },
+  );
+};
+
 export const placeInkPoint = (
   point: InkPoint,
   strokes: InkStroke[],
@@ -144,6 +186,73 @@ export const placeInkPoint = (
     x: centerX + (point.x - centerX) * placement.scale + placement.offsetX,
     y: centerY + (point.y - centerY) * placement.scale + placement.offsetY,
   };
+};
+
+export const createSigningStamp = ({
+  pageIndex,
+  strokes,
+  inkColor,
+  placement,
+}: SigningStamp): SigningStamp => ({
+  pageIndex,
+  strokes: cloneStrokes(strokes),
+  inkColor,
+  placement: { ...placement },
+});
+
+export const appendSigningStamp = (
+  stamps: readonly SigningStamp[],
+  stamp: SigningStamp,
+): SigningStamp[] => [...stamps, createSigningStamp(stamp)];
+
+export const stampEveryPage = (
+  stamps: readonly SigningStamp[],
+  stamp: Omit<SigningStamp, 'pageIndex'>,
+  pageCount: number,
+): SigningStamp[] => [
+  ...stamps,
+  ...Array.from({ length: Math.max(0, pageCount) }, (_, pageIndex) =>
+    createSigningStamp({ ...stamp, pageIndex }),
+  ),
+];
+
+export const updateSigningStampPlacement = (
+  stamps: readonly SigningStamp[],
+  stampIndex: number,
+  placement: SignaturePlacement,
+): SigningStamp[] =>
+  stamps.map((stamp, index) =>
+    index === stampIndex
+      ? createSigningStamp({ ...stamp, placement })
+      : createSigningStamp(stamp),
+  );
+
+export const removeSigningStamp = (
+  stamps: readonly SigningStamp[],
+  stampIndex: number,
+): SigningStamp[] => stamps.filter((_, index) => index !== stampIndex);
+
+export const signingStampsForPage = (
+  stamps: readonly SigningStamp[],
+  pageIndex: number,
+): Array<{ stamp: SigningStamp; stampIndex: number }> =>
+  stamps.flatMap((stamp, stampIndex) =>
+    stamp.pageIndex === pageIndex ? [{ stamp, stampIndex }] : [],
+  );
+
+export const signingStampContainsPoint = (
+  stamp: SigningStamp,
+  point: Pick<InkPoint, 'x' | 'y'>,
+): boolean => {
+  const bounds = placedInkBounds(stamp.strokes, stamp.placement);
+  if (!bounds) return false;
+  const padding = 0.04;
+  return (
+    point.x >= bounds.left - padding &&
+    point.x <= bounds.right + padding &&
+    point.y >= bounds.top - padding &&
+    point.y <= bounds.bottom + padding
+  );
 };
 
 export const canvasCssPointToPdf = (

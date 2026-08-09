@@ -44,6 +44,14 @@ vi.mock('./signing-pdf.js', () => ({
       viewportTransform: [1, 0, 0, -1, 0, 300] as const,
     };
   }),
+  sourcePageMetrics: vi.fn(async () => ({
+    cssWidth: 200,
+    cssHeight: 300,
+    backingWidth: 400,
+    backingHeight: 600,
+    devicePixelRatio: 2,
+    viewportTransform: [1, 0, 0, -1, 0, 300] as const,
+  })),
   flattenSignedPdf: pdfMocks.flatten,
 }));
 
@@ -108,6 +116,39 @@ const installReadHandlers = () => {
         new HttpResponse(new Uint8Array([37, 80, 68, 70]), {
           headers: { 'content-type': 'application/pdf' },
         }),
+    ),
+  );
+};
+
+const installUploadHandlers = () => {
+  server.use(
+    http.post(
+      `/api/documents/${DOCUMENT_ID}/files/upload-request`,
+      () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            upload: {
+              kind: 'server',
+              key: 'signed-key',
+            },
+          },
+        }),
+    ),
+    http.post(`/api/documents/${DOCUMENT_ID}/files/upload`, () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          file: {
+            ...sourceFile,
+            id: '44444444-4444-4444-8444-444444444444',
+            role: 'signed-digital',
+            fileName: 'oryginal-podpisany.pdf',
+            sizeBytes: 2048,
+            storageKey: 'signed-key',
+          },
+        },
+      }),
     ),
   );
 };
@@ -241,14 +282,21 @@ describe('DocumentSigningPage', () => {
     await waitFor(() => expect(uploaded).toBeDefined());
     expect(pdfMocks.flatten).toHaveBeenCalledWith(
       expect.any(Uint8Array),
-      0,
-      expect.any(Array),
-      expect.any(Object),
-      expect.any(Object),
-      expect.objectContaining({
-        id: 'navy',
-        canvasColor: '#1c2a5e',
-      }),
+      [
+        expect.objectContaining({
+          stamp: expect.objectContaining({
+            pageIndex: 0,
+            inkColor: expect.objectContaining({
+              id: 'navy',
+              canvasColor: '#1c2a5e',
+            }),
+          }),
+          metrics: expect.objectContaining({
+            cssWidth: 200,
+            cssHeight: 300,
+          }),
+        }),
+      ],
     );
     expect(uploaded).toEqual({
       byteLength: 2048,
@@ -261,5 +309,44 @@ describe('DocumentSigningPage', () => {
       sizeBytes: 2048,
       role: 'signed-digital',
     });
+  });
+
+  it('adds and removes a placed stamp on the current page', async () => {
+    await renderPage();
+    await drawStroke();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Przybij na tej stronie' }),
+    );
+    expect(screen.getByText('Wybrany odcisk: strona 1')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));
+
+    expect(screen.getByText('Położenie bieżącego rysunku')).toBeInTheDocument();
+  });
+
+  it('stamps the draft on every page before flattening', async () => {
+    installUploadHandlers();
+    await renderPage();
+    await drawStroke();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Przybij na każdej stronie' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz podpisany PDF' }));
+
+    await waitFor(() =>
+      expect(pdfMocks.flatten).toHaveBeenCalledWith(
+        expect.any(Uint8Array),
+        [
+          expect.objectContaining({
+            stamp: expect.objectContaining({ pageIndex: 0 }),
+          }),
+          expect.objectContaining({
+            stamp: expect.objectContaining({ pageIndex: 1 }),
+          }),
+        ],
+      ),
+    );
   });
 });
