@@ -174,15 +174,13 @@ export const documentPointerDrawsInk = ({
   mode: SigningGestureMode;
   penPriority: boolean;
   pointer: {
-    height: number;
     pointerType: string;
-    width: number;
   };
 }): boolean => {
   if (mode !== 'draw') return false;
   if (pointer.pointerType === 'pen') return true;
   if (pointer.pointerType === 'touch') {
-    return fingerDrawing && !penPriority && !isPalmSizedTouch(pointer);
+    return fingerDrawing && !penPriority;
   }
   return true;
 };

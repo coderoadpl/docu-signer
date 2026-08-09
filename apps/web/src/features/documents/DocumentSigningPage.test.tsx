@@ -260,8 +260,10 @@ const signaturePadCanvas = async () =>
   });
 
 const drawSignaturePadStroke = async (options: {
+  height?: number;
   pointerId: number;
   pointerType: string;
+  width?: number;
 }) => {
   const canvas = await signaturePadCanvas();
   fireEvent.pointerDown(canvas, {
@@ -270,6 +272,8 @@ const drawSignaturePadStroke = async (options: {
     clientX: 20,
     clientY: 30,
     pressure: 0.35,
+    width: options.width,
+    height: options.height,
   });
   expect(canvas.setPointerCapture).toHaveBeenCalledWith(options.pointerId);
   fireEvent.pointerMove(canvas, {
@@ -278,6 +282,8 @@ const drawSignaturePadStroke = async (options: {
     clientX: 80,
     clientY: 90,
     pressure: 0.85,
+    width: options.width,
+    height: options.height,
   });
   fireEvent(
     canvas,
@@ -454,7 +460,7 @@ describe('DocumentSigningPage', () => {
     await waitFor(() => expect(save).toBeEnabled());
   });
 
-  it('ignores palm-sized touch contacts in draw mode', async () => {
+  it('draws large touch contacts when finger drawing is enabled', async () => {
     await renderPage();
     const save = await screen.findByRole('button', {
       name: 'Zapisz podpisany PDF',
@@ -489,8 +495,8 @@ describe('DocumentSigningPage', () => {
       }),
     );
 
-    expect(canvas.setPointerCapture).not.toHaveBeenCalledWith(23);
-    expect(save).toBeDisabled();
+    expect(canvas.setPointerCapture).toHaveBeenCalledWith(23);
+    await waitFor(() => expect(save).toBeEnabled());
   });
 
   it('cancels touch ink while a pen pointer is active', async () => {
@@ -551,6 +557,93 @@ describe('DocumentSigningPage', () => {
     fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
     await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalled());
     expect(pdfMocks.flatten.mock.calls[0]?.[1]?.[0]?.stamp.strokes).toHaveLength(1);
+  });
+
+  it('suppresses large touch contacts during the pen-priority window', async () => {
+    await renderPage();
+    const canvas = await signingCanvas();
+    fireEvent.click(screen.getByRole('button', { name: 'Rysowanie palcem' }));
+
+    fireEvent(
+      canvas,
+      pointerEventAt(
+        'pointerdown',
+        {
+          pointerId: 53,
+          pointerType: 'pen',
+          clientX: 20,
+          clientY: 30,
+          pressure: 0.5,
+        },
+        100,
+      ),
+    );
+    fireEvent(
+      canvas,
+      pointerEventAt(
+        'pointerup',
+        {
+          pointerId: 53,
+          pointerType: 'pen',
+          clientX: 20,
+          clientY: 30,
+          pressure: 0,
+        },
+        100,
+      ),
+    );
+    fireEvent.click(await enabledButton('Wyczyść'));
+    fireEvent(
+      canvas,
+      pointerEventAt(
+        'pointerdown',
+        {
+          pointerId: 54,
+          pointerType: 'touch',
+          clientX: 30,
+          clientY: 40,
+          pressure: 0.5,
+          width: 60,
+          height: 44,
+        },
+        600,
+      ),
+    );
+    fireEvent(
+      canvas,
+      pointerEventAt(
+        'pointermove',
+        {
+          pointerId: 54,
+          pointerType: 'touch',
+          clientX: 80,
+          clientY: 90,
+          pressure: 0.5,
+          width: 60,
+          height: 44,
+        },
+        620,
+      ),
+    );
+    fireEvent(
+      canvas,
+      pointerEventAt(
+        'pointerup',
+        {
+          pointerId: 54,
+          pointerType: 'touch',
+          clientX: 80,
+          clientY: 90,
+          pressure: 0,
+          width: 60,
+          height: 44,
+        },
+        630,
+      ),
+    );
+
+    expect(canvas.setPointerCapture).not.toHaveBeenCalledWith(54);
+    expect(screen.getByRole('button', { name: 'Zapisz podpisany PDF' })).toBeDisabled();
   });
 
   it('allows finger ink after the pen-priority window expires', async () => {
@@ -740,7 +833,12 @@ describe('DocumentSigningPage', () => {
     expect(screen.getByRole('button', { name: 'Użyj podpisu' })).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Granatowy' }));
-    await drawSignaturePadStroke({ pointerId: 31, pointerType: 'touch' });
+    await drawSignaturePadStroke({
+      pointerId: 31,
+      pointerType: 'touch',
+      width: 60,
+      height: 44,
+    });
     await drawSignaturePadStroke({ pointerId: 32, pointerType: 'pen' });
     fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
 
