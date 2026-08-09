@@ -71,14 +71,15 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-01 after the backup logic coverage landed on the
-      // stripped document archive. The database-free run is statements 77.32%,
-      // branches 86.63%, functions 77.96%, and lines 77.32%; each floor is that
-      // measured value rounded down.
+      // Re-measured 2026-08-01 after merging backup logic with pen signing and
+      // the restored document-query, route-contract and identity-resolution
+      // branches. The database-free run is statements 77.67%, branches 86.88%,
+      // functions 78.84%, and lines 77.67%; each floor is that measured value
+      // rounded down.
       thresholds: {
         statements: 77,
         branches: 86,
-        functions: 77,
+        functions: 78,
         lines: 77,
       },
     },
@@ -114,7 +115,10 @@ export default defineConfig({
           testTimeout: 15_000,
           include: ['apps/web/**/*.test.ts', 'apps/web/**/*.test.tsx'],
           exclude: [...configDefaults.exclude],
-          setupFiles: ['apps/web/src/test/setup.ts'],
+          setupFiles: [
+            'apps/web/src/test/pointer-events.ts',
+            'apps/web/src/test/setup.ts',
+          ],
         },
       },
       {

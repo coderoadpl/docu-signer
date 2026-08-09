@@ -35,6 +35,15 @@ Open **http://default.localhost:47100** and sign in as
 whatever `dist/web` holds (a gitignored build) — after a contract change an
 old bundle fails every page, so rebuild or use `dev:web`.
 
+## Signing archived PDFs
+
+Every source PDF on a document detail page has a **Podpisz** action. The
+full-screen Polish signing view renders one page at a time, captures pen,
+touch or mouse strokes, and lets the user undo, clear, move and resize the
+signature. Saving flattens the ink into the selected PDF page in the browser
+and uploads `<source>-podpisany.pdf` as a new `signed-digital` file; the source
+is never replaced. Signature ink is not stored separately or reused.
+
 ## CLI — the agent feedback loop
 
 With `pnpm run dev:server` running:
@@ -102,7 +111,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`, dead
   links), and vitest with coverage across
-  **<!--count:test-files-->74<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->77<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → document archive →

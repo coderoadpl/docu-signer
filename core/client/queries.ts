@@ -96,6 +96,8 @@ const documentsScopes = {
   list: (filter: DocumentListFilter) => ['documents', 'list', filter] as const,
   details: () => ['documents', 'detail'] as const,
   detail: (documentId: string) => ['documents', 'detail', documentId] as const,
+  file: (documentId: string, fileId: string) =>
+    ['documents', 'detail', documentId, 'file', fileId] as const,
 };
 
 const authScopes = {
@@ -135,6 +137,16 @@ export const documentQuery = (api: ApiClient, documentId: string) =>
   defineQuery({
     queryKey: documentsScopes.detail(documentId),
     call: ({ signal }) => api.getDocument(documentId, signal),
+  });
+
+export const documentFileQuery = (
+  api: ApiClient,
+  documentId: string,
+  fileId: string,
+) =>
+  defineQuery({
+    queryKey: documentsScopes.file(documentId, fileId),
+    call: ({ signal }) => api.downloadDocumentFile(documentId, fileId, signal),
   });
 
 export const createDocumentMutation = (api: ApiClient) =>

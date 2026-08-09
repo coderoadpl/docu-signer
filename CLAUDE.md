@@ -84,6 +84,15 @@ rejected.)
   UI on purpose means dispatching `visual-baselines` with `update: true` and
   committing the new PNGs in the same PR.
 
+## Product surface
+
+- Dokumenty: archive metadata and PDF/image files by role, preview and export
+  them, and hand-sign any source PDF in a full-screen pen/touch/mouse flow.
+  Signing flattens ink client-side into a new `signed-digital` PDF; it never
+  replaces the source or persists a reusable signature.
+- Konto: personal passkeys and two-factor authentication. Removed upstream
+  verticals stay removed.
+
 ## Layer rules (enforced, but know them anyway)
 
 Per-layer one-screen summaries live beside the code — [`core/CLAUDE.md`](core/CLAUDE.md), [`adapters/CLAUDE.md`](adapters/CLAUDE.md), [`apps/CLAUDE.md`](apps/CLAUDE.md) (each with `AGENTS.md` symlink) — read the one for the layer you are editing.
