@@ -58,8 +58,8 @@ export const SIGNING_INK_COLORS: readonly [SigningInkColor, SigningInkColor] = [
   {
     id: 'navy',
     label: 'Granatowy',
-    canvasColor: '#1c2a5e',
-    pdfColor: { red: 0.11, green: 0.16, blue: 0.37 },
+    canvasColor: '#2244aa',
+    pdfColor: { red: 0.13, green: 0.27, blue: 0.67 },
   },
 ];
 
