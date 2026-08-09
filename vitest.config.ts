@@ -71,10 +71,10 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-01 after covering the signature pad gesture
-      // branches. The database-free run is statements 80.83%, branches 87.03%,
-      // functions 78.97%, and lines 80.83%; each floor is that measured value
-      // rounded down.
+      // Re-measured 2026-08-01 after merging the backup index coverage and
+      // the signature pad gesture coverage. Both sides measured floors of
+      // 80/87/78/80 independently (branches 87.62% and 87.03%); the merged
+      // tree keeps each floor at that measured value rounded down.
       thresholds: {
         statements: 80,
         branches: 87,
@@ -132,7 +132,11 @@ export default defineConfig({
               test: {
                 name: 'integration',
                 environment: 'node',
-                include: ['adapters/**/*.integration.test.ts', 'apps/**/*.integration.test.ts'],
+                include: [
+                  'adapters/**/*.integration.test.ts',
+                  'apps/**/*.integration.test.ts',
+                  'scripts/**/*.integration.test.ts',
+                ],
               },
             },
           ]
