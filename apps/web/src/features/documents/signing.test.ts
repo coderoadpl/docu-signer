@@ -3,9 +3,15 @@ import { describe, expect, it } from 'vitest';
 import {
   appendSigningStamp,
   canvasCssPointToPdf,
+  centeredInkPlacement,
   createSigningStamp,
+  defaultSigningGestureMode,
+  documentPointerDrawsInk,
   inkToPdfSegments,
+  isPalmSizedTouch,
   placeInkPoint,
+  penPriorityActive,
+  pointerEventToInkPoints,
   removeSigningStamp,
   pointerToInkPoint,
   signingStampContainsPoint,
@@ -89,6 +95,112 @@ describe('pen signing geometry', () => {
       { start: dot.points[0], control: dot.points[0], end: dot.points[0] },
     ]);
     expect(smoothStroke({ points: [] })).toEqual([]);
+  });
+
+  it('uses the same quadratic curve geometry for PDF paths', () => {
+    const segments = inkToPdfSegments(
+      [
+        {
+          points: [
+            { x: 0, y: 0, pressure: 0.2 },
+            { x: 0.5, y: 0.6, pressure: 0.6 },
+            { x: 1, y: 0.2, pressure: 1 },
+          ],
+        },
+      ],
+      { offsetX: 0, offsetY: 0, scale: 1 },
+      {
+        cssWidth: 100,
+        cssHeight: 100,
+        backingWidth: 100,
+        backingHeight: 100,
+        devicePixelRatio: 1,
+        viewportTransform: [1, 0, 0, -1, 0, 100],
+      },
+    );
+
+    expect(segments.map((segment) => segment.path)).toEqual([
+      'M 0 -100 Q 50 -40 75 -60',
+      'M 75 -60 Q 100 -80 100 -80',
+    ]);
+  });
+
+  it('expands coalesced pointer samples into normalized ink points', () => {
+    expect(
+      pointerEventToInkPoints(
+        {
+          clientX: 0,
+          clientY: 0,
+          pressure: 0.1,
+          getCoalescedEvents: () => [
+            { clientX: 10, clientY: 20, pressure: 0.2 },
+            { clientX: 30, clientY: 60, pressure: 0.6 },
+          ],
+        },
+        { left: 0, top: 0, width: 100, height: 200 },
+      ),
+    ).toEqual([
+      { x: 0.1, y: 0.1, pressure: 0.2 },
+      { x: 0.3, y: 0.3, pressure: 0.6 },
+    ]);
+  });
+
+  it('defines deterministic document gesture and palm rejection rules', () => {
+    expect(
+      defaultSigningGestureMode({ coarsePointer: true, maxTouchPoints: 0 }),
+    ).toBe('pan');
+    expect(
+      defaultSigningGestureMode({ coarsePointer: false, maxTouchPoints: 0 }),
+    ).toBe('draw');
+    expect(
+      penPriorityActive({
+        activePenPointerId: undefined,
+        lastPenSeenAt: 100,
+        now: 450,
+      }),
+    ).toBe(true);
+    expect(
+      penPriorityActive({
+        activePenPointerId: undefined,
+        lastPenSeenAt: 100,
+        now: 700,
+      }),
+    ).toBe(false);
+    expect(
+      isPalmSizedTouch({ pointerType: 'touch', width: 48, height: 22 }),
+    ).toBe(true);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'pan',
+        fingerDrawing: true,
+        penPriority: false,
+        pointer: { pointerType: 'pen', width: 1, height: 1 },
+      }),
+    ).toBe(false);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: false,
+        penPriority: false,
+        pointer: { pointerType: 'pen', width: 1, height: 1 },
+      }),
+    ).toBe(true);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: false,
+        penPriority: false,
+        pointer: { pointerType: 'touch', width: 12, height: 12 },
+      }),
+    ).toBe(false);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: true,
+        penPriority: true,
+        pointer: { pointerType: 'touch', width: 12, height: 12 },
+      }),
+    ).toBe(false);
   });
 
   it('inverts CSS, DPR and the unrotated PDF.js viewport transform', () => {
@@ -232,6 +344,21 @@ describe('pen signing geometry', () => {
     expect(signingStampsForPage(stamps, 1)).toEqual([
       { stamp: stamps[0], stampIndex: 0 },
     ]);
+  });
+
+  it('centers pad ink when converting it into a stamp placement', () => {
+    const placement = centeredInkPlacement([
+      {
+        points: [
+          { x: 0.1, y: 0.2, pressure: 0.5 },
+          { x: 0.5, y: 0.4, pressure: 0.5 },
+        ],
+      },
+    ]);
+
+    expect(placement.offsetX).toBeCloseTo(0.2);
+    expect(placement.offsetY).toBeCloseTo(0.2);
+    expect(placement.scale).toBe(1);
   });
 
   it('stamps every page, updates placement and removes individual stamps', () => {

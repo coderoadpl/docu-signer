@@ -12,12 +12,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentSigningPage } from './DocumentSigningPage.js';
+import type { SigningStampWithMetrics } from './signing-pdf.js';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const SOURCE_ID = '22222222-2222-4222-8222-222222222222';
 
 const pdfMocks = vi.hoisted(() => ({
-  flatten: vi.fn(async () => {
+  flatten: vi.fn<
+    (
+      sourceBytes: Uint8Array,
+      stamps: readonly SigningStampWithMetrics[],
+    ) => Promise<Uint8Array>
+  >(async () => {
     const bytes = new Uint8Array(2048).fill(7);
     bytes.set([37, 80, 68, 70]);
     return bytes;
@@ -248,6 +254,58 @@ const drawStroke = async (options: {
   fireEvent(canvas, finish);
 };
 
+const signaturePadCanvas = async () =>
+  screen.findByRole('application', {
+    name: 'Powierzchnia do złożenia podpisu',
+  });
+
+const drawSignaturePadStroke = async (options: {
+  pointerId: number;
+  pointerType: string;
+}) => {
+  const canvas = await signaturePadCanvas();
+  fireEvent.pointerDown(canvas, {
+    pointerId: options.pointerId,
+    pointerType: options.pointerType,
+    clientX: 20,
+    clientY: 30,
+    pressure: 0.35,
+  });
+  expect(canvas.setPointerCapture).toHaveBeenCalledWith(options.pointerId);
+  fireEvent.pointerMove(canvas, {
+    pointerId: options.pointerId,
+    pointerType: options.pointerType,
+    clientX: 80,
+    clientY: 90,
+    pressure: 0.85,
+  });
+  fireEvent(
+    canvas,
+    new PointerEvent('pointerup', {
+      pointerId: options.pointerId,
+      pointerType: options.pointerType,
+      bubbles: true,
+    }),
+  );
+};
+
+const pointerEventWithCoalesced = (
+  type: string,
+  init: PointerEventInit,
+  coalesced: ReadonlyArray<{
+    clientX: number;
+    clientY: number;
+    pressure: number;
+  }>,
+) => {
+  const event = new PointerEvent(type, { ...init, bubbles: true });
+  Object.defineProperty(event, 'getCoalescedEvents', {
+    configurable: true,
+    value: () => coalesced,
+  });
+  return event;
+};
+
 describe('DocumentSigningPage', () => {
   it('captures pointer strokes and supports undo, pointercancel and clear', async () => {
     await renderPage();
@@ -267,7 +325,7 @@ describe('DocumentSigningPage', () => {
     expect(save).toBeDisabled();
   });
 
-  it('lets pen draw while touch scrolls by default', async () => {
+  it('keeps touch from inking by default in draw mode while pen inks', async () => {
     await renderPage();
     const save = await screen.findByRole('button', {
       name: 'Zapisz podpisany PDF',
@@ -304,6 +362,45 @@ describe('DocumentSigningPage', () => {
     await waitFor(() => expect(save).toBeEnabled());
   });
 
+  it('keeps Przesuń from inking and lets Rysuj ink with pen', async () => {
+    await renderPage();
+    const save = await screen.findByRole('button', {
+      name: 'Zapisz podpisany PDF',
+    });
+    const canvas = await signingCanvas();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Przesuń' }));
+    fireEvent.pointerDown(canvas, {
+      pointerId: 21,
+      pointerType: 'pen',
+      clientX: 20,
+      clientY: 30,
+      pressure: 0.4,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 21,
+      pointerType: 'pen',
+      clientX: 80,
+      clientY: 90,
+      pressure: 0.7,
+    });
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 21,
+        pointerType: 'pen',
+        bubbles: true,
+      }),
+    );
+
+    expect(canvas.setPointerCapture).not.toHaveBeenCalledWith(21);
+    expect(save).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rysuj' }));
+    await drawStroke({ pointerId: 22, pointerType: 'pen' });
+    await waitFor(() => expect(save).toBeEnabled());
+  });
+
   it('draws touch strokes when finger drawing is enabled', async () => {
     await renderPage();
     const save = await screen.findByRole('button', {
@@ -315,6 +412,194 @@ describe('DocumentSigningPage', () => {
     await drawStroke({ pointerId: 13, pointerType: 'touch' });
 
     await waitFor(() => expect(save).toBeEnabled());
+  });
+
+  it('ignores palm-sized touch contacts in draw mode', async () => {
+    await renderPage();
+    const save = await screen.findByRole('button', {
+      name: 'Zapisz podpisany PDF',
+    });
+    const canvas = await signingCanvas();
+    fireEvent.click(screen.getByRole('button', { name: 'Rysowanie palcem' }));
+
+    fireEvent.pointerDown(canvas, {
+      pointerId: 23,
+      pointerType: 'touch',
+      clientX: 20,
+      clientY: 30,
+      pressure: 0.5,
+      width: 60,
+      height: 44,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 23,
+      pointerType: 'touch',
+      clientX: 80,
+      clientY: 90,
+      pressure: 0.5,
+      width: 60,
+      height: 44,
+    });
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 23,
+        pointerType: 'touch',
+        bubbles: true,
+      }),
+    );
+
+    expect(canvas.setPointerCapture).not.toHaveBeenCalledWith(23);
+    expect(save).toBeDisabled();
+  });
+
+  it('cancels touch ink while a pen pointer is active', async () => {
+    installUploadHandlers();
+    await renderPage();
+    const canvas = await signingCanvas();
+    fireEvent.click(screen.getByRole('button', { name: 'Rysowanie palcem' }));
+
+    fireEvent.pointerDown(canvas, {
+      pointerId: 24,
+      pointerType: 'touch',
+      clientX: 20,
+      clientY: 30,
+      pressure: 0.5,
+      width: 12,
+      height: 12,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 24,
+      pointerType: 'touch',
+      clientX: 50,
+      clientY: 60,
+      pressure: 0.5,
+      width: 12,
+      height: 12,
+    });
+    fireEvent.pointerDown(canvas, {
+      pointerId: 25,
+      pointerType: 'pen',
+      clientX: 80,
+      clientY: 90,
+      pressure: 0.5,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 25,
+      pointerType: 'pen',
+      clientX: 120,
+      clientY: 130,
+      pressure: 0.8,
+    });
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 25,
+        pointerType: 'pen',
+        bubbles: true,
+      }),
+    );
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 24,
+        pointerType: 'touch',
+        bubbles: true,
+      }),
+    );
+
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+    await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalled());
+    expect(pdfMocks.flatten.mock.calls[0]?.[1]?.[0]?.stamp.strokes).toHaveLength(1);
+  });
+
+  it('uses coalesced pointer samples for document ink', async () => {
+    installUploadHandlers();
+    await renderPage();
+    const canvas = await signingCanvas();
+
+    fireEvent.pointerDown(canvas, {
+      pointerId: 26,
+      pointerType: 'pen',
+      clientX: 20,
+      clientY: 30,
+      pressure: 0.25,
+    });
+    fireEvent(
+      canvas,
+      pointerEventWithCoalesced(
+        'pointermove',
+        {
+          pointerId: 26,
+          pointerType: 'pen',
+          clientX: 80,
+          clientY: 90,
+          pressure: 0.75,
+        },
+        [
+          { clientX: 40, clientY: 50, pressure: 0.35 },
+          { clientX: 60, clientY: 70, pressure: 0.55 },
+          { clientX: 80, clientY: 90, pressure: 0.75 },
+        ],
+      ),
+    );
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 26,
+        pointerType: 'pen',
+        bubbles: true,
+      }),
+    );
+
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+    await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalled());
+    expect(
+      pdfMocks.flatten.mock.calls[0]?.[1]?.[0]?.stamp.strokes[0]?.points,
+    ).toHaveLength(4);
+  });
+
+  it('opens the signature pad and places its ink as a stamp on the current page', async () => {
+    installUploadHandlers();
+    await renderPage();
+    await signingCanvas();
+
+    const nextPage = screen.getByRole('button', { name: /Następna/u });
+    await waitFor(() => expect(nextPage).toBeEnabled());
+    fireEvent.click(nextPage);
+    await waitFor(() => expect(screen.getByText('Strona 2 z 2')).toBeInTheDocument());
+    await signingCanvas();
+    fireEvent.click(await enabledButton('Złóż podpis'));
+    expect(
+      await screen.findByRole('dialog', { name: 'Złóż podpis' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Użyj podpisu' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Granatowy' }));
+    await drawSignaturePadStroke({ pointerId: 31, pointerType: 'touch' });
+    await drawSignaturePadStroke({ pointerId: 32, pointerType: 'pen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
+
+    expect(
+      await screen.findByText('Wybrany odcisk: strona 2'),
+    ).toBeInTheDocument();
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+    await waitFor(() =>
+      expect(pdfMocks.flatten).toHaveBeenCalledWith(
+        expect.any(Uint8Array),
+        [
+          expect.objectContaining({
+            stamp: expect.objectContaining({
+              pageIndex: 1,
+              inkColor: expect.objectContaining({ id: 'navy' }),
+              strokes: expect.arrayContaining([
+                expect.objectContaining({ points: expect.any(Array) }),
+              ]),
+            }),
+          }),
+        ],
+      ),
+    );
   });
 
   it('uses the selected navy ink for live canvas strokes', async () => {
@@ -440,7 +725,7 @@ describe('DocumentSigningPage', () => {
     expect(screen.getByText('Położenie bieżącego rysunku')).toBeInTheDocument();
   });
 
-  it('drags an existing stamp with touch in placement mode', async () => {
+  it('drags an existing stamp with touch in pan mode', async () => {
     installUploadHandlers();
     await renderPage();
     await drawStroke();
@@ -449,6 +734,7 @@ describe('DocumentSigningPage', () => {
     expect(
       await screen.findByText('Wybrany odcisk: strona 1'),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Przesuń' }));
 
     const canvas = await signingCanvas();
     fireEvent.pointerDown(canvas, {

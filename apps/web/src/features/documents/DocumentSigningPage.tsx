@@ -8,6 +8,10 @@ import {
   Alert,
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   LinearProgress,
   Paper,
   Slider,
@@ -27,10 +31,15 @@ import {
   DEFAULT_SIGNING_INK_COLOR,
   SIGNING_INK_COLORS,
   appendSigningStamp,
+  centeredInkPlacement,
   createSigningStamp,
+  defaultSigningGestureMode,
+  documentPointerDrawsInk,
+  isPalmSizedTouch,
   placeInkPoint,
+  penPriorityActive,
+  pointerEventToInkPoints,
   placedInkBounds,
-  pointerToInkPoint,
   removeSigningStamp,
   signingStampContainsPoint,
   signingStampsForPage,
@@ -42,6 +51,7 @@ import {
   type CanvasPdfMetrics,
   type InkStroke,
   type SignaturePlacement,
+  type SigningGestureMode,
   type SigningInkColorId,
   type SigningStamp,
 } from './signing.js';
@@ -61,6 +71,16 @@ const DEFAULT_PLACEMENT: SignaturePlacement = {
   offsetY: 0,
   scale: 1,
 };
+
+const detectDefaultGestureMode = (): SigningGestureMode =>
+  defaultSigningGestureMode({
+    coarsePointer:
+      typeof window !== 'undefined'
+        ? window.matchMedia?.('(pointer: coarse)').matches ?? false
+        : false,
+    maxTouchPoints:
+      typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0,
+  });
 
 const bytesAsArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
   const buffer = new ArrayBuffer(bytes.byteLength);
@@ -130,6 +150,191 @@ const drawInk = (
   }
 };
 
+const canvasMetrics = (
+  canvas: HTMLCanvasElement,
+  fallback: { width: number; height: number },
+): CanvasPdfMetrics => {
+  const bounds = canvas.getBoundingClientRect();
+  const cssWidth = bounds.width > 0 ? bounds.width : fallback.width;
+  const cssHeight = bounds.height > 0 ? bounds.height : fallback.height;
+  const devicePixelRatio = Math.max(window.devicePixelRatio || 1, 1);
+  canvas.width = Math.max(1, Math.floor(cssWidth * devicePixelRatio));
+  canvas.height = Math.max(1, Math.floor(cssHeight * devicePixelRatio));
+  canvas.style.width = `${cssWidth}px`;
+  canvas.style.height = `${cssHeight}px`;
+  return {
+    cssWidth,
+    cssHeight,
+    backingWidth: canvas.width,
+    backingHeight: canvas.height,
+    devicePixelRatio,
+    viewportTransform: [1, 0, 0, -1, 0, cssHeight] as const,
+  };
+};
+
+const SignaturePadDialog = ({
+  inkColorId,
+  inkColor,
+  onCancel,
+  onInkColorChange,
+  onUse,
+  open,
+}: {
+  inkColorId: SigningInkColorId;
+  inkColor: ReturnType<typeof signingInkColorById>;
+  onCancel: () => void;
+  onInkColorChange: (colorId: SigningInkColorId) => void;
+  onUse: (strokes: InkStroke[]) => void;
+  open: boolean;
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const currentStrokeRef = useRef<InkStroke | undefined>(undefined);
+  const activePointerRef = useRef<number | undefined>(undefined);
+  const [metrics, setMetrics] = useState<CanvasPdfMetrics>();
+  const [strokes, setStrokes] = useState<InkStroke[]>([]);
+  const [activeStroke, setActiveStroke] = useState<InkStroke>();
+
+  useEffect(() => {
+    if (!open) return;
+    currentStrokeRef.current = undefined;
+    activePointerRef.current = undefined;
+    setStrokes([]);
+    setActiveStroke(undefined);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const updateMetrics = () => {
+      setMetrics(canvasMetrics(canvas, { width: 760, height: 280 }));
+    };
+    updateMetrics();
+    window.addEventListener('resize', updateMetrics);
+    return () => window.removeEventListener('resize', updateMetrics);
+  }, [open]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !metrics) return;
+    drawInk(
+      canvas,
+      strokes.length || activeStroke
+        ? [
+            {
+              strokes: activeStroke ? [...strokes, activeStroke] : strokes,
+              placement: DEFAULT_PLACEMENT,
+              color: inkColor.canvasColor,
+              selected: false,
+            },
+          ]
+        : [],
+      metrics,
+    );
+  }, [activeStroke, inkColor.canvasColor, metrics, strokes]);
+
+  const pointsForEvent = (event: ReactPointerEvent<HTMLCanvasElement>) =>
+    pointerEventToInkPoints(
+      event.nativeEvent,
+      event.currentTarget.getBoundingClientRect(),
+    );
+
+  const finishPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (activePointerRef.current !== event.pointerId) return;
+    const stroke = currentStrokeRef.current;
+    if (stroke?.points.length) setStrokes((current) => [...current, stroke]);
+    currentStrokeRef.current = undefined;
+    activePointerRef.current = undefined;
+    setActiveStroke(undefined);
+    event.preventDefault();
+  };
+
+  return (
+    <Dialog open={open} onClose={onCancel} fullWidth maxWidth="md">
+      <DialogTitle>Złóż podpis</DialogTitle>
+      <DialogContent>
+        <InkSurface
+          ref={canvasRef}
+          role="application"
+          aria-label="Powierzchnia do złożenia podpisu"
+          tabIndex={0}
+          sx={{
+            width: '100%',
+            height: { xs: 220, sm: 280 },
+            display: 'block',
+            touchAction: 'none',
+          }}
+          onPointerDown={(event) => {
+            const points = pointsForEvent(event);
+            if (!points.length) return;
+            const stroke = { points };
+            activePointerRef.current = event.pointerId;
+            currentStrokeRef.current = stroke;
+            setActiveStroke(stroke);
+            event.currentTarget.setPointerCapture(event.pointerId);
+            event.preventDefault();
+          }}
+          onPointerMove={(event) => {
+            if (activePointerRef.current !== event.pointerId) return;
+            const current = currentStrokeRef.current;
+            if (!current) return;
+            const points = pointsForEvent(event);
+            const next = { points: [...current.points, ...points] };
+            currentStrokeRef.current = next;
+            setActiveStroke(next);
+            event.preventDefault();
+          }}
+          onPointerUp={finishPointer}
+          onPointerCancel={finishPointer}
+        />
+      </DialogContent>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+        <Button
+          onClick={() => setStrokes((current) => current.slice(0, -1))}
+          disabled={!strokes.length}
+        >
+          Cofnij
+        </Button>
+        <Button
+          onClick={() => {
+            setStrokes([]);
+            setActiveStroke(undefined);
+            currentStrokeRef.current = undefined;
+            activePointerRef.current = undefined;
+          }}
+          disabled={!strokes.length && !activeStroke}
+        >
+          Wyczyść
+        </Button>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={inkColorId}
+          onChange={(_, selected: SigningInkColorId | null) => {
+            if (selected) onInkColorChange(selected);
+          }}
+          aria-label="Kolor tuszu podpisu"
+        >
+          {SIGNING_INK_COLORS.map((color) => (
+            <ToggleButton key={color.id} value={color.id} aria-label={color.label}>
+              {color.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        <Box sx={{ flexGrow: 1 }} />
+        <Button onClick={onCancel}>Anuluj</Button>
+        <Button
+          variant="contained"
+          onClick={() => onUse(strokes)}
+          disabled={!strokes.length}
+        >
+          Użyj podpisu
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const PageHeader = ({
   fileName,
   onClose,
@@ -168,6 +373,9 @@ export const DocumentSigningPage = ({
   const inkCanvasRef = useRef<HTMLCanvasElement>(null);
   const currentStrokeRef = useRef<InkStroke | undefined>(undefined);
   const activePointerRef = useRef<number | undefined>(undefined);
+  const activePointerTypeRef = useRef<string | undefined>(undefined);
+  const activePenPointerRef = useRef<number | undefined>(undefined);
+  const lastPenSeenAtRef = useRef<number | undefined>(undefined);
   const placementDragRef = useRef<
     {
       pointerId: number;
@@ -190,6 +398,10 @@ export const DocumentSigningPage = ({
   const [stamps, setStamps] = useState<SigningStamp[]>([]);
   const [selectedStampIndex, setSelectedStampIndex] = useState<number>();
   const [fingerDrawing, setFingerDrawing] = useState(false);
+  const [gestureMode, setGestureMode] = useState<SigningGestureMode>(
+    detectDefaultGestureMode,
+  );
+  const [signaturePadOpen, setSignaturePadOpen] = useState(false);
   const [inkColorId, setInkColorId] = useState<SigningInkColorId>(
     DEFAULT_SIGNING_INK_COLOR.id,
   );
@@ -364,22 +576,49 @@ export const DocumentSigningPage = ({
     );
   }
 
-  const pointerPoint = (event: ReactPointerEvent<HTMLCanvasElement>) =>
-    pointerToInkPoint(
-      event.clientX,
-      event.clientY,
-      event.pressure,
+  const pointerPoints = (event: ReactPointerEvent<HTMLCanvasElement>) =>
+    pointerEventToInkPoints(
+      event.nativeEvent,
       event.currentTarget.getBoundingClientRect(),
     );
 
+  const touchIgnoredForPenPriority = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ) =>
+    event.pointerType === 'touch' &&
+    penPriorityActive({
+      activePenPointerId: activePenPointerRef.current,
+      lastPenSeenAt: lastPenSeenAtRef.current,
+      now: event.timeStamp,
+    });
+
+  const cancelActiveTouchStroke = () => {
+    if (activePointerTypeRef.current !== 'touch') return;
+    currentStrokeRef.current = undefined;
+    activePointerRef.current = undefined;
+    activePointerTypeRef.current = undefined;
+    setActiveStroke(undefined);
+  };
+
   const pointerDrawsInk = (event: ReactPointerEvent<HTMLCanvasElement>) =>
-    event.pointerType !== 'touch' || fingerDrawing;
+    documentPointerDrawsInk({
+      fingerDrawing,
+      mode: gestureMode,
+      penPriority: touchIgnoredForPenPriority(event),
+      pointer: {
+        height: event.height,
+        pointerType: event.pointerType,
+        width: event.width,
+      },
+    });
 
   const finishPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (placing) {
-      if (placementDragRef.current?.pointerId === event.pointerId) {
-        placementDragRef.current = undefined;
-      }
+    if (activePenPointerRef.current === event.pointerId) {
+      activePenPointerRef.current = undefined;
+      lastPenSeenAtRef.current = event.timeStamp;
+    }
+    if (placementDragRef.current?.pointerId === event.pointerId) {
+      placementDragRef.current = undefined;
       return;
     }
     if (activePointerRef.current !== event.pointerId) return;
@@ -387,6 +626,7 @@ export const DocumentSigningPage = ({
     if (stroke?.points.length) setStrokes((current) => [...current, stroke]);
     currentStrokeRef.current = undefined;
     activePointerRef.current = undefined;
+    activePointerTypeRef.current = undefined;
     setActiveStroke(undefined);
   };
 
@@ -404,6 +644,23 @@ export const DocumentSigningPage = ({
     setStamps(next);
     setSelectedStampIndex(next.length - 1);
     setPlacing(true);
+  };
+
+  const useSignaturePad = (padStrokes: InkStroke[]) => {
+    if (!pageReady || !padStrokes.length) return;
+    const next = appendSigningStamp(
+      stamps,
+      createSigningStamp({
+        pageIndex,
+        strokes: padStrokes,
+        placement: centeredInkPlacement(padStrokes),
+        inkColor,
+      }),
+    );
+    setStamps(next);
+    setSelectedStampIndex(next.length - 1);
+    setPlacing(true);
+    setSignaturePadOpen(false);
   };
 
   const stampAllPages = () => {
@@ -514,6 +771,29 @@ export const DocumentSigningPage = ({
               Następna →
             </Button>
             <Button
+              variant="contained"
+              onClick={() => setSignaturePadOpen(true)}
+              disabled={!pageReady || committing}
+            >
+              Złóż podpis
+            </Button>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={gestureMode}
+              onChange={(_, selected: SigningGestureMode | null) => {
+                if (selected) setGestureMode(selected);
+              }}
+              aria-label="Tryb gestów"
+            >
+              <ToggleButton value="draw" disabled={committing} aria-label="Rysuj">
+                Rysuj
+              </ToggleButton>
+              <ToggleButton value="pan" disabled={committing} aria-label="Przesuń">
+                Przesuń
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Button
               onClick={() => setStrokes((current) => current.slice(0, -1))}
               disabled={!strokes.length || committing}
             >
@@ -525,6 +805,9 @@ export const DocumentSigningPage = ({
                 setPlacing(false);
                 setPlacement(DEFAULT_PLACEMENT);
                 setSelectedStampIndex(undefined);
+                currentStrokeRef.current = undefined;
+                activePointerRef.current = undefined;
+                activePointerTypeRef.current = undefined;
               }}
               disabled={!strokes.length || committing}
             >
@@ -663,29 +946,51 @@ export const DocumentSigningPage = ({
             inset: 0,
             width: '100%',
             height: '100%',
-            touchAction: fingerDrawing ? 'none' : 'pan-x pan-y pinch-zoom',
+            cursor: gestureMode === 'draw' ? 'crosshair' : 'grab',
+            touchAction:
+              gestureMode === 'draw' ? 'none' : 'pan-x pan-y pinch-zoom',
           }}
           onPointerDown={(event) => {
             if (!pageReady || !metrics || committing) return;
+            if (event.pointerType === 'pen') {
+              activePenPointerRef.current = event.pointerId;
+              lastPenSeenAtRef.current = event.timeStamp;
+              cancelActiveTouchStroke();
+            }
+            const ignoreTouch =
+              gestureMode === 'draw' &&
+              event.pointerType === 'touch' &&
+              (touchIgnoredForPenPriority(event) ||
+                isPalmSizedTouch({
+                  height: event.height,
+                  pointerType: event.pointerType,
+                  width: event.width,
+                }));
+            if (ignoreTouch) {
+              event.preventDefault();
+              return;
+            }
+            const points = pointerPoints(event);
+            const point = points[0];
+            if (!point) return;
+            const hit = signingStampsForPage(stamps, pageIndex)
+              .slice()
+              .reverse()
+              .find(({ stamp }) => signingStampContainsPoint(stamp, point));
+            if (hit) {
+              setSelectedStampIndex(hit.stampIndex);
+              placementDragRef.current = {
+                pointerId: event.pointerId,
+                clientX: event.clientX,
+                clientY: event.clientY,
+                placement: hit.stamp.placement,
+                stampIndex: hit.stampIndex,
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+              event.preventDefault();
+              return;
+            }
             if (placing) {
-              const point = pointerPoint(event);
-              const hit = signingStampsForPage(stamps, pageIndex)
-                .slice()
-                .reverse()
-                .find(({ stamp }) => signingStampContainsPoint(stamp, point));
-              if (hit) {
-                setSelectedStampIndex(hit.stampIndex);
-                placementDragRef.current = {
-                  pointerId: event.pointerId,
-                  clientX: event.clientX,
-                  clientY: event.clientY,
-                  placement: hit.stamp.placement,
-                  stampIndex: hit.stampIndex,
-                };
-                event.currentTarget.setPointerCapture(event.pointerId);
-                event.preventDefault();
-                return;
-              }
               setSelectedStampIndex(undefined);
               if (!strokes.length) return;
               if (!signingStampContainsPoint(draftStamp(pageIndex), point)) return;
@@ -699,17 +1004,30 @@ export const DocumentSigningPage = ({
               event.preventDefault();
               return;
             }
+            if (gestureMode === 'pan') return;
             if (!pointerDrawsInk(event)) return;
-            const stroke = { points: [pointerPoint(event)] };
+            const stroke = { points };
             activePointerRef.current = event.pointerId;
+            activePointerTypeRef.current = event.pointerType;
             currentStrokeRef.current = stroke;
             setActiveStroke(stroke);
             event.currentTarget.setPointerCapture(event.pointerId);
             event.preventDefault();
           }}
           onPointerMove={(event) => {
+            if (event.pointerType === 'pen') {
+              lastPenSeenAtRef.current = event.timeStamp;
+            }
+            if (gestureMode === 'draw' && touchIgnoredForPenPriority(event)) {
+              if (placementDragRef.current?.pointerId === event.pointerId) {
+                placementDragRef.current = undefined;
+              }
+              cancelActiveTouchStroke();
+              event.preventDefault();
+              return;
+            }
             const drag = placementDragRef.current;
-            if (placing && drag?.pointerId === event.pointerId) {
+            if (drag?.pointerId === event.pointerId) {
               const bounds = event.currentTarget.getBoundingClientRect();
               if (bounds.width > 0 && bounds.height > 0) {
                 const next = {
@@ -732,7 +1050,7 @@ export const DocumentSigningPage = ({
             if (activePointerRef.current !== event.pointerId) return;
             const current = currentStrokeRef.current;
             if (!current) return;
-            const next = { points: [...current.points, pointerPoint(event)] };
+            const next = { points: [...current.points, ...pointerPoints(event)] };
             currentStrokeRef.current = next;
             setActiveStroke(next);
             event.preventDefault();
@@ -741,6 +1059,14 @@ export const DocumentSigningPage = ({
           onPointerCancel={finishPointer}
         />
       </SigningPageSurface>
+      <SignaturePadDialog
+        open={signaturePadOpen}
+        inkColorId={inkColorId}
+        inkColor={inkColor}
+        onInkColorChange={setInkColorId}
+        onCancel={() => setSignaturePadOpen(false)}
+        onUse={useSignaturePad}
+      />
     </SigningShell>
   );
 };
