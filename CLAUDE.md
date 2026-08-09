@@ -64,7 +64,7 @@ rejected.)
   pin the Safari/pdf.js legacy regression (12 test executions total):
   `app.spec.ts` (login → archive navigation →
   failed-login → cache headers → liveness/readiness → anonymous redirect to login),
-  `documents.spec.ts` (create → role uploads → paired preview → export),
+  `documents.spec.ts` (create → role uploads → source-only preview link + content-type → export),
   `magic-link.spec.ts` (trusted-user sign-in), `passkey.spec.ts`
   (registration → passkey sign-in), `settings.spec.ts` (account security and
   registration without tenant management), and `password-reset.spec.ts`

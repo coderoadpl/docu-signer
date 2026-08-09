@@ -154,22 +154,30 @@ test('creates, uploads, previews and exports an archived document', async ({
   });
   await expect(scanSection.getByText(scanName)).toBeVisible();
 
-  await expect(
-    page.locator(`object[aria-label="Podgląd: ${sourceName}"]`),
-  ).toBeVisible();
-  await expect(
-    page.locator(`object[aria-label="Podgląd: ${signedName}"]`),
-  ).toBeVisible();
+  const sourcePreview = sourceSection.getByLabel(`Podgląd pliku ${sourceName}`);
+  await expect(sourcePreview).toHaveAttribute('target', '_blank');
+  const previewHref = await sourcePreview.getAttribute('href');
+  if (!previewHref) throw new Error('Missing source preview href');
+  expect(previewHref).toMatch(/\/api\/documents\/[^/]+\/files\/[^/]+\/content/u);
+  const previewResponse = await page.request.get(previewHref);
+  expect(previewResponse.ok()).toBe(true);
+  expect(previewResponse.headers()['content-type']).toContain('application/pdf');
   await expect(
     scanSection.getByText(scanName),
   ).toBeVisible();
 
+  await sourceSection.getByRole('button', {
+    name: `Więcej akcji dla pliku ${sourceName}`,
+  }).click();
   const downloadPromise = page.waitForEvent('download');
-  await sourceSection.getByRole('link', { name: 'Eksportuj' }).click();
+  await page.getByRole('menuitem', { name: 'Eksportuj' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toContain('umowa-e2e');
 
-  await sourceSection.getByRole('button', { name: 'Przenieś do nowego dokumentu' }).click();
+  await sourceSection.getByRole('button', {
+    name: `Więcej akcji dla pliku ${sourceName}`,
+  }).click();
+  await page.getByRole('menuitem', { name: 'Przenieś do nowego dokumentu' }).click();
   const moveDialog = page.getByRole('dialog', { name: 'Przenieś do nowego dokumentu' });
   await expect(moveDialog.getByRole('textbox', { name: 'Tytuł' })).toHaveValue(
     sourceName.replace(/\.pdf$/u, ''),

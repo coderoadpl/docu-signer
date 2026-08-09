@@ -8,7 +8,7 @@ import { ApiError } from '#core/client/index.js';
 import { actions } from './api.js';
 import { AppShell } from './components/layout/AppShell.js';
 import type { PageState } from './components/layout/StatusView.js';
-import { createAppTheme, Wordmark } from './theme.js';
+import { useAppTheme, Wordmark } from './theme.js';
 
 const errorCodeOf = (error: Error | null): string | null =>
   error instanceof ApiError ? error.appError.code : null;
@@ -71,7 +71,7 @@ interface ShellProps {
 
 const Shell = ({ tenant = null, email, state }: ShellProps) => {
   const signOut = useSignOut();
-  const theme = createAppTheme();
+  const theme = useAppTheme();
 
   const navigation = (
     <>

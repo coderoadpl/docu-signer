@@ -71,8 +71,8 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-02 after merging password parity with saved search
-      // presets: 81.33/87.26/80.11/81.33, rounded down.
+      // Re-measured 2026-08-02 after merging password parity, saved search
+      // presets, and detail cleanup: 81.48/87.29/80.46/81.48, rounded down.
       thresholds: {
         statements: 81,
         branches: 87,

@@ -149,6 +149,7 @@ export const DocumentsPage = () => {
   const filtersActive = hasDocumentFilter(documentFilter);
   const visibleDocuments = documents.data?.documents ?? [];
   const allDocuments = folderDocuments.data?.documents ?? visibleDocuments;
+  const hasDocuments = archiveHasDocuments || allDocuments.length > 0;
   const personOptions = uniqueDocumentPersons(allDocuments);
   const tagOptions = uniqueDocumentTags(allDocuments);
   const savedSearchItems: SavedSearch[] = savedSearches.data?.savedSearches ?? [];
@@ -181,14 +182,14 @@ export const DocumentsPage = () => {
           <Typography variant="overline">Archiwum</Typography>
           <Typography variant="h1">Dokumenty</Typography>
         </Box>
-        {archiveHasDocuments ? (
+        {hasDocuments ? (
           <Button variant="contained" onClick={() => setCreateOpen(true)}>
             Dodaj dokument
           </Button>
         ) : null}
       </Stack>
 
-      {archiveHasDocuments ? (
+      {hasDocuments ? (
         <Tabs
           value={view}
           onChange={(_event, value: DocumentsView) => setView(value)}
@@ -199,7 +200,7 @@ export const DocumentsPage = () => {
         </Tabs>
       ) : null}
 
-      {archiveHasDocuments && view === 'list' ? <Paper sx={{ mt: 3, p: 2 }}>
+      {hasDocuments && view === 'list' ? <Paper sx={{ mt: 3, p: 2 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} sx={{ gap: 2 }}>
           <TextField
             label="Szukaj po tytule"
@@ -292,7 +293,7 @@ export const DocumentsPage = () => {
         </Stack>
       </Paper> : null}
 
-      {archiveHasDocuments && view === 'folders' ? (
+      {hasDocuments && view === 'folders' ? (
         <Box sx={{ mt: 3 }}>
           {savedSearches.isPending ? (
             <StatusView state={{ kind: 'loading', label: 'Ładowanie teczek…' }} />
@@ -370,7 +371,7 @@ export const DocumentsPage = () => {
         </Box>
       ) : null}
 
-      {archiveHasDocuments && view === 'list' ? <Stack
+      {hasDocuments && view === 'list' ? <Stack
         direction="row"
         sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end' }}
       >
@@ -407,7 +408,7 @@ export const DocumentsPage = () => {
       ) : null}
       {visibleDocuments.length === 0 &&
       filtersActive &&
-      archiveHasDocuments &&
+      hasDocuments &&
       view === 'list' &&
       documents.isSuccess ? (
         <Box sx={{ mt: 4 }}>

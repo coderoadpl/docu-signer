@@ -10,17 +10,20 @@ import {
   DialogTitle,
   Divider,
   FormControl,
+  IconButton,
   InputLabel,
   LinearProgress,
-  Link,
   List,
+  Menu,
   ListItem,
   ListItemText,
   MenuItem,
   Paper,
   Select,
   Stack,
+  SvgIcon,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -37,7 +40,7 @@ import { actions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { formatPolishDate } from '../../lib/format-date.js';
-import { FileDropZone, PdfPreview, PreviewImage } from '../../theme.js';
+import { FileDropZone } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
   DOCUMENT_TYPE_LABELS,
@@ -47,7 +50,6 @@ import {
   fileNameStem,
   filesByRole,
   formatFileSize,
-  relatedDocuments,
   toDocumentInput,
   uniqueDocumentPersons,
   uniqueDocumentTags,
@@ -61,6 +63,24 @@ const FILE_ROLES: DocumentFileRole[] = [
   'signed-digital',
   'other',
 ];
+
+const VisibilityIcon = () => (
+  <SvgIcon>
+    <path d="M12 5c4.1 0 7.5 2.3 9.5 7-2 4.7-5.4 7-9.5 7s-7.5-2.3-9.5-7c2-4.7 5.4-7 9.5-7Zm0 2c-3.1 0-5.6 1.6-7.3 5 1.7 3.4 4.2 5 7.3 5s5.6-1.6 7.3-5C17.6 8.6 15.1 7 12 7Zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
+  </SvgIcon>
+);
+
+const DownloadIcon = () => (
+  <SvgIcon>
+    <path d="M11 4h2v8.2l3.3-3.3 1.4 1.4L12 16l-5.7-5.7 1.4-1.4 3.3 3.3V4Zm-5 14h12v2H6v-2Z" />
+  </SvgIcon>
+);
+
+const MoreVertIcon = () => (
+  <SvgIcon>
+    <path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
+  </SvgIcon>
+);
 
 const ConfirmDialog = ({
   open,
@@ -111,93 +131,114 @@ const FileRow = ({
   onMove: (file: DocumentFile) => void;
   onDelete: (file: DocumentFile) => void;
 }) => {
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [afterMenuClose, setAfterMenuClose] = useState<(() => void) | undefined>();
   const contentUrl = actions.documentFileContentUrl(documentId, file.id);
   const exportUrl = actions.documentFileExportUrl(documentId, file.id);
+  const closeMenu = () => setMenuAnchor(null);
+  const runAfterMenuClose = (action: () => void) => {
+    setAfterMenuClose(() => action);
+    closeMenu();
+  };
+  const handleMenuExited = () => {
+    if (!afterMenuClose) return;
+    afterMenuClose();
+    setAfterMenuClose(undefined);
+  };
   return (
-    <ListItem>
+    <ListItem
+      disableGutters
+      sx={{
+        gap: 1.5,
+        minWidth: 0,
+        py: 0.75,
+      }}
+    >
       <ListItemText
         primary={file.fileName}
         secondary={formatFileSize(file.sizeBytes)}
+        slotProps={{
+          primary: { noWrap: true },
+          secondary: { noWrap: true },
+        }}
+        sx={{ minWidth: 0 }}
       />
-      <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}>
-        <Link href={contentUrl} target="_blank" rel="noreferrer">
-          Podgląd
-        </Link>
-        <Link href={contentUrl} download={file.fileName}>
-          Pobierz
-        </Link>
-        <Link href={exportUrl}>Eksportuj</Link>
+      <Stack
+        direction="row"
+        sx={{ alignItems: 'center', flexShrink: 0, gap: 0.5 }}
+      >
+        <Tooltip title="Podgląd" describeChild disableInteractive>
+          <IconButton
+            aria-label={`Podgląd pliku ${file.fileName}`}
+            component="a"
+            href={contentUrl}
+            target="_blank"
+            rel="noreferrer"
+            size="small"
+          >
+            <VisibilityIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Pobierz" describeChild disableInteractive>
+          <IconButton
+            aria-label={`Pobierz plik ${file.fileName}`}
+            component="a"
+            href={contentUrl}
+            download={file.fileName}
+            size="small"
+          >
+            <DownloadIcon />
+          </IconButton>
+        </Tooltip>
         {canSignPdfFile(file) ? (
-          <Button variant="contained" onClick={() => onSign(file)}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => onSign(file)}
+          >
             Podpisz
           </Button>
         ) : null}
-        <Button onClick={() => onMove(file)}>
-          Przenieś do nowego dokumentu
-        </Button>
-        <Button color="error" onClick={() => onDelete(file)}>
-          Usuń
-        </Button>
+        <IconButton
+          aria-label={`Więcej akcji dla pliku ${file.fileName}`}
+          aria-controls={menuAnchor ? `file-actions-${file.id}` : undefined}
+          aria-haspopup="menu"
+          aria-expanded={menuAnchor ? true : undefined}
+          onClick={(event) => setMenuAnchor(event.currentTarget)}
+          size="small"
+          title="Więcej"
+        >
+          <MoreVertIcon />
+        </IconButton>
+        <Menu
+          id={`file-actions-${file.id}`}
+          anchorEl={menuAnchor}
+          open={Boolean(menuAnchor)}
+          onClose={closeMenu}
+          slotProps={{
+            transition: { onExited: handleMenuExited },
+          }}
+        >
+          <MenuItem component="a" href={exportUrl} onClick={closeMenu}>
+            Eksportuj
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              runAfterMenuClose(() => onMove(file));
+            }}
+          >
+            Przenieś do nowego dokumentu
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              runAfterMenuClose(() => onDelete(file));
+            }}
+          >
+            <Typography color="error">Usuń</Typography>
+          </MenuItem>
+        </Menu>
       </Stack>
     </ListItem>
-  );
-};
-
-const Preview = ({
-  documentId,
-  files,
-}: {
-  documentId: string;
-  files: DocumentFile[];
-}) => {
-  const source = files.find((file) => file.role === 'source');
-  const signed =
-    files.find((file) => file.role === 'signed-digital') ??
-    files.find((file) => file.role === 'signed-scan');
-  const previewFiles = source && signed
-    ? [source, signed]
-    : [source ?? signed ?? files[0]].filter(
-        (file): file is DocumentFile => Boolean(file),
-      );
-  if (!previewFiles.length) return null;
-  return (
-    <Box component="section" sx={{ mt: 5 }}>
-      <Typography variant="h2" sx={{ mb: 2 }}>
-        Podgląd
-      </Typography>
-      <Stack
-        direction={{
-          xs: 'column',
-          md: previewFiles.length > 1 ? 'row' : 'column',
-        }}
-        sx={{ gap: 2 }}
-      >
-        {previewFiles.map((file) => {
-          const contentUrl = actions.documentFileContentUrl(documentId, file.id);
-          return (
-            <Box key={file.id} sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="overline">
-                {FILE_ROLE_LABELS[file.role]}
-              </Typography>
-              {file.contentType.toLowerCase().startsWith('image/') ? (
-                <PreviewImage
-                  src={contentUrl}
-                  alt={`Podgląd: ${file.fileName}`}
-                />
-              ) : (
-                <PdfPreview
-                  data={contentUrl}
-                  type={file.contentType}
-                  aria-label={`Podgląd: ${file.fileName}`}
-                >
-                  <Link href={contentUrl}>Otwórz {file.fileName}</Link>
-                </PdfPreview>
-              )}
-            </Box>
-          );
-        })}
-      </Stack>
-    </Box>
   );
 };
 
@@ -373,7 +414,6 @@ export const DocumentDetailPage = ({
   const grouped = filesByRole(document.files);
   const personOptions = uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]);
   const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
-  const related = relatedDocuments(document, folderDocuments.data?.documents ?? []);
   const period =
     document.periodStart || document.periodEnd
       ? [
@@ -485,32 +525,6 @@ export const DocumentDetailPage = ({
           />
         ))}
       </Stack>
-      <Preview documentId={documentId} files={document.files} />
-      {related.length ? (
-        <Box component="section" sx={{ mt: 5 }}>
-          <Typography variant="h2" sx={{ mb: 2 }}>
-            Powiązane
-          </Typography>
-          <List disablePadding>
-            {related.map((item) => (
-              <ListItem key={item.id} disableGutters>
-                <Link
-                  href={`/app/documents/${item.id}`}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    void navigate({
-                      to: '/app/documents/$id',
-                      params: { id: item.id },
-                    });
-                  }}
-                >
-                  {item.title} · {DOCUMENT_TYPE_LABELS[item.docType]}
-                </Link>
-              </ListItem>
-            ))}
-          </List>
-        </Box>
-      ) : null}
 
       <DocumentFormDialog
         open={editOpen}

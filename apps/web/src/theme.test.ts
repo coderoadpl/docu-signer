@@ -5,7 +5,7 @@ import { createAppTheme } from './theme.js';
 
 describe('createAppTheme', () => {
   it('carries the tenant accent as the primary color', () => {
-    expect(createAppTheme(120).palette.primary.main).toBe('hsl(120, 62%, 36%)');
+    expect(createAppTheme({ accentHue: 120 }).palette.primary.main).toBe('hsl(120, 62%, 36%)');
   });
 
   it('keeps the MUI default primary when no accent is provided', () => {
@@ -14,7 +14,7 @@ describe('createAppTheme', () => {
 
   it('picks contrast text meeting WCAG AA for any accent hue', () => {
     for (let hue = 0; hue < 360; hue += 15) {
-      const { main, contrastText } = createAppTheme(hue).palette.primary;
+      const { main, contrastText } = createAppTheme({ accentHue: hue }).palette.primary;
       expect(getContrastRatio(main, contrastText)).toBeGreaterThanOrEqual(4.5);
     }
   });
@@ -24,5 +24,16 @@ describe('createAppTheme', () => {
 
     expect(theme.shape.borderRadius).toBe(4);
     expect(theme.typography.h1.fontSize).toBe('2.125rem');
+  });
+
+  it('turns Material motion off when reduced motion is preferred', () => {
+    const theme = createAppTheme({ prefersReducedMotion: true });
+
+    expect(theme.transitions.create('opacity')).toBe('none');
+    expect(theme.transitions.duration.enteringScreen).toBe(0);
+    expect(theme.transitions.getAutoHeightDuration(100)).toBe(0);
+    expect(theme).toMatchObject({
+      components: { MuiButtonBase: { defaultProps: { disableRipple: true } } },
+    });
   });
 });

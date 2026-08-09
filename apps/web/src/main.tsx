@@ -26,7 +26,7 @@ import { NotFoundRoute } from './routes/not-found.js';
 import { RegisterRoute } from './routes/register.js';
 import { ResetPasswordRoute, resetPasswordSearchSchema } from './routes/reset-password.js';
 import { SettingsRoute } from './routes/settings.js';
-import { createAppTheme } from './theme.js';
+import { useAppTheme } from './theme.js';
 
 /** Dev-only, lazy so the devtools chunk never reaches the production bundle. */
 const ReactQueryDevtools = lazy(() =>
@@ -147,9 +147,11 @@ initWebObservability();
 const container = document.getElementById('root');
 if (!container) throw new Error('Missing #root element');
 
-createRoot(container).render(
-  <StrictMode>
-    <ThemeProvider theme={createAppTheme()}>
+const AppRoot = () => {
+  const theme = useAppTheme();
+
+  return (
+    <ThemeProvider theme={theme}>
       <CssBaseline />
       <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
         <QueryClientProvider client={queryClient}>
@@ -163,5 +165,11 @@ createRoot(container).render(
         </QueryClientProvider>
       </ErrorBoundary>
     </ThemeProvider>
+  );
+};
+
+createRoot(container).render(
+  <StrictMode>
+    <AppRoot />
   </StrictMode>,
 );
