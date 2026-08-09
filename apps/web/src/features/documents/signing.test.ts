@@ -28,6 +28,7 @@ import {
   signedDigitalSourceHint,
   stampEveryPage,
   updateSigningStampPlacement,
+  DEFAULT_SIGNING_INK_SIZE,
   DEFAULT_SIGNING_INK_COLOR,
   SIGNING_INK_COLORS,
   type CanvasPdfMetrics,
@@ -63,6 +64,18 @@ const outlineBounds = (points: readonly InkOutlinePoint[]) => {
       bottom: first.y,
     },
   );
+};
+
+const expectOutlinePointsClose = (
+  actual: readonly InkOutlinePoint[],
+  expected: readonly InkOutlinePoint[],
+) => {
+  expect(actual).toHaveLength(expected.length);
+  actual.forEach((point, index) => {
+    const expectedPoint = expected[index];
+    expect(point.x).toBeCloseTo(expectedPoint?.x ?? 0, 4);
+    expect(point.y).toBeCloseTo(expectedPoint?.y ?? 0, 4);
+  });
 };
 
 describe('pen signing geometry', () => {
@@ -459,6 +472,86 @@ describe('pen signing geometry', () => {
     const centerlineHeight = (0.5 - 0.24) * surface.cssHeight;
     expect(bounds ? bounds.right - bounds.left : 0).toBeLessThan(centerlineWidth + 18);
     expect(bounds ? bounds.bottom - bounds.top : 0).toBeLessThan(centerlineHeight + 18);
+  });
+
+  it('scales placed stamp outline geometry from the captured pad outline', () => {
+    const stroke: InkStroke = {
+      points: [
+        { x: 0.2, y: 0.45, pressure: 0.35 },
+        { x: 0.36, y: 0.3, pressure: 0.8 },
+        { x: 0.58, y: 0.52, pressure: 0.55 },
+        { x: 0.78, y: 0.36, pressure: 0.7 },
+      ],
+    };
+    const surface = {
+      cssWidth: 500,
+      cssHeight: 300,
+      backingWidth: 500,
+      backingHeight: 300,
+      devicePixelRatio: 1,
+      viewportTransform: [1, 0, 0, -1, 0, 300] as const,
+    };
+    const base = inkToCanvasOutlines(
+      [stroke],
+      { offsetX: 0, offsetY: 0, scale: 1 },
+      surface,
+    )[0];
+    const placed = inkToCanvasOutlines(
+      [stroke],
+      { offsetX: 0.08, offsetY: -0.04, scale: 1.6 },
+      surface,
+    )[0];
+    expect(base).toBeDefined();
+    expect(placed).toBeDefined();
+    const centerX = 0.49 * surface.backingWidth;
+    const centerY = 0.41 * surface.backingHeight;
+    const expected = (base?.points ?? []).map((point) => ({
+      x: centerX + (point.x - centerX) * 1.6 + 0.08 * surface.backingWidth,
+      y: centerY + (point.y - centerY) * 1.6 - 0.04 * surface.backingHeight,
+    }));
+    expectOutlinePointsClose(placed?.points ?? [], expected);
+  });
+
+  it('changes stamp thickness without moving the centerline', () => {
+    const stroke: InkStroke = {
+      points: [
+        { x: 0.25, y: 0.5, pressure: 0.5 },
+        { x: 0.5, y: 0.5, pressure: 0.5 },
+        { x: 0.75, y: 0.5, pressure: 0.5 },
+      ],
+    };
+    const surface = {
+      cssWidth: 400,
+      cssHeight: 240,
+      backingWidth: 400,
+      backingHeight: 240,
+      devicePixelRatio: 1,
+      viewportTransform: [1, 0, 0, -1, 0, 240] as const,
+    };
+    const base = inkToCanvasOutlines(
+      [stroke],
+      { offsetX: 0, offsetY: 0, scale: 1 },
+      surface,
+      DEFAULT_SIGNING_INK_SIZE,
+    )[0];
+    const thick = inkToCanvasOutlines(
+      [stroke],
+      { offsetX: 0, offsetY: 0, scale: 1 },
+      surface,
+      DEFAULT_SIGNING_INK_SIZE * 1.5,
+    )[0];
+    const baseBounds = base ? outlineBounds(base.points) : undefined;
+    const thickBounds = thick ? outlineBounds(thick.points) : undefined;
+    expect(baseBounds).toBeDefined();
+    expect(thickBounds).toBeDefined();
+    const baseCenterY =
+      ((baseBounds?.top ?? 0) + (baseBounds?.bottom ?? 0)) / 2;
+    const thickCenterY =
+      ((thickBounds?.top ?? 0) + (thickBounds?.bottom ?? 0)) / 2;
+    expect(thickCenterY).toBeCloseTo(baseCenterY, 4);
+    expect((thickBounds?.bottom ?? 0) - (thickBounds?.top ?? 0)).toBeGreaterThan(
+      (baseBounds?.bottom ?? 0) - (baseBounds?.top ?? 0),
+    );
   });
 
   it('keeps fallback geometry paths deterministic', () => {

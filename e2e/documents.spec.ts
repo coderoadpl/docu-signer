@@ -52,15 +52,37 @@ const canvasInkState = async (canvas: Locator) =>
     if (!context) throw new Error('Missing canvas context');
     const data = context.getImageData(0, 0, element.width, element.height).data;
     let pixels = 0;
+    let left = element.width;
+    let right = 0;
+    let top = element.height;
+    let bottom = 0;
     for (let index = 3; index < data.length; index += 4) {
       const alpha = data[index];
-      if (alpha !== undefined && alpha > 0) pixels += 1;
+      if (alpha !== undefined && alpha > 0) {
+        pixels += 1;
+        const pixel = (index - 3) / 4;
+        const x = pixel % element.width;
+        const y = Math.floor(pixel / element.width);
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+        top = Math.min(top, y);
+        bottom = Math.max(bottom, y);
+      }
     }
     return {
       pixels,
       width: element.width,
       height: element.height,
       bounds: element.getBoundingClientRect().toJSON(),
+      inkBounds:
+        pixels > 0
+          ? {
+              left,
+              right,
+              top,
+              bottom,
+            }
+          : undefined,
     };
   });
 
@@ -297,6 +319,73 @@ const placeMassSignature = async (
   await expectCanvasInkGrew(canvas, before);
   await dialog.getByRole('button', { name: 'Użyj podpisu' }).click();
   await expect(dialog).toBeHidden();
+};
+
+const dragSelectedStampLong = async (page: Page) => {
+  const canvas = page.getByRole('application', {
+    name: 'Powierzchnia do rysowania podpisu',
+  });
+  const before = await canvasInkState(canvas);
+  if (!before.inkBounds) throw new Error('Missing stamp ink before drag');
+  const start = {
+    x:
+      before.bounds.x +
+      ((before.inkBounds.left + before.inkBounds.right) / 2 / before.width) *
+        before.bounds.width,
+    y:
+      before.bounds.y +
+      ((before.inkBounds.top + before.inkBounds.bottom) / 2 / before.height) *
+        before.bounds.height,
+  };
+  const target = {
+    x: before.bounds.x + before.bounds.width * 0.18,
+    y: before.bounds.y + before.bounds.height * 0.2,
+  };
+  const pointerId = 903;
+  await canvas.dispatchEvent('pointerdown', {
+    bubbles: true,
+    pointerId,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: start.x,
+    clientY: start.y,
+    pressure: 0.5,
+    width: 12,
+    height: 12,
+  });
+  for (let step = 1; step <= 20; step += 1) {
+    await canvas.dispatchEvent('pointermove', {
+      bubbles: true,
+      pointerId,
+      pointerType: 'touch',
+      isPrimary: true,
+      button: 0,
+      buttons: 1,
+      clientX: start.x + ((target.x - start.x) * step) / 20,
+      clientY: start.y + ((target.y - start.y) * step) / 20,
+      pressure: 0.5,
+      width: 12,
+      height: 12,
+    });
+  }
+  await canvas.dispatchEvent('pointerup', {
+    bubbles: true,
+    pointerId,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    buttons: 0,
+    clientX: target.x,
+    clientY: target.y,
+    pressure: 0,
+    width: 12,
+    height: 12,
+  });
+  await expect
+    .poll(async () => (await canvasInkState(canvas)).inkBounds?.left ?? before.width)
+    .toBeLessThan(before.inkBounds.left - before.width * 0.2);
 };
 
 const signIn = async (page: Page) => {
@@ -687,7 +776,8 @@ test('mass signing can receive a signature from a QR pad browser context', async
     await padPage.getByRole('button', { name: 'Zatwierdź' }).click();
     await expectCanvasInkGrew(desktopCanvas, before);
     await expect(page.getByText('Pad: oczekuje')).toBeVisible();
-    await page.getByRole('button', { name: 'Przejdź' }).click();
+    await dragSelectedStampLong(page);
+    await page.getByRole('button', { name: 'Dalej' }).click();
     await expect(page.getByRole('heading', { name: 'Podsumowanie' })).toBeVisible();
     await expect(page.getByText('Podpisano 1')).toBeVisible();
   } finally {
@@ -741,7 +831,7 @@ test('mass signing signs, skips and signs an already signed document', async ({ 
   ]);
   await page.getByRole('button', { name: 'Usuń' }).click();
   await expect(page.getByRole('button', { name: 'Usuń' })).toBeHidden();
-  await page.getByRole('button', { name: 'Przejdź' }).click();
+  await page.getByRole('button', { name: 'Dalej' }).click();
 
   await expect(page.getByRole('heading', { name: firstTitle })).toBeVisible();
   await expectReviewPdfFitsViewport(page);
@@ -750,11 +840,11 @@ test('mass signing signs, skips and signs an already signed document', async ({ 
     { x: 0.42, y: 0.36 },
     { x: 0.66, y: 0.52 },
   ]);
-  await page.getByRole('button', { name: 'Przejdź' }).click();
+  await page.getByRole('button', { name: 'Dalej' }).click();
 
   await expect(page.getByRole('heading', { name: secondTitle })).toBeVisible();
   await expectReviewPdfFitsViewport(page);
-  await page.getByRole('button', { name: 'Przejdź' }).click();
+  await page.getByRole('button', { name: 'Dalej' }).click();
 
   await expect(page.getByRole('heading', { name: 'Podsumowanie' })).toBeVisible();
   await expect(page.getByText('Podpisano 2')).toBeVisible();

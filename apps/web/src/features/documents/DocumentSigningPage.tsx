@@ -16,6 +16,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   LinearProgress,
   Paper,
   Slider,
@@ -35,6 +36,9 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { InkSurface, SigningPageSurface } from '../../theme.js';
 import {
   DEFAULT_SIGNING_INK_COLOR,
+  DEFAULT_SIGNING_INK_SIZE,
+  MAX_SIGNING_INK_SIZE,
+  MIN_SIGNING_INK_SIZE,
   SIGNING_INK_COLORS,
   appendSigningStamp,
   clampSignaturePlacementToPage,
@@ -166,7 +170,26 @@ interface InkLayer {
   placement: SignaturePlacement;
   color: string;
   selected: boolean;
+  inkSize?: number;
 }
+
+const CloseIcon = () => (
+  <svg
+    aria-hidden="true"
+    focusable="false"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+  >
+    <path
+      d="M6 6l12 12M18 6L6 18"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
 
 const drawOutline = (
   context: CanvasRenderingContext2D,
@@ -214,6 +237,7 @@ const drawInk = (
       layer.strokes,
       layer.placement,
       metrics,
+      layer.inkSize,
     )) {
       drawOutline(context, outline.points);
     }
@@ -554,6 +578,7 @@ const EmptyControls = () => <Box />;
 
 const MassReviewHeader = ({
   document,
+  onClose,
 }: {
   document: {
     docType: keyof typeof DOCUMENT_TYPE_LABELS;
@@ -561,11 +586,17 @@ const MassReviewHeader = ({
     tags: string[];
     title: string;
   };
+  onClose: () => void;
 }) => (
   <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1 }}>
     <Stack
       direction="row"
-      sx={{ alignItems: 'center', gap: 1, minWidth: 0, overflow: 'hidden' }}
+      sx={{
+        alignItems: 'center',
+        gap: 1,
+        minWidth: 0,
+        overflow: 'hidden',
+      }}
     >
       <Typography
         variant="h3"
@@ -584,6 +615,14 @@ const MassReviewHeader = ({
       {document.tags.map((tag) => (
         <Chip key={tag} size="small" label={tag} />
       ))}
+      <Box sx={{ flexGrow: 1 }} />
+      <IconButton
+        aria-label="Zamknij"
+        onClick={onClose}
+        sx={{ minWidth: 44, minHeight: 44 }}
+      >
+        <CloseIcon />
+      </IconButton>
     </Stack>
   </Paper>
 );
@@ -622,25 +661,31 @@ const MassSummary = ({
 );
 
 const StampPlacementControls = ({
+  activeInkSize,
   activePlacement,
   committing,
   label,
+  onInkSizeChange,
   onRemove,
   onResize,
   removeDisabled,
   sliderId,
+  thicknessSliderId,
   marginBottom,
   marginTop,
 }: {
+  activeInkSize?: number;
   activePlacement: SignaturePlacement;
   committing: boolean;
   label: string;
   marginBottom?: number;
   marginTop?: number;
+  onInkSizeChange?: (inkSize: number) => void;
   onRemove: () => void;
   onResize: (placement: SignaturePlacement) => void;
   removeDisabled: boolean;
   sliderId: string;
+  thicknessSliderId?: string;
 }) => (
   <Stack
     direction="row"
@@ -655,6 +700,7 @@ const StampPlacementControls = ({
     <Typography id={sliderId}>Rozmiar</Typography>
     <Slider
       aria-labelledby={sliderId}
+      disabled={committing}
       min={50}
       max={200}
       value={Math.round(activePlacement.scale * 100)}
@@ -667,6 +713,28 @@ const StampPlacementControls = ({
       }}
       sx={{ width: 180, maxWidth: '50vw' }}
     />
+    {activeInkSize !== undefined &&
+    onInkSizeChange &&
+    thicknessSliderId !== undefined ? (
+      <>
+        <Typography id={thicknessSliderId}>Grubość</Typography>
+        <Slider
+          aria-labelledby={thicknessSliderId}
+          disabled={committing}
+          min={Math.round((MIN_SIGNING_INK_SIZE / DEFAULT_SIGNING_INK_SIZE) * 100)}
+          max={Math.round((MAX_SIGNING_INK_SIZE / DEFAULT_SIGNING_INK_SIZE) * 100)}
+          value={Math.round((activeInkSize / DEFAULT_SIGNING_INK_SIZE) * 100)}
+          valueLabelDisplay="auto"
+          valueLabelFormat={(value) => `${value}%`}
+          onChange={(_, value) => {
+            if (typeof value === 'number') {
+              onInkSizeChange((value / 100) * DEFAULT_SIGNING_INK_SIZE);
+            }
+          }}
+          sx={{ width: 180, maxWidth: '50vw' }}
+        />
+      </>
+    ) : null}
     <Button
       color="error"
       onClick={onRemove}
@@ -722,6 +790,8 @@ export const DocumentSigningPage = ({
   const [placement, setPlacement] = useState(DEFAULT_PLACEMENT);
   const [stamps, setStamps] = useState<SigningStamp[]>([]);
   const [selectedStampIndex, setSelectedStampIndex] = useState<number>();
+  const [placementDragActive, setPlacementDragActive] = useState(false);
+  const [massExitConfirming, setMassExitConfirming] = useState(false);
   const [fingerDrawing, setFingerDrawing] = useState(false);
   const [gestureMode, setGestureMode] = useState<SigningGestureMode>(
     detectDefaultGestureMode,
@@ -854,11 +924,20 @@ export const DocumentSigningPage = ({
 
   const returnToList = () => {
     closeRemotePadSession();
+    setSignaturePadOpen(false);
     void navigate({
       to: '/app/documents',
       search: listSearch,
       replace: true,
     });
+  };
+
+  const requestMassExit = () => {
+    if (stamps.length > 0) {
+      setMassExitConfirming(true);
+      return;
+    }
+    returnToList();
   };
 
   const sourceFile = documentQuery.data?.document.files.find(
@@ -873,6 +952,11 @@ export const DocumentSigningPage = ({
   const selectedStamp =
     selectedStampIndex === undefined ? undefined : stamps[selectedStampIndex];
   const activePlacement = selectedStamp?.placement ?? placement;
+  const activeInkSize = selectedStamp?.inkSize ?? DEFAULT_SIGNING_INK_SIZE;
+  const stampTouchActionLocked =
+    placing ||
+    placementDragActive ||
+    signingStampsForPage(stamps, pageIndex).length > 0;
   const pageReady = Boolean(
     metrics && metricsPageNumber === pageNumber && !pageRendering,
   );
@@ -899,6 +983,8 @@ export const DocumentSigningPage = ({
     setPlacement(DEFAULT_PLACEMENT);
     setStamps([]);
     setSelectedStampIndex(undefined);
+    setPlacementDragActive(false);
+    setMassExitConfirming(false);
     setSignaturePadOpen(false);
     setCommitError(undefined);
     currentStrokeRef.current = undefined;
@@ -908,6 +994,18 @@ export const DocumentSigningPage = ({
     lastPenSeenAtRef.current = undefined;
     placementDragRef.current = undefined;
   }, [documentId, fileId]);
+
+  useEffect(() => {
+    const canvas = inkCanvasRef.current;
+    if (!canvas || !placementDragActive) return;
+    const preventTouchMove = (event: TouchEvent) => {
+      if (event.cancelable) event.preventDefault();
+    };
+    canvas.addEventListener('touchmove', preventTouchMove, { passive: false });
+    return () => {
+      canvas.removeEventListener('touchmove', preventTouchMove);
+    };
+  }, [placementDragActive]);
 
   useEffect(() => {
     if (!sourceQuery.data || !signable) return;
@@ -1027,6 +1125,7 @@ export const DocumentSigningPage = ({
           placement: stamp.placement,
           color: stamp.inkColor.canvasColor,
           selected: selectedStampIndex === stampIndex,
+          ...(stamp.inkSize === undefined ? {} : { inkSize: stamp.inkSize }),
         })),
         ...(strokes.length || activeStroke
           ? [
@@ -1061,6 +1160,10 @@ export const DocumentSigningPage = ({
       setSelectedStampIndex(undefined);
     }
   }, [pageIndex, selectedStampIndex, stamps]);
+
+  useEffect(() => {
+    if (stamps.length === 0) setMassExitConfirming(false);
+  }, [stamps.length]);
 
   const materializePadStrokes = useCallback(
     (
@@ -1249,6 +1352,7 @@ export const DocumentSigningPage = ({
     }
     if (placementDragRef.current?.pointerId === event.pointerId) {
       placementDragRef.current = undefined;
+      setPlacementDragActive(false);
       return;
     }
     if (activePointerRef.current !== event.pointerId) return;
@@ -1341,6 +1445,17 @@ export const DocumentSigningPage = ({
       return;
     }
     setStamps(updateSigningStampPlacement(stamps, selectedStampIndex, next));
+  };
+
+  const resizeSelectedInk = (inkSize: number) => {
+    if (selectedStampIndex === undefined) return;
+    setStamps((current) =>
+      current.map((stamp, index) =>
+        index === selectedStampIndex
+          ? createSigningStamp({ ...stamp, inkSize })
+          : createSigningStamp(stamp),
+      ),
+    );
   };
 
   const flattenedStamps = async (): Promise<
@@ -1476,7 +1591,10 @@ export const DocumentSigningPage = ({
     <SigningShell
       header={
         massMode ? (
-          <MassReviewHeader document={documentQuery.data.document} />
+          <MassReviewHeader
+            document={documentQuery.data.document}
+            onClose={requestMassExit}
+          />
         ) : (
           <PageHeader fileName={sourceFile.fileName} onClose={close} />
         )
@@ -1679,6 +1797,7 @@ export const DocumentSigningPage = ({
             </Stack>
             {placing ? (
               <StampPlacementControls
+                {...(selectedStamp ? { activeInkSize } : {})}
                 activePlacement={activePlacement}
                 committing={committing}
                 label={
@@ -1688,6 +1807,12 @@ export const DocumentSigningPage = ({
                 }
                 marginTop={1}
                 onRemove={removeSelectedStamp}
+                {...(selectedStamp
+                  ? {
+                      onInkSizeChange: resizeSelectedInk,
+                      thicknessSliderId: 'signature-thickness',
+                    }
+                  : {})}
                 onResize={resizeActivePlacement}
                 removeDisabled={selectedStampIndex === undefined}
                 sliderId="signature-size"
@@ -1707,16 +1832,45 @@ export const DocumentSigningPage = ({
             sx={{ px: { xs: 1.5, md: 3 }, py: 1.5, touchAction: 'manipulation' }}
           >
             {commitError ? <Alert severity="error" sx={{ mb: 1 }}>{commitError}</Alert> : null}
+            {massExitConfirming ? (
+              <Alert
+                severity="warning"
+                sx={{ mb: 1 }}
+                action={
+                  <Stack direction="row" sx={{ gap: 1 }}>
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={() => setMassExitConfirming(false)}
+                    >
+                      Wróć
+                    </Button>
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={returnToList}
+                    >
+                      Odrzuć i zamknij
+                    </Button>
+                  </Stack>
+                }
+              >
+                Ten dokument ma niezapisane odciski.
+              </Alert>
+            ) : null}
             {selectedStamp ? (
               <StampPlacementControls
+                activeInkSize={activeInkSize}
                 activePlacement={activePlacement}
                 committing={committing}
                 label={`Wybrany odcisk: strona ${selectedStamp.pageIndex + 1}`}
                 marginBottom={1}
+                onInkSizeChange={resizeSelectedInk}
                 onRemove={removeSelectedStamp}
                 onResize={resizeActivePlacement}
                 removeDisabled={selectedStampIndex === undefined}
                 sliderId="mass-signature-size"
+                thicknessSliderId="mass-signature-thickness"
               />
             ) : null}
             <Stack
@@ -1777,7 +1931,7 @@ export const DocumentSigningPage = ({
                     ? 'Zapisywanie…'
                     : massProceedBlockedByReadiness
                       ? 'Renderowanie…'
-                      : 'Przejdź'}
+                      : 'Dalej'}
                 </Button>
               </Stack>
             </Stack>
@@ -1856,7 +2010,9 @@ export const DocumentSigningPage = ({
               height: '100%',
               cursor: gestureMode === 'draw' ? 'crosshair' : 'grab',
               touchAction:
-                gestureMode === 'draw' ? 'none' : 'pan-x pan-y pinch-zoom',
+                gestureMode === 'draw' || stampTouchActionLocked
+                  ? 'none'
+                  : 'pan-x pan-y pinch-zoom',
             }}
             onPointerDown={(event) => {
               if (!pageReady || !metrics || committing) return;
@@ -1891,6 +2047,7 @@ export const DocumentSigningPage = ({
                   placement: hit.stamp.placement,
                   stampIndex: hit.stampIndex,
                 };
+                setPlacementDragActive(true);
                 event.currentTarget.setPointerCapture(event.pointerId);
                 event.preventDefault();
                 return;
@@ -1906,6 +2063,7 @@ export const DocumentSigningPage = ({
                   clientY: event.clientY,
                   placement,
                 };
+                setPlacementDragActive(true);
                 event.currentTarget.setPointerCapture(event.pointerId);
                 event.preventDefault();
                 return;
@@ -1934,6 +2092,7 @@ export const DocumentSigningPage = ({
               if (gestureMode === 'draw' && touchIgnoredForPenPriority(event)) {
                 if (placementDragRef.current?.pointerId === event.pointerId) {
                   placementDragRef.current = undefined;
+                  setPlacementDragActive(false);
                 }
                 cancelActiveTouchStroke();
                 event.preventDefault();

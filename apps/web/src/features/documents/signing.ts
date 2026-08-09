@@ -37,6 +37,7 @@ export interface SigningStamp {
   strokes: InkStroke[];
   inkColor: SigningInkColor;
   placement: SignaturePlacement;
+  inkSize?: number;
 }
 
 export interface CanvasPdfMetrics {
@@ -94,7 +95,9 @@ export const signingInkColorById = (id: SigningInkColorId): SigningInkColor =>
   SIGNING_INK_COLORS.find((color) => color.id === id) ?? DEFAULT_SIGNING_INK_COLOR;
 
 const SIGNING_PEN_PRIORITY_MS = 500;
-const SIGNING_INK_SIZE_PX = 4;
+export const DEFAULT_SIGNING_INK_SIZE = 4;
+export const MIN_SIGNING_INK_SIZE = 2;
+export const MAX_SIGNING_INK_SIZE = 6;
 
 // WHY: these options keep pressure-sensitive ink legible for signatures while
 // damping direction-change thorns seen with the previous centerline renderer.
@@ -276,6 +279,7 @@ export const placeInkPoint = (
 };
 
 export const createSigningStamp = ({
+  inkSize,
   pageIndex,
   strokes,
   inkColor,
@@ -285,6 +289,7 @@ export const createSigningStamp = ({
   strokes: cloneStrokes(strokes),
   inkColor,
   placement: { ...placement },
+  inkSize: inkSize ?? DEFAULT_SIGNING_INK_SIZE,
 });
 
 export const centeredInkPlacement = (
@@ -508,9 +513,6 @@ export const canvasCssPointToPdf = (
 
 const svgNumber = (value: number): string => String(Number(value.toFixed(4)));
 
-const outlinePathSize = (placement: SignaturePlacement): number =>
-  SIGNING_INK_SIZE_PX * placement.scale;
-
 const average = (first: number, second: number): number => (first + second) / 2;
 
 export const outlinePointsToSvgPath = (
@@ -543,23 +545,30 @@ const inkToCssOutlines = (
   strokes: InkStroke[],
   placement: SignaturePlacement,
   metrics: CanvasPdfMetrics,
+  inkSize = DEFAULT_SIGNING_INK_SIZE,
 ): InkOutlinePath[] =>
   strokes.flatMap((stroke) => {
+    const bounds = inkBounds(strokes);
+    if (!bounds) return [];
+    const centerX = ((bounds.left + bounds.right) / 2) * metrics.cssWidth;
+    const centerY = ((bounds.top + bounds.bottom) / 2) * metrics.cssHeight;
     const outline = getStroke(
       stroke.points.map((point) => {
-        const placed = placeInkPoint(point, strokes, placement);
         return {
-          x: placed.x * metrics.cssWidth,
-          y: placed.y * metrics.cssHeight,
-          pressure: placed.pressure,
+          x: point.x * metrics.cssWidth,
+          y: point.y * metrics.cssHeight,
+          pressure: point.pressure,
         };
       }),
       {
         ...PERFECT_FREEHAND_INK_OPTIONS,
-        size: outlinePathSize(placement),
+        size: clamp(inkSize, MIN_SIGNING_INK_SIZE, MAX_SIGNING_INK_SIZE),
         simulatePressure: stroke.simulatePressure ?? false,
       },
-    ).map(([x, y]) => ({ x, y }));
+    ).map(([x, y]) => ({
+      x: centerX + (x - centerX) * placement.scale + placement.offsetX * metrics.cssWidth,
+      y: centerY + (y - centerY) * placement.scale + placement.offsetY * metrics.cssHeight,
+    }));
     const path = outlinePointsToSvgPath(outline);
     return path.length > 0 ? [{ path, points: outline }] : [];
   });
@@ -568,8 +577,9 @@ export const inkToCanvasOutlines = (
   strokes: InkStroke[],
   placement: SignaturePlacement,
   metrics: CanvasPdfMetrics,
+  inkSize?: number,
 ): InkOutlinePath[] =>
-  inkToCssOutlines(strokes, placement, metrics).map((outline) => {
+  inkToCssOutlines(strokes, placement, metrics, inkSize).map((outline) => {
     const points = outline.points.map((point) => ({
       x: (point.x / metrics.cssWidth) * metrics.backingWidth,
       y: (point.y / metrics.cssHeight) * metrics.backingHeight,
@@ -584,8 +594,9 @@ export const inkToPdfPaths = (
   strokes: InkStroke[],
   placement: SignaturePlacement,
   metrics: CanvasPdfMetrics,
+  inkSize?: number,
 ): InkOutlinePath[] =>
-  inkToCssOutlines(strokes, placement, metrics).map((outline) => {
+  inkToCssOutlines(strokes, placement, metrics, inkSize).map((outline) => {
     const points = outline.points.map(({ x, y }) => {
       const point = canvasCssPointToPdf({ x, y }, metrics);
       return {
