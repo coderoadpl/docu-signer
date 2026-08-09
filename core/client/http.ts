@@ -2,7 +2,11 @@ import { type z } from 'zod';
 
 import {
   API_ROUTES,
+  apiTokenCreateOutputSchema,
+  apiTokenListOutputSchema,
+  apiTokenRevokeOutputSchema,
   authConfigOutputSchema,
+  documentApproveOutputSchema,
   documentCreateOutputSchema,
   documentDeleteOutputSchema,
   documentFileDeleteOutputSchema,
@@ -34,6 +38,7 @@ import {
   internal,
   ok,
   type AppError,
+  type CreateApiToken,
   type CreateSavedSearch,
   type CreateDocument,
   type DocumentListFilter,
@@ -267,6 +272,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  approveDocument: (documentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentApprove.method,
+      pathWith(API_ROUTES.documentApprove.path, { documentId }),
+      documentApproveOutputSchema,
+      {},
+      signal,
+    ),
   deleteDocument: (documentId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -399,6 +413,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       pathWith(API_ROUTES.savedSearchDelete.path, { savedSearchId }),
       savedSearchDeleteOutputSchema,
       undefined,
+      signal,
+    ),
+  createApiToken: (input: CreateApiToken, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiTokensCreate.method,
+      API_ROUTES.apiTokensCreate.path,
+      apiTokenCreateOutputSchema,
+      input,
+      signal,
+    ),
+  listApiTokens: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiTokens.method,
+      API_ROUTES.apiTokens.path,
+      apiTokenListOutputSchema,
+      undefined,
+      signal,
+    ),
+  revokeApiToken: (apiTokenId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiTokenRevoke.method,
+      pathWith(API_ROUTES.apiTokenRevoke.path, { apiTokenId }),
+      apiTokenRevokeOutputSchema,
+      {},
       signal,
     ),
   documentFileContentUrl: (documentId: string, fileId: string) =>

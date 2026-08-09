@@ -6,6 +6,7 @@ import {
   exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
+  forbidden,
   MAX_DOCUMENT_EXPORT_FILES,
   MAX_DOCUMENT_EXPORT_BYTES,
   moveDocumentFileSchema,
@@ -66,6 +67,30 @@ const findDocument = async (
   return found ? ok(found) : err(notFound('Document not found'));
 };
 
+const tokenHasWrite = (ctx: Ctx): boolean =>
+  ctx.identity.apiToken?.scopes.includes('write') ?? false;
+
+const tokenNeedsDraftDocument = (ctx: Ctx): boolean =>
+  ctx.identity.apiToken !== null && !tokenHasWrite(ctx);
+
+const forbidTokenDelete = (ctx: Ctx): Result<void, AppError> | null =>
+  ctx.identity.apiToken === null
+    ? null
+    : err(forbidden('API tokens cannot delete documents or files'));
+
+const requireDraftDocumentForToken = async (
+  ctx: Ctx,
+  tenantId: string,
+  documentId: string,
+  deps: DocumentDeps,
+): Promise<Result<Document, AppError>> => {
+  const document = await findDocument(tenantId, documentId, deps);
+  if (!document.ok) return document;
+  return !tokenNeedsDraftDocument(ctx) || document.value.draft
+    ? document
+    : err(forbidden('write:draft tokens can only modify draft documents'));
+};
+
 export const createDocument = async (
   ctx: Ctx,
   input: CreateDocument,
@@ -75,6 +100,9 @@ export const createDocument = async (
   if (!scope.ok) return scope;
   const parsed = createDocumentSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document', parsed.error.flatten()));
+  if (tokenNeedsDraftDocument(ctx) && parsed.data.draft !== true) {
+    return err(forbidden('write:draft tokens can only create draft documents'));
+  }
   return ok(
     await deps.documents.create({
       id: deps.ids.nextId(),
@@ -83,6 +111,7 @@ export const createDocument = async (
       periodStart: parsed.data.periodStart ?? null,
       periodEnd: parsed.data.periodEnd ?? null,
       person: parsed.data.person ?? null,
+      draft: parsed.data.draft ?? false,
     }),
   );
 };
@@ -132,6 +161,8 @@ export const updateDocument = async (
   if (!scope.ok) return scope;
   const parsed = updateDocumentSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document', parsed.error.flatten()));
+  const document = await requireDraftDocumentForToken(ctx, scope.value, documentId, deps);
+  if (!document.ok) return document;
   const updated = await deps.documents.update(scope.value, documentId, {
     ...parsed.data,
     periodStart: parsed.data.periodStart ?? null,
@@ -141,6 +172,17 @@ export const updateDocument = async (
   return updated ? ok(updated) : err(notFound('Document not found'));
 };
 
+export const approveDocument = async (
+  ctx: Ctx,
+  documentId: string,
+  deps: DocumentDeps,
+): Promise<Result<Document, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:approve');
+  if (!scope.ok) return scope;
+  const approved = await deps.documents.approve(scope.value, documentId);
+  return approved ? ok(approved) : err(notFound('Document not found'));
+};
+
 export const deleteDocument = async (
   ctx: Ctx,
   documentId: string,
@@ -148,6 +190,8 @@ export const deleteDocument = async (
 ): Promise<Result<void, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
+  const tokenDeleteDenial = forbidTokenDelete(ctx);
+  if (tokenDeleteDenial) return tokenDeleteDenial;
   const document = await findDocument(scope.value, documentId, deps);
   if (!document.ok) return document;
   const files = await deps.documents.listFiles(scope.value, documentId);
@@ -186,6 +230,8 @@ export const requestFileUpload = async (
 ): Promise<Result<FileUploadTarget, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
+  const document = await requireDraftDocumentForToken(ctx, scope.value, documentId, deps);
+  if (!document.ok) return document;
   return requestUpload(scope.value, documentId, input, deps);
 };
 
@@ -228,6 +274,8 @@ export const finalizeFileUpload = async (
 ): Promise<Result<DocumentFile, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
+  const document = await requireDraftDocumentForToken(ctx, scope.value, documentId, deps);
+  if (!document.ok) return document;
   return finalizeUpload(scope.value, documentId, input, deps);
 };
 
@@ -239,6 +287,8 @@ export const serverUpload = async (
 ): Promise<Result<DocumentFile, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
+  const document = await requireDraftDocumentForToken(ctx, scope.value, documentId, deps);
+  if (!document.ok) return document;
   const requested = await requestUpload(scope.value, documentId, input, deps);
   if (!requested.ok) return requested;
   const stored = await deps.storage.put(requested.value.key, input.bytes, input.contentType);
@@ -268,6 +318,8 @@ export const removeFile = async (
 ): Promise<Result<void, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
+  const tokenDeleteDenial = forbidTokenDelete(ctx);
+  if (tokenDeleteDenial) return tokenDeleteDenial;
   const file = await deps.documents.findFile(scope.value, documentId, fileId);
   if (!file) return err(notFound('Document file not found'));
   const removed = await deps.storage.delete(file.storageKey);
@@ -289,6 +341,9 @@ export const moveDocumentFile = async (
   if (!parsed.success) return err(validation('Invalid document payload', parsed.error.flatten()));
   const source = await findDocument(scope.value, documentId, deps);
   if (!source.ok) return source;
+  if (tokenNeedsDraftDocument(ctx) && !source.value.draft) {
+    return err(forbidden('write:draft tokens can only modify draft documents'));
+  }
   const file = await deps.documents.findFile(scope.value, documentId, fileId);
   if (!file) return err(notFound('Document file not found'));
   const created = await deps.documents.create({
@@ -303,6 +358,7 @@ export const moveDocumentFile = async (
       parsed.data.periodEnd === undefined ? source.value.periodEnd : parsed.data.periodEnd,
     person: source.value.person,
     tags: source.value.tags,
+    draft: source.value.draft,
   });
   const moved = await deps.documents.moveFileToDocument(
     scope.value,

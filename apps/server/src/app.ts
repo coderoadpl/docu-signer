@@ -5,6 +5,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import {
   API_PATHS,
   API_ROUTES,
+  apiTokenCreateInputSchema,
   TENANT_HEADER,
   documentCreateInputSchema,
   documentFileMoveInputSchema,
@@ -18,6 +19,7 @@ import {
 } from '#core/contract/index.js';
 import {
   err,
+  forbidden,
   internal,
   notFound,
   ok,
@@ -26,6 +28,8 @@ import {
   type Identity,
 } from '#core/domain/index.js';
 import {
+  approveDocument,
+  createApiToken,
   createDocument,
   createSavedSearch,
   deleteDocument,
@@ -36,10 +40,13 @@ import {
   getFileContent,
   getFileExport,
   listDocuments,
+  listApiTokens,
   listSavedSearches,
   moveDocumentFile,
   removeFile,
+  resolveApiTokenIdentity,
   resolveIdentity,
+  revokeApiToken,
   requestFileUpload,
   serverUpload,
   updateDocument,
@@ -73,6 +80,15 @@ const INLINE_DOCUMENT_CONTENT_TYPES = [
   'image/png',
   'image/webp',
 ] as const;
+const API_TOKEN_PREFIX = 'pat_';
+
+const bearerToken = (authorization: string | undefined): string | null => {
+  if (authorization === undefined) return null;
+  const [scheme, value, extra] = authorization.trim().split(/\s+/);
+  return scheme?.toLowerCase() === 'bearer' && value !== undefined && extra === undefined
+    ? value
+    : null;
+};
 
 const attachmentHeaders = (
   fileName: string,
@@ -196,15 +212,19 @@ export const buildApp = (deps: AppDeps) => {
   registerPublicRoutes(app, deps);
 
   app.use('/api/*', async (c, next) => {
-    const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
-    const identity = await resolveIdentity(
-      user,
-      {
-        host: c.req.header('host') ?? '',
-        tenantHeader: c.req.header(TENANT_HEADER) ?? null,
-      },
-      deps,
-    );
+    const requestInfo = {
+      host: c.req.header('host') ?? '',
+      tenantHeader: c.req.header(TENANT_HEADER) ?? null,
+    };
+    const bearer = bearerToken(c.req.header('authorization'));
+    const identity =
+      bearer?.startsWith(API_TOKEN_PREFIX) === true
+        ? await resolveApiTokenIdentity(bearer, requestInfo, deps)
+        : await resolveIdentity(
+            await deps.authPort.getAuthenticatedUser(c.req.raw.headers),
+            requestInfo,
+            deps,
+          );
     if (!identity.ok) return respond(identity);
     c.set('identity', identity.value);
     await next();
@@ -212,6 +232,9 @@ export const buildApp = (deps: AppDeps) => {
 
   app.get(API_PATHS.me, (c) => {
     const identity = c.get('identity');
+    if (identity.apiToken !== null) {
+      return respond(err(forbidden('API tokens cannot access account identity')));
+    }
     return respond(
       ok({
         userId: identity.userId,
@@ -242,6 +265,7 @@ export const buildApp = (deps: AppDeps) => {
       dateFrom: c.req.query('dateFrom'),
       dateTo: c.req.query('dateTo'),
       signatureStatus: c.req.query('signatureStatus'),
+      draft: c.req.query('draft'),
     });
     if (!parsed.success) {
       return respond(err(validation('Invalid document filters', parsed.error.flatten())));
@@ -280,6 +304,15 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ document: result.value }) : result);
   });
 
+  app.post(API_ROUTES.documentApprove.path, async (c) => {
+    const result = await approveDocument(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
   app.delete(API_ROUTES.documentDelete.path, async (c) => {
     const result = await deleteDocument(
       ctxOf(c.get('identity')),
@@ -287,6 +320,34 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ deleted: true as const }) : result);
+  });
+
+  app.get(API_ROUTES.apiTokens.path, async (c) => {
+    const result = await listApiTokens(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ apiTokens: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.apiTokensCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = apiTokenCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid API token payload', parsed.error.flatten())));
+    }
+    const result = await createApiToken(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(
+      result.ok
+        ? ok({ apiToken: result.value.token, value: result.value.value })
+        : result,
+    );
+  });
+
+  app.post(API_ROUTES.apiTokenRevoke.path, async (c) => {
+    const result = await revokeApiToken(
+      ctxOf(c.get('identity')),
+      c.req.param('apiTokenId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ revoked: true as const }) : result);
   });
 
   app.post(API_ROUTES.documentFileUploadRequest.path, async (c) => {
