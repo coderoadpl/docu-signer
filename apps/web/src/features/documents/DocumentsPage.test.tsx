@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -74,10 +74,9 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
-    await userEvent.type(
-      screen.getByLabelText('Szukaj po tytule'),
-      'Protokół',
-    );
+    fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
+      target: { value: 'Protokół' },
+    });
 
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
@@ -116,11 +115,15 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
-    await userEvent.click(screen.getByLabelText('Osoba'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Osoba' }), {
+      target: { value: 'Anna' },
+    });
     await userEvent.click(await screen.findByRole('option', { name: 'Anna Nowak' }));
     await waitFor(() => expect(seen).toHaveBeenCalledWith({ person: 'Anna Nowak' }));
 
-    await userEvent.click(screen.getByLabelText('Tag'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
+      target: { value: 'podpis' },
+    });
     await userEvent.click(await screen.findByRole('option', { name: 'podpisane' }));
     await waitFor(() =>
       expect(seen).toHaveBeenCalledWith({
@@ -179,7 +182,9 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
-    await userEvent.type(screen.getByLabelText('Szukaj po tytule'), 'brak');
+    fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
+      target: { value: 'brak' },
+    });
     expect(
       await screen.findByRole('heading', {
         name: 'Brak wyników dla tych filtrów',
@@ -321,7 +326,9 @@ describe('DocumentsPage', () => {
 
     await screen.findAllByText('Umowa z Anną');
     expect(screen.getByLabelText('Tag')).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText('Tag'), 'odbiór');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
+      target: { value: 'odbiór' },
+    });
     await userEvent.click(screen.getByLabelText('Status podpisu'));
     await userEvent.click(await screen.findByRole('option', { name: 'Podpisane' }));
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz teczkę' }));
@@ -329,7 +336,9 @@ describe('DocumentsPage', () => {
     expect(
       within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane'),
     ).toBeInTheDocument();
-    await userEvent.type(within(dialog).getByLabelText('Nazwa'), 'Odbiór');
+    fireEvent.change(within(dialog).getByLabelText('Nazwa'), {
+      target: { value: 'Odbiór' },
+    });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Zapisz teczkę' }));
 
     await waitFor(() =>
@@ -338,7 +347,12 @@ describe('DocumentsPage', () => {
         filter: { tag: 'odbiór', signatureStatus: 'signed' },
       }),
     );
-    await userEvent.clear(screen.getByLabelText('Tag'));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Zapisz teczkę' })).not.toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
+      target: { value: '' },
+    });
     await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
     expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
     expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane')).toBeInTheDocument();
@@ -384,18 +398,18 @@ describe('DocumentsPage', () => {
     if (!addButton) throw new Error('Missing add document button');
     await userEvent.click(addButton);
     const dialog = await screen.findByRole('dialog');
-    await userEvent.type(
-      within(dialog).getByRole('textbox', { name: 'Tytuł' }),
-      'Nowy dokument',
-    );
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Tytuł' }), {
+      target: { value: 'Nowy dokument' },
+    });
     expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('');
     await userEvent.click(within(dialog).getByText('Okres'));
-    await userEvent.type(within(dialog).getByLabelText('Od'), '2026-07-01');
+    fireEvent.change(within(dialog).getByLabelText('Od'), {
+      target: { value: '2026-07-01' },
+    });
     expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('2026-07-01');
-    await userEvent.type(
-      within(dialog).getByRole('combobox', { name: 'Osoba' }),
-      'Anna Nowak',
-    );
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Osoba' }), {
+      target: { value: 'Anna Nowak' },
+    });
     await userEvent.type(
       within(dialog).getByRole('combobox', { name: 'Tagi' }),
       'zarząd,ważne{Enter}',
@@ -441,9 +455,9 @@ describe('DocumentsPage', () => {
     expect(title).toHaveFocus();
     expect(title).toHaveAccessibleDescription('Tytuł jest wymagany');
 
-    await userEvent.type(title, 'Nowy dokument');
+    fireEvent.change(title, { target: { value: 'Nowy dokument' } });
     const date = within(dialog).getByLabelText('Data podpisania');
-    await userEvent.clear(date);
+    fireEvent.change(date, { target: { value: '' } });
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );

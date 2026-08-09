@@ -5,6 +5,7 @@ import { serverEnvSchema } from '#core/server/config.js';
 import {
   selectEmailPort,
   selectGoogleSettings,
+  selectPasswordResetEnabled,
   selectStoragePort,
 } from './composition.js';
 import type { Env } from './env.js';
@@ -58,6 +59,36 @@ describe('selectGoogleSettings', () => {
   it('wires Google when both keys are present', () => {
     const google = selectGoogleSettings(env({ GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'secret' }));
     expect(google).toEqual({ clientId: 'id', clientSecret: 'secret' });
+  });
+});
+
+describe('selectPasswordResetEnabled', () => {
+  it('is enabled for local dev and CI Mailpit', () => {
+    expect(selectPasswordResetEnabled(env({}))).toBe(true);
+  });
+
+  it('is hidden on deploys that still point at the local Mailpit defaults', () => {
+    expect(selectPasswordResetEnabled(env({ VERCEL: '1', SECURE_COOKIES: true }))).toBe(false);
+  });
+
+  it('is enabled on deploys with an explicit SMTP sender', () => {
+    expect(selectPasswordResetEnabled(env({
+      VERCEL: '1',
+      SECURE_COOKIES: true,
+      SMTP_HOST: 'smtp.example.com',
+      EMAIL_FROM: 'Podpisy <no-reply@example.com>',
+    }))).toBe(true);
+  });
+
+  it('is enabled on deploys with a complete SES block', () => {
+    expect(selectPasswordResetEnabled(env({
+      VERCEL: '1',
+      SECURE_COOKIES: true,
+      EMAIL_TRANSPORT: 'ses',
+      AWS_REGION: 'eu-central-1',
+      AWS_ACCESS_KEY_ID: 'AKIA-test',
+      AWS_SECRET_ACCESS_KEY: 'secret',
+    }))).toBe(true);
   });
 });
 

@@ -66,6 +66,7 @@ const baseDeps = (): AppDeps => ({
   },
   email: { sendMail: async () => {} },
   googleEnabled: false,
+  passwordResetEnabled: true,
   tenants: {
     findById: async () => null,
     findBySlug: async () => null,

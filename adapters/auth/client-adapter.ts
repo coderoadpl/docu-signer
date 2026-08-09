@@ -162,8 +162,21 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
       return ok(authSessionResult(response.data, token));
     },
     signOut: async () => toResult(undefined, (await client.signOut()).error),
+    changePassword: async ({ currentPassword, newPassword, revokeOtherSessions }) =>
+      toResult(
+        undefined,
+        (await client.changePassword({ currentPassword, newPassword, revokeOtherSessions })).error,
+      ),
     requestMagicLink: async ({ email, callbackURL }) => {
       const response = await client.signIn.magicLink({ email, ...(callbackURL ? { callbackURL } : {}) });
+      return toResult(undefined, response.error);
+    },
+    requestPasswordReset: async ({ email, redirectTo }) => {
+      const response = await client.requestPasswordReset({ email, redirectTo });
+      return toResult(undefined, response.error);
+    },
+    resetPassword: async ({ token, newPassword }) => {
+      const response = await client.resetPassword({ token, newPassword });
       return toResult(undefined, response.error);
     },
     signInSocial: async ({ provider, callbackURL }) => {
@@ -273,10 +286,20 @@ export const createCliAuthAdapter = (
       const result = await postCliAuth(baseUrl, '/api/auth/sign-out', {}, current);
       return result.ok ? ok(undefined) : result;
     },
+    changePassword: async (input) => {
+      const result = await postWithSession('/api/auth/change-password', input, null, true);
+      return result.ok ? ok(undefined) : result;
+    },
     requestMagicLink: async ({ email, callbackURL }) => {
       const result = await postCliAuth(baseUrl, '/api/auth/sign-in/magic-link', { email, ...(callbackURL ? { callbackURL } : {}) }, null);
       return result.ok ? ok(undefined) : result;
     },
+    requestPasswordReset: async ({ email, redirectTo }) => {
+      const result = await postCliAuth(baseUrl, '/api/auth/request-password-reset', { email, redirectTo }, null);
+      return result.ok ? ok(undefined) : result;
+    },
+    resetPassword: async () =>
+      err(appError('validation', 'Finish the reset from the emailed link; it opens the web app.')),
     signInSocial: async ({ provider, callbackURL }) => {
       const result = await postCliAuth(baseUrl, '/api/auth/sign-in/social', { provider, ...(callbackURL ? { callbackURL } : {}) }, null);
       if (!result.ok) return result;

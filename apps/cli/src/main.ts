@@ -69,6 +69,11 @@ const loginArgsSchema = z.object({
   password: z.string().min(1),
   code: z.string().trim().min(1).optional(),
 });
+const changePasswordArgsSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(1),
+  signOutOtherSessions: z.boolean(),
+});
 type LoginInput = z.output<typeof loginArgsSchema>;
 interface LoginActionCtx {
   auth: Pick<AuthClientPort, 'signIn' | 'verifyTotp'>;
@@ -76,6 +81,7 @@ interface LoginActionCtx {
   saveToken: (token: string) => void;
 }
 const magicLinkArgsSchema = z.object({ email: z.string().trim().min(1) });
+const passwordResetArgsSchema = z.object({ email: z.string().trim().min(1) });
 
 // Merged global options (Commander parses them onto the root program). They flow
 // straight into transport, so they are zod-parsed like every other boundary:
@@ -272,6 +278,54 @@ program
     }
     saveActiveProfile(ctx, { token: followed.value.token });
     emit(ok({ signedIn: true, email: input.email }), ctx.json, () => `signed in as ${input.email} via magic link`);
+  });
+
+const account = program.command('account').description('Manage the signed-in account');
+
+account
+  .command('change-password')
+  .description('Change the account password')
+  .requiredOption('--current-password <password>')
+  .requiredOption('--new-password <password>')
+  .option('--sign-out-other-sessions', 'invalidate every other active session', false)
+  .action(async (options: { currentPassword: string; newPassword: string; signOutOtherSessions: boolean }) => {
+    const ctx = cliCtx();
+    const input = parseArgs(changePasswordArgsSchema, options, ctx.json);
+    if (input === undefined) return;
+    const result = await ctx.auth.changePassword({
+      currentPassword: input.currentPassword,
+      newPassword: input.newPassword,
+      revokeOtherSessions: input.signOutOtherSessions,
+    });
+    emit(
+      result.ok
+        ? ok({ changed: true, revokedOtherSessions: input.signOutOtherSessions })
+        : result,
+      ctx.json,
+      () =>
+        input.signOutOtherSessions
+          ? 'password changed; other sessions signed out'
+          : 'password changed',
+    );
+  });
+
+account
+  .command('request-password-reset')
+  .description('Email a password-reset link; completing the reset happens from the web link.')
+  .requiredOption('--email <email>')
+  .action(async (options: { email: string }) => {
+    const ctx = cliCtx();
+    const input = parseArgs(passwordResetArgsSchema, options, ctx.json);
+    if (input === undefined) return;
+    const result = await ctx.auth.requestPasswordReset({
+      email: input.email,
+      redirectTo: new URL('/reset-password', ctx.apiUrl).toString(),
+    });
+    emit(
+      result.ok ? ok({ requested: true, email: input.email }) : result,
+      ctx.json,
+      () => `password-reset link requested for ${input.email} — if that account exists, open the link from your inbox (dev/CI: Mailpit)`,
+    );
   });
 
 program.command('logout').description('Drop the stored session token').action(async () => {

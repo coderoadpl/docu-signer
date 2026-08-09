@@ -1062,8 +1062,9 @@ code.
 
 - `AuthPort` (server): request headers → `AuthenticatedUser | null`. Better Auth.
 - `AuthClientPort` (client): sign-up/in/out **plus the provider auth methods**
-  (US-026/US-028a) — `requestMagicLink`, `signInSocial`, TOTP 2FA
-  (`enableTwoFactor`/`verifyTotp`/`disableTwoFactor`), and passkeys
+  (US-026/US-028a) — `changePassword`, password reset
+  (`requestPasswordReset`/`resetPassword`), `requestMagicLink`, `signInSocial`,
+  TOTP 2FA (`enableTwoFactor`/`verifyTotp`/`disableTwoFactor`), and passkeys
   (`registerPasskey`/`listPasskeys`/`removePasskey`/`signInPasskey`;
   `listPasskeys` is the one read-tagged method, since the roster lives on the
   provider surface, not the contract API). Better Auth client (magic-link +
@@ -1078,10 +1079,10 @@ code.
   Amazon SES SMTP creds included) and `ses` (Amazon SES direct over the SESv2 HTTP
   API, standard AWS_* credentials). There is **no dev transport**: dev/e2e/CI run
   the real `smtp` adapter pointed at a local **Mailpit** (docker-compose.dev.yml)
-  that captures real sends instead of delivering — the magic-link smoke/e2e phases
-  read the message back over Mailpit's HTTP API to recover the link, so there is
-  no in-app dev route to keep off production. The magic-link sender in
-  `create-auth.ts` is one consumer of `sendMail`, not the port's shape.
+  that captures real sends instead of delivering — the magic-link and password
+  reset gates read the message back over Mailpit's HTTP API to recover the link,
+  so there is no in-app dev route to keep off production. The auth mail senders
+  in `create-auth.ts` are consumers of `sendMail`, not the port's shape.
 - `DocumentRepository`: tenant-scoped archive metadata and file records.
 - `StoragePort`: private document bytes, metadata and upload targets.
 - `TenantDomainRepository`, `TenantRepository`, `TenantAccessReader`: read-only
@@ -1093,10 +1094,12 @@ code.
 **BUILT** (US-026/US-028a, A1 sub-package 4): the provider auth methods that were
 "normative when triggered" are now wired — this package was the trigger.
 Magic-link sign-in (`AuthClientPort.requestMagicLink`, the Better Auth magic-link
-plugin behind `EmailPort`), social sign-in (Google via `signInSocial`, wired only
-when `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are both present — the login page
-reads a public `/api/config` flag to show its button), and TOTP 2FA (the Better
-Auth two-factor plugin). Passkeys (`@better-auth/passkey`) are now **wired too**:
+plugin behind `EmailPort`), password change/reset (`changePassword`,
+`requestPasswordReset`, `resetPassword`; reset mail also goes through
+`EmailPort`), social sign-in (Google via `signInSocial`, wired only when
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are both present — the login page reads
+a public `/api/config` flag to show its button), and TOTP 2FA (the Better Auth
+two-factor plugin). Passkeys (`@better-auth/passkey`) are now **wired too**:
 the package pinned a `better-call` whose optional `zod@^4` peer conflicted with
 this tree's former `zod@^3`, so the migration to `zod@^4` was the named unblock —
 done first, gates green, before the plugin went in. The server plugin registers a
@@ -1111,8 +1114,8 @@ exists.
 
 ## Storage and email ports
 
-Podpisy builds both binary storage for document files and transactional mail for
-magic links. Both ports live in `core/server`, are
+Podpisy builds both binary storage for document files and transactional auth
+mail. Both ports live in `core/server`, are
 instantiated only in the composition root, and are called only from use-cases —
 never from routes, never from adapters. Ports return plain `Promise`; the
 use-case wraps the result in `Result<T, AppError>`, matching the existing
@@ -1139,17 +1142,17 @@ decision).
 - Shape as built: `sendMail({ to, subject, text, html?, link? })`. No `tenantId`:
   the foundation sends from one verified domain (`EMAIL_FROM`); per-tenant branded
   senders are a when-triggered extension. `link` is the optional primary-action
-  URL — a general transactional-mail concept — so the magic link is ONE consumer
-  of the seam, not the port's shape.
+  URL — a general transactional-mail concept — so magic-link and password-reset
+  auth mail are consumers of the seam, not the port's shape.
 - **Sent only from use-cases or the auth adapter's sender** (NORMATIVE): a route
-  parses input and invokes a use-case; the use-case (or, for auth mail, the
-  `create-auth.ts` magic-link callback) decides to mail. No route or non-auth
+  parses input and invokes a use-case; the use-case (or, for auth mail,
+  `create-auth.ts`) decides to mail. No route or non-auth
   adapter calls it.
 - **Reliability via the outbox, not inline retries** (NORMATIVE once the outbox
   exists): when `JobsPort` lands (§Background jobs and webhooks) a use-case
-  enqueues the send transactionally with its domain write. Until then the magic
-  link is the only sender and its handler is idempotent (each token mints one
-  session).
+  enqueues the send transactionally with its domain write. Until then auth mail
+  senders are idempotent token issuers: magic links mint one session and reset
+  links update one password.
 - Adapters as built (`adapters/email/`, selected by `EMAIL_TRANSPORT` in the
   composition root): `smtp` (default) — any RFC
   SMTP relay via nodemailer, **Amazon SES SMTP creds work unchanged** (owner
@@ -1159,19 +1162,21 @@ decision).
   that would rather hand SES an access key than open an SMTP port. **There is no
   dev transport.** Dev/e2e/CI run the real `smtp` adapter against a local
   **Mailpit** (docker-compose.dev.yml + the smoke/e2e CI services) that captures
-  real sends like a self-hosted MailTrap; the magic-link smoke/e2e phases recover
-  the link over Mailpit's HTTP API (`/api/v1/messages`, `/api/v1/message/{id}`) and
-  follow it, so no in-app retrieval route ships. Composition **fails fast** when
+  real sends like a self-hosted MailTrap; the magic-link and password-reset gates
+  recover links over Mailpit's HTTP API (`/api/v1/messages`,
+  `/api/v1/message/{id}`) and follow them, so no in-app retrieval route ships.
+  Composition **fails fast** when
   `ses` is selected without its AWS block (an open local Mailpit needs no SMTP
   auth, so `smtp` requires only a host). Every email-vendor SDK (nodemailer and
   `@aws-sdk/*`) is contained to `adapters/email` by depcruise
   (`smtp-sdk-only-in-adapters-email`). The originally-sketched Resend/`console`
   split was superseded by SMTP-as-universal-default
   ([ADR-0007](decisions/0007-email-port-and-magic-link-transport.md)).
-- **Trigger** (already fired): US-026 magic link. The auth adapter's magic-link
-  sender delegates to `EmailPort` so there is one transport and one from-address
-  policy — exactly as the roadmap called for. Future non-auth transactional mail
-  (order receipt, export-ready notice) reuses the same port from a use-case.
+- **Triggers** (already fired): US-026 magic link and account password reset.
+  The auth adapter's senders delegate to `EmailPort` so there is one transport
+  and one from-address policy — exactly as the roadmap called for. Future
+  non-auth transactional mail (order receipt, export-ready notice) reuses the
+  same port from a use-case.
 
 **OUT OF SCOPE:** email content/templates, sequences, marketing sends, per-tenant
 sender identity, image processing/thumbnailing, virus scanning, CDN cache policy —
