@@ -12,6 +12,7 @@ const owner: Identity = {
   tenantSlug: 'default',
   tenantName: 'Archive',
   staffRole: 'owner',
+  apiToken: null,
 };
 
 describe('authorizeTenant', () => {

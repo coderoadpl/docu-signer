@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type {
+  ApiTokenRepository,
   TenantAccessReader,
   TenantDomainRepository,
   TenantRepository,
 } from '../ports.js';
-import { resolveIdentity } from './resolve-identity.js';
+import { resolveApiTokenIdentity, resolveIdentity } from './resolve-identity.js';
 
 const tenant = { id: 'tenant-default', slug: 'default', name: 'Archive' };
 const domains: TenantDomainRepository = {
@@ -133,5 +134,84 @@ describe('resolveIdentity', () => {
       ok: true,
       value: { tenantId: null, staffRole: null },
     });
+  });
+
+  it('resolves an active API token as the owning user with scope restrictions', async () => {
+    const apiTokens: ApiTokenRepository = {
+      create: async () => {
+        throw new Error('not implemented');
+      },
+      listByUser: async () => [],
+      findActiveByHash: async (tokenHash) =>
+        tokenHash === 'hash:pat_valid'
+          ? {
+              token: {
+                id: '11111111-1111-4111-8111-111111111111',
+                userId: user.userId,
+                name: 'Importer',
+                tokenHash,
+                scopes: ['write:draft'],
+                createdAt: '2026-08-02T10:00:00.000Z',
+                lastUsedAt: null,
+                revokedAt: null,
+              },
+              user,
+            }
+          : null,
+      markUsed: async () => {},
+      revoke: async () => false,
+    };
+    const result = await resolveApiTokenIdentity(
+      'pat_valid',
+      { host: 'default.example.com', tenantHeader: null },
+      {
+        tenantDomains: domains,
+        tenants,
+        tenantAccess: access(true),
+        baseDomain: 'example.com',
+        apiTokens,
+        apiTokenSecrets: {
+          hash: (value) => `hash:${value}`,
+          generate: () => 'pat_unused',
+          matchesHash: (value, tokenHash) => `hash:${value}` === tokenHash,
+        },
+      },
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        userId: user.userId,
+        tenantId: tenant.id,
+        apiToken: { scopes: ['write:draft'] },
+      },
+    });
+  });
+
+  it('rejects revoked or unknown API tokens as unauthorized', async () => {
+    const result = await resolveApiTokenIdentity(
+      'pat_missing',
+      { host: 'default.example.com', tenantHeader: null },
+      {
+        tenantDomains: domains,
+        tenants,
+        tenantAccess: access(true),
+        baseDomain: 'example.com',
+        apiTokens: {
+          create: async () => {
+            throw new Error('not implemented');
+          },
+          listByUser: async () => [],
+          findActiveByHash: async () => null,
+          markUsed: async () => {},
+          revoke: async () => false,
+        },
+        apiTokenSecrets: {
+          hash: (value) => `hash:${value}`,
+          generate: () => 'pat_unused',
+          matchesHash: () => false,
+        },
+      },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
   });
 });

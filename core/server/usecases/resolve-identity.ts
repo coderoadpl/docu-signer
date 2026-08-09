@@ -11,6 +11,8 @@ import {
 } from '#core/domain/index.js';
 
 import type {
+  ApiTokenRepository,
+  ApiTokenSecretPort,
   AuthenticatedUser,
   TenantAccessReader,
   TenantDomainRepository,
@@ -29,6 +31,11 @@ export interface ResolveIdentityDeps {
   baseDomain: string;
 }
 
+export interface ResolveApiTokenIdentityDeps extends ResolveIdentityDeps {
+  apiTokens: ApiTokenRepository;
+  apiTokenSecrets: ApiTokenSecretPort;
+}
+
 const stripPort = (host: string): string => host.split(':')[0] ?? host;
 const tenantNotFoundMessage = (slug: string): string =>
   `No tenant "${slug}" or you do not have access to it`;
@@ -39,7 +46,35 @@ export const resolveIdentity = async (
   deps: ResolveIdentityDeps,
 ): Promise<Result<Identity, AppError>> => {
   if (!user) return err(unauthorized());
+  return resolveUserIdentity(user, request, deps, null);
+};
 
+export const resolveApiTokenIdentity = async (
+  tokenValue: string,
+  request: TenantRequestInfo,
+  deps: ResolveApiTokenIdentityDeps,
+): Promise<Result<Identity, AppError>> => {
+  const tokenHash = deps.apiTokenSecrets.hash(tokenValue);
+  const apiToken = await deps.apiTokens.findActiveByHash(tokenHash);
+  if (!apiToken) return err(unauthorized());
+  if (!deps.apiTokenSecrets.matchesHash(tokenValue, apiToken.token.tokenHash)) {
+    return err(unauthorized());
+  }
+  await deps.apiTokens.markUsed(apiToken.token.id);
+  return resolveUserIdentity(
+    apiToken.user,
+    request,
+    deps,
+    { id: apiToken.token.id, scopes: apiToken.token.scopes },
+  );
+};
+
+const resolveUserIdentity = async (
+  user: AuthenticatedUser,
+  request: TenantRequestInfo,
+  deps: ResolveIdentityDeps,
+  apiToken: Identity['apiToken'],
+): Promise<Result<Identity, AppError>> => {
   const tenant = await resolveTenant(request, deps);
   if (!tenant.ok) return tenant;
 
@@ -51,6 +86,7 @@ export const resolveIdentity = async (
     tenantSlug: null,
     tenantName: null,
     staffRole: null,
+    apiToken,
   };
 
   if (!tenant.value) return ok(base);
@@ -71,6 +107,7 @@ export const resolveIdentity = async (
     tenantSlug: tenant.value.tenant.slug,
     tenantName: tenant.value.tenant.name,
     staffRole: staffGrant.staffRole,
+    apiToken,
   });
 };
 

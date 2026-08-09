@@ -1,5 +1,6 @@
 import type {
   AppError,
+  ApiToken,
   Document,
   DocumentFile,
   DocumentListFilter,
@@ -18,7 +19,9 @@ export interface DocumentRepository {
     tenantId: string,
     documentIds: string[],
   ): Promise<DocumentFile[]>;
-  create(input: Omit<Document, 'createdAt' | 'updatedAt'>): Promise<Document>;
+  create(
+    input: Omit<Document, 'createdAt' | 'updatedAt' | 'draft'> & { draft?: boolean },
+  ): Promise<Document>;
   update(
     tenantId: string,
     documentId: string,
@@ -27,6 +30,7 @@ export interface DocumentRepository {
       'title' | 'docType' | 'documentDate' | 'periodStart' | 'periodEnd' | 'person' | 'tags'
     >,
   ): Promise<Document | null>;
+  approve(tenantId: string, documentId: string): Promise<Document | null>;
   delete(tenantId: string, documentId: string): Promise<boolean>;
   createFile(
     tenantId: string,
@@ -44,6 +48,29 @@ export interface DocumentRepository {
     targetDocumentId: string,
   ): Promise<DocumentFile | null>;
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
+}
+
+export interface ApiTokenWithHash extends ApiToken {
+  tokenHash: string;
+}
+
+export interface ApiTokenIdentity {
+  token: ApiTokenWithHash;
+  user: AuthenticatedUser;
+}
+
+export interface ApiTokenRepository {
+  create(input: Omit<ApiTokenWithHash, 'createdAt' | 'lastUsedAt' | 'revokedAt'>): Promise<ApiToken>;
+  listByUser(userId: string): Promise<ApiToken[]>;
+  findActiveByHash(tokenHash: string): Promise<ApiTokenIdentity | null>;
+  markUsed(apiTokenId: string): Promise<void>;
+  revoke(userId: string, apiTokenId: string): Promise<boolean>;
+}
+
+export interface ApiTokenSecretPort {
+  generate(): string;
+  hash(value: string): string;
+  matchesHash(value: string, tokenHash: string): boolean;
 }
 
 export interface SavedSearchRepository {

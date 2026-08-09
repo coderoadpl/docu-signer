@@ -30,6 +30,20 @@ const auth = createAuth(
 const baseDeps = (): AppDeps => ({
   auth,
   authPort: { getAuthenticatedUser: async () => null },
+  apiTokens: {
+    create: async () => {
+      throw new Error('not implemented');
+    },
+    listByUser: async () => [],
+    findActiveByHash: async () => null,
+    markUsed: async () => {},
+    revoke: async () => false,
+  },
+  apiTokenSecrets: {
+    generate: () => 'pat_test',
+    hash: (value) => value,
+    matchesHash: (value, tokenHash) => value === tokenHash,
+  },
   documents: {
     listByTenant: async () => [],
     findById: async () => null,
@@ -39,6 +53,7 @@ const baseDeps = (): AppDeps => ({
       throw new Error('not implemented');
     },
     update: async () => null,
+    approve: async () => null,
     delete: async () => false,
     createFile: async () => null,
     findFile: async () => null,
@@ -149,6 +164,7 @@ describe('buildApp', () => {
       periodEnd: null,
       person: null,
       tags: [],
+      draft: false,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
     };
@@ -177,6 +193,7 @@ describe('buildApp', () => {
     const deps = authorizedDeps();
     deps.documents.create = async (input) => ({
       ...input,
+      draft: input.draft ?? false,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
     });
@@ -196,6 +213,96 @@ describe('buildApp', () => {
       ok: true,
       data: { document: { title: 'Umowa', tenantId: tenant.id } },
     });
+  });
+
+  it('authenticates API tokens and rejects revoked or wrong-scope document requests', async () => {
+    const deps = authorizedDeps();
+    const row: Document = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: tenant.id,
+      title: 'Draft',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      draft: true,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    };
+    deps.apiTokenSecrets = {
+      generate: () => 'pat_unused',
+      hash: (value) => `hash:${value}`,
+      matchesHash: (value, tokenHash) => `hash:${value}` === tokenHash,
+    };
+    deps.apiTokens.findActiveByHash = async (tokenHash) =>
+      tokenHash === 'hash:pat_write_draft'
+        ? {
+            token: {
+              id: '22222222-2222-4222-8222-222222222222',
+              userId: user.userId,
+              name: 'Importer',
+              tokenHash,
+              scopes: ['write:draft'],
+              createdAt: '2026-08-02T00:00:00.000Z',
+              lastUsedAt: null,
+              revokedAt: null,
+            },
+            user,
+          }
+        : null;
+    deps.documents.create = async (input) => ({
+      ...input,
+      draft: input.draft ?? false,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    });
+    deps.documents.findById = async () => row;
+    deps.documents.update = async () => ({ ...row, title: 'Updated' });
+
+    const created = await buildApp(deps).request(API_ROUTES.documentsCreate.path, {
+      method: API_ROUTES.documentsCreate.method,
+      headers: {
+        [TENANT_HEADER]: tenant.slug,
+        authorization: 'Bearer pat_write_draft',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Draft',
+        docType: 'umowa-uod',
+        documentDate: '2026-08-01',
+        tags: [],
+        draft: true,
+      }),
+    });
+    expect(created.status).toBe(200);
+    expect(await created.json()).toMatchObject({ ok: true, data: { document: { draft: true } } });
+
+    const deleteDenied = await buildApp(deps).request(API_ROUTES.documentDelete.path.replace(':documentId', row.id), {
+      method: API_ROUTES.documentDelete.method,
+      headers: { [TENANT_HEADER]: tenant.slug, authorization: 'Bearer pat_write_draft' },
+    });
+    expect(deleteDenied.status).toBe(403);
+    expect(await deleteDenied.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+
+    const revoked = await buildApp(deps).request(API_ROUTES.documentsCreate.path, {
+      method: API_ROUTES.documentsCreate.method,
+      headers: {
+        [TENANT_HEADER]: tenant.slug,
+        authorization: 'Bearer pat_revoked',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Draft',
+        docType: 'umowa-uod',
+        documentDate: '2026-08-01',
+        tags: [],
+        draft: true,
+      }),
+    });
+    expect(revoked.status).toBe(401);
+    expect(await revoked.json()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
   });
 
   it('lists, creates, rejects invalid, and deletes saved searches', async () => {
