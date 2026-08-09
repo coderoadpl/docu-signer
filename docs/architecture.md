@@ -118,15 +118,15 @@ are deliberately **not** synonyms.
 
 | Term | Meaning |
 |---|---|
-| **Domain (business subdomain)** | A business subdomain of the product ("tasks", "billing"). Its frontend incarnation is a feature; one subdomain may have several islands (a list and a board over the same tasks are two islands over one subdomain). |
+| **Domain (business subdomain)** | A business subdomain of the product ("documents", "authentication"). Its frontend incarnation is a feature, which may contain several views or routes. |
 | **`core/domain`** | The shared language layer: entities, zod schemas, domain rules, the error taxonomy. Pure, isomorphic, and there is exactly **one** — it is the "domain" of hexagonal/ports-and-adapters, the vocabulary every vertical slice speaks. |
 | **Feature** | `apps/web/src/features/<name>/` — the vertical slice of a subdomain in the UI. |
 | **Island** | The same feature, seen from its isolation guarantees: features are islands because lint forbids them to import each other. One word names the thing, the other names its property — "feature (island)". |
-| **View** | A React component inside a feature; renders UI and talks exclusively to its own island's core. |
-| **Island core** | `features/<name>/core/` — a pure TS module: events in, selectors out, machine inside. |
-| **Machine** | The state implementation inside an island core, on a three-rung ladder: rung 1 — descriptor re-exports; rung 2 — island store (`@xstate/store`); rung 3 — statechart (XState), derived from a `core/domain` transition table. |
+| **View** | A React component inside a feature; renders bound server actions and component-lifetime UI state. |
+| **Island core (historical)** | The upstream `features/<name>/core/` pure-TS state seam. Podpisy does not ship one; the historical model is recorded below. |
+| **Machine (historical)** | The state implementation behind an upstream island core. Podpisy currently uses React component state instead. |
 | **Descriptors** | The typed query/mutation definitions produced by `core/client` factories (server state, TanStack) — see [server-state.md](server-state.md). |
-| **Bus** | Typed, closed unions of client-only, ephemeral signals **between island cores**; views never see it. |
+| **Bus (historical)** | The upstream typed signal channel between island cores. No client event bus ships in Podpisy. |
 
 ## Frontend (apps/web)
 
@@ -144,8 +144,9 @@ apps/web/src/
   AppLayout.tsx     the stateful shell composition (ADR-0011): auth guard and
                     product navigation — renders components/layout/AppShell
   routes/           route components — thin: parse params, render a feature
-  features/<name>/  feature folders (islands): core/ — the island core (events
-                    in, selectors out) — plus views, hooks, <Name>.logic.ts
+  features/         auth/, documents/, settings/, system/: React pages and
+                    components, with pure *.logic.ts helpers where needed;
+                    no feature core layer ships
   components/ui/    design-system primitives → theme, lib only (no core, no features)
   components/layout/ page skeletons: structure only → theme, components/ui, lib
                     (no core, no features, no routes, no api, no TanStack)
@@ -245,19 +246,16 @@ State rules:
 - **Features are islands** (lint): a feature imports only itself. Features
   coordinate through server state (a command invalidates a scope, other
   features' queries refetch — the cache is the pub/sub, local and instant),
-  through the URL, through a route-level parent, or core-to-core over the
-  typed signal bus (§Client application state) — never by importing each
+  through the URL, or through a route-level parent — never by importing each
   other or sharing client state. Shared code extracts downward
   (`components/ui`, `lib`, `core/client`), never sideways.
 - **No stringly-typed client event bus.** An untyped bus hides coupling from
   the dependency graph — the enforcers go incomplete and control flow becomes
-  slower and less reliable for agents to trace. The sanctioned shape — a closed union of typed
-  events in one module (like `ErrorCode`) that both sides import — was
-  reserved "at first proven need"; ADR-0005 declares that need proven and
-  defines the bus channel below. Two features that constantly coordinate are
-  still one feature.
+  slower and less reliable for agents to trace. Podpisy ships no client event
+  bus; introducing one requires a named trigger and matching enforcement. Two
+  features that constantly coordinate are still one feature.
 
-### Client application state (island cores)
+### Historical upstream client application state (island cores)
 
 **Fork status (2026-08-01): the island-core model is not present in the shipped
 application.** The demo strip removed all `features/*/core/**` implementations,

@@ -32,10 +32,11 @@ logic lives here.
 - Web features remain isolated by the feature-boundary lint rules; this fork
   currently ships no island cores. The client is constructed only in
   `web/src/api.ts` (see [architecture §Frontend](../docs/architecture.md#frontend-appsweb)).
-- Adding a resource walks the 12-step chain; start with
-  `pnpm run new:resource -- <singular-name>` and finish every checklist item
-  (missing CLI command / web route / server route still typecheck — the
-  checklist, not the compiler, guarantees they are wired).
+- Adding a resource is manual and walks the 12-step chain: domain → contract
+  → port → use-case index → adapter schema → composition → server routes →
+  client → client queries → CLI → web binding → web route, in that order.
+  Finish every step: a missing CLI command, web route, or server route can still
+  typecheck.
 - Verify features through the CLI first (`pnpm --silent run cli --json …`).
 
 ## Verify you didn't break this layer

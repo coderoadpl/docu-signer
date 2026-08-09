@@ -11,6 +11,8 @@ surfaces from the upstream demo are intentionally absent. The upstream reference
 
 ## Quickstart (local demo)
 
+This operator quickstart is a convention, not a mechanically enforced gate.
+
 ```bash
 corepack enable && corepack prepare --activate
 pnpm install --frozen-lockfile

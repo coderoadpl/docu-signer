@@ -44,6 +44,11 @@ green.
      checkout structurally cannot carry stale local state, which closes the
      second failure class.
 
+   The former fresh-clone `quickstart:probe` CI step is no longer a gate. It
+   was removed with the demo verticals it drove; the README quickstart remains
+   operator convention rather than an executable guarantee (see
+   `FOUNDATION.md`).
+
 2. **Post-deploy verification against real production.** A second workflow
    (`post-deploy-smoke`) listens for the `deployment_status` event and, when a
    **Production** deployment reports **success**, checks out trusted `main`,

@@ -61,3 +61,5 @@ each.
   and top navigation (owner decision 2026-07-27).
 - The shell and system states are Polish-first, including upstream demo surfaces.
 - Upstream demo verticals removed; only documents and account settings remain (owner decision 2026-08-01).
+- The fresh-clone `quickstart:probe` and its CI step were removed with the demo
+  verticals they drove; the README quickstart is now convention, not enforced.
