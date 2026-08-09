@@ -94,6 +94,21 @@ describe('queryClient error policy', () => {
     unsubscribe();
   });
 
+  it('shows a generic message when a stale-data refresh fails outside the API taxonomy', async () => {
+    queryClient.setQueryData(['stale-network'], { value: 'kept' });
+
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: ['stale-network'],
+        queryFn: () => failingQuery(new Error('Socket closed')),
+        retry: false,
+        staleTime: 0,
+      }),
+    ).rejects.toThrow('Socket closed');
+
+    expect(refreshToastStore.snapshot()).toEqual({ message: 'Could not refresh data' });
+  });
+
   it('does not toast an initial-load failure', async () => {
     await expect(
       queryClient.fetchQuery({

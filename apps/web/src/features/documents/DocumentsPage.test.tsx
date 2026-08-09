@@ -62,6 +62,20 @@ const renderPage = async () => {
   return { router, ...renderWithProviders(<RouterProvider router={router} />) };
 };
 
+const dateField = (container: HTMLElement, name: string) =>
+  within(container).getByRole('group', { name: new RegExp(name, 'u') });
+
+const pasteDate = async (field: HTMLElement, value: string) => {
+  await userEvent.click(field);
+  await userEvent.paste(value);
+  await waitFor(() => expect(field).toHaveTextContent(value));
+};
+
+const clearDateWithButton = async (field: HTMLElement) => {
+  await userEvent.click(within(field).getByRole('button', { name: 'Wyczyść' }));
+  await waitFor(() => expect(field).toHaveTextContent('DD.MM.YYYY'));
+};
+
 describe('DocumentsPage', () => {
   it('renders server-filtered documents', async () => {
     const seen = vi.fn();
@@ -791,12 +805,23 @@ describe('DocumentsPage', () => {
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Tytuł' }), {
       target: { value: 'Nowy dokument' },
     });
-    expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('');
+    expect(dateField(dialog, 'Data podpisania')).toHaveTextContent('DD.MM.YYYY');
     await userEvent.click(within(dialog).getByText('Okres'));
-    fireEvent.change(within(dialog).getByLabelText('Od'), {
-      target: { value: '2026-07-01' },
-    });
-    expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('2026-07-01');
+    const periodStart = dateField(dialog, 'Od');
+    const periodEnd = dateField(dialog, 'Do');
+    await pasteDate(periodStart, '01.07.2026');
+    expect(dateField(dialog, 'Data podpisania')).toHaveTextContent('01.07.2026');
+    await pasteDate(periodEnd, '30.06.2026');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
+    );
+    expect(
+      within(dialog).getByText(
+        'Data końcowa nie może być wcześniejsza niż początkowa',
+      ),
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+    await clearDateWithButton(periodEnd);
     fireEvent.change(within(dialog).getByRole('combobox', { name: 'Osoba' }), {
       target: { value: 'Anna Nowak' },
     });
@@ -846,12 +871,10 @@ describe('DocumentsPage', () => {
     expect(title).toHaveAccessibleDescription('Tytuł jest wymagany');
 
     fireEvent.change(title, { target: { value: 'Nowy dokument' } });
-    const date = within(dialog).getByLabelText('Data podpisania');
-    fireEvent.change(date, { target: { value: '' } });
+    const date = dateField(dialog, 'Data podpisania');
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );
-    expect(date).toHaveFocus();
     expect(date).toHaveAccessibleDescription('Data podpisania jest wymagana');
   });
 });

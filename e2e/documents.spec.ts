@@ -130,6 +130,13 @@ const useSignaturePad = async (
   await dialog.getByRole('button', { name: 'Użyj podpisu' }).click();
 };
 
+const enterPolishDate = async (container: Locator, label: string, value: string) => {
+  const field = container.getByRole('group', { name: new RegExp(`^${label}`, 'u') });
+  await field.getByRole('spinbutton', { name: 'Day' }).click();
+  await field.pressSequentially(value);
+  await expect(field).toContainText(value);
+};
+
 const createSignableDocument = async (page: Page, title: string, sourceName: string) => {
   await page.goto('/login');
   await page.locator('#login-email').fill(DEMO_EMAIL);
@@ -141,7 +148,7 @@ const createSignableDocument = async (page: Page, title: string, sourceName: str
   const dialog = page.getByRole('dialog', { name: 'Dodaj dokument' });
   await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
   await dialog.getByLabel('Osoba').fill('Jan Kowalski');
-  await dialog.getByLabel('Data podpisania').fill('2026-01-01');
+  await enterPolishDate(dialog, 'Data podpisania', '01.01.2026');
   await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
 
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
@@ -242,9 +249,10 @@ test('creates, uploads, previews and exports an archived document', async ({
   await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
   await dialog.getByLabel('Osoba').fill('Jan Kowalski');
   await dialog.getByLabel('Tagi').fill('e2e, podpis');
+  await enterPolishDate(dialog, 'Data podpisania', '01.01.2026');
   await dialog.getByText('Okres').click();
-  await dialog.getByLabel('Od', { exact: true }).fill('2026-01-01');
-  await dialog.getByLabel('Do', { exact: true }).fill('2026-12-31');
+  await enterPolishDate(dialog, 'Od', '01.01.2026');
+  await enterPolishDate(dialog, 'Do', '31.12.2026');
   await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
 
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
@@ -348,7 +356,7 @@ test('moves a document to trash and restores it', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: 'Dodaj dokument' });
   await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
   await dialog.getByLabel('Osoba').fill('Jan Kowalski');
-  await dialog.getByLabel('Data podpisania').fill('2026-08-02');
+  await enterPolishDate(dialog, 'Data podpisania', '02.08.2026');
   await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
 
   await expect(page.getByRole('heading', { name: title })).toBeVisible();

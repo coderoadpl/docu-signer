@@ -56,6 +56,7 @@ import {
 import { actions, preferenceActions, savedSearchActions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
+import { PolishDatePicker } from '../../components/ui/PolishDatePicker.js';
 import { formatPolishDate } from '../../lib/format-date.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
@@ -643,20 +644,16 @@ export const DocumentsPage = () => {
             renderInput={(params) => <TextField {...params} label="Tag" />}
             sx={{ flex: { sm: '1 1 10rem' } }}
           />
-          <TextField
+          <PolishDatePicker
             label="Od"
-            type="date"
             value={filters.dateFrom}
-            onChange={(event) => updateFilter('dateFrom', event.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }}
+            onChange={(value) => updateFilter('dateFrom', value)}
             sx={{ minWidth: '9.5rem', flex: { sm: '1 1 9.5rem' } }}
           />
-          <TextField
+          <PolishDatePicker
             label="Do"
-            type="date"
             value={filters.dateTo}
-            onChange={(event) => updateFilter('dateTo', event.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }}
+            onChange={(value) => updateFilter('dateTo', value)}
             sx={{ minWidth: '9.5rem', flex: { sm: '1 1 9.5rem' } }}
           />
           <FormControl sx={{ minWidth: '11rem', flex: { sm: '1 1 11rem' } }}>

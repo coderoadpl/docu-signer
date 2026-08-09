@@ -86,6 +86,11 @@ describe('document view logic', () => {
         '2026-07-01',
       ).documentDate,
     ).toBe('2026-06-30');
+    expect(suggestDocumentDate({ ...base, docType: 'inny' }, 'periodStart', '2026-07-01')).toEqual({
+      ...base,
+      docType: 'inny',
+      periodStart: '2026-07-01',
+    });
   });
 
   it('omits blank filters and groups files by role', () => {
