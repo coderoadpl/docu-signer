@@ -96,21 +96,61 @@ export const updateDocumentSchema = createDocumentFieldsSchema.refine(
 
 export type UpdateDocument = z.input<typeof updateDocumentSchema>;
 
-export const documentListFilterSchema = z
-  .object({
-    docType: documentTypeSchema.optional(),
-    person: z.string().trim().min(1).optional(),
-    tag: z.string().trim().min(1).optional(),
-    text: z.string().trim().min(1).optional(),
-    dateFrom: z.iso.date().optional(),
-    dateTo: z.iso.date().optional(),
-  })
-  .refine(
-    (value) => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo,
-    'dateFrom must not be after dateTo',
-  );
+const documentListFilterSchemaOf = () =>
+  z
+    .object({
+      docType: documentTypeSchema.optional(),
+      person: z.string().trim().min(1).optional(),
+      tag: z.string().trim().min(1).optional(),
+      text: z.string().trim().min(1).optional(),
+      dateFrom: z.iso.date().optional(),
+      dateTo: z.iso.date().optional(),
+    })
+    .refine(
+      (value) => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo,
+      'dateFrom must not be after dateTo',
+    );
 
-export type DocumentListFilter = z.input<typeof documentListFilterSchema>;
+export const documentListFilterSchema = documentListFilterSchemaOf();
+
+export interface DocumentListFilter {
+  docType?: DocumentType | undefined;
+  person?: string | undefined;
+  tag?: string | undefined;
+  text?: string | undefined;
+  dateFrom?: string | undefined;
+  dateTo?: string | undefined;
+}
+
+export const savedSearchFilterSchema = documentListFilterSchemaOf();
+
+export type SavedSearchFilter = DocumentListFilter;
+
+export const savedSearchSchema = z.object({
+  id: z.uuid(),
+  tenantId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  filter: savedSearchFilterSchema,
+  createdAt: z.iso.datetime(),
+});
+
+export interface SavedSearch {
+  id: string;
+  tenantId: string;
+  name: string;
+  filter: SavedSearchFilter;
+  createdAt: string;
+}
+
+export const createSavedSearchSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  filter: savedSearchFilterSchema,
+});
+
+export interface CreateSavedSearch {
+  name: string;
+  filter: SavedSearchFilter;
+}
 
 const isAllowedDocumentContentType = (contentType: string): boolean => {
   const normalized = contentType.trim().toLowerCase();

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDocumentRepository } from './documents-repository.js';
 import { createTenantAccessReader } from './repositories.js';
+import { createSavedSearchRepository } from './saved-searches-repository.js';
 import { tenantAdmins, tenants } from './schema.js';
 import * as schema from './schema.js';
 import { closePoolAndDropIntegrationDatabase } from './test-support/integration-database.js';
@@ -95,6 +96,42 @@ describe('DocumentRepository', () => {
         '22222222-2222-4222-8222-222222222222',
       ),
     ).toBeNull();
+  });
+});
+
+describe('SavedSearchRepository', () => {
+  it('round-trips saved searches and isolates every operation by tenant', async () => {
+    const repository = createSavedSearchRepository(db);
+    const created = await repository.create({
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      tenantId: 'tenant-a',
+      name: 'Protokoły Anny',
+      filter: { docType: 'protokol', person: 'Anna', tag: 'odbiór' },
+    });
+
+    expect(created).toMatchObject({
+      name: 'Protokoły Anny',
+      filter: { docType: 'protokol', person: 'Anna', tag: 'odbiór' },
+    });
+    await repository.create({
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      tenantId: 'tenant-b',
+      name: 'Umowy',
+      filter: { docType: 'umowa-uod' },
+    });
+
+    await expect(repository.listByTenant('tenant-a')).resolves.toMatchObject([
+      { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', tenantId: 'tenant-a' },
+    ]);
+    await expect(repository.listByTenant('tenant-b')).resolves.toMatchObject([
+      { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', tenantId: 'tenant-b' },
+    ]);
+    await expect(
+      repository.delete('tenant-b', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
+    ).resolves.toBe(false);
+    await expect(
+      repository.delete('tenant-a', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
+    ).resolves.toBe(true);
   });
 });
 
@@ -190,6 +227,17 @@ describe('database invariants', () => {
         ],
       );
       await pool.query(
+        `INSERT INTO saved_searches (id, tenant_id, name, filter)
+         VALUES ($1, $2, $3, '{"docType":"inny"}'::jsonb)`,
+        [
+          suffix === 'offboard'
+            ? 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+            : 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          `tenant-${suffix}`,
+          `Teczka ${suffix}`,
+        ],
+      );
+      await pool.query(
         `INSERT INTO document_files
            (id, document_id, role, file_name, content_type, size_bytes, storage_key)
          VALUES ($1, $2, 'source', $3, 'application/pdf', 1, $4)`,
@@ -221,6 +269,9 @@ describe('database invariants', () => {
       pool.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM document_files WHERE storage_key = 'cascade/offboard'`,
       ),
+      pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM saved_searches WHERE tenant_id = 'tenant-offboard'`,
+      ),
     ]);
     const sibling = await Promise.all([
       pool.query<{ count: number }>(
@@ -235,9 +286,12 @@ describe('database invariants', () => {
       pool.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM document_files WHERE storage_key = 'cascade/sibling'`,
       ),
+      pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM saved_searches WHERE tenant_id = 'tenant-sibling'`,
+      ),
     ]);
 
-    expect(removed.map((result) => result.rows[0]?.count)).toEqual([0, 0, 0, 0]);
-    expect(sibling.map((result) => result.rows[0]?.count)).toEqual([1, 1, 1, 1]);
+    expect(removed.map((result) => result.rows[0]?.count)).toEqual([0, 0, 0, 0, 0]);
+    expect(sibling.map((result) => result.rows[0]?.count)).toEqual([1, 1, 1, 1, 1]);
   });
 });

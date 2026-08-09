@@ -4,8 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError, createApiClient } from './http.js';
 import {
   createDocumentMutation,
+  createSavedSearchMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
+  deleteSavedSearchMutation,
   directFileUploadMutation,
   documentQuery,
   documentsInvalidates,
@@ -15,6 +17,8 @@ import {
   meQuery,
   moveDocumentFileMutation,
   requestFileUploadMutation,
+  savedSearchesInvalidates,
+  savedSearchesQuery,
   updateDocumentMutation,
   uploadDocumentFileMutation,
 } from './queries.js';
@@ -41,6 +45,14 @@ const documentFile = {
   contentType: 'application/pdf',
   sizeBytes: 3,
   storageKey: 'documents/tenant-default/document/file',
+  createdAt: '2026-08-01T00:00:00.000Z',
+};
+
+const savedSearch = {
+  id: '33333333-3333-4333-8333-333333333333',
+  tenantId: 'tenant-default',
+  name: 'Protokoły',
+  filter: { docType: 'protokol' as const, tag: 'odbiór' },
   createdAt: '2026-08-01T00:00:00.000Z',
 };
 
@@ -227,5 +239,39 @@ describe('document mutation descriptors', () => {
       name: 'ApiError',
       appError: { code: 'conflict', message: 'Already exists' },
     });
+  });
+});
+
+describe('saved search query descriptors', () => {
+  it('executes list/create/delete through their own cache scope', async () => {
+    const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/saved-searches') && init?.method === 'GET') {
+        return response({ savedSearches: [savedSearch] });
+      }
+      if (url.endsWith('/api/saved-searches') && init?.method === 'POST') {
+        return response({ savedSearch });
+      }
+      return response({ deleted: true });
+    });
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+    const client = newClient();
+    const observe = <TData, TVariables>(
+      descriptor: ConstructorParameters<typeof MutationObserver<TData, Error, TVariables>>[1],
+    ) => new MutationObserver(client, descriptor);
+
+    const list = savedSearchesQuery(api);
+    expect(list.queryKey).toEqual(['saved-searches', 'list']);
+    await expect(client.fetchQuery(list)).resolves.toEqual({ savedSearches: [savedSearch] });
+    expect(savedSearchesInvalidates()).toEqual({ queryKey: ['saved-searches'] });
+    await expect(
+      observe(createSavedSearchMutation(api)).mutate({
+        name: savedSearch.name,
+        filter: savedSearch.filter,
+      }),
+    ).resolves.toEqual({ savedSearch });
+    await expect(
+      observe(deleteSavedSearchMutation(api)).mutate(savedSearch.id),
+    ).resolves.toEqual({ deleted: true });
   });
 });

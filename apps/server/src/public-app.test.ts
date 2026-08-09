@@ -48,6 +48,14 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
   },
+  savedSearches: {
+    listByTenant: async () => [],
+    create: async (input) => ({
+      ...input,
+      createdAt: '2026-08-01T00:00:00.000Z',
+    }),
+    delete: async () => false,
+  },
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),
