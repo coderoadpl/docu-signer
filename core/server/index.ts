@@ -5,4 +5,5 @@ export * from './usecases/resolve-identity.js';
 export * from './usecases/documents.js';
 export * from './usecases/api-tokens.js';
 export * from './usecases/saved-searches.js';
+export * from './usecases/user-preferences.js';
 export * from './usecases/public.js';

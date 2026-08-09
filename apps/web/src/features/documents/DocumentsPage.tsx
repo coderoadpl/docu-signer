@@ -14,12 +14,17 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
+  FormGroup,
+  IconButton,
   InputLabel,
   LinearProgress,
   MenuItem,
   Paper,
+  Popover,
   Select,
   Stack,
+  SvgIcon,
   Tab,
   Table,
   TableBody,
@@ -34,6 +39,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import { z } from 'zod';
 
 import {
   documentSignatureStatusSchema,
@@ -41,9 +47,10 @@ import {
   type DocumentWithFiles,
   type SavedSearch,
   type SavedSearchFilter,
+  type UserPreferenceValue,
 } from '#core/domain/index.js';
 
-import { actions, savedSearchActions } from '../../api.js';
+import { actions, preferenceActions, savedSearchActions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { formatPolishDate } from '../../lib/format-date.js';
@@ -100,6 +107,89 @@ const FileCounts = ({ files }: { files: Array<{ role: string }> }) => {
   );
 };
 
+const ArrowUpIcon = () => (
+  <SvgIcon fontSize="small">
+    <path d="M7 14l5-5 5 5H7Z" />
+  </SvgIcon>
+);
+
+const ArrowDownIcon = () => (
+  <SvgIcon fontSize="small">
+    <path d="M7 10l5 5 5-5H7Z" />
+  </SvgIcon>
+);
+
+const DOCUMENT_COLUMNS_KEY = 'documents.columns';
+
+const DOCUMENT_COLUMN_IDS = [
+  'documentDate',
+  'title',
+  'docType',
+  'person',
+  'tags',
+  'period',
+  'signatureStatus',
+  'files',
+  'draft',
+] as const;
+
+type DocumentColumnId = (typeof DOCUMENT_COLUMN_IDS)[number];
+
+interface DocumentColumnSettings {
+  order: DocumentColumnId[];
+  visible: DocumentColumnId[];
+}
+
+const DOCUMENT_COLUMN_LABELS: Record<DocumentColumnId, string> = {
+  documentDate: 'Data podpisania',
+  title: 'Tytuł',
+  docType: 'Typ',
+  person: 'Osoba',
+  tags: 'Tagi',
+  period: 'Okres',
+  signatureStatus: 'Status podpisu',
+  files: 'Pliki',
+  draft: 'Szkic',
+};
+
+const documentColumnPreferenceSchema = z.object({
+  order: z.array(z.enum(DOCUMENT_COLUMN_IDS)),
+  visible: z.array(z.enum(DOCUMENT_COLUMN_IDS)),
+});
+
+const defaultDocumentColumnSettings = (): DocumentColumnSettings => ({
+  order: Array.from(DOCUMENT_COLUMN_IDS),
+  visible: ['documentDate', 'title', 'docType', 'person', 'files', 'draft'],
+});
+
+const normalizeDocumentColumnSettings = (value: unknown): DocumentColumnSettings => {
+  const fallback = defaultDocumentColumnSettings();
+  const parsed = documentColumnPreferenceSchema.safeParse(value);
+  if (!parsed.success) return fallback;
+  const known = new Set<DocumentColumnId>(DOCUMENT_COLUMN_IDS);
+  const order = [
+    ...parsed.data.order.filter((column) => known.has(column)),
+    ...DOCUMENT_COLUMN_IDS.filter((column) => !parsed.data.order.includes(column)),
+  ];
+  const visible = parsed.data.visible.filter((column) => known.has(column));
+  return {
+    order,
+    visible: visible.length > 0 ? visible : fallback.visible,
+  };
+};
+
+const toColumnPreferenceValue = (
+  settings: DocumentColumnSettings,
+): UserPreferenceValue => ({
+  order: settings.order,
+  visible: settings.visible,
+});
+
+const signedStatus = (document: DocumentWithFiles) =>
+  document.files.some((file) => file.role === 'signed-scan' || file.role === 'signed-digital')
+    ? 'signed'
+    : 'needs-signature';
+
 type DocumentsView = 'list' | 'folders' | 'trash';
 
 const trashErrorMessage = (error: unknown): string =>
@@ -139,11 +229,16 @@ export const DocumentsPage = () => {
   const [emptyTrashConfirmation, setEmptyTrashConfirmation] = useState('');
   const [archiveHasDocuments, setArchiveHasDocuments] = useState(false);
   const [filters, setFilters] = useState<DocumentFilterValues>(emptyDocumentFilters);
+  const [columnSettings, setColumnSettings] = useState<DocumentColumnSettings>(
+    defaultDocumentColumnSettings,
+  );
+  const [columnsAnchor, setColumnsAnchor] = useState<HTMLElement | null>(null);
   const documentFilter = toDocumentFilter(filters);
   const documents = useQuery(actions.documents(documentFilter));
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const trashedDocuments = useQuery(actions.trashedDocuments);
   const savedSearches = useQuery(savedSearchActions.savedSearches);
+  const columnPreference = useQuery(preferenceActions.userPreference(DOCUMENT_COLUMNS_KEY));
   const createDocument = useMutation({
     ...actions.createDocument,
     onSuccess: async ({ document }) => {
@@ -176,6 +271,14 @@ export const DocumentsPage = () => {
   });
   const restoreDocument = useMutation(actions.restoreDocument);
   const purgeDocument = useMutation(actions.purgeDocument);
+  const setColumnPreference = useMutation({
+    ...preferenceActions.setUserPreference,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(
+        preferenceActions.userPreferenceInvalidates(DOCUMENT_COLUMNS_KEY),
+      );
+    },
+  });
 
   const updateFilter = <Name extends keyof DocumentFilterValues,>(
     name: Name,
@@ -191,12 +294,52 @@ export const DocumentsPage = () => {
   const personOptions = uniqueDocumentPersons(allDocuments);
   const tagOptions = uniqueDocumentTags(allDocuments);
   const savedSearchItems: SavedSearch[] = savedSearches.data?.savedSearches ?? [];
+  const visibleColumnIds = columnSettings.order.filter((column) =>
+    columnSettings.visible.includes(column),
+  );
 
   useEffect(() => {
     if (allDocuments.length > 0) setArchiveHasDocuments(true);
   }, [allDocuments.length]);
 
+  useEffect(() => {
+    if (columnPreference.isSuccess) {
+      setColumnSettings(
+        normalizeDocumentColumnSettings(columnPreference.data.preference?.value),
+      );
+    }
+  }, [columnPreference.data, columnPreference.isSuccess]);
+
   const clearFilters = () => setFilters(emptyDocumentFilters());
+
+  const saveColumnSettings = (settings: DocumentColumnSettings) => {
+    setColumnSettings(settings);
+    setColumnPreference.mutate({
+      key: DOCUMENT_COLUMNS_KEY,
+      input: { value: toColumnPreferenceValue(settings) },
+    });
+  };
+
+  const setColumnVisible = (column: DocumentColumnId, visible: boolean) => {
+    const nextVisible = visible
+      ? Array.from(new Set([...columnSettings.visible, column]))
+      : columnSettings.visible.filter((item) => item !== column);
+    if (nextVisible.length === 0) return;
+    saveColumnSettings({ ...columnSettings, visible: nextVisible });
+  };
+
+  const moveColumn = (column: DocumentColumnId, direction: -1 | 1) => {
+    const index = columnSettings.order.indexOf(column);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= columnSettings.order.length) return;
+    const order = [...columnSettings.order];
+    const current = order[index];
+    const next = order[target];
+    if (!current || !next) return;
+    order[index] = next;
+    order[target] = current;
+    saveColumnSettings({ ...columnSettings, order });
+  };
 
   const saveCurrentSearch = () => {
     const name = savedSearchName.trim();
@@ -263,6 +406,72 @@ export const DocumentsPage = () => {
     setEmptyTrashConfirmation('');
     setTrashSummary({ deleted, errors });
     await queryClient.invalidateQueries(actions.documentsInvalidates());
+  };
+
+  const renderDocumentCell = (
+    column: DocumentColumnId,
+    document: DocumentWithFiles,
+  ) => {
+    if (column === 'documentDate') {
+      return (
+        <Typography variant="body2" color="text.secondary" noWrap>
+          {formatPolishDate(document.documentDate)}
+        </Typography>
+      );
+    }
+    if (column === 'title') {
+      return (
+        <Typography variant="subtitle2" component="span">
+          {document.title}
+        </Typography>
+      );
+    }
+    if (column === 'docType') {
+      return (
+        <Chip
+          size="small"
+          variant="outlined"
+          label={DOCUMENT_TYPE_LABELS[document.docType]}
+        />
+      );
+    }
+    if (column === 'person') return document.person ?? '—';
+    if (column === 'tags') {
+      return document.tags.length > 0 ? (
+        <Stack direction="row" sx={{ gap: 0.5, flexWrap: 'wrap' }}>
+          {document.tags.map((tag) => (
+            <Chip
+              key={tag}
+              size="small"
+              label={tag}
+              onClick={(event) => {
+                event.stopPropagation();
+                updateFilter('tag', tag);
+              }}
+            />
+          ))}
+        </Stack>
+      ) : null;
+    }
+    if (column === 'period') {
+      if (!document.periodStart && !document.periodEnd) return null;
+      return `${document.periodStart ? formatPolishDate(document.periodStart) : '—'} - ${
+        document.periodEnd ? formatPolishDate(document.periodEnd) : '—'
+      }`;
+    }
+    if (column === 'signatureStatus') {
+      const status = signedStatus(document);
+      return (
+        <Chip
+          size="small"
+          color={status === 'signed' ? 'success' : 'default'}
+          variant="outlined"
+          label={SIGNATURE_STATUS_LABELS[status]}
+        />
+      );
+    }
+    if (column === 'files') return <FileCounts files={document.files} />;
+    return document.draft ? <Chip size="small" color="warning" label="Szkic" /> : null;
   };
 
   return (
@@ -708,8 +917,14 @@ export const DocumentsPage = () => {
 
       {hasDocuments && view === 'list' ? <Stack
         direction="row"
-        sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end' }}
+        sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}
       >
+        <Button
+          variant="outlined"
+          onClick={(event) => setColumnsAnchor(event.currentTarget)}
+        >
+          Kolumny
+        </Button>
         <Button
           variant="outlined"
           disabled={selectedIds.length === 0 || exportDocuments.isPending}
@@ -718,6 +933,71 @@ export const DocumentsPage = () => {
           Eksportuj zaznaczone ({selectedIds.length})
         </Button>
       </Stack> : null}
+      <Popover
+        open={Boolean(columnsAnchor)}
+        anchorEl={columnsAnchor}
+        onClose={() => setColumnsAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Box sx={{ p: 2, width: '20rem', maxWidth: 'calc(100vw - 2rem)' }}>
+          <Typography variant="h3" component="h2" sx={{ mb: 1 }}>
+            Kolumny
+          </Typography>
+          <FormGroup>
+            {columnSettings.order.map((column, index) => {
+              const checked = columnSettings.visible.includes(column);
+              const onlyVisible = checked && columnSettings.visible.length === 1;
+              return (
+                <Stack
+                  key={column}
+                  direction="row"
+                  sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
+                >
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={checked}
+                        disabled={onlyVisible}
+                        onChange={(event) => setColumnVisible(column, event.target.checked)}
+                      />
+                    }
+                    label={DOCUMENT_COLUMN_LABELS[column]}
+                  />
+                  <Stack direction="row" sx={{ gap: 0.25 }}>
+                    <IconButton
+                      size="small"
+                      aria-label={`Przesuń w górę: ${DOCUMENT_COLUMN_LABELS[column]}`}
+                      disabled={index === 0}
+                      onClick={() => moveColumn(column, -1)}
+                    >
+                      <ArrowUpIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      aria-label={`Przesuń w dół: ${DOCUMENT_COLUMN_LABELS[column]}`}
+                      disabled={index === columnSettings.order.length - 1}
+                      onClick={() => moveColumn(column, 1)}
+                    >
+                      <ArrowDownIcon />
+                    </IconButton>
+                  </Stack>
+                </Stack>
+              );
+            })}
+          </FormGroup>
+          {setColumnPreference.isPending ? (
+            <Typography variant="caption" color="text.secondary">
+              Zapisywanie…
+            </Typography>
+          ) : null}
+          {setColumnPreference.isError ? (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {setColumnPreference.error.message}
+            </Alert>
+          ) : null}
+        </Box>
+      </Popover>
       {exportDocuments.isError ? (
         <Alert severity="error" sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert>
       ) : null}
@@ -853,11 +1133,9 @@ export const DocumentsPage = () => {
                     }
                   />
                 </TableCell>
-                <TableCell>Data podpisania</TableCell>
-                <TableCell>Tytuł</TableCell>
-                <TableCell>Typ</TableCell>
-                <TableCell>Osoba</TableCell>
-                <TableCell>Pliki</TableCell>
+                {visibleColumnIds.map((column) => (
+                  <TableCell key={column}>{DOCUMENT_COLUMN_LABELS[column]}</TableCell>
+                ))}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -893,30 +1171,9 @@ export const DocumentsPage = () => {
                       }
                     />
                   </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary" noWrap>
-                      {formatPolishDate(document.documentDate)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <Typography variant="subtitle2" component="span">
-                        {document.title}
-                      </Typography>
-                      {document.draft ? <Chip size="small" color="warning" label="Szkic" /> : null}
-                    </Stack>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      label={DOCUMENT_TYPE_LABELS[document.docType]}
-                    />
-                  </TableCell>
-                  <TableCell>{document.person ?? '—'}</TableCell>
-                  <TableCell>
-                    <FileCounts files={document.files} />
-                  </TableCell>
+                  {visibleColumnIds.map((column) => (
+                    <TableCell key={column}>{renderDocumentCell(column, document)}</TableCell>
+                  ))}
                 </TableRow>
               ))}
             </TableBody>

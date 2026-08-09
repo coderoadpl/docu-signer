@@ -18,6 +18,7 @@ import type {
   FileUploadRequest,
   FinalizeFileUpload,
   MoveDocumentFile,
+  SetUserPreference,
   UpdateDocument,
 } from '#core/domain/index.js';
 
@@ -120,6 +121,11 @@ const savedSearchScopes = {
 const apiTokenScopes = {
   all: () => ['api-tokens'] as const,
   lists: () => ['api-tokens', 'list'] as const,
+};
+
+const userPreferenceScopes = {
+  all: () => ['user-preferences'] as const,
+  detail: (key: string) => ['user-preferences', key] as const,
 };
 
 const authScopes = {
@@ -314,6 +320,23 @@ export const revokeApiTokenMutation = (api: ApiClient) =>
   });
 
 export const apiTokensInvalidates = () => ({ queryKey: apiTokenScopes.all() });
+
+export const userPreferenceQuery = (api: ApiClient, key: string) =>
+  defineQuery({
+    queryKey: userPreferenceScopes.detail(key),
+    call: ({ signal }) => api.getUserPreference(key, signal),
+  });
+
+export const setUserPreferenceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...userPreferenceScopes.all(), 'set'],
+    call: ({ key, input }: { key: string; input: SetUserPreference }) =>
+      api.setUserPreference(key, input),
+  });
+
+export const userPreferenceInvalidates = (key: string) => ({
+  queryKey: userPreferenceScopes.detail(key),
+});
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any

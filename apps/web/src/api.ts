@@ -44,8 +44,11 @@ import {
   signInSocialMutation,
   signOutMutation,
   signUpMutation,
+  setUserPreferenceMutation,
   updateDocumentMutation,
   uploadDocumentFileMutation,
+  userPreferenceInvalidates,
+  userPreferenceQuery,
   verifyTotpMutation,
   trashedDocumentsQuery,
 } from '#core/client/index.js';
@@ -109,6 +112,12 @@ export const apiTokenActions = {
   createApiToken: createApiTokenMutation(apiClient),
   revokeApiToken: revokeApiTokenMutation(apiClient),
   apiTokensInvalidates,
+};
+
+export const preferenceActions = {
+  userPreference: (key: string) => userPreferenceQuery(apiClient, key),
+  setUserPreference: setUserPreferenceMutation(apiClient),
+  userPreferenceInvalidates,
 };
 
 export const savedSearchActions = {

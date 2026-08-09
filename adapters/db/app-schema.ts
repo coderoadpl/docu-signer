@@ -7,13 +7,14 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { SavedSearchFilter } from '#core/domain/index.js';
+import type { SavedSearchFilter, UserPreferenceValue } from '#core/domain/index.js';
 import { user } from './auth-schema.js';
 
 const LEGACY_BOARD_IDS = ['personal', 'team'] as const;
@@ -239,6 +240,22 @@ export const savedSearches = pgTable(
   (table) => [
     index('saved_searches_tenant_created_idx').on(table.tenantId, table.createdAt),
     check('saved_searches_name_length_check', sql`length(${table.name}) BETWEEN 1 AND 120`),
+  ],
+);
+
+export const userPreferences = pgTable(
+  'user_preferences',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    value: jsonb('value').$type<UserPreferenceValue>().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.key] }),
+    check('user_preferences_key_length_check', sql`length(${table.key}) BETWEEN 1 AND 120`),
   ],
 );
 

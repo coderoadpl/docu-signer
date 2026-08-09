@@ -9,6 +9,8 @@ import type {
   StaffRole,
   Tenant,
   TenantDomain,
+  UserPreference,
+  UserPreferenceValue,
 } from '#core/domain/index.js';
 
 export interface DocumentRepository {
@@ -83,6 +85,11 @@ export interface SavedSearchRepository {
   listByTenant(tenantId: string): Promise<SavedSearch[]>;
   create(input: Omit<SavedSearch, 'createdAt'>): Promise<SavedSearch>;
   delete(tenantId: string, savedSearchId: string): Promise<boolean>;
+}
+
+export interface UserPreferenceRepository {
+  get(userId: string, key: string): Promise<UserPreference | null>;
+  set(userId: string, key: string, value: UserPreferenceValue): Promise<UserPreference>;
 }
 
 export interface UploadTarget {

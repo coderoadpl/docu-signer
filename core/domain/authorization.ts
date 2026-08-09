@@ -6,6 +6,7 @@ export const CAPABILITIES = [
   'document:approve',
   'api-token:manage',
   'saved-search:manage',
+  'user-preference:manage',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -23,6 +24,7 @@ const GRANTS: Record<Capability, readonly Principal[]> = {
   'document:approve': ['owner', 'admin'],
   'api-token:manage': ['owner', 'admin'],
   'saved-search:manage': ['owner', 'admin'],
+  'user-preference:manage': ['owner', 'admin'],
 };
 
 const tokenAllows = (identity: Identity, capability: Capability): Verdict => {

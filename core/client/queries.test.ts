@@ -31,6 +31,9 @@ import {
   trashedDocumentsQuery,
   updateDocumentMutation,
   uploadDocumentFileMutation,
+  setUserPreferenceMutation,
+  userPreferenceInvalidates,
+  userPreferenceQuery,
 } from './queries.js';
 import { ok, type Result, type AppError } from '#core/domain/index.js';
 import type { AuthClientPort, AuthSessionResult, PasskeyInfo } from './auth-port.js';
@@ -345,6 +348,37 @@ describe('api token query descriptors', () => {
     await expect(
       observe(revokeApiTokenMutation(api)).mutate(apiToken.id),
     ).resolves.toEqual({ revoked: true });
+  });
+});
+
+describe('user preference query descriptors', () => {
+  it('executes get/set through the preference cache scope', async () => {
+    const preference = {
+      userId: 'user-1',
+      key: 'documents.columns',
+      value: { order: ['title'], visible: ['title'] },
+      updatedAt: '2026-08-02T10:00:00.000Z',
+    };
+    const fetchImpl = vi.fn<typeof fetch>((input, init) =>
+      init?.method === 'PUT'
+        ? response({ preference })
+        : response({ preference: null }),
+    );
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+    const client = newClient();
+
+    const query = userPreferenceQuery(api, 'documents.columns');
+    expect(query.queryKey).toEqual(['user-preferences', 'documents.columns']);
+    await expect(client.fetchQuery(query)).resolves.toEqual({ preference: null });
+    expect(userPreferenceInvalidates('documents.columns')).toEqual({
+      queryKey: ['user-preferences', 'documents.columns'],
+    });
+    await expect(
+      new MutationObserver(client, setUserPreferenceMutation(api)).mutate({
+        key: 'documents.columns',
+        input: { value: { order: ['title'], visible: ['title'] } },
+      }),
+    ).resolves.toEqual({ preference });
   });
 });
 

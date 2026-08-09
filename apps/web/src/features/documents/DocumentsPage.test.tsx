@@ -301,6 +301,96 @@ describe('DocumentsPage', () => {
     ).toBeEnabled();
   });
 
+  it('persists column visibility and order and filters from tag chips', async () => {
+    const seen = vi.fn();
+    const saved = vi.fn();
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen(Object.fromEntries(params.entries()));
+        return HttpResponse.json({ ok: true, data: { documents: [document] } });
+      }),
+      http.get('/api/me/preferences/documents.columns', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            preference: {
+              userId: 'user-1',
+              key: 'documents.columns',
+              value: {
+                order: ['title', 'tags', 'files'],
+                visible: ['title', 'tags'],
+              },
+              updatedAt: '2026-08-02T10:00:00.000Z',
+            },
+          },
+        }),
+      ),
+      http.put('/api/me/preferences/documents.columns', async ({ request }) => {
+        const body = await request.json();
+        saved(body);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            preference: {
+              userId: 'user-1',
+              key: 'documents.columns',
+              value: typeof body === 'object' && body && 'value' in body ? body.value : null,
+              updatedAt: '2026-08-02T10:05:00.000Z',
+            },
+          },
+        });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByRole('columnheader', { name: 'Tagi' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Data podpisania' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText('ważne'));
+    await waitFor(() => expect(seen).toHaveBeenCalledWith({ tag: 'ważne' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Kolumny' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Pliki' }));
+    await waitFor(() =>
+      expect(saved).toHaveBeenCalledWith({
+        value: {
+          order: [
+            'title',
+            'tags',
+            'files',
+            'documentDate',
+            'docType',
+            'person',
+            'period',
+            'signatureStatus',
+            'draft',
+          ],
+          visible: ['title', 'tags', 'files'],
+        },
+      }),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Przesuń w górę: Tagi' }));
+    await waitFor(() =>
+      expect(saved).toHaveBeenLastCalledWith({
+        value: {
+          order: [
+            'tags',
+            'title',
+            'files',
+            'documentDate',
+            'docType',
+            'person',
+            'period',
+            'signatureStatus',
+            'draft',
+          ],
+          visible: ['title', 'tags', 'files'],
+        },
+      }),
+    );
+  });
+
   it('saves, applies and deletes teczki presets', async () => {
     const seen = vi.fn();
     const savedCreate = vi.fn();

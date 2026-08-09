@@ -141,7 +141,7 @@ describe('API client', () => {
     expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
-  it('calls approve and API token routes through the contract', async () => {
+  it('calls approve, API token and preference routes through the contract', async () => {
     const token = {
       id: '22222222-2222-4222-8222-222222222222',
       userId: 'user-1',
@@ -174,6 +174,22 @@ describe('API client', () => {
       if (url.endsWith('/api/api-tokens') && init?.method === 'POST') {
         return json({ ok: true, data: { apiToken: token, value: 'pat_secret' } });
       }
+      if (url.endsWith('/api/me/preferences/documents.columns') && init?.method === 'GET') {
+        return json({ ok: true, data: { preference: null } });
+      }
+      if (url.endsWith('/api/me/preferences/documents.columns') && init?.method === 'PUT') {
+        return json({
+          ok: true,
+          data: {
+            preference: {
+              userId: 'user-1',
+              key: 'documents.columns',
+              value: { order: ['title'], visible: ['title'] },
+              updatedAt: '2026-08-02T10:00:00.000Z',
+            },
+          },
+        });
+      }
       return json({ ok: true, data: { revoked: true } });
     });
     const api = createApiClient({ baseUrl: '', fetchImpl });
@@ -182,6 +198,10 @@ describe('API client', () => {
     await api.listApiTokens();
     await api.createApiToken({ name: 'Importer', scopes: ['write:draft'] });
     await api.revokeApiToken(token.id);
+    await api.getUserPreference('documents.columns');
+    await api.setUserPreference('documents.columns', {
+      value: { order: ['title'], visible: ['title'] },
+    });
 
     expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(`/api/documents/${document.id}/approve`);
     expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
@@ -192,6 +212,12 @@ describe('API client', () => {
       body: JSON.stringify({ name: 'Importer', scopes: ['write:draft'] }),
     });
     expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(`/api/api-tokens/${token.id}/revoke`);
+    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe('/api/me/preferences/documents.columns');
+    expect(fetchImpl.mock.calls[4]?.[1]).toMatchObject({ method: 'GET' });
+    expect(fetchImpl.mock.calls[5]?.[1]).toMatchObject({
+      method: 'PUT',
+      body: JSON.stringify({ value: { order: ['title'], visible: ['title'] } }),
+    });
   });
 
   it('calls public tenant routes and builds file URLs', async () => {

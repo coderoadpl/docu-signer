@@ -77,6 +77,15 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     }),
     delete: async () => false,
   },
+  userPreferences: {
+    get: async () => null,
+    set: async (userId, key, value) => ({
+      userId,
+      key,
+      value,
+      updatedAt: '2026-08-02T10:00:00.000Z',
+    }),
+  },
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),

@@ -20,6 +20,10 @@ import {
   publicVersionSchema,
   savedSearchCreateInputSchema,
   savedSearchListOutputSchema,
+  userPreferenceGetOutputSchema,
+  userPreferenceKeyInputSchema,
+  userPreferenceSetInputSchema,
+  userPreferenceSetOutputSchema,
   publicTenantDiscoveryPath,
   publicTenantProfilePath,
 } from './routes.js';
@@ -74,6 +78,14 @@ describe('API route contract', () => {
     expect(API_ROUTES.apiTokenRevoke).toEqual({
       method: 'POST',
       path: '/api/api-tokens/:apiTokenId/revoke',
+    });
+    expect(API_ROUTES.userPreference).toEqual({
+      method: 'GET',
+      path: '/api/me/preferences/:key',
+    });
+    expect(API_ROUTES.userPreferenceSet).toEqual({
+      method: 'PUT',
+      path: '/api/me/preferences/:key',
     });
   });
 
@@ -225,6 +237,32 @@ describe('API route contract', () => {
         value: 'pat_secret',
       }).success,
     ).toBe(false);
+  });
+
+  it('validates user preference keys and JSON payloads', () => {
+    expect(userPreferenceKeyInputSchema.safeParse('documents.columns').success).toBe(true);
+    expect(userPreferenceKeyInputSchema.safeParse('Documents Columns').success).toBe(false);
+    expect(
+      userPreferenceSetInputSchema.safeParse({
+        value: { order: ['title'], visible: ['title'] },
+      }).success,
+    ).toBe(true);
+    expect(userPreferenceSetInputSchema.safeParse({ value: undefined }).success).toBe(false);
+    expect(
+      userPreferenceGetOutputSchema.safeParse({
+        preference: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      userPreferenceSetOutputSchema.safeParse({
+        preference: {
+          userId: 'user-1',
+          key: 'documents.columns',
+          value: { order: ['title'], visible: ['title'] },
+          updatedAt: '2026-08-02T10:00:00.000Z',
+        },
+      }).success,
+    ).toBe(true);
   });
 
   it('validates saved search payloads and responses', () => {

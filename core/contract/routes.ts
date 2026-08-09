@@ -4,6 +4,7 @@ import {
   apiTokenSchema,
   createApiTokenSchema,
   createDocumentSchema,
+  createSavedSearchSchema,
   documentFileSchema,
   documentListFilterSchema,
   documentSchema,
@@ -13,10 +14,12 @@ import {
   finalizeFileUploadSchema,
   moveDocumentFileSchema,
   publicTenantProfileSchema,
-  createSavedSearchSchema,
   savedSearchSchema,
+  setUserPreferenceSchema,
   staffRoleSchema,
   updateDocumentSchema,
+  userPreferenceKeySchema,
+  userPreferenceSchema,
 } from '#core/domain/index.js';
 
 const attestationSchema = z.object({
@@ -165,6 +168,18 @@ export const apiTokenRevokeOutputSchema = z.object({
   revoked: z.literal(true),
 });
 
+export const userPreferenceKeyInputSchema = userPreferenceKeySchema;
+
+export const userPreferenceGetOutputSchema = z.object({
+  preference: userPreferenceSchema.nullable(),
+});
+
+export const userPreferenceSetInputSchema = setUserPreferenceSchema;
+
+export const userPreferenceSetOutputSchema = z.object({
+  preference: userPreferenceSchema,
+});
+
 export const PUBLIC_API_PREFIX = '/api/public';
 
 export const PUBLIC_API_ROUTES = {
@@ -242,6 +257,8 @@ export const API_ROUTES = {
   apiTokens: { method: 'GET', path: '/api/api-tokens' },
   apiTokensCreate: { method: 'POST', path: '/api/api-tokens' },
   apiTokenRevoke: { method: 'POST', path: '/api/api-tokens/:apiTokenId/revoke' },
+  userPreference: { method: 'GET', path: '/api/me/preferences/:key' },
+  userPreferenceSet: { method: 'PUT', path: '/api/me/preferences/:key' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];

@@ -8,6 +8,7 @@ import { createApiTokenSecrets } from '#adapters/auth/api-token-secrets.js';
 import { createDb } from '#adapters/db/client.js';
 import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
+import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import {
   createHealthPort,
   createTenantAccessReader,
@@ -130,6 +131,7 @@ beforeAll(async () => {
     apiTokens: createApiTokenRepository(db),
     apiTokenSecrets: createApiTokenSecrets(),
     documents: createDocumentRepository(db),
+    userPreferences: createUserPreferenceRepository(db),
     savedSearches: {
       listByTenant: async () => [],
       create: async (input) => ({ ...input, createdAt: '2026-08-02T00:00:00.000Z' }),
