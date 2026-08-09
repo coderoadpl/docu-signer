@@ -652,8 +652,8 @@ Personal API tokens resolve from `Authorization: Bearer pat_...` before session
 auth. A valid token becomes the owning user's identity plus an `apiToken` scope
 restriction; the normal owner/admin grant must still pass, then `decide`
 intersects the token scopes. `read` grants only document list/show/file/export
-reads. `write` grants document write operations except delete/trash/purge and
-approval. `write:draft` grants document writes only where the operation creates
+reads. `write` grants document write operations except document/file deletion
+and approval. `write:draft` grants document writes only where the operation creates
 or targets a draft document. Token management, account/auth identity, saved
 search management, approval and all deletes are session-only.
 

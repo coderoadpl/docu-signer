@@ -65,7 +65,12 @@ seed. Use `--api-url` or `APP_CLI_API_URL` to target another origin.
 Full command set (<!--count:cli-command-groups-->11<!--/count--> top-level groups):
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
 `origin list|use`, `account change-password|request-password-reset`,
-`document list|show|add|upload|export|remove`, `public profile`.
+`document list|search|show|add|upload|export|remove|approve`,
+`token create|list|revoke`, `public profile`.
+
+Every command also accepts `--token <value>` (or the `APP_CLI_TOKEN` env var)
+to authenticate with a personal API token instead of the stored session;
+the flag wins over the env var, which wins over the profile session.
 
 Every command supports `--json` and exits with a code mapped from the error
 taxonomy (`validation`=2, `unauthorized`=3, `forbidden`=4, `not_found`=5,
