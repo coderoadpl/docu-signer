@@ -289,14 +289,12 @@ describe('document view logic', () => {
         },
       ],
     };
-    const future = {
+    const contract = {
       ...protocol,
       id: '77777777-7777-4777-8777-777777777777',
-      title: 'Przyszły',
+      title: 'Umowa',
       docType: 'umowa-uod' as const,
-      documentDate: '2026-06-10',
-      periodStart: null,
-      periodEnd: null,
+      documentDate: '2026-05-09',
       files: [
         {
           ...sourceFile,
@@ -307,15 +305,15 @@ describe('document view logic', () => {
     };
 
     expect(newestSignablePdfFile(protocol)?.id).toBe(newestSignedFile.id);
-    expect(massSigningQueueTargets([future, bill, protocol])).toEqual([
+    expect(massSigningQueueTargets([contract, bill, protocol])).toEqual([
+      {
+        documentId: contract.id,
+        fileId: '88888888-8888-4888-8888-888888888888',
+      },
       { documentId: protocol.id, fileId: newestSignedFile.id },
       {
         documentId: bill.id,
         fileId: '66666666-6666-4666-8666-666666666666',
-      },
-      {
-        documentId: future.id,
-        fileId: '88888888-8888-4888-8888-888888888888',
       },
     ]);
   });
@@ -352,6 +350,15 @@ describe('document view logic', () => {
       {
         id: 'contract',
         title: 'Umowa',
+        docType: 'umowa-uod' as const,
+        documentDate: '2026-05-23',
+        periodStart: '2026-05-01',
+        periodEnd: '2026-05-31',
+        person: 'Łukasz',
+      },
+      {
+        id: 'contract-second',
+        title: 'Umowa druga',
         docType: 'umowa-uod' as const,
         documentDate: '2026-05-23',
         periodStart: '2026-05-01',
@@ -437,12 +444,33 @@ describe('document view logic', () => {
       'Bez osoby',
     ]);
     expect(mayGroup.people.at(1)?.documents.map((item) => item.id)).toEqual([
+      'contract',
+      'contract-second',
       'protocol',
       'bill',
-      'contract',
       'other-first',
       'other-second',
     ]);
+    expect(
+      groupDocumentsCanonically([
+        {
+          id: 'no-person-first',
+          docType: 'inny' as const,
+          documentDate: '2026-06-01',
+          periodStart: null,
+          periodEnd: null,
+          person: null,
+        },
+        {
+          id: 'anna-second',
+          docType: 'inny' as const,
+          documentDate: '2026-06-01',
+          periodStart: null,
+          periodEnd: null,
+          person: 'Anna',
+        },
+      ]).at(0)?.people.map((group) => group.person),
+    ).toEqual(['Anna', 'Bez osoby']);
   });
 
   it('builds tag suggestions and saved-search summaries', () => {

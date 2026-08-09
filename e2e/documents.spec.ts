@@ -592,7 +592,7 @@ test('mass signing signs, skips and signs an already signed document', async ({ 
   await expect(page.getByRole('cell', { name: thirdTitle, exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Masowe podpisywanie' }).click();
 
-  await expect(page.getByRole('heading', { name: firstTitle })).toBeVisible();
+  await expect(page.getByRole('heading', { name: thirdTitle })).toBeVisible();
   await expectReviewPdfFitsViewport(page);
   await placeMassSignature(page, [
     { x: 0.2, y: 0.42 },
@@ -606,17 +606,17 @@ test('mass signing signs, skips and signs an already signed document', async ({ 
   ]);
   await page.getByRole('button', { name: 'Przejdź' }).click();
 
-  await expect(page.getByRole('heading', { name: secondTitle })).toBeVisible();
-  await expectReviewPdfFitsViewport(page);
-  await page.getByRole('button', { name: 'Przejdź' }).click();
-
-  await expect(page.getByRole('heading', { name: thirdTitle })).toBeVisible();
+  await expect(page.getByRole('heading', { name: firstTitle })).toBeVisible();
   await expectReviewPdfFitsViewport(page);
   await placeMassSignature(page, [
     { x: 0.18, y: 0.5 },
     { x: 0.42, y: 0.36 },
     { x: 0.66, y: 0.52 },
   ]);
+  await page.getByRole('button', { name: 'Przejdź' }).click();
+
+  await expect(page.getByRole('heading', { name: secondTitle })).toBeVisible();
+  await expectReviewPdfFitsViewport(page);
   await page.getByRole('button', { name: 'Przejdź' }).click();
 
   await expect(page.getByRole('heading', { name: 'Podsumowanie' })).toBeVisible();

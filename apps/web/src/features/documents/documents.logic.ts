@@ -274,9 +274,9 @@ export type CanonicalGroupedDocumentInput = Pick<
 >;
 
 const DOC_TYPE_PRECEDENCE: Partial<Record<DocumentType, number>> = {
-  protokol: 0,
-  rachunek: 1,
-  'umowa-uod': 2,
+  'umowa-uod': 0,
+  protokol: 1,
+  rachunek: 2,
 };
 
 const personGroupLabel = (person: string | null | undefined): string =>

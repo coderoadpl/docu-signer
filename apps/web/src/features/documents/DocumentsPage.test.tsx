@@ -712,14 +712,14 @@ describe('DocumentsPage', () => {
 
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(
-        '/app/documents/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sign/99999999-9999-4999-8999-999999999999',
+        `/app/documents/${signedId}/sign/${signedFileId}`,
       ),
     );
     expect(router.state.location.search).toMatchObject({
       q: 'masowe',
       tryb: 'masowe',
-      kolejka: `${billId},${signedId}`,
-      pliki: `ffffffff-ffff-4fff-8fff-ffffffffffff,${signedFileId}`,
+      kolejka: `${protocolId},${billId}`,
+      pliki: '99999999-9999-4999-8999-999999999999,ffffffff-ffff-4fff-8fff-ffffffffffff',
       podpisane: 0,
       pominiete: 0,
       razem: 3,

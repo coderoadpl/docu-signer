@@ -411,9 +411,14 @@ const MassReviewHeader = ({
   <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1 }}>
     <Stack
       direction="row"
-      sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
+      sx={{ alignItems: 'center', gap: 1, minWidth: 0, overflow: 'hidden' }}
     >
-      <Typography variant="h3" component="h1">
+      <Typography
+        variant="h3"
+        component="h1"
+        noWrap
+        sx={{ flex: '0 1 auto', maxWidth: { xs: '50vw', sm: '58vw', md: '64vw' }, minWidth: 0 }}
+      >
         {document.title}
       </Typography>
       <Chip
