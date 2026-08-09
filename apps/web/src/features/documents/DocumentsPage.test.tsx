@@ -6,7 +6,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -83,6 +83,51 @@ const document = {
   createdAt: '2026-07-18T10:00:00.000Z',
   updatedAt: '2026-07-18T10:00:00.000Z',
   files: [],
+};
+
+const signedDocument = {
+  ...document,
+  id: '22222222-2222-4222-8222-222222222222',
+  title: 'Podpisana umowa',
+  tags: ['podpisane'],
+  files: [
+    {
+      id: '44444444-4444-4444-8444-444444444444',
+      documentId: '22222222-2222-4222-8222-222222222222',
+      role: 'signed-digital',
+      fileName: 'podpis.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant/doc/file',
+      createdAt: '2026-07-18T10:00:00.000Z',
+    },
+  ],
+};
+
+const draftDocument = {
+  ...document,
+  id: '55555555-5555-4555-8555-555555555555',
+  title: 'Szkic importu',
+  draft: true,
+};
+
+const savedSearch = {
+  id: '33333333-3333-4333-8333-333333333333',
+  tenantId: 'tenant-1',
+  name: 'Odbiór',
+  filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
+  createdAt: '2026-08-01T00:00:00.000Z',
+};
+
+const protocolDocument = {
+  ...document,
+  id: '22222222-2222-4222-8222-222222222222',
+  title: 'Protokół odbioru',
+  docType: 'protokol',
+  documentDate: '2026-01-15',
+  periodStart: '2025-12-15',
+  periodEnd: '2026-01-15',
+  tags: ['odbiór'],
 };
 
 const trashedDocument = {
@@ -184,6 +229,20 @@ describe('DocumentsPage', () => {
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
   });
 
+  it('renders a document without an assigned person', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { documents: [{ ...document, person: null }] },
+        }),
+      ),
+    );
+    await renderPage();
+
+    expect((await screen.findAllByText('—')).length).toBeGreaterThan(0);
+  });
+
   it('cancels a pending text-filter debounce on unmount', async () => {
     const seen = vi.fn();
     server.use(
@@ -210,46 +269,17 @@ describe('DocumentsPage', () => {
     expect(seen).not.toHaveBeenCalledWith('Protokół');
   });
 
-  it('filters by person and tag autocomplete suggestions and signature status', async () => {
-    const user = userEvent.setup({
-      pointerEventsCheck: PointerEventsCheckLevel.Never,
-    });
+  it('filters by person and tag autocomplete suggestions', async () => {
+    const user = userEvent.setup();
     const seen = vi.fn();
-    const signed = {
-      ...document,
-      id: '22222222-2222-4222-8222-222222222222',
-      title: 'Podpisana umowa',
-      tags: ['podpisane'],
-      files: [
-        {
-          id: '44444444-4444-4444-8444-444444444444',
-          documentId: '22222222-2222-4222-8222-222222222222',
-          role: 'signed-digital',
-          fileName: 'podpis.pdf',
-          contentType: 'application/pdf',
-          sizeBytes: 3,
-          storageKey: 'documents/tenant/doc/file',
-          createdAt: '2026-07-18T10:00:00.000Z',
-        },
-      ],
-    };
-    const draft = {
-      ...document,
-      id: '55555555-5555-4555-8555-555555555555',
-      title: 'Szkic importu',
-      draft: true,
-    };
     server.use(
       http.get('/api/documents', ({ request }) => {
         const params = new URL(request.url).searchParams;
         seen(Object.fromEntries(params.entries()));
-        if (params.get('draft') === 'true') {
-          return HttpResponse.json({ ok: true, data: { documents: [draft] } });
-        }
-        if (params.get('signatureStatus') === 'signed') {
-          return HttpResponse.json({ ok: true, data: { documents: [signed] } });
-        }
-        return HttpResponse.json({ ok: true, data: { documents: [document, signed, draft] } });
+        return HttpResponse.json({
+          ok: true,
+          data: { documents: [document, signedDocument, draftDocument] },
+        });
       }),
     );
     await renderPage();
@@ -272,13 +302,35 @@ describe('DocumentsPage', () => {
       }),
     );
 
+  });
+
+  it('filters by signature and draft status', async () => {
+    const user = userEvent.setup();
+    const seen = vi.fn();
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen(Object.fromEntries(params.entries()));
+        if (params.get('draft') === 'true') {
+          return HttpResponse.json({ ok: true, data: { documents: [draftDocument] } });
+        }
+        if (params.get('signatureStatus') === 'signed') {
+          return HttpResponse.json({ ok: true, data: { documents: [signedDocument] } });
+        }
+        return HttpResponse.json({
+          ok: true,
+          data: { documents: [document, signedDocument, draftDocument] },
+        });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
     await user.click(screen.getByLabelText('Status podpisu'));
     await user.click(await screen.findByRole('option', { name: 'Podpisane' }));
     expect((await screen.findAllByText('Podpisana umowa')).length).toBeGreaterThan(0);
     await waitFor(() =>
       expect(seen).toHaveBeenCalledWith({
-        person: 'Anna Nowak',
-        tag: 'podpisane',
         signatureStatus: 'signed',
       }),
     );
@@ -289,8 +341,6 @@ describe('DocumentsPage', () => {
     expect(screen.getAllByText('Szkic').length).toBeGreaterThan(0);
     await waitFor(() =>
       expect(seen).toHaveBeenCalledWith({
-        person: 'Anna Nowak',
-        tag: 'podpisane',
         signatureStatus: 'signed',
         draft: 'true',
       }),
@@ -810,42 +860,17 @@ describe('DocumentsPage', () => {
     await waitFor(() => expect(remove).toHaveBeenCalledWith(DOCUMENT_ID));
   });
 
-  it('saves and applies teczki presets', async () => {
-    const seen = vi.fn();
+  it('saves teczki presets', async () => {
+    const user = userEvent.setup();
     const savedCreate = vi.fn();
-    const savedSearch = {
-      id: '33333333-3333-4333-8333-333333333333',
-      tenantId: 'tenant-1',
-      name: 'Odbiór',
-      filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
-      createdAt: '2026-08-01T00:00:00.000Z',
-    };
     let savedSearches: Array<typeof savedSearch> = [];
-    const protocol = {
-      ...document,
-      id: '22222222-2222-4222-8222-222222222222',
-      title: 'Protokół odbioru',
-      docType: 'protokol',
-      documentDate: '2026-01-15',
-      periodStart: '2025-12-15',
-      periodEnd: '2026-01-15',
-      tags: ['odbiór'],
-    };
     server.use(
-      http.get('/api/documents', ({ request }) => {
-        const params = new URL(request.url).searchParams;
-        seen(Object.fromEntries(params.entries()));
-        if (params.get('tag') === 'odbiór') {
-          return HttpResponse.json({ ok: true, data: { documents: [protocol] } });
-        }
-        if (params.get('dateFrom') === '2025-01-01') {
-          return HttpResponse.json({ ok: true, data: { documents: [protocol] } });
-        }
-        return HttpResponse.json({
+      http.get('/api/documents', () =>
+        HttpResponse.json({
           ok: true,
-          data: { documents: [document, protocol] },
-        });
-      }),
+          data: { documents: [document, protocolDocument] },
+        }),
+      ),
       http.get('/api/saved-searches', () =>
         HttpResponse.json({ ok: true, data: { savedSearches } }),
       ),
@@ -856,18 +881,18 @@ describe('DocumentsPage', () => {
         return HttpResponse.json({ ok: true, data: { savedSearch } });
       }),
     );
-    const { router } = await renderPage();
+    await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
     expect(screen.getByLabelText('Tag')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
       target: { value: 'odbiór' },
     });
-    await userEvent.click(screen.getByLabelText('Status podpisu'));
-    await userEvent.click(await screen.findByRole('option', { name: 'Podpisane' }));
-    await userEvent.click(screen.getByLabelText('Szkice'));
-    await userEvent.click(await screen.findByRole('option', { name: 'Wszystkie' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Zapisz teczkę' }));
+    await user.click(screen.getByLabelText('Status podpisu'));
+    await user.click(await screen.findByRole('option', { name: 'Podpisane' }));
+    await user.click(screen.getByLabelText('Szkice'));
+    await user.click(await screen.findByRole('option', { name: 'Wszystkie' }));
+    await user.click(screen.getByRole('button', { name: 'Zapisz teczkę' }));
     const dialog = await screen.findByRole('dialog', { name: 'Zapisz teczkę' });
     expect(
       within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane · Szkice: razem z zatwierdzonymi'),
@@ -875,7 +900,7 @@ describe('DocumentsPage', () => {
     fireEvent.change(within(dialog).getByLabelText('Nazwa'), {
       target: { value: 'Odbiór' },
     });
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Zapisz teczkę' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Zapisz teczkę' }));
 
     await waitFor(() =>
       expect(savedCreate).toHaveBeenCalledWith({
@@ -886,14 +911,36 @@ describe('DocumentsPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Zapisz teczkę' })).not.toBeInTheDocument(),
     );
-    fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
-      target: { value: '' },
-    });
-    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
+  });
+
+  it('applies teczki presets', async () => {
+    const user = userEvent.setup();
+    const seen = vi.fn();
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen(Object.fromEntries(params.entries()));
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            documents: params.get('tag') === 'odbiór'
+              ? [protocolDocument]
+              : [document, protocolDocument],
+          },
+        });
+      }),
+      http.get('/api/saved-searches', () =>
+        HttpResponse.json({ ok: true, data: { savedSearches: [savedSearch] } }),
+      ),
+    );
+    const { router } = await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
+    await user.click(screen.getByRole('tab', { name: 'Teczki' }));
     expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
     expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane · Szkice: razem z zatwierdzonymi')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('heading', { name: 'Odbiór' }));
+    await user.click(screen.getByRole('heading', { name: 'Odbiór' }));
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
     await waitFor(() =>
       expect(seen).toHaveBeenCalledWith({
@@ -911,13 +958,6 @@ describe('DocumentsPage', () => {
 
   it('deletes teczki presets', async () => {
     const savedDelete = vi.fn();
-    const savedSearch = {
-      id: '33333333-3333-4333-8333-333333333333',
-      tenantId: 'tenant-1',
-      name: 'Odbiór',
-      filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
-      createdAt: '2026-08-01T00:00:00.000Z',
-    };
     let savedSearches: Array<typeof savedSearch> = [savedSearch];
     server.use(
       http.get('/api/documents', () =>
