@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -150,13 +151,11 @@ const drawInk = (
   }
 };
 
-const canvasMetrics = (
-  canvas: HTMLCanvasElement,
-  fallback: { width: number; height: number },
-): CanvasPdfMetrics => {
+const canvasMetrics = (canvas: HTMLCanvasElement): CanvasPdfMetrics | undefined => {
   const bounds = canvas.getBoundingClientRect();
-  const cssWidth = bounds.width > 0 ? bounds.width : fallback.width;
-  const cssHeight = bounds.height > 0 ? bounds.height : fallback.height;
+  if (bounds.width <= 0 || bounds.height <= 0) return undefined;
+  const cssWidth = bounds.width;
+  const cssHeight = bounds.height;
   const devicePixelRatio = Math.max(window.devicePixelRatio || 1, 1);
   canvas.width = Math.max(1, Math.floor(cssWidth * devicePixelRatio));
   canvas.height = Math.max(1, Math.floor(cssHeight * devicePixelRatio));
@@ -190,9 +189,15 @@ const SignaturePadDialog = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentStrokeRef = useRef<InkStroke | undefined>(undefined);
   const activePointerRef = useRef<number | undefined>(undefined);
+  const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
   const [metrics, setMetrics] = useState<CanvasPdfMetrics>();
   const [strokes, setStrokes] = useState<InkStroke[]>([]);
   const [activeStroke, setActiveStroke] = useState<InkStroke>();
+
+  const setCanvasRef = useCallback((node: HTMLCanvasElement | null) => {
+    canvasRef.current = node;
+    setCanvasElement(node);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -200,19 +205,29 @@ const SignaturePadDialog = ({
     activePointerRef.current = undefined;
     setStrokes([]);
     setActiveStroke(undefined);
+    setMetrics(undefined);
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvasElement) return;
     const updateMetrics = () => {
-      setMetrics(canvasMetrics(canvas, { width: 760, height: 280 }));
+      const next = canvasMetrics(canvasElement);
+      if (next) setMetrics(next);
     };
     updateMetrics();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateMetrics);
+      return () => window.removeEventListener('resize', updateMetrics);
+    }
+    const observer = new ResizeObserver(updateMetrics);
+    observer.observe(canvasElement);
     window.addEventListener('resize', updateMetrics);
-    return () => window.removeEventListener('resize', updateMetrics);
-  }, [open]);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateMetrics);
+    };
+  }, [canvasElement, open]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -254,7 +269,7 @@ const SignaturePadDialog = ({
       <DialogTitle>Złóż podpis</DialogTitle>
       <DialogContent>
         <InkSurface
-          ref={canvasRef}
+          ref={setCanvasRef}
           role="application"
           aria-label="Powierzchnia do złożenia podpisu"
           tabIndex={0}
