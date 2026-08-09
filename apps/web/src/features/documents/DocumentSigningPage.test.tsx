@@ -6,7 +6,7 @@ import {
   RouterProvider,
   useParams,
 } from '@tanstack/react-router';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -1632,6 +1632,36 @@ describe('DocumentSigningPage', () => {
     );
   });
 
+  it('starts a stamp drag while the page is still rendering', async () => {
+    installUploadHandlers();
+    await renderPage();
+    await drawStroke();
+
+    fireEvent.click(await enabledButton('Przybij na każdej stronie'));
+    expect(
+      await screen.findByText('Wybrany odcisk: strona 1'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Przesuń' }));
+    const canvas = await signingCanvas();
+
+    vi.mocked(renderSourcePage).mockImplementationOnce(
+      () => new Promise<never>(() => {}),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Następna/u }));
+    await waitFor(() => expect(canvas).toHaveAttribute('aria-busy', 'true'));
+
+    fireEvent.pointerDown(canvas, {
+      pointerId: 71,
+      pointerType: 'touch',
+      clientX: 154,
+      clientY: 246,
+      pressure: 0.5,
+      width: 12,
+      height: 12,
+    });
+    expect(canvas.setPointerCapture).toHaveBeenCalledWith(71);
+  });
+
   it('keeps updating a selected stamp through a long touch drag', async () => {
     installUploadHandlers();
     await renderPage();
@@ -1645,15 +1675,26 @@ describe('DocumentSigningPage', () => {
 
     const canvas = await signingCanvas();
     expect(canvas).toHaveStyle({ touchAction: 'none' });
-    fireEvent.pointerDown(canvas, {
-      pointerId: 56,
-      pointerType: 'touch',
-      clientX: 154,
-      clientY: 246,
-      pressure: 0.5,
-      width: 12,
-      height: 12,
+    const immediateTouchMove = new Event('touchmove', {
+      bubbles: true,
+      cancelable: true,
     });
+    act(() => {
+      canvas.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          pointerId: 56,
+          pointerType: 'touch',
+          clientX: 154,
+          clientY: 246,
+          pressure: 0.5,
+          width: 12,
+          height: 12,
+          bubbles: true,
+        }),
+      );
+      canvas.dispatchEvent(immediateTouchMove);
+    });
+    expect(immediateTouchMove.defaultPrevented).toBe(true);
     expect(canvas.setPointerCapture).toHaveBeenCalledWith(56);
     for (const point of [
       { clientX: 144, clientY: 231 },

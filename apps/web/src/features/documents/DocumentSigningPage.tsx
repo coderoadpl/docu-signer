@@ -796,6 +796,22 @@ export const DocumentSigningPage = ({
       stampIndex?: number;
     } | undefined
   >(undefined);
+  const preventActivePlacementTouchMove = useCallback((event: TouchEvent) => {
+    if (placementDragRef.current && event.cancelable) event.preventDefault();
+  }, []);
+  const setInkCanvasRef = useCallback(
+    (node: HTMLCanvasElement | null) => {
+      inkCanvasRef.current?.removeEventListener(
+        'touchmove',
+        preventActivePlacementTouchMove,
+      );
+      inkCanvasRef.current = node;
+      node?.addEventListener('touchmove', preventActivePlacementTouchMove, {
+        passive: false,
+      });
+    },
+    [preventActivePlacementTouchMove],
+  );
   const [pdf, setPdf] = useState<LoadedPdf>();
   const [pdfError, setPdfError] = useState<string>();
   const [pageNumber, setPageNumber] = useState(1);
@@ -809,7 +825,6 @@ export const DocumentSigningPage = ({
   const [placement, setPlacement] = useState(DEFAULT_PLACEMENT);
   const [stamps, setStamps] = useState<SigningStamp[]>([]);
   const [selectedStampIndex, setSelectedStampIndex] = useState<number>();
-  const [placementDragActive, setPlacementDragActive] = useState(false);
   const [massExitConfirming, setMassExitConfirming] = useState(false);
   const [fingerDrawing, setFingerDrawing] = useState(false);
   const [gestureMode, setGestureMode] = useState<SigningGestureMode>(
@@ -972,7 +987,6 @@ export const DocumentSigningPage = ({
   const activeInkSize = selectedStamp?.inkSize ?? DEFAULT_SIGNING_INK_SIZE;
   const stampTouchActionLocked =
     placing ||
-    placementDragActive ||
     signingStampsForPage(stamps, pageIndex).length > 0;
   const pageReady = Boolean(
     metrics && metricsPageNumber === pageNumber && !pageRendering,
@@ -1000,7 +1014,6 @@ export const DocumentSigningPage = ({
     setPlacement(DEFAULT_PLACEMENT);
     setStamps([]);
     setSelectedStampIndex(undefined);
-    setPlacementDragActive(false);
     setMassExitConfirming(false);
     setSignaturePadOpen(false);
     setCommitError(undefined);
@@ -1011,18 +1024,6 @@ export const DocumentSigningPage = ({
     lastPenSeenAtRef.current = undefined;
     placementDragRef.current = undefined;
   }, [documentId, fileId]);
-
-  useEffect(() => {
-    const canvas = inkCanvasRef.current;
-    if (!canvas || !placementDragActive) return;
-    const preventTouchMove = (event: TouchEvent) => {
-      if (event.cancelable) event.preventDefault();
-    };
-    canvas.addEventListener('touchmove', preventTouchMove, { passive: false });
-    return () => {
-      canvas.removeEventListener('touchmove', preventTouchMove);
-    };
-  }, [placementDragActive]);
 
   useEffect(() => {
     if (!sourceQuery.data || !signable) return;
@@ -1378,7 +1379,6 @@ export const DocumentSigningPage = ({
     }
     if (placementDragRef.current?.pointerId === event.pointerId) {
       placementDragRef.current = undefined;
-      setPlacementDragActive(false);
       return;
     }
     if (activePointerRef.current !== event.pointerId) return;
@@ -2034,7 +2034,7 @@ export const DocumentSigningPage = ({
             }}
           />
           <InkSurface
-            ref={inkCanvasRef}
+            ref={setInkCanvasRef}
             role="application"
             aria-label="Powierzchnia do rysowania podpisu"
             aria-busy={!pageReady}
@@ -2051,7 +2051,7 @@ export const DocumentSigningPage = ({
                   : 'pan-x pan-y pinch-zoom',
             }}
             onPointerDown={(event) => {
-              if (!pageReady || !metrics || committing) return;
+              if (committing) return;
               if (event.pointerType === 'pen') {
                 activePenPointerRef.current = event.pointerId;
                 lastPenSeenAtRef.current = event.timeStamp;
@@ -2083,7 +2083,6 @@ export const DocumentSigningPage = ({
                   placement: hit.stamp.placement,
                   stampIndex: hit.stampIndex,
                 };
-                setPlacementDragActive(true);
                 event.currentTarget.setPointerCapture(event.pointerId);
                 event.preventDefault();
                 return;
@@ -2099,11 +2098,14 @@ export const DocumentSigningPage = ({
                   clientY: event.clientY,
                   placement,
                 };
-                setPlacementDragActive(true);
                 event.currentTarget.setPointerCapture(event.pointerId);
                 event.preventDefault();
                 return;
               }
+              // WHY: only new ink needs a rendered page — gating the drag
+              // branches above on it silently drops drags that start during a
+              // re-fit render (any resize, rotation or toolbar reflow).
+              if (!pageReady || !metrics) return;
               if (massMode) return;
               if (gestureMode === 'pan') return;
               if (!eventDrawsInk(event)) return;
@@ -2128,7 +2130,6 @@ export const DocumentSigningPage = ({
               if (gestureMode === 'draw' && touchIgnoredForPenPriority(event)) {
                 if (placementDragRef.current?.pointerId === event.pointerId) {
                   placementDragRef.current = undefined;
-                  setPlacementDragActive(false);
                 }
                 cancelActiveTouchStroke();
                 event.preventDefault();
