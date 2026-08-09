@@ -23,6 +23,7 @@ export const DEV_ONLY_SECRET = 'dev-only-secret-do-not-use-in-prod';
 const dbDriverSchema = z.enum(['node-postgres', 'neon-http']);
 
 const databaseUrlField = z.string().default(DEFAULT_DATABASE_URL);
+const appBaseDomainField = z.string().trim().min(1).transform((value) => value.toLowerCase());
 
 // Platform-follows default read once at load: neon-http under Vercel, node-postgres
 // otherwise — an explicit DB_DRIVER always wins. Shared so the runtime server and
@@ -59,7 +60,7 @@ export const serverEnvSchema = z.object({
   VERCEL_TEAM_ID: z.string().optional(),
   DATABASE_URL: databaseUrlField,
   DB_DRIVER: dbDriverField,
-  APP_BASE_DOMAIN: z.string().default('localhost'),
+  APP_BASE_DOMAIN: appBaseDomainField.default('localhost'),
   APP_BASE_URL: z.url().optional(),
   TENANT_CREATION: z.enum(TENANT_CREATION_MODES).default('open'),
   // Set by Vercel on every deployment (`VERCEL=1`). Presence is the "we are
@@ -183,10 +184,11 @@ const validateSeedAdminEnv = (data: SeedAdminEnv, ctx: z.RefinementCtx): void =>
   }
 };
 
-/** Deploy seed subset: connection selection + optional admin credentials. */
+/** Deploy seed subset: connection selection + optional admin credentials and host binding. */
 export const deploySeedEnvSchema = z
   .object({
     ...databaseEnvSchema.shape,
+    APP_BASE_DOMAIN: appBaseDomainField.optional(),
     ...seedAdminEnvFields,
   })
   .superRefine(validateSeedAdminEnv);
