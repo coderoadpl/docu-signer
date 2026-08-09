@@ -36,6 +36,7 @@ export const healthOutputSchema = attestationSchema.extend({
 
 export const authConfigOutputSchema = z.object({
   googleEnabled: z.boolean(),
+  passwordResetEnabled: z.boolean(),
 });
 
 export const meOutputSchema = z.object({

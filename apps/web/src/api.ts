@@ -2,6 +2,7 @@ import { context, trace } from '@opentelemetry/api';
 
 import { createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
 import {
+  changePasswordMutation,
   configQuery,
   createApiClient,
   createDocumentMutation,
@@ -25,6 +26,8 @@ import {
   removePasskeyMutation,
   requestFileUploadMutation,
   requestMagicLinkMutation,
+  requestPasswordResetMutation,
+  resetPasswordMutation,
   signInMutation,
   signInPasskeyMutation,
   signInSocialMutation,
@@ -70,7 +73,10 @@ export const actions = {
   signUp: signUpMutation(authClient),
   signIn: signInMutation(authClient),
   signOut: signOutMutation(authClient),
+  changePassword: changePasswordMutation(authClient),
   requestMagicLink: requestMagicLinkMutation(authClient),
+  requestPasswordReset: requestPasswordResetMutation(authClient),
+  resetPassword: resetPasswordMutation(authClient),
   signInSocial: signInSocialMutation(authClient),
   enableTwoFactor: enableTwoFactorMutation(authClient),
   verifyTotp: verifyTotpMutation(authClient),

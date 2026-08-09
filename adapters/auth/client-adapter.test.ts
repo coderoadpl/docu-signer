@@ -172,6 +172,55 @@ describe('createCliAuthAdapter social + 2FA', () => {
     expect(await adapter.disableTwoFactor({ password: 'pw' })).toEqual({ ok: true, value: undefined });
   });
 
+  it('changePassword posts the bearer token and persists a rotated session token', async () => {
+    const saved: string[] = [];
+    const call = mockJsonFetch(() => ({
+      ok: true,
+      status: 200,
+      json: { token: 'tok-2' },
+      headers: { 'set-auth-token': 'tok-2' },
+    }));
+    const adapter = createCliAuthAdapter('http://localhost:47100', (token) => saved.push(token), () => 'tok-1');
+
+    const result = await adapter.changePassword({
+      currentPassword: 'old-password',
+      newPassword: 'new-password',
+      revokeOtherSessions: true,
+    });
+
+    expect(result).toEqual({ ok: true, value: undefined });
+    expect(call()).toMatchObject({
+      url: 'http://localhost:47100/api/auth/change-password',
+      authorization: 'Bearer tok-1',
+      body: {
+        currentPassword: 'old-password',
+        newPassword: 'new-password',
+        revokeOtherSessions: true,
+      },
+    });
+    expect(saved).toEqual(['tok-2']);
+  });
+
+  it('requestPasswordReset posts the email and redirect target without a bearer token', async () => {
+    const call = mockJsonFetch(() => ({ ok: true, status: 200, json: {} }));
+    const adapter = createCliAuthAdapter('http://localhost:47100', () => {}, () => 'tok-1');
+
+    const result = await adapter.requestPasswordReset({
+      email: 'reset@example.com',
+      redirectTo: 'http://localhost:47100/reset-password',
+    });
+
+    expect(result).toEqual({ ok: true, value: undefined });
+    expect(call()).toMatchObject({
+      url: 'http://localhost:47100/api/auth/request-password-reset',
+      authorization: null,
+      body: {
+        email: 'reset@example.com',
+        redirectTo: 'http://localhost:47100/reset-password',
+      },
+    });
+  });
+
   it('replays the temporary two-factor cookie and stores the verified session token', async () => {
     const calls: JsonCall[] = [];
     let savedToken: string | null = null;

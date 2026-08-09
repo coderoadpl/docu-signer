@@ -81,10 +81,19 @@ describe('LoginPage', () => {
 
   it('shows the Google button only when the server reports it enabled (FR-26)', async () => {
     server.use(
-      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: true } })),
+      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: true, passwordResetEnabled: true } })),
     );
 
     await renderLoginPage();
     expect(await screen.findByRole('button', { name: /Zaloguj się przez Google/i })).toBeInTheDocument();
+  });
+
+  it('hides the password reminder when reset email is not configured', async () => {
+    server.use(
+      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: false, passwordResetEnabled: false } })),
+    );
+
+    await renderLoginPage();
+    expect(screen.queryByRole('link', { name: /Nie pamiętasz hasła/i })).not.toBeInTheDocument();
   });
 });

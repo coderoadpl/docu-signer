@@ -20,9 +20,11 @@ import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { DocumentDetailRoute } from './routes/document-detail.js';
 import { DocumentsRoute } from './routes/documents.js';
+import { ForgotPasswordRoute } from './routes/forgot-password.js';
 import { LoginRoute } from './routes/login.js';
 import { NotFoundRoute } from './routes/not-found.js';
 import { RegisterRoute } from './routes/register.js';
+import { ResetPasswordRoute, resetPasswordSearchSchema } from './routes/reset-password.js';
 import { SettingsRoute } from './routes/settings.js';
 import { createAppTheme } from './theme.js';
 
@@ -66,6 +68,17 @@ const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/register',
   component: RegisterRoute,
+});
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/forgot-password',
+  component: ForgotPasswordRoute,
+});
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset-password',
+  validateSearch: resetPasswordSearchSchema,
+  component: ResetPasswordRoute,
 });
 
 // The authenticated layout owns `/app/*`: it guards auth, redirects anonymous
@@ -111,6 +124,8 @@ const router = createRouter({
     indexRoute,
     loginRoute,
     registerRoute,
+    forgotPasswordRoute,
+    resetPasswordRoute,
     appLayoutRoute.addChildren([
       appIndexRoute,
       documentsRoute,

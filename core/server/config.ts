@@ -89,7 +89,7 @@ export const serverEnvSchema = z.object({
   EMAIL_TRANSPORT: z.enum(['smtp', 'ses']).default('smtp'),
   EMAIL_FROM: z.string().default('Agentproofarch <no-reply@localhost>'),
   // Defaults point at the dev Mailpit (docker-compose.dev.yml, SMTP on 47925), so
-  // a plain local boot captures magic links with no extra config; a real deploy
+  // a plain local boot captures auth links with no extra config; a real deploy
   // overrides host/port/creds explicitly.
   SMTP_HOST: z.string().default('localhost'),
   SMTP_PORT: z.coerce.number().int().positive().default(47925),

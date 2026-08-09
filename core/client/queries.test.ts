@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError, createApiClient } from './http.js';
 import {
+  changePasswordMutation,
   createDocumentMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
@@ -14,10 +15,14 @@ import {
   finalizeFileUploadMutation,
   meQuery,
   moveDocumentFileMutation,
+  requestPasswordResetMutation,
+  resetPasswordMutation,
   requestFileUploadMutation,
   updateDocumentMutation,
   uploadDocumentFileMutation,
 } from './queries.js';
+import { ok, type Result, type AppError } from '#core/domain/index.js';
+import type { AuthClientPort, AuthSessionResult, PasskeyInfo } from './auth-port.js';
 
 const document = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -227,5 +232,50 @@ describe('document mutation descriptors', () => {
       name: 'ApiError',
       appError: { code: 'conflict', message: 'Already exists' },
     });
+  });
+});
+
+type AuthWrite<T> = Promise<Result<T, AppError>>;
+
+const auth: AuthClientPort = {
+  signUp: async (): AuthWrite<AuthSessionResult> => ok({ token: 'signed-up' }),
+  signIn: async (): AuthWrite<AuthSessionResult> => ok({ token: 'signed-in' }),
+  signOut: async (): AuthWrite<void> => ok(undefined),
+  changePassword: async (): AuthWrite<void> => ok(undefined),
+  requestMagicLink: async (): AuthWrite<void> => ok(undefined),
+  requestPasswordReset: async (): AuthWrite<void> => ok(undefined),
+  resetPassword: async (): AuthWrite<void> => ok(undefined),
+  signInSocial: async () => ok({ url: 'https://accounts.example/auth' }),
+  enableTwoFactor: async () => ok({ totpURI: 'otpauth://totp/demo', backupCodes: [] }),
+  verifyTotp: async (): AuthWrite<AuthSessionResult> => ok({ token: 'verified' }),
+  disableTwoFactor: async (): AuthWrite<void> => ok(undefined),
+  registerPasskey: async (): AuthWrite<void> => ok(undefined),
+  listPasskeys: async (): Promise<Result<PasskeyInfo[], AppError>> => ok([]),
+  removePasskey: async (): AuthWrite<void> => ok(undefined),
+  signInPasskey: async (): AuthWrite<AuthSessionResult> => ok({ token: 'passkey' }),
+};
+
+describe('auth mutation descriptors', () => {
+  it('executes password change and reset mutations through AuthClientPort', async () => {
+    const client = newClient();
+    await expect(
+      new MutationObserver(client, changePasswordMutation(auth)).mutate({
+        currentPassword: 'demo1234',
+        newPassword: 'changed1234',
+        revokeOtherSessions: true,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      new MutationObserver(client, requestPasswordResetMutation(auth)).mutate({
+        email: 'demo@example.com',
+        redirectTo: 'https://podpisy.example/reset-password',
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      new MutationObserver(client, resetPasswordMutation(auth)).mutate({
+        token: 'reset-token',
+        newPassword: 'changed1234',
+      }),
+    ).resolves.toBeUndefined();
   });
 });

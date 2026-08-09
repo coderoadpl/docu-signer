@@ -1,7 +1,8 @@
 # ADR-0007: EmailPort shape and the magic-link transport
 
-> **Partially superseded in Podpisy on 2026-08-01.** Email transport and magic-link
-> authentication remain; member provisioning and first-sign-in binding do not.
+> **Partially superseded in Podpisy on 2026-08-02.** Email transport,
+> magic-link authentication, and password-reset delivery remain; member
+> provisioning and first-sign-in binding do not.
 
 Date: 2026-07-21 · Status: accepted (owner-approved)
 
@@ -26,12 +27,12 @@ Two forces reshaped that sketch:
 ## Decision
 
 1. **Port shape: `sendMail({ to, subject, text, html?, link? })`.** Kept minimal
-   and generic. The magic link is ONE consumer of `sendMail`, not the port's
-   shape — the magic-link email is composed in `create-auth.ts` and passes the
-   raw URL as the optional `link` field. `link` is a general transactional-mail
-   concept (a primary call-to-action URL), not a dev hack: a transport embeds it
-   in the body and otherwise ignores the field. No `tenantId` — one verified
-   sender domain (`EMAIL_FROM`).
+   and generic. Magic-link and password-reset auth mail are consumers of
+   `sendMail`, not the port's shape — auth email is composed in `create-auth.ts`
+   and passes the raw URL as the optional `link` field. `link` is a general
+   transactional-mail concept (a primary call-to-action URL), not a dev hack: a
+   transport embeds it in the body and otherwise ignores the field. No
+   `tenantId` — one verified sender domain (`EMAIL_FROM`).
 
 2. **Two adapters in `adapters/email/`, selected by `EMAIL_TRANSPORT`** in the
    composition root, exactly like `DOMAIN_PROVISIONER`:
@@ -60,13 +61,13 @@ Two forces reshaped that sketch:
    and CI run the **real** `smtp` adapter pointed at a local **Mailpit**
    (docker-compose.dev.yml; the smoke/e2e CI jobs add it as a service). Mailpit
    captures every send instead of delivering and exposes an HTTP API on
-   `:47980`. The magic-link smoke/e2e phases request a link, read the captured
-   message back over that API (`/api/v1/messages`, `/api/v1/message/{id}`), extract
-   the verify URL and follow it — the same round-trip a human makes from the
-   Mailpit inbox. The CLI `login-link` requests a link and, given `--link <url>`
-   (copied from Mailpit/an inbox), follows it. There is **no `/api/dev/magic-link`
-   route and no `DevMailbox`**: nothing dev-only ships in the app, so nothing has
-   to be kept off production.
+   `:47980`. The magic-link and password-reset smoke/e2e phases request a link,
+   read the captured message back over that API (`/api/v1/messages`,
+   `/api/v1/message/{id}`), extract the URL and follow it — the same round-trip a
+   human makes from the Mailpit inbox. The CLI `login-link` requests a link and,
+   given `--link <url>` (copied from Mailpit/an inbox), follows it. There is
+   **no `/api/dev/magic-link` route and no `DevMailbox`**: nothing dev-only ships
+   in the app, so nothing has to be kept off production.
 
 4. **Member↔user binding on first sign-in (US-026).** A member provisioned by
    `ensureMember` has a null `userId` until they first authenticate. Binding
@@ -79,7 +80,7 @@ Two forces reshaped that sketch:
 
 ## Consequences
 
-- Better Auth's magic-link plugin's `sendMagicLink` callback delegates to
+- Better Auth's magic-link and password-reset callbacks delegate to
   `EmailPort.sendMail` — one transport, one from-address policy, as the roadmap
   called for. Social (Google) and TOTP 2FA plugins ride the same auth adapter.
 - Passkeys (`@better-auth/passkey`) are **built** (US-028a): the package pinned a

@@ -1,6 +1,7 @@
 import { Container, Typography } from '@mui/material';
 
 import { PasskeySection } from './PasskeySection.js';
+import { PasswordSection } from './PasswordSection.js';
 import { TwoFactorSection } from './TwoFactorSection.js';
 
 export const SettingsPage = () => (
@@ -11,6 +12,7 @@ export const SettingsPage = () => (
     <Typography variant="body2" color="text.secondary" sx={{ mb: '1.5rem' }}>
       Zarządzaj zabezpieczeniami swojego konta.
     </Typography>
+    <PasswordSection />
     <TwoFactorSection />
     <PasskeySection />
   </Container>
