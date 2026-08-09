@@ -81,11 +81,12 @@ Dependency rules (enforced):
   (`DB_DRIVER` selects the db driver). The
   one deliberate exception is the
   auth *client* adapter, constructed in `apps/web/src/api.ts` (web) and the
-  CLI's `cliCtx`; the standalone DB operations `adapters/db/migrate.ts`,
-  `adapters/db/seed.ts`, and `adapters/db/seed-deploy.ts` are also sanctioned
-  composition points outside the server root. Seed needs the real auth and
-  database adapters to hash credentials and persist bootstrap data, just as
-  migrate needs the real database adapter.
+  CLI's `cliCtx`; the standalone DB/ops entrypoints
+  `adapters/db/migrate.ts`, `adapters/db/seed.ts`,
+  `adapters/db/seed-deploy.ts`, and `scripts/backup.ts` are also sanctioned
+  composition points outside the server root. Backup runs in CI cron without
+  the server. Seed needs the real auth and database adapters to hash credentials
+  and persist bootstrap data, just as migrate needs the real database adapter.
 - `@vercel/*` and `@neondatabase/*` are importable only inside `adapters/`
   (and the platform entry `api/index.ts`).
 - No `any`, no `as` (except `as const`), zod-parse at every boundary.
