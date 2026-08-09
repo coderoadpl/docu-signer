@@ -727,10 +727,11 @@ transitively: "delete everything for tenant X" is one
 guaranteeing no orphans. Global/shared tables (accounts, the shared account pool)
 are deliberately outside that chain: one account spans many tenants (§Identity and
 multi-tenancy), so it must never cascade from a single tenant's deletion. The
-invariant is mechanically checked — the offboarding-cascade integration test
-(`adapters/db/repositories.integration.test.ts`) seeds every aggregate for a
-throwaway tenant, deletes the tenant row, and asserts zero rows remain for that
-`tenantId` while a sibling tenant is untouched.
+invariant is mechanically checked for every currently supported tenant-scoped
+aggregate — the offboarding-cascade integration test
+(`adapters/db/repositories.integration.test.ts`) seeds tenant access, domain,
+document and attachment rows for a throwaway tenant, deletes the tenant row,
+and asserts zero rows remain while a sibling tenant is untouched.
 
 **GDPR mechanics** (NORMATIVE WHEN TRIGGERED — trigger: first real end-user
 personal data in production, beyond the demo seed). Right to access/portability is
@@ -889,7 +890,7 @@ raw insert, a forgotten code path, or a future adapter.
 
 | invariant | enforced where | why / test |
 |---|---|---|
-| `tenant_admins.role ∈ {owner, admin}` | **DB + app** | closed set → DB `CHECK` (`tenant_admins_role_check`, migration `0006`); the adapter also zod-parses on read (`staffMemberSchema`). Test: integration inserts a bad role via raw SQL → the DB rejects it. |
+| `tenant_admins.role ∈ {owner, admin}` | **DB + app** | closed set → DB `CHECK` (`tenant_admins_role_check`, migration `0006`); `createTenantAccessReader` also parses the selected role with `staffRoleSchema`. Test: integration inserts a bad role via raw SQL → the DB rejects it. |
 | `tenant_domains.kind ∈ {subdomain, custom}` | **DB** | closed set → DB `CHECK` (`tenant_domains_kind_check`). Test: raw-SQL bad kind → rejected. |
 | `documents.doc_type ∈ {umowa-uod, uchwala, protokol, rachunek, inny}` | **DB + app** | closed set → DB `CHECK` (`documents_doc_type_check`); the adapter zod-parses on read. Test: raw-SQL bad type → rejected. |
 | `document_files.role ∈ {source, signed-scan, signed-digital, other}` | **DB + app** | closed set → DB `CHECK` (`document_files_role_check`); the adapter zod-parses on read. Test: raw-SQL bad role → rejected. |

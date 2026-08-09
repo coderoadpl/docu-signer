@@ -37,8 +37,9 @@ old bundle fails every page, so rebuild or use `dev:web`.
 
 ## CLI — the agent feedback loop
 
+With `pnpm run dev:server` running:
+
 ```bash
-pnpm --silent run cli register --name Demo --email demo@agentproofarch.dev --password demo1234
 pnpm --silent run cli login --email demo@agentproofarch.dev --password demo1234
 pnpm --silent run cli document list
 pnpm --silent run cli document add "Signed agreement" --date 2026-08-01 --type umowa-uod
@@ -47,6 +48,10 @@ pnpm --silent run cli document export <id> --output agreement.zip
 pnpm --silent run cli --json whoami                    # single JSON document on stdout
 pnpm --silent run cli logout                           # drops the stored token
 ```
+
+Inside this repository the CLI defaults to
+`http://default.localhost:47100`, matching the tenant host created by the dev
+seed. Use `--api-url` or `APP_CLI_API_URL` to target another origin.
 
 Full command set (<!--count:cli-command-groups-->9<!--/count--> top-level groups):
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
@@ -109,7 +114,7 @@ Dependency lifecycle scripts are blocked unless explicitly named in
 configuration applies a three-day (`4320` minute) minimum-release-age cooldown.
 
 Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
-<!--count:integration-tests-->9<!--/count--> integration tests against a real
+<!--count:integration-tests-->12<!--/count--> integration tests against a real
 Postgres and <!--count:e2e-tests-->9<!--/count--> Playwright tests across
 <!--count:e2e-specs-->5<!--/count--> spec files:
 
@@ -118,7 +123,7 @@ pnpm run test:integration   # repositories, against a real Postgres
 pnpm run e2e                # real Chromium over the real stack
 ```
 
-<!--count:config-regression-->39<!--/count--> config-regression probes guard the
+<!--count:config-regression-->40<!--/count--> config-regression probes guard the
 covered boundary rules — most feed a violating fixture and
 assert the gate still goes red, a few are structural rule-presence checks rather
 than fixture-feeding probes — so you can't silently delete one of those rules and

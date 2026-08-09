@@ -67,15 +67,15 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-01 after the demo-vertical strip removed roughly
-      // 500 tests together with the code they covered. The database-free run is
-      // statements 75.92%, branches 87.41%, functions 76.53%, and lines 75.92%;
-      // each floor is that measured value rounded down.
+      // Re-measured 2026-08-01 after restoring the surviving document query,
+      // route-contract and identity-resolution branches. The database-free run
+      // is statements 76.64%, branches 86.52%, functions 77.19%, and lines
+      // 76.64%; each floor is that measured value rounded down.
       thresholds: {
-        statements: 75,
-        branches: 87,
-        functions: 76,
-        lines: 75,
+        statements: 76,
+        branches: 86,
+        functions: 77,
+        lines: 76,
       },
     },
     projects: [

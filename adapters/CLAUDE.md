@@ -8,8 +8,8 @@ normative). This file is the one-screen distillation for anyone editing
 ## What this layer is
 
 Concrete implementations of `core/server` ports: the database repositories
-(`db/`), the auth provider (`auth/`), domain provisioning
-(`domain-provisioning/`). This is the only place framework and vendor SDKs live.
+(`db/`), auth provider (`auth/`), email transport (`email/`) and document
+storage (`storage/`). This is the only place framework and vendor SDKs live.
 
 ## What it may import
 

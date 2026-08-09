@@ -54,6 +54,66 @@ describe('resolveIdentity', () => {
     });
   });
 
+  it('forbids a custom-domain request without a staff grant', async () => {
+    const result = await resolveIdentity(
+      user,
+      { host: 'archive.example.com', tenantHeader: null },
+      { tenantDomains: domains, tenants, tenantAccess: access(false), baseDomain: 'example.com' },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('rejects a custom domain whose tenant row is missing', async () => {
+    const missingDomains: TenantDomainRepository = {
+      findByDomain: async () => ({
+        id: 'domain-missing',
+        tenantId: 'tenant-missing',
+        domain: 'missing.example.com',
+        kind: 'custom',
+        verified: true,
+      }),
+      listVerifiedDomains: async () => [],
+    };
+    const result = await resolveIdentity(
+      user,
+      { host: 'missing.example.com', tenantHeader: null },
+      {
+        tenantDomains: missingDomains,
+        tenants,
+        tenantAccess: access(true),
+        baseDomain: 'example.com',
+      },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'tenant_not_found', message: 'Tenant domain is not attached' },
+    });
+  });
+
+  it('resolves a plain subdomain as the tenant slug', async () => {
+    const result = await resolveIdentity(
+      user,
+      { host: 'default.example.com:47100', tenantHeader: null },
+      { tenantDomains: domains, tenants, tenantAccess: access(true), baseDomain: 'example.com' },
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: { tenantId: tenant.id, tenantSlug: tenant.slug, staffRole: 'owner' },
+    });
+  });
+
+  it('ignores nested subdomains', async () => {
+    const result = await resolveIdentity(
+      user,
+      { host: 'nested.default.example.com:47100', tenantHeader: null },
+      { tenantDomains: domains, tenants, tenantAccess: access(true), baseDomain: 'example.com' },
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: { tenantId: null, tenantSlug: null, staffRole: null },
+    });
+  });
+
   it('supports CLI tenant scoping internally and denies missing grants', async () => {
     const result = await resolveIdentity(
       user,
