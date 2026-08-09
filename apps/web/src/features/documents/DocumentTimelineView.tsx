@@ -98,7 +98,7 @@ export const DocumentTimelineView = ({
         <Box
           component="svg"
           role="img"
-          aria-label="Os czasu dokumentów"
+          aria-label="Oś czasu dokumentów"
           viewBox={`0 0 ${contentWidth} ${contentHeight}`}
           sx={{
             display: 'block',

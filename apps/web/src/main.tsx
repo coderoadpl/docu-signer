@@ -21,7 +21,11 @@ import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { DocumentDetailRoute } from './routes/document-detail.js';
-import { DocumentsRoute, documentsSearchSchema } from './routes/documents.js';
+import {
+  DocumentsRoute,
+  documentsSearchSchema,
+  legacyDocumentsRedirect,
+} from './routes/documents.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
 import { LoginRoute } from './routes/login.js';
 import { NotFoundRoute } from './routes/not-found.js';
@@ -29,6 +33,7 @@ import { PadRoute } from './routes/pad.js';
 import { RegisterRoute } from './routes/register.js';
 import { ResetPasswordRoute, resetPasswordSearchSchema } from './routes/reset-password.js';
 import { SettingsRoute } from './routes/settings.js';
+import { TrashRoute } from './routes/trash.js';
 import { useAppTheme } from './theme.js';
 
 /** Dev-only, lazy so the devtools chunk never reaches the production bundle. */
@@ -110,7 +115,16 @@ const documentsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: 'documents',
   validateSearch: documentsSearchSchema,
+  beforeLoad: ({ location }) => {
+    const target = legacyDocumentsRedirect(location.searchStr);
+    if (target) throw redirect(target);
+  },
   component: DocumentsRoute,
+});
+const trashRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: 'kosz',
+  component: TrashRoute,
 });
 const documentDetailRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
@@ -141,6 +155,7 @@ const router = createRouter({
     appLayoutRoute.addChildren([
       appIndexRoute,
       documentsRoute,
+      trashRoute,
       documentDetailRoute,
       documentSigningRoute,
       settingsRoute,

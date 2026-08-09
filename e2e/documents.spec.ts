@@ -423,10 +423,10 @@ test('creates, uploads, previews and exports an archived document', async ({
 
   await page.getByRole('button', { name: '← Dokumenty' }).click();
   await page.getByLabel('Tag').fill('e2e');
-  await page.getByRole('tab', { name: 'Os czasu' }).click();
-  await expect(page.getByRole('img', { name: 'Os czasu dokumentów' })).toBeVisible();
+  await page.getByRole('button', { name: 'Oś czasu' }).click();
+  await expect(page.getByRole('img', { name: 'Oś czasu dokumentów' })).toBeVisible();
   await expect(page.getByRole('button', { name: new RegExp(title, 'u') })).toBeVisible();
-  await page.getByRole('tab', { name: 'Lista' }).click();
+  await page.getByRole('button', { name: 'Lista' }).click();
   await page.getByRole('button', { name: 'Zapisz teczkę' }).click();
   const savedSearchDialog = page.getByRole('dialog', { name: 'Zapisz teczkę' });
   await savedSearchDialog.getByLabel('Nazwa').fill(`E2E ${stamp}`);
@@ -434,8 +434,7 @@ test('creates, uploads, previews and exports an archived document', async ({
   await savedSearchDialog.getByRole('button', { name: 'Zapisz teczkę' }).click();
   await expect(savedSearchDialog).toBeHidden();
   await page.getByLabel('Tag').fill('');
-  await page.getByRole('tab', { name: 'Teczki' }).click();
-  await page.getByRole('heading', { name: `E2E ${stamp}` }).click();
+  await page.getByRole('link', { name: `E2E ${stamp}` }).click();
   await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
   await page.getByRole('cell', { name: title, exact: true }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
@@ -534,7 +533,7 @@ test('moves a document to trash and restores it', async ({ page }) => {
   await deleteDialog.getByRole('button', { name: 'Przenieś do kosza' }).click();
 
   await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
-  await page.getByRole('tab', { name: 'Kosz' }).click();
+  await page.getByRole('link', { name: 'Kosz' }).click();
   const trashRow = page
     .getByRole('row')
     .filter({ has: page.getByRole('cell', { name: title, exact: true }) });
@@ -542,7 +541,7 @@ test('moves a document to trash and restores it', async ({ page }) => {
   await trashRow.getByRole('button', { name: 'Przywróć' }).click();
   await expect(page.getByRole('heading', { name: 'Kosz jest pusty' })).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Lista' }).click();
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
   await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
 });
 

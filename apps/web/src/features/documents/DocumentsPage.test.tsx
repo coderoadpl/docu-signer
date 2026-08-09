@@ -15,6 +15,7 @@ import { documentCreateInputSchema } from '#core/contract/index.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentsPage } from './DocumentsPage.js';
+import { TrashPage } from './TrashPage.js';
 import {
   documentSigningSearchSchema,
   documentsSearchSchema,
@@ -159,8 +160,13 @@ const renderPage = async (initialEntry = '/app/documents') => {
     validateSearch: documentSigningSearchSchema,
     component: () => <div>Podpisywanie dokumentu</div>,
   });
+  const trash = createRoute({
+    getParentRoute: () => root,
+    path: '/app/kosz',
+    component: TrashPage,
+  });
   const router = createRouter({
-    routeTree: root.addChildren([list, detail, signing]),
+    routeTree: root.addChildren([list, detail, signing, trash]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
@@ -381,18 +387,19 @@ describe('DocumentsPage', () => {
     );
   });
 
-  it('restores non-list tabs from deep links', async () => {
+  it('restores the timeline view from deep links', async () => {
     server.use(
       http.get('/api/documents', () =>
         HttpResponse.json({ ok: true, data: { documents: [document] } }),
       ),
     );
-    await renderPage('/app/documents?tab=os-czasu&tag=ważne');
+    await renderPage('/app/documents?widok=os-czasu&tag=ważne');
 
     expect(
-      await screen.findByRole('tab', { name: 'Os czasu', selected: true }),
+      await screen.findByRole('button', { name: 'Oś czasu', pressed: true }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Os czasu dokumentów' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Oś czasu dokumentów' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Szukaj po tytule')).toBeInTheDocument();
   });
 
   it('renders timeline sections, interval gaps and signature status markers', async () => {
@@ -443,7 +450,7 @@ describe('DocumentsPage', () => {
         HttpResponse.json({ ok: true, data: { documents: [january, march, noPerson] } }),
       ),
     );
-    const { router } = await renderPage('/app/documents?tab=os-czasu');
+    const { router } = await renderPage('/app/documents?widok=os-czasu');
 
     expect(await screen.findByText('Anna Nowak')).toBeInTheDocument();
     expect(screen.getByText('Bez osoby')).toBeInTheDocument();
@@ -464,7 +471,7 @@ describe('DocumentsPage', () => {
         '/app/documents/33333333-3333-4333-8333-333333333333',
       ),
     );
-    expect(router.state.location.search).toMatchObject({ tab: 'os-czasu' });
+    expect(router.state.location.search).toMatchObject({ widok: 'os-czasu' });
   });
 
   it('keeps the draft-filtered list after a detail roundtrip', async () => {
@@ -1071,76 +1078,6 @@ describe('DocumentsPage', () => {
     );
   });
 
-  it('applies teczki presets', async () => {
-    const user = userEvent.setup();
-    const seen = vi.fn();
-    server.use(
-      http.get('/api/documents', ({ request }) => {
-        const params = new URL(request.url).searchParams;
-        seen(Object.fromEntries(params.entries()));
-        return HttpResponse.json({
-          ok: true,
-          data: {
-            documents: params.get('tag') === 'odbiór'
-              ? [protocolDocument]
-              : [document, protocolDocument],
-          },
-        });
-      }),
-      http.get('/api/saved-searches', () =>
-        HttpResponse.json({ ok: true, data: { savedSearches: [savedSearch] } }),
-      ),
-    );
-    const { router } = await renderPage();
-
-    await screen.findAllByText('Umowa z Anną');
-    await user.click(screen.getByRole('tab', { name: 'Teczki' }));
-    expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
-    expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane · Szkice: razem z zatwierdzonymi')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('heading', { name: 'Odbiór' }));
-    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
-    await waitFor(() =>
-      expect(seen).toHaveBeenCalledWith({
-        tag: 'odbiór',
-        signatureStatus: 'signed',
-        draft: 'all',
-      }),
-    );
-    expect(router.state.location.search).toMatchObject({
-      tag: 'odbiór',
-      status: 'signed',
-      szkice: 'all',
-    });
-  });
-
-  it('deletes teczki presets', async () => {
-    const savedDelete = vi.fn();
-    let savedSearches: Array<typeof savedSearch> = [savedSearch];
-    server.use(
-      http.get('/api/documents', () =>
-        HttpResponse.json({ ok: true, data: { documents: [document] } }),
-      ),
-      http.get('/api/saved-searches', () =>
-        HttpResponse.json({ ok: true, data: { savedSearches } }),
-      ),
-      http.delete('/api/saved-searches/:id', ({ params }) => {
-        savedDelete(params.id);
-        savedSearches = [];
-        return HttpResponse.json({ ok: true, data: { deleted: true } });
-      }),
-    );
-    await renderPage('/app/documents?tab=teczki');
-
-    expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));
-    expect(screen.getByRole('button', { name: 'Potwierdź' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Potwierdź' }));
-    await waitFor(() =>
-      expect(savedDelete).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333'),
-    );
-  });
-
   it('lists trash and restores a trashed document', async () => {
     const restore = vi.fn();
     let trash = [trashedDocument];
@@ -1160,9 +1097,8 @@ describe('DocumentsPage', () => {
         });
       }),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     expect(await screen.findAllByText('Usunięta uchwała')).toHaveLength(2);
     expect(screen.getAllByText('Uchwała').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Piotr Zieliński').length).toBeGreaterThan(0);
@@ -1191,9 +1127,8 @@ describe('DocumentsPage', () => {
         return HttpResponse.json({ ok: true, data: { deleted: true } });
       }),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     await screen.findAllByText('Usunięta uchwała');
     await userEvent.click(screen.getAllByRole('button', { name: 'Usuń trwale' }).at(0) ?? screen.getByText('Usuń trwale'));
     const dialog = await screen.findByRole('dialog', { name: 'Usunąć trwale?' });
@@ -1230,9 +1165,8 @@ describe('DocumentsPage', () => {
         return HttpResponse.json({ ok: true, data: { deleted: true } });
       }),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     expect(await screen.findAllByText('Usunięta uchwała')).toHaveLength(2);
     expect(await screen.findAllByText('Usunięty rachunek')).toHaveLength(2);
     await userEvent.click(screen.getByRole('button', { name: 'Opróżnij kosz' }));
@@ -1287,9 +1221,8 @@ describe('DocumentsPage', () => {
         return HttpResponse.json({ ok: true, data: { deleted: true } });
       }),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     await screen.findAllByText('Usunięta uchwała');
     await userEvent.click(screen.getAllByRole('button', { name: 'Przywróć' }).at(0) ?? screen.getByText('Przywróć'));
     expect(await screen.findByText('Nie udało się przywrócić')).toBeInTheDocument();
@@ -1314,9 +1247,8 @@ describe('DocumentsPage', () => {
         HttpResponse.json({ ok: true, data: { documents: [] } }),
       ),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     expect(await screen.findByRole('heading', { name: 'Kosz jest pusty' })).toBeInTheDocument();
     expect(screen.getByText('Kosz jest pusty. Kosz nigdy nie opróżnia się sam.')).toBeInTheDocument();
   });
