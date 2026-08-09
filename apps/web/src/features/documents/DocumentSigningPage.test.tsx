@@ -1065,6 +1065,96 @@ describe('DocumentSigningPage', () => {
     });
   });
 
+  it('skips a mass-signing document with zero stamps and shows the summary', async () => {
+    await renderPage(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Przejdź' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Podsumowanie' })).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Podpisano 0')).toBeInTheDocument();
+    expect(screen.getByText('Pominięto 1')).toBeInTheDocument();
+    expect(pdfMocks.flatten).not.toHaveBeenCalled();
+  });
+
+  it('saves multiple mass-signing stamps, consumes the queue and counts the summary', async () => {
+    installUploadHandlers();
+    server.use(
+      http.get('/api/documents/33333333-3333-4333-8333-333333333333', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            document: {
+              ...document,
+              id: '33333333-3333-4333-8333-333333333333',
+              files: [
+                {
+                  ...sourceFile,
+                  id: '44444444-4444-4444-8444-444444444444',
+                  documentId: '33333333-3333-4333-8333-333333333333',
+                },
+              ],
+            },
+          },
+        }),
+      ),
+      http.get(
+        '/api/documents/33333333-3333-4333-8333-333333333333/files/44444444-4444-4444-8444-444444444444/content',
+        () =>
+          new HttpResponse(new Uint8Array([37, 80, 68, 70]), {
+            headers: { 'content-type': 'application/pdf' },
+          }),
+      ),
+    );
+    const { router } = await renderPage(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?q=umowa&tryb=masowe&kolejka=33333333-3333-4333-8333-333333333333&pliki=44444444-4444-4444-8444-444444444444&podpisane=0&pominiete=0&razem=2`,
+    );
+    await signingCanvas();
+
+    fireEvent.click(await enabledButton('Złóż podpis'));
+    await drawSignaturePadStroke({ pointerId: 41, pointerType: 'pen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Złóż podpis' })).not.toBeInTheDocument(),
+    );
+    fireEvent.click(await enabledButton('Złóż podpis'));
+    await drawSignaturePadStroke({ pointerId: 42, pointerType: 'pen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
+
+    fireEvent.click(await enabledButton('Przejdź'));
+    await waitFor(() =>
+      expect(pdfMocks.flatten).toHaveBeenCalledWith(
+        expect.any(Uint8Array),
+        [
+          expect.objectContaining({ stamp: expect.any(Object) }),
+          expect.objectContaining({ stamp: expect.any(Object) }),
+        ],
+      ),
+    );
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        '/app/documents/33333333-3333-4333-8333-333333333333/sign/44444444-4444-4444-8444-444444444444',
+      ),
+    );
+    expect(router.state.location.search).toMatchObject({
+      q: 'umowa',
+      tryb: 'masowe',
+      podpisane: 1,
+      pominiete: 0,
+      razem: 2,
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Przejdź' }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Podsumowanie' })).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Podpisano 1')).toBeInTheDocument();
+    expect(screen.getByText('Pominięto 1')).toBeInTheDocument();
+  });
+
   it('adds and removes a placed stamp on the current page', async () => {
     await renderPage();
     await drawStroke();

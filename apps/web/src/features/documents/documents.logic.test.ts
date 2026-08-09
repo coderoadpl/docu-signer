@@ -12,10 +12,14 @@ import {
   filesByRole,
   fileNameStem,
   formatFileSize,
+  formatCanonicalDocumentInterval,
   createTimelineScale,
+  groupDocumentsCanonically,
   groupDocumentsForTimeline,
   hasDocumentFilter,
   hasSignedDocumentFile,
+  massSigningQueueTargets,
+  newestSignablePdfFile,
   signingQueueFromSearch,
   signingQueueSearch,
   signingQueueTargets,
@@ -272,6 +276,216 @@ describe('document view logic', () => {
         status: 'needs-signature',
       }),
     ).toEqual({ q: 'umowa', tag: 'ważne', status: 'needs-signature' });
+  });
+
+  it('builds the mass-signing queue from canonical order and newest signable PDFs', () => {
+    const sourceFile = {
+      id: '33333333-3333-4333-8333-333333333333',
+      documentId: '11111111-1111-4111-8111-111111111111',
+      role: 'source' as const,
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 10,
+      storageKey: 'source',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const oldSignedFile = {
+      ...sourceFile,
+      id: '44444444-4444-4444-8444-444444444444',
+      role: 'signed-digital' as const,
+      fileName: 'source-podpisany.pdf',
+      createdAt: '2026-02-01T00:00:00.000Z',
+    };
+    const newestSignedFile = {
+      ...sourceFile,
+      id: '55555555-5555-4555-8555-555555555555',
+      role: 'signed-digital' as const,
+      fileName: 'source-podpisany-2.pdf',
+      createdAt: '2026-03-01T00:00:00.000Z',
+    };
+    const protocol = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-1',
+      title: 'Protokół',
+      docType: 'protokol' as const,
+      documentDate: '2026-05-10',
+      periodStart: '2026-05-01',
+      periodEnd: '2026-05-31',
+      person: 'Anna',
+      tags: [],
+      draft: false,
+      deletedAt: null,
+      createdAt: '2026-05-10T00:00:00.000Z',
+      updatedAt: '2026-05-10T00:00:00.000Z',
+      files: [sourceFile, oldSignedFile, newestSignedFile],
+    };
+    const bill = {
+      ...protocol,
+      id: '22222222-2222-4222-8222-222222222222',
+      title: 'Rachunek',
+      docType: 'rachunek' as const,
+      files: [
+        {
+          ...sourceFile,
+          id: '66666666-6666-4666-8666-666666666666',
+          documentId: '22222222-2222-4222-8222-222222222222',
+        },
+      ],
+    };
+    const future = {
+      ...protocol,
+      id: '77777777-7777-4777-8777-777777777777',
+      title: 'Przyszły',
+      docType: 'umowa-uod' as const,
+      documentDate: '2026-06-10',
+      periodStart: null,
+      periodEnd: null,
+      files: [
+        {
+          ...sourceFile,
+          id: '88888888-8888-4888-8888-888888888888',
+          documentId: '77777777-7777-4777-8777-777777777777',
+        },
+      ],
+    };
+
+    expect(newestSignablePdfFile(protocol)?.id).toBe(newestSignedFile.id);
+    expect(massSigningQueueTargets([future, bill, protocol])).toEqual([
+      { documentId: protocol.id, fileId: newestSignedFile.id },
+      {
+        documentId: bill.id,
+        fileId: '66666666-6666-4666-8666-666666666666',
+      },
+      {
+        documentId: future.id,
+        fileId: '88888888-8888-4888-8888-888888888888',
+      },
+    ]);
+  });
+
+  it('groups filtered documents by canonical period, person and type order', () => {
+    const documents = [
+      {
+        id: 'other-first',
+        title: 'Inny pierwszy',
+        docType: 'inny' as const,
+        documentDate: '2026-05-20',
+        periodStart: '2026-05-01',
+        periodEnd: '2026-05-31',
+        person: 'Łukasz',
+      },
+      {
+        id: 'protocol',
+        title: 'Protokół',
+        docType: 'protokol' as const,
+        documentDate: '2026-05-21',
+        periodStart: '2026-05-01',
+        periodEnd: '2026-05-31',
+        person: 'Łukasz',
+      },
+      {
+        id: 'bill',
+        title: 'Rachunek',
+        docType: 'rachunek' as const,
+        documentDate: '2026-05-22',
+        periodStart: '2026-05-01',
+        periodEnd: '2026-05-31',
+        person: 'Łukasz',
+      },
+      {
+        id: 'contract',
+        title: 'Umowa',
+        docType: 'umowa-uod' as const,
+        documentDate: '2026-05-23',
+        periodStart: '2026-05-01',
+        periodEnd: '2026-05-31',
+        person: 'Łukasz',
+      },
+      {
+        id: 'other-second',
+        title: 'Inny drugi',
+        docType: 'uchwala' as const,
+        documentDate: '2026-05-24',
+        periodStart: '2026-05-01',
+        periodEnd: '2026-05-31',
+        person: 'Łukasz',
+      },
+      {
+        id: 'anna',
+        title: 'Anna',
+        docType: 'inny' as const,
+        documentDate: '2026-05-25',
+        periodStart: '2026-05-01',
+        periodEnd: '2026-05-31',
+        person: 'Anna',
+      },
+      {
+        id: 'no-person',
+        title: 'Bez osoby',
+        docType: 'inny' as const,
+        documentDate: '2026-05-26',
+        periodStart: '2026-05-01',
+        periodEnd: '2026-05-31',
+        person: null,
+      },
+      {
+        id: 'instant-old',
+        title: 'Bez okresu stary',
+        docType: 'inny' as const,
+        documentDate: '2025-12-20',
+        periodStart: null,
+        periodEnd: null,
+        person: 'Żaneta',
+      },
+      {
+        id: 'older-interval',
+        title: 'Starszy okres',
+        docType: 'inny' as const,
+        documentDate: '2024-02-10',
+        periodStart: '2024-02-01',
+        periodEnd: '2024-02-29',
+        person: 'Jan',
+      },
+      {
+        id: 'future',
+        title: 'Przyszły',
+        docType: 'inny' as const,
+        documentDate: '2027-01-10',
+        periodStart: null,
+        periodEnd: null,
+        person: 'Jan',
+      },
+    ];
+
+    const groups = groupDocumentsCanonically(documents);
+
+    expect(groups.map((group) => [group.start, group.end])).toEqual([
+      ['2024-02-01', '2024-02-29'],
+      ['2025-12-20', '2025-12-20'],
+      ['2026-05-01', '2026-05-31'],
+      ['2027-01-10', '2027-01-10'],
+    ]);
+    expect(formatCanonicalDocumentInterval(groups[0] ?? { start: '', end: '' })).toBe(
+      '01.02.2024-29.02.2024',
+    );
+    expect(formatCanonicalDocumentInterval(groups[1] ?? { start: '', end: '' })).toBe(
+      '20.12.2025',
+    );
+
+    const mayGroup = groups.at(2);
+    if (!mayGroup) throw new Error('Missing May group');
+    expect(mayGroup.people.map((group) => group.person)).toEqual([
+      'Anna',
+      'Łukasz',
+      'Bez osoby',
+    ]);
+    expect(mayGroup.people.at(1)?.documents.map((item) => item.id)).toEqual([
+      'protocol',
+      'bill',
+      'contract',
+      'other-first',
+      'other-second',
+    ]);
   });
 
   it('builds tag suggestions and saved-search summaries', () => {

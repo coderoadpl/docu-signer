@@ -70,8 +70,12 @@ import {
   documentsSearchFromState,
   documentsViewFromSearch,
   emptyDocumentFilters,
+  formatCanonicalDocumentInterval,
+  groupDocumentsCanonically,
   hasSignedDocumentFile,
   hasDocumentFilter,
+  massSigningQueueSearch,
+  massSigningQueueTargets,
   signingQueueSearch,
   signingQueueTargets,
   toDocumentFilter,
@@ -139,6 +143,7 @@ const MoreVertIcon = () => (
 
 const DOCUMENT_COLUMNS_KEY = 'documents.columns';
 const TEXT_FILTER_DEBOUNCE_MS = 300;
+const EMPTY_DOCUMENT_LIST: DocumentWithFiles[] = [];
 
 const DOCUMENT_COLUMN_IDS = [
   'documentDate',
@@ -356,7 +361,11 @@ export const DocumentsPage = () => {
     void navigateToDocumentsSearch(view, { ...filters, [name]: value }, true);
   };
   const filtersActive = hasDocumentFilter(documentFilter);
-  const visibleDocuments = documents.data?.documents ?? [];
+  const visibleDocuments = documents.data?.documents ?? EMPTY_DOCUMENT_LIST;
+  const groupedVisibleDocuments = useMemo(
+    () => groupDocumentsCanonically(visibleDocuments),
+    [visibleDocuments],
+  );
   const allDocuments = folderDocuments.data?.documents ?? visibleDocuments;
   const trashedItems = trashedDocuments.data?.documents ?? [];
   const hasDocuments = archiveHasDocuments || allDocuments.length > 0;
@@ -368,6 +377,7 @@ export const DocumentsPage = () => {
     selectedIds.includes(document.id),
   );
   const signingTargets = signingQueueTargets(visibleDocuments);
+  const massSigningTargets = massSigningQueueTargets(visibleDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
   const visibleColumnIds = columnSettings.order.filter((column) =>
     columnSettings.visible.includes(column),
@@ -416,6 +426,24 @@ export const DocumentsPage = () => {
           signedCount: 0,
           targets: remaining,
           total: signingTargets.length,
+        }),
+      },
+    });
+  };
+
+  const startMassSigning = () => {
+    const [first, ...remaining] = massSigningTargets;
+    if (!first) return;
+    void navigate({
+      to: '/app/documents/$id/sign/$fileId',
+      params: { id: first.documentId, fileId: first.fileId },
+      search: {
+        ...currentDocumentsSearch,
+        ...massSigningQueueSearch({
+          signedCount: 0,
+          skippedCount: 0,
+          targets: remaining,
+          total: massSigningTargets.length,
         }),
       },
     });
@@ -1079,9 +1107,18 @@ export const DocumentsPage = () => {
         direction="row"
         sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}
       >
-        {signingTargets.length > 0 ? (
+        {massSigningTargets.length > 0 ? (
           <Button
             variant="contained"
+            disabled={bulkBusy}
+            onClick={startMassSigning}
+          >
+            Masowe podpisywanie
+          </Button>
+        ) : null}
+        {signingTargets.length > 0 ? (
+          <Button
+            variant="outlined"
             disabled={bulkBusy}
             onClick={startSigningSequence}
           >
@@ -1288,48 +1325,66 @@ export const DocumentsPage = () => {
       {visibleDocuments.length > 0 && view === 'list' ? (
         <>
         <Stack sx={{ display: { xs: 'flex', sm: 'none' }, mt: 4, gap: 2 }}>
-          {visibleDocuments.map((document) => (
-            <Card key={document.id} variant="outlined">
-              <Stack direction="row" sx={{ alignItems: 'center' }}>
-                <Checkbox
-                  slotProps={{
-                    input: {
-                      'aria-label': `Zaznacz dokument: ${document.title}`,
-                    },
-                  }}
-                  checked={selectedIds.includes(document.id)}
-                  onChange={(event) =>
-                    setSelectedIds((current) =>
-                      event.target.checked
-                        ? [...current, document.id]
-                        : current.filter((id) => id !== document.id),
-                    )
-                  }
-                />
-                <CardActionArea
-                  onClick={() =>
-                    void navigate({
-                      to: '/app/documents/$id',
-                      params: { id: document.id },
-                      search: currentDocumentsSearch,
-                    })
-                  }
-                >
-                  <CardContent>
-                    <Typography variant="h2">{document.title}</Typography>
-                    {document.draft ? (
-                      <Chip size="small" color="warning" label="Szkic" sx={{ mt: 1 }} />
-                    ) : null}
-                    <Typography variant="body2" sx={{ mt: 1 }}>
-                      {document.person ?? 'Bez przypisanej osoby'}
+          {groupedVisibleDocuments.map((periodGroup) => (
+            <Box key={`${periodGroup.start}|${periodGroup.end}`}>
+              <Typography variant="h2" sx={{ mb: 1 }}>
+                {formatCanonicalDocumentInterval(periodGroup)}
+              </Typography>
+              <Stack sx={{ gap: 1.5 }}>
+                {periodGroup.people.map((personGroup) => (
+                  <Box key={personGroup.person}>
+                    <Typography variant="h3" color="text.secondary" sx={{ mb: 1 }}>
+                      {personGroup.person}
                     </Typography>
-                    <Typography variant="body2">
-                      {formatPolishDate(document.documentDate)} · Pliki: {document.files.length}
-                    </Typography>
-                  </CardContent>
-                </CardActionArea>
+                    <Stack sx={{ gap: 1.5 }}>
+                      {personGroup.documents.map((document) => (
+                        <Card key={document.id} variant="outlined">
+                          <Stack direction="row" sx={{ alignItems: 'center' }}>
+                            <Checkbox
+                              slotProps={{
+                                input: {
+                                  'aria-label': `Zaznacz dokument: ${document.title}`,
+                                },
+                              }}
+                              checked={selectedIds.includes(document.id)}
+                              onChange={(event) =>
+                                setSelectedIds((current) =>
+                                  event.target.checked
+                                    ? [...current, document.id]
+                                    : current.filter((id) => id !== document.id),
+                                )
+                              }
+                            />
+                            <CardActionArea
+                              onClick={() =>
+                                void navigate({
+                                  to: '/app/documents/$id',
+                                  params: { id: document.id },
+                                  search: currentDocumentsSearch,
+                                })
+                              }
+                            >
+                              <CardContent>
+                                <Typography variant="h2">{document.title}</Typography>
+                                {document.draft ? (
+                                  <Chip size="small" color="warning" label="Szkic" sx={{ mt: 1 }} />
+                                ) : null}
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                  {document.person ?? 'Bez przypisanej osoby'}
+                                </Typography>
+                                <Typography variant="body2">
+                                  {formatPolishDate(document.documentDate)} · Pliki: {document.files.length}
+                                </Typography>
+                              </CardContent>
+                            </CardActionArea>
+                          </Stack>
+                        </Card>
+                      ))}
+                    </Stack>
+                  </Box>
+                ))}
               </Stack>
-            </Card>
+            </Box>
           ))}
         </Stack>
         <TableContainer
@@ -1365,61 +1420,85 @@ export const DocumentsPage = () => {
                 </TableCell>
                 {visibleColumnIds.map((column) => (
                   <TableCell key={column}>{DOCUMENT_COLUMN_LABELS[column]}</TableCell>
-                ))}
+              ))}
                 <TableCell align="right">Akcje</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {visibleDocuments.map((document) => (
-                <TableRow
-                  key={document.id}
-                  hover
-                  onClick={() =>
-                    void navigate({
-                      to: '/app/documents/$id',
-                      params: { id: document.id },
-                      search: currentDocumentsSearch,
-                    })
-                  }
-                  sx={{ cursor: 'pointer' }}
-                >
+              {groupedVisibleDocuments.flatMap((periodGroup) => [
+                <TableRow key={`${periodGroup.start}|${periodGroup.end}`}>
                   <TableCell
-                    padding="checkbox"
-                    onClick={(event) => event.stopPropagation()}
+                    colSpan={visibleColumnIds.length + 2}
+                    sx={{ py: 1.25 }}
                   >
-                    <Checkbox
-                      slotProps={{
-                        input: {
-                          'aria-label': `Zaznacz dokument: ${document.title}`,
-                        },
-                      }}
-                      checked={selectedIds.includes(document.id)}
-                      onChange={(event) =>
-                        setSelectedIds((current) =>
-                          event.target.checked
-                            ? [...current, document.id]
-                            : current.filter((id) => id !== document.id),
-                        )
-                      }
-                    />
+                    <Typography variant="h3">
+                      {formatCanonicalDocumentInterval(periodGroup)}
+                    </Typography>
                   </TableCell>
-                  {visibleColumnIds.map((column) => (
-                    <TableCell key={column}>{renderDocumentCell(column, document)}</TableCell>
-                  ))}
-                  <TableCell align="right" onClick={(event) => event.stopPropagation()}>
-                    <IconButton
-                      size="small"
-                      aria-label={`Więcej akcji dla dokumentu ${document.title}`}
-                      onClick={(event) => {
-                        setRowMenuAnchor(event.currentTarget);
-                        setRowMenuDocument(document);
-                      }}
+                </TableRow>,
+                ...periodGroup.people.flatMap((personGroup) => [
+                  <TableRow key={`${periodGroup.start}|${periodGroup.end}|${personGroup.person}`}>
+                    <TableCell
+                      colSpan={visibleColumnIds.length + 2}
+                      sx={{ py: 1, pl: 4 }}
                     >
-                      <MoreVertIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      <Typography variant="subtitle2" color="text.secondary">
+                        {personGroup.person}
+                      </Typography>
+                    </TableCell>
+                  </TableRow>,
+                  ...personGroup.documents.map((document) => (
+                    <TableRow
+                      key={document.id}
+                      hover
+                      onClick={() =>
+                        void navigate({
+                          to: '/app/documents/$id',
+                          params: { id: document.id },
+                          search: currentDocumentsSearch,
+                        })
+                      }
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell
+                        padding="checkbox"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Checkbox
+                          slotProps={{
+                            input: {
+                              'aria-label': `Zaznacz dokument: ${document.title}`,
+                            },
+                          }}
+                          checked={selectedIds.includes(document.id)}
+                          onChange={(event) =>
+                            setSelectedIds((current) =>
+                              event.target.checked
+                                ? [...current, document.id]
+                                : current.filter((id) => id !== document.id),
+                            )
+                          }
+                        />
+                      </TableCell>
+                      {visibleColumnIds.map((column) => (
+                        <TableCell key={column}>{renderDocumentCell(column, document)}</TableCell>
+                      ))}
+                      <TableCell align="right" onClick={(event) => event.stopPropagation()}>
+                        <IconButton
+                          size="small"
+                          aria-label={`Więcej akcji dla dokumentu ${document.title}`}
+                          onClick={(event) => {
+                            setRowMenuAnchor(event.currentTarget);
+                            setRowMenuDocument(document);
+                          }}
+                        >
+                          <MoreVertIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  )),
+                ]),
+              ])}
             </TableBody>
           </Table>
         </TableContainer>

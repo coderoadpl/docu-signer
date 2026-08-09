@@ -105,13 +105,20 @@ const queueParamSchema = z
   .min(1)
   .optional()
   .catch(undefined);
+const trueParamSchema = z.preprocess(
+  (value: unknown) => (value === true || value === 'true' ? true : undefined),
+  z.literal(true).optional(),
+).catch(undefined);
 
 export const documentSigningSearchSchema = z.preprocess(
   (value) => (typeof value === 'object' && value !== null ? value : {}),
   documentsSearchInputSchema.extend({
     kolejka: queueParamSchema,
     pliki: queueParamSchema,
+    tryb: z.enum(['masowe']).optional().catch(undefined),
+    pominiete: z.coerce.number().int().nonnegative().optional().catch(undefined),
     podpisane: z.coerce.number().int().nonnegative().optional().catch(undefined),
+    koniec: trueParamSchema,
   }),
 );
 
@@ -243,6 +250,115 @@ export const hasSignedDocumentFile = (
 ): boolean =>
   document.files.some((file) => file.role === 'signed-scan' || file.role === 'signed-digital');
 
+export interface CanonicalDocumentInterval {
+  start: string;
+  end: string;
+}
+
+export interface CanonicalDocumentPersonGroup<
+  Document extends CanonicalGroupedDocumentInput,
+> {
+  person: string;
+  documents: Document[];
+}
+
+export interface CanonicalDocumentPeriodGroup<
+  Document extends CanonicalGroupedDocumentInput,
+> extends CanonicalDocumentInterval {
+  people: Array<CanonicalDocumentPersonGroup<Document>>;
+}
+
+export type CanonicalGroupedDocumentInput = Pick<
+  DocumentWithFiles,
+  'docType' | 'documentDate' | 'periodStart' | 'periodEnd' | 'person'
+>;
+
+const DOC_TYPE_PRECEDENCE: Partial<Record<DocumentType, number>> = {
+  protokol: 0,
+  rachunek: 1,
+  'umowa-uod': 2,
+};
+
+const personGroupLabel = (person: string | null | undefined): string =>
+  person?.trim() || 'Bez osoby';
+
+const comparePersonLabels = (left: string, right: string): number => {
+  if (left === right) return 0;
+  if (left === 'Bez osoby') return 1;
+  if (right === 'Bez osoby') return -1;
+  return left.localeCompare(right, 'pl');
+};
+
+export const canonicalDocumentInterval = (
+  document: Pick<CanonicalGroupedDocumentInput, 'documentDate' | 'periodStart' | 'periodEnd'>,
+): CanonicalDocumentInterval =>
+  normalizeInterval(
+    document.periodStart ?? document.documentDate,
+    document.periodEnd ?? document.documentDate,
+  );
+
+export const formatCanonicalDocumentInterval = (
+  interval: CanonicalDocumentInterval,
+): string =>
+  interval.start === interval.end
+    ? formatPolishDate(interval.start)
+    : `${formatPolishDate(interval.start)}-${formatPolishDate(interval.end)}`;
+
+export const groupDocumentsCanonically = <
+  Document extends CanonicalGroupedDocumentInput,
+>(
+  documents: Document[],
+): Array<CanonicalDocumentPeriodGroup<Document>> => {
+  const periodBuckets = new Map<string, {
+    interval: CanonicalDocumentInterval;
+    documents: Array<{ document: Document; index: number }>;
+  }>();
+  for (const [index, document] of documents.entries()) {
+    const interval = canonicalDocumentInterval(document);
+    const key = `${interval.start}|${interval.end}`;
+    const bucket = periodBuckets.get(key);
+    if (bucket) {
+      bucket.documents.push({ document, index });
+    } else {
+      periodBuckets.set(key, { interval, documents: [{ document, index }] });
+    }
+  }
+
+  return Array.from(periodBuckets.values())
+    .sort((left, right) =>
+      left.interval.start === right.interval.start
+        ? left.interval.end.localeCompare(right.interval.end)
+        : left.interval.start.localeCompare(right.interval.start),
+    )
+    .map(({ interval, documents: periodDocuments }) => {
+      const personBuckets = new Map<string, Array<{ document: Document; index: number }>>();
+      for (const item of periodDocuments) {
+        const person = personGroupLabel(item.document.person);
+        const bucket = personBuckets.get(person) ?? [];
+        bucket.push(item);
+        personBuckets.set(person, bucket);
+      }
+      return {
+        ...interval,
+        people: Array.from(personBuckets.entries())
+          .sort(([left], [right]) => comparePersonLabels(left, right))
+          .map(([person, items]) => ({
+            person,
+            documents: [...items]
+              .sort((left, right) => {
+                const leftPrecedence = DOC_TYPE_PRECEDENCE[left.document.docType];
+                const rightPrecedence = DOC_TYPE_PRECEDENCE[right.document.docType];
+                if (leftPrecedence !== undefined || rightPrecedence !== undefined) {
+                  return (leftPrecedence ?? 3) - (rightPrecedence ?? 3) || left.index - right.index;
+                }
+                return left.index - right.index;
+              })
+              .map((item) => item.document),
+          })),
+      };
+    });
+};
+
 export const documentFilterSummary = (filter: SavedSearchFilter): string => {
   const parts = [
     filter.text ? `Tytuł: ${filter.text}` : '',
@@ -318,6 +434,35 @@ export const signingQueueTargets = (
     return file ? [{ documentId: document.id, fileId: file.id }] : [];
   });
 
+const newestFileFirst = (
+  left: Pick<DocumentFile, 'createdAt'>,
+  right: Pick<DocumentFile, 'createdAt'>,
+): number => right.createdAt.localeCompare(left.createdAt);
+
+export const newestSignablePdfFile = (
+  document: Pick<DocumentWithFiles, 'files'>,
+): DocumentFile | undefined => {
+  const signableFiles = document.files.filter(canSignPdfFile);
+  const signedDigital = signableFiles
+    .filter((file) => file.role === 'signed-digital')
+    .sort(newestFileFirst);
+  const source = signableFiles
+    .filter((file) => file.role === 'source')
+    .sort(newestFileFirst);
+  return signedDigital[0] ?? source[0];
+};
+
+export const massSigningQueueTargets = (
+  documents: DocumentWithFiles[],
+): SigningQueueTarget[] =>
+  groupDocumentsCanonically(documents)
+    .flatMap((periodGroup) => periodGroup.people)
+    .flatMap((personGroup) => personGroup.documents)
+    .flatMap((document) => {
+      const file = newestSignablePdfFile(document);
+      return file ? [{ documentId: document.id, fileId: file.id }] : [];
+    });
+
 export const signingQueueSearch = ({
   signedCount,
   targets,
@@ -335,6 +480,25 @@ export const signingQueueSearch = ({
     : {}),
   podpisane: signedCount,
   razem: total,
+});
+
+export const massSigningQueueSearch = ({
+  signedCount,
+  skippedCount,
+  targets,
+  total,
+}: {
+  signedCount: number;
+  skippedCount: number;
+  targets: SigningQueueTarget[];
+  total: number;
+}): Pick<
+  DocumentSigningSearchParams,
+  'tryb' | 'kolejka' | 'pliki' | 'podpisane' | 'pominiete' | 'razem'
+> => ({
+  tryb: 'masowe',
+  ...signingQueueSearch({ signedCount, targets, total }),
+  pominiete: skippedCount,
 });
 
 export const signingQueueFromSearch = (
