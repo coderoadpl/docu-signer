@@ -235,7 +235,7 @@ describe('document view logic', () => {
     ).toEqual({ q: 'umowa', tag: 'ważne', status: 'needs-signature' });
   });
 
-  it('builds the mass-signing queue from canonical order and newest signable PDFs', () => {
+  it('canonically orders the selected mass-signing documents and uses newest signable PDFs', () => {
     const sourceFile = {
       id: '33333333-3333-4333-8333-333333333333',
       documentId: '11111111-1111-4111-8111-111111111111',
@@ -315,6 +315,13 @@ describe('document view logic', () => {
         documentId: bill.id,
         fileId: '66666666-6666-4666-8666-666666666666',
       },
+    ]);
+    expect(massSigningQueueTargets([protocol, contract])).toEqual([
+      {
+        documentId: contract.id,
+        fileId: '88888888-8888-4888-8888-888888888888',
+      },
+      { documentId: protocol.id, fileId: newestSignedFile.id },
     ]);
   });
 

@@ -58,6 +58,7 @@ import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { PolishDatePicker } from '../../components/ui/PolishDatePicker.js';
 import { formatPolishDate } from '../../lib/format-date.js';
+import { StickyTableCell } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import { DocumentTimelineView } from './DocumentTimelineView.js';
 import {
@@ -377,7 +378,7 @@ export const DocumentsPage = () => {
     selectedIds.includes(document.id),
   );
   const selectedDraftDocuments = selectedDocuments.filter((document) => document.draft);
-  const massSigningTargets = massSigningQueueTargets(visibleDocuments);
+  const massSigningTargets = massSigningQueueTargets(selectedDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
   const visibleColumnIds = columnSettings.order.filter((column) =>
     columnSettings.visible.includes(column),
@@ -642,7 +643,9 @@ export const DocumentsPage = () => {
       );
     }
     if (column === 'files') return <FileCounts files={document.files} />;
-    return document.draft ? <Chip size="small" color="warning" label="Szkic" /> : null;
+    return document.draft ? (
+      <Chip size="small" color="warning" variant="outlined" label="Szkic" />
+    ) : null;
   };
 
   return (
@@ -1095,15 +1098,13 @@ export const DocumentsPage = () => {
         direction="row"
         sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}
       >
-        {massSigningTargets.length > 0 ? (
-          <Button
-            variant="contained"
-            disabled={bulkBusy}
-            onClick={startMassSigning}
-          >
-            Masowe podpisywanie
-          </Button>
-        ) : null}
+        <Button
+          variant="contained"
+          disabled={selectedDocuments.length === 0 || bulkBusy}
+          onClick={startMassSigning}
+        >
+          Masowe podpisywanie ({selectedDocuments.length})
+        </Button>
         <Button
           variant="outlined"
           onClick={(event) => setColumnsAnchor(event.currentTarget)}
@@ -1362,7 +1363,13 @@ export const DocumentsPage = () => {
                               <CardContent>
                                 <Typography variant="h2">{document.title}</Typography>
                                 {document.draft ? (
-                                  <Chip size="small" color="warning" label="Szkic" sx={{ mt: 1 }} />
+                                  <Chip
+                                    size="small"
+                                    color="warning"
+                                    variant="outlined"
+                                    label="Szkic"
+                                    sx={{ mt: 1 }}
+                                  />
                                 ) : null}
                                 <Typography variant="body2" sx={{ mt: 1 }}>
                                   {document.person ?? 'Bez przypisanej osoby'}
@@ -1385,12 +1392,15 @@ export const DocumentsPage = () => {
         <TableContainer
           component={Paper}
           variant="outlined"
-          sx={{ display: { xs: 'none', sm: 'block' }, mt: 4 }}
+          sx={{ display: { xs: 'none', sm: 'block' }, mt: 4, maxWidth: '100%', overflowX: 'auto' }}
         >
-          <Table>
+          <Table sx={{ minWidth: '90rem' }}>
             <TableHead>
               <TableRow>
-                <TableCell padding="checkbox">
+                <StickyTableCell
+                  padding="checkbox"
+                  sx={{ position: 'sticky', left: 0, zIndex: 2 }}
+                >
                   <Checkbox
                     slotProps={{
                       input: { 'aria-label': 'Zaznacz wszystkie dokumenty' },
@@ -1412,7 +1422,7 @@ export const DocumentsPage = () => {
                       )
                     }
                   />
-                </TableCell>
+                </StickyTableCell>
                 {visibleColumnIds.map((column) => (
                   <TableCell key={column}>{DOCUMENT_COLUMN_LABELS[column]}</TableCell>
               ))}
@@ -1455,9 +1465,10 @@ export const DocumentsPage = () => {
                       }
                       sx={{ cursor: 'pointer' }}
                     >
-                      <TableCell
+                      <StickyTableCell
                         padding="checkbox"
                         onClick={(event) => event.stopPropagation()}
+                        sx={{ position: 'sticky', left: 0, zIndex: 1 }}
                       >
                         <Checkbox
                           slotProps={{
@@ -1474,7 +1485,7 @@ export const DocumentsPage = () => {
                             )
                           }
                         />
-                      </TableCell>
+                      </StickyTableCell>
                       {visibleColumnIds.map((column) => (
                         <TableCell key={column}>{renderDocumentCell(column, document)}</TableCell>
                       ))}
