@@ -141,7 +141,7 @@ export const DocumentsPage = () => {
   const [filters, setFilters] = useState<DocumentFilterValues>(emptyDocumentFilters);
   const documentFilter = toDocumentFilter(filters);
   const documents = useQuery(actions.documents(documentFilter));
-  const folderDocuments = useQuery(actions.documents({}));
+  const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const trashedDocuments = useQuery(actions.trashedDocuments);
   const savedSearches = useQuery(savedSearchActions.savedSearches);
   const createDocument = useMutation({
@@ -378,6 +378,25 @@ export const DocumentsPage = () => {
                   {label}
                 </MenuItem>
               ))}
+            </Select>
+          </FormControl>
+          <FormControl sx={{ minWidth: '11rem', flex: { sm: '1 1 11rem' } }}>
+            <InputLabel id="filter-draft">Szkice</InputLabel>
+            <Select
+              labelId="filter-draft"
+              label="Szkice"
+              value={filters.draft}
+              onChange={(event) => {
+                const value = String(event.target.value);
+                updateFilter(
+                  'draft',
+                  value === 'true' || value === 'all' ? value : 'false',
+                );
+              }}
+            >
+              <MenuItem value="false">Tylko zatwierdzone</MenuItem>
+              <MenuItem value="true">Tylko szkice</MenuItem>
+              <MenuItem value="all">Wszystkie</MenuItem>
             </Select>
           </FormControl>
         </Stack>
@@ -788,6 +807,9 @@ export const DocumentsPage = () => {
                 >
                   <CardContent>
                     <Typography variant="h2">{document.title}</Typography>
+                    {document.draft ? (
+                      <Chip size="small" color="warning" label="Szkic" sx={{ mt: 1 }} />
+                    ) : null}
                     <Typography variant="body2" sx={{ mt: 1 }}>
                       {document.person ?? 'Bez przypisanej osoby'}
                     </Typography>
@@ -877,9 +899,12 @@ export const DocumentsPage = () => {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="subtitle2" component="span">
-                      {document.title}
-                    </Typography>
+                    <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Typography variant="subtitle2" component="span">
+                        {document.title}
+                      </Typography>
+                      {document.draft ? <Chip size="small" color="warning" label="Szkic" /> : null}
+                    </Stack>
                   </TableCell>
                   <TableCell>
                     <Chip

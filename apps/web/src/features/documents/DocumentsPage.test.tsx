@@ -111,14 +111,23 @@ describe('DocumentsPage', () => {
         },
       ],
     };
+    const draft = {
+      ...document,
+      id: '55555555-5555-4555-8555-555555555555',
+      title: 'Szkic importu',
+      draft: true,
+    };
     server.use(
       http.get('/api/documents', ({ request }) => {
         const params = new URL(request.url).searchParams;
         seen(Object.fromEntries(params.entries()));
+        if (params.get('draft') === 'true') {
+          return HttpResponse.json({ ok: true, data: { documents: [draft] } });
+        }
         if (params.get('signatureStatus') === 'signed') {
           return HttpResponse.json({ ok: true, data: { documents: [signed] } });
         }
-        return HttpResponse.json({ ok: true, data: { documents: [document, signed] } });
+        return HttpResponse.json({ ok: true, data: { documents: [document, signed, draft] } });
       }),
     );
     await renderPage();
@@ -149,6 +158,19 @@ describe('DocumentsPage', () => {
         person: 'Anna Nowak',
         tag: 'podpisane',
         signatureStatus: 'signed',
+      }),
+    );
+
+    await userEvent.click(screen.getByLabelText('Szkice'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Tylko szkice' }));
+    expect((await screen.findAllByText('Szkic importu')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Szkic').length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        person: 'Anna Nowak',
+        tag: 'podpisane',
+        signatureStatus: 'signed',
+        draft: 'true',
       }),
     );
   });
@@ -231,7 +253,7 @@ describe('DocumentsPage', () => {
     );
 
     expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
-    expect(requests).toHaveBeenCalledTimes(2);
+    expect(requests).toHaveBeenCalledTimes(3);
   });
 
   it('enables bulk export as documents are selected', async () => {
@@ -287,7 +309,7 @@ describe('DocumentsPage', () => {
       id: '33333333-3333-4333-8333-333333333333',
       tenantId: 'tenant-1',
       name: 'Odbiór',
-      filter: { tag: 'odbiór', signatureStatus: 'signed' },
+      filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
       createdAt: '2026-08-01T00:00:00.000Z',
     };
     let savedSearches: Array<typeof savedSearch> = [];
@@ -340,10 +362,12 @@ describe('DocumentsPage', () => {
     });
     await userEvent.click(screen.getByLabelText('Status podpisu'));
     await userEvent.click(await screen.findByRole('option', { name: 'Podpisane' }));
+    await userEvent.click(screen.getByLabelText('Szkice'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Wszystkie' }));
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz teczkę' }));
     const dialog = await screen.findByRole('dialog', { name: 'Zapisz teczkę' });
     expect(
-      within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane'),
+      within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane · Szkice: razem z zatwierdzonymi'),
     ).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Nazwa'), {
       target: { value: 'Odbiór' },
@@ -353,7 +377,7 @@ describe('DocumentsPage', () => {
     await waitFor(() =>
       expect(savedCreate).toHaveBeenCalledWith({
         name: 'Odbiór',
-        filter: { tag: 'odbiór', signatureStatus: 'signed' },
+        filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
       }),
     );
     await waitFor(() =>
@@ -364,7 +388,7 @@ describe('DocumentsPage', () => {
     });
     await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
     expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
-    expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane')).toBeInTheDocument();
+    expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane · Szkice: razem z zatwierdzonymi')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('heading', { name: 'Odbiór' }));
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
@@ -372,6 +396,7 @@ describe('DocumentsPage', () => {
       expect(seen).toHaveBeenCalledWith({
         tag: 'odbiór',
         signatureStatus: 'signed',
+        draft: 'all',
       }),
     );
 

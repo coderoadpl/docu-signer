@@ -184,6 +184,12 @@ export const updateDocumentMutation = (api: ApiClient) =>
       api.updateDocument(documentId, input),
   });
 
+export const approveDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'approve'],
+    call: (documentId: string) => api.approveDocument(documentId),
+  });
+
 export const deleteDocumentMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...documentsScopes.all(), 'delete'],

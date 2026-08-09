@@ -4,6 +4,7 @@ import { createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js'
 import {
   changePasswordMutation,
   configQuery,
+  approveDocumentMutation,
   createApiClient,
   createDocumentMutation,
   createSavedSearchMutation,
@@ -67,6 +68,7 @@ export const actions = {
     documentFileQuery(apiClient, documentId, fileId),
   createDocument: createDocumentMutation(apiClient),
   updateDocument: updateDocumentMutation(apiClient),
+  approveDocument: approveDocumentMutation(apiClient),
   deleteDocument: deleteDocumentMutation(apiClient),
   restoreDocument: restoreDocumentMutation(apiClient),
   purgeDocument: purgeDocumentMutation(apiClient),

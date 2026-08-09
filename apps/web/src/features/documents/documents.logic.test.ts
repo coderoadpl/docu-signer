@@ -97,6 +97,7 @@ describe('document view logic', () => {
       dateFrom: '',
       dateTo: '',
       signatureStatus: '',
+      draft: 'false',
     });
     expect(
       toDocumentFilter({
@@ -107,6 +108,7 @@ describe('document view logic', () => {
         dateFrom: '',
         dateTo: '2026-12-31',
         signatureStatus: '',
+        draft: 'false',
       }),
     ).toEqual({ text: 'umowa', dateTo: '2026-12-31' });
     expect(
@@ -118,6 +120,7 @@ describe('document view logic', () => {
         dateFrom: '2026-01-01',
         dateTo: '',
         signatureStatus: 'needs-signature',
+        draft: 'all',
       }),
     ).toEqual({
       docType: 'uchwala',
@@ -125,6 +128,7 @@ describe('document view logic', () => {
       tag: 'ważne',
       dateFrom: '2026-01-01',
       signatureStatus: 'needs-signature',
+      draft: 'all',
     });
     expect(hasDocumentFilter({})).toBe(false);
     expect(hasDocumentFilter({ tag: 'ważne', signatureStatus: 'signed' })).toBe(true);
@@ -136,6 +140,7 @@ describe('document view logic', () => {
       dateFrom: '',
       dateTo: '',
       signatureStatus: 'signed',
+      draft: 'false',
     });
     const file = {
       id: '11111111-1111-4111-8111-111111111111',
