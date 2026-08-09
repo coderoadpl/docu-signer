@@ -217,6 +217,7 @@ type BulkDialog = 'add-tags' | 'remove-tag' | 'person' | 'type';
 interface BulkSummary {
   changed: number;
   errors: number;
+  kind: 'approved' | 'changed';
 }
 
 const toUpdateDocumentInput = (
@@ -305,6 +306,7 @@ export const DocumentsPage = () => {
     ...actions.exportDocuments,
     onSuccess: saveDownload,
   });
+  const bulkApproveDocument = useMutation(actions.approveDocument);
   const bulkUpdateDocument = useMutation(actions.updateDocument);
   const bulkDeleteDocument = useMutation(actions.deleteDocument);
   const createSavedSearch = useMutation({
@@ -374,6 +376,7 @@ export const DocumentsPage = () => {
   const selectedDocuments = visibleDocuments.filter((document) =>
     selectedIds.includes(document.id),
   );
+  const selectedDraftDocuments = selectedDocuments.filter((document) => document.draft);
   const massSigningTargets = massSigningQueueTargets(visibleDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
   const visibleColumnIds = columnSettings.order.filter((column) =>
@@ -469,13 +472,18 @@ export const DocumentsPage = () => {
 
   const runBulk = async (
     action: (document: DocumentWithFiles) => Promise<void>,
+    options?: {
+      documents?: DocumentWithFiles[];
+      summaryKind?: BulkSummary['kind'];
+    },
   ) => {
-    if (selectedDocuments.length === 0 || bulkBusy) return;
+    const targets = options?.documents ?? selectedDocuments;
+    if (targets.length === 0 || bulkBusy) return;
     let changed = 0;
     let errors = 0;
     setBulkSummary(null);
-    setBulkProgress({ done: 0, total: selectedDocuments.length });
-    for (const document of selectedDocuments) {
+    setBulkProgress({ done: 0, total: targets.length });
+    for (const document of targets) {
       try {
         await action(document);
         changed += 1;
@@ -489,7 +497,7 @@ export const DocumentsPage = () => {
     }
     setBulkProgress(null);
     setBulkDialog(null);
-    setBulkSummary({ changed, errors });
+    setBulkSummary({ changed, errors, kind: options?.summaryKind ?? 'changed' });
     setSelectedIds([]);
     await queryClient.invalidateQueries(actions.documentsInvalidates());
   };
@@ -1103,6 +1111,20 @@ export const DocumentsPage = () => {
           Kolumny
         </Button>
         <Button
+          variant="contained"
+          disabled={selectedDraftDocuments.length === 0 || bulkBusy}
+          onClick={() =>
+            void runBulk(
+              async (document) => {
+                await bulkApproveDocument.mutateAsync(document.id);
+              },
+              { documents: selectedDraftDocuments, summaryKind: 'approved' },
+            )
+          }
+        >
+          Zatwierdź ({selectedDraftDocuments.length})
+        </Button>
+        <Button
           variant="outlined"
           color="error"
           disabled={selectedIds.length === 0 || bulkBusy}
@@ -1164,7 +1186,9 @@ export const DocumentsPage = () => {
       ) : null}
       {bulkSummary ? (
         <Alert severity={bulkSummary.errors > 0 ? 'warning' : 'success'} sx={{ mt: 2 }}>
-          Operacje zbiorcze: {bulkSummary.changed} zmieniono, {bulkSummary.errors} błędów.
+          {bulkSummary.kind === 'approved'
+            ? `Zatwierdzono ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
+            : `Operacje zbiorcze: ${bulkSummary.changed} zmieniono, ${bulkSummary.errors} błędów.`}
         </Alert>
       ) : null}
       <Popover

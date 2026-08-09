@@ -495,6 +495,59 @@ test('keeps draft filters after approving a draft and returning to the list', as
   expect(searchParams.get('q')).toBe(title);
   expect(searchParams.get('szkice')).toBe('true');
   expect(created.data.document.id.length).toBeGreaterThan(0);
+
+  const bulkPrefix = `Szkice bulk e2e ${stamp}`;
+  const firstBulkTitle = `${bulkPrefix} A`;
+  const secondBulkTitle = `${bulkPrefix} B`;
+  const bulkDrafts = await Promise.all(
+    [firstBulkTitle, secondBulkTitle].map(async (draftTitle) => {
+      const bulkResponse = await page.request.post('/api/documents', {
+        data: {
+          title: draftTitle,
+          docType: 'inny',
+          documentDate: '2026-08-03',
+          person: 'Jan Kowalski',
+          tags: ['e2e-draft'],
+          draft: true,
+        },
+      });
+      expect(bulkResponse.ok()).toBe(true);
+      return documentCreateResponseSchema.parse(await bulkResponse.json());
+    }),
+  );
+
+  await page.goto(`/app/documents?szkice=true&q=${encodeURIComponent(bulkPrefix)}`);
+  const firstRow = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: firstBulkTitle, exact: true }) });
+  const secondRow = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: secondBulkTitle, exact: true }) });
+  await expect(firstRow).toBeVisible();
+  await expect(secondRow).toBeVisible();
+  await expect(firstRow.getByText('Szkic', { exact: true })).toBeVisible();
+  await expect(secondRow.getByText('Szkic', { exact: true })).toBeVisible();
+  await firstRow.getByRole('checkbox', { name: `Zaznacz dokument: ${firstBulkTitle}` }).click();
+  await secondRow.getByRole('checkbox', { name: `Zaznacz dokument: ${secondBulkTitle}` }).click();
+  await expect(page.getByRole('button', { name: 'Zatwierdź (2)' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Zatwierdź (2)' }).click();
+  await expect(page.getByText('Zatwierdzono 2, błędów 0.')).toBeVisible();
+  await expect(firstRow).toBeHidden();
+  await expect(secondRow).toBeHidden();
+
+  await page.getByLabel('Szkice').click();
+  await page.getByRole('option', { name: 'Wszystkie' }).click();
+  const approvedFirstRow = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: firstBulkTitle, exact: true }) });
+  const approvedSecondRow = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: secondBulkTitle, exact: true }) });
+  await expect(approvedFirstRow).toBeVisible();
+  await expect(approvedSecondRow).toBeVisible();
+  await expect(approvedFirstRow.getByText('Szkic', { exact: true })).toBeHidden();
+  await expect(approvedSecondRow.getByText('Szkic', { exact: true })).toBeHidden();
+  expect(bulkDrafts.map((draft) => draft.data.document.id)).toHaveLength(2);
 });
 
 test.describe('signature pad dialog', () => {
