@@ -52,7 +52,9 @@ jobs:
         if: steps.preflight.outputs.has_secrets == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes postgresql-client unzip zip
+          # Neon runs PostgreSQL 17; Ubuntu's default postgresql-client is 16
+          # and pg_dump aborts on a server/client major-version mismatch.
+          sudo apt-get install --yes postgresql-client-17 unzip zip
           pnpm install --frozen-lockfile
 
       - name: Create and publish backup
