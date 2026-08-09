@@ -104,9 +104,10 @@ Per-layer one-screen summaries live beside the code — [`core/CLAUDE.md`](core/
 - `adapters/**` implement ports; only `apps/server/src/composition.ts`
   instantiates a *server* adapter. Two deliberate exceptions: the auth *client*
   adapter is constructed in `apps/web/src/api.ts` (web) and the CLI's `cliCtx`,
-  and the standalone DB operations `adapters/db/migrate.ts`,
-  `adapters/db/seed.ts`, and `adapters/db/seed-deploy.ts` are sanctioned
-  composition points outside the server root. Seed needs the real auth and
+  and the standalone DB/ops entrypoints `adapters/db/migrate.ts`,
+  `adapters/db/seed.ts`, `adapters/db/seed-deploy.ts`, and
+  `scripts/backup.ts` are sanctioned composition points outside the server
+  root. Backup runs in CI cron without the server. Seed needs the real auth and
   database adapters to hash credentials and persist bootstrap data, just as
   migrate needs the real database adapter.
 - `apps/web` and `apps/cli` import `core/client` (+ auth client adapter), never

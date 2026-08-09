@@ -5,6 +5,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 
 import {
   deploySeedEnvSchema,
+  backupEnvSchema,
   observabilityEnvSchema,
   seedEnvSchema,
   serverEnvSchema,
@@ -304,6 +305,7 @@ const declaredEnvKeys = new Set([
   ...Object.keys(serverEnvSchema.shape),
   ...Object.keys(observabilityEnvSchema.shape),
   ...Object.keys(deploySeedEnvSchema.shape),
+  ...Object.keys(backupEnvSchema.shape),
   ...Object.keys(seedEnvSchema.shape),
   'VITE_SENTRY_DSN',
 ]);

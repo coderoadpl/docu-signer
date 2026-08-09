@@ -15,6 +15,8 @@ import { DEFAULT_DEV_PORT } from '#core/contract/index.js';
 
 export const DEFAULT_DATABASE_URL =
   'postgresql://agentproofarch:agentproofarch@localhost:47542/agentproofarch';
+const DEFAULT_BACKUP_BLOB_MONTHLY_CEILING = 5_000_000_000;
+const DEFAULT_BACKUP_DATABASE_DAILY_MAX = 100_000_000;
 
 /** The placeholder secret that ships in `.env.example`; refused on any deploy. */
 export const DEV_ONLY_SECRET = 'dev-only-secret-do-not-use-in-prod';
@@ -23,6 +25,11 @@ const dbDriverSchema = z.enum(['node-postgres', 'neon-http']);
 
 const databaseUrlField = z.string().default(DEFAULT_DATABASE_URL);
 const appBaseDomainField = z.string().trim().min(1).transform((value) => value.toLowerCase());
+const positiveBytes = (fallback: number): z.ZodType<number> =>
+  z.preprocess(
+    (value) => (value === undefined || value === '' ? fallback : Number(value)),
+    z.number().int().positive().safe(),
+  );
 
 // Platform-follows default read once at load: neon-http under Vercel, node-postgres
 // otherwise — an explicit DB_DRIVER always wins. Shared so the runtime server and
@@ -176,6 +183,15 @@ export const seedEnvSchema = z
     ...seedAdminEnvFields,
   })
   .superRefine(validateSeedAdminEnv);
+
+export const backupEnvSchema = z.object({
+  NEON_DATABASE_URL_UNPOOLED: z.url(),
+  BLOB_READ_WRITE_TOKEN: z.string().min(1),
+  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1),
+  GOOGLE_DRIVE_FOLDER_ID: z.string().regex(/^[A-Za-z0-9_-]+$/),
+  BACKUP_BLOB_MONTHLY_DOWNLOAD_LIMIT_BYTES: positiveBytes(DEFAULT_BACKUP_BLOB_MONTHLY_CEILING),
+  BACKUP_DATABASE_DAILY_MAX_BYTES: positiveBytes(DEFAULT_BACKUP_DATABASE_DAILY_MAX),
+});
 
 /**
  * Observability subset. All optional — absent = no-op (dev/CI untouched):
