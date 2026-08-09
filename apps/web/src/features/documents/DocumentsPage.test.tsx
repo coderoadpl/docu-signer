@@ -207,8 +207,18 @@ describe('DocumentsPage', () => {
     ).toBeEnabled();
   });
 
-  it('shows teczki by tags and years and applies folder filters', async () => {
+  it('saves, applies and deletes teczki presets', async () => {
     const seen = vi.fn();
+    const savedCreate = vi.fn();
+    const savedDelete = vi.fn();
+    const savedSearch = {
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-1',
+      name: 'Odbiór',
+      filter: { tag: 'odbiór' },
+      createdAt: '2026-08-01T00:00:00.000Z',
+    };
+    let savedSearches: Array<typeof savedSearch> = [];
     const protocol = {
       ...document,
       id: '22222222-2222-4222-8222-222222222222',
@@ -234,26 +244,50 @@ describe('DocumentsPage', () => {
           data: { documents: [document, protocol] },
         });
       }),
+      http.get('/api/saved-searches', () =>
+        HttpResponse.json({ ok: true, data: { savedSearches } }),
+      ),
+      http.post('/api/saved-searches', async ({ request }) => {
+        const body = await request.json();
+        savedCreate(body);
+        savedSearches = [savedSearch];
+        return HttpResponse.json({ ok: true, data: { savedSearch } });
+      }),
+      http.delete('/api/saved-searches/:id', ({ params }) => {
+        savedDelete(params.id);
+        savedSearches = [];
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
     );
     await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
-    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
-    expect(screen.getByRole('heading', { name: 'Tagi' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Lata' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Tag')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Tag'), 'odbiór');
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz teczkę' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Zapisz teczkę' });
+    expect(within(dialog).getByText('Tag: odbiór')).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText('Nazwa'), 'Odbiór');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Zapisz teczkę' }));
 
-    await userEvent.click(screen.getByText('odbiór'));
+    await waitFor(() =>
+      expect(savedCreate).toHaveBeenCalledWith({ name: 'Odbiór', filter: { tag: 'odbiór' } }),
+    );
+    await userEvent.clear(screen.getByLabelText('Tag'));
+    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
+    expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
+    expect(screen.getByText('Tag: odbiór')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('heading', { name: 'Odbiór' }));
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
     await waitFor(() => expect(seen).toHaveBeenCalledWith({ tag: 'odbiór' }));
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
-    await userEvent.click(screen.getByText('2025'));
-    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));
+    expect(screen.getByRole('button', { name: 'Potwierdź' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Potwierdź' }));
     await waitFor(() =>
-      expect(seen).toHaveBeenCalledWith({
-        dateFrom: '2025-01-01',
-        dateTo: '2025-12-31',
-      }),
+      expect(savedDelete).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333'),
     );
   });
 

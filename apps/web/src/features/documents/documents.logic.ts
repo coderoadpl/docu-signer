@@ -1,14 +1,15 @@
 import { ApiError } from '#core/client/index.js';
 import {
-  documentCoveredYears,
   type CreateDocument,
   type DocumentFile,
   type DocumentFileRole,
   type DocumentListFilter,
+  type SavedSearchFilter,
   type DocumentType,
   type DocumentWithFiles,
   type UpdateDocument,
 } from '#core/domain/index.js';
+import { formatPolishDate } from '../../lib/format-date.js';
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   'umowa-uod': 'Umowa UoD',
@@ -41,6 +42,24 @@ export interface DocumentFormValues {
   person: string;
   tags: string;
 }
+
+export interface DocumentFilterValues {
+  text: string;
+  docType: DocumentType | '';
+  person: string;
+  tag: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
+export const emptyDocumentFilters = (): DocumentFilterValues => ({
+  text: '',
+  docType: '',
+  person: '',
+  tag: '',
+  dateFrom: '',
+  dateTo: '',
+});
 
 export const emptyDocumentForm = (): DocumentFormValues => ({
   title: '',
@@ -99,10 +118,29 @@ export const toDocumentFilter = (values: {
   ...(values.dateTo ? { dateTo: values.dateTo } : {}),
 });
 
-export interface FolderTile {
-  label: string;
-  count: number;
-}
+export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilterValues => ({
+  text: filter.text ?? '',
+  docType: filter.docType ?? '',
+  person: filter.person ?? '',
+  tag: filter.tag ?? '',
+  dateFrom: filter.dateFrom ?? '',
+  dateTo: filter.dateTo ?? '',
+});
+
+export const hasDocumentFilter = (filter: DocumentListFilter): boolean =>
+  Object.values(filter).some((value) => value !== undefined && value.length > 0);
+
+export const documentFilterSummary = (filter: SavedSearchFilter): string => {
+  const parts = [
+    filter.text ? `Tytuł: ${filter.text}` : '',
+    filter.docType ? `Typ: ${DOCUMENT_TYPE_LABELS[filter.docType]}` : '',
+    filter.person ? `Osoba: ${filter.person}` : '',
+    filter.tag ? `Tag: ${filter.tag}` : '',
+    filter.dateFrom ? `Od: ${formatPolishDate(filter.dateFrom)}` : '',
+    filter.dateTo ? `Do: ${formatPolishDate(filter.dateTo)}` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'Wszystkie dokumenty';
+};
 
 export const uniqueDocumentTags = (
   documents: Array<Pick<DocumentWithFiles, 'tags'>>,
@@ -110,28 +148,6 @@ export const uniqueDocumentTags = (
   Array.from(new Set(documents.flatMap((document) => document.tags))).sort((left, right) =>
     left.localeCompare(right, 'pl'),
   );
-
-export const tagFolders = (
-  documents: Array<Pick<DocumentWithFiles, 'tags'>>,
-): FolderTile[] =>
-  uniqueDocumentTags(documents).map((tag) => ({
-    label: tag,
-    count: documents.filter((document) => document.tags.includes(tag)).length,
-  }));
-
-export const yearFolders = (
-  documents: Array<Pick<DocumentWithFiles, 'documentDate' | 'periodStart' | 'periodEnd'>>,
-): FolderTile[] => {
-  const counts = new Map<number, number>();
-  for (const document of documents) {
-    for (const year of documentCoveredYears(document)) {
-      counts.set(year, (counts.get(year) ?? 0) + 1);
-    }
-  }
-  return Array.from(counts.entries())
-    .sort(([left], [right]) => right - left)
-    .map(([year, count]) => ({ label: String(year), count }));
-};
 
 export const fileNameStem = (fileName: string): string => {
   const trimmed = fileName.trim();

@@ -8,6 +8,10 @@ import {
   CardContent,
   Checkbox,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
   MenuItem,
@@ -28,9 +32,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { DocumentType } from '#core/domain/index.js';
+import type { SavedSearch, SavedSearchFilter } from '#core/domain/index.js';
 
-import { actions } from '../../api.js';
+import { actions, savedSearchActions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { formatPolishDate } from '../../lib/format-date.js';
@@ -39,12 +43,14 @@ import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   FILE_ROLE_SYMBOLS,
-  tagFolders,
+  documentFilterSummary,
+  emptyDocumentFilters,
+  hasDocumentFilter,
   toDocumentFilter,
+  toDocumentFilterValues,
   toDocumentInput,
   uniqueDocumentTags,
-  yearFolders,
-  type FolderTile,
+  type DocumentFilterValues,
 } from './documents.logic.js';
 
 const FileCounts = ({ files }: { files: Array<{ role: string }> }) => (
@@ -64,50 +70,7 @@ const FileCounts = ({ files }: { files: Array<{ role: string }> }) => (
   </Stack>
 );
 
-interface DocumentFilters {
-  text: string;
-  docType: DocumentType | '';
-  person: string;
-  tag: string;
-  dateFrom: string;
-  dateTo: string;
-}
-
 type DocumentsView = 'list' | 'folders';
-
-const FolderGrid = ({
-  title,
-  tiles,
-  onSelect,
-}: {
-  title: string;
-  tiles: FolderTile[];
-  onSelect: (label: string) => void;
-}) => (
-  <Box component="section" sx={{ mt: 3 }}>
-    <Typography variant="h2" sx={{ mb: 2 }}>
-      {title}
-    </Typography>
-    {tiles.length ? (
-      <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
-        {tiles.map((tile) => (
-          <Card key={tile.label} variant="outlined" sx={{ width: 180 }}>
-            <CardActionArea onClick={() => onSelect(tile.label)}>
-              <CardContent>
-                <Typography variant="h2">{tile.label}</Typography>
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  Dokumenty: {tile.count}
-                </Typography>
-              </CardContent>
-            </CardActionArea>
-          </Card>
-        ))}
-      </Stack>
-    ) : (
-      <Typography variant="body2">Brak teczek.</Typography>
-    )}
-  </Box>
-);
 
 const saveDownload = (download: {
   bytes: Uint8Array;
@@ -128,20 +91,17 @@ export const DocumentsPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [savedSearchOpen, setSavedSearchOpen] = useState(false);
+  const [savedSearchName, setSavedSearchName] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [view, setView] = useState<DocumentsView>('list');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [archiveHasDocuments, setArchiveHasDocuments] = useState(false);
-  const [filters, setFilters] = useState<DocumentFilters>({
-    text: '',
-    docType: '',
-    person: '',
-    tag: '',
-    dateFrom: '',
-    dateTo: '',
-  });
+  const [filters, setFilters] = useState<DocumentFilterValues>(emptyDocumentFilters);
   const documentFilter = toDocumentFilter(filters);
   const documents = useQuery(actions.documents(documentFilter));
   const folderDocuments = useQuery(actions.documents({}));
+  const savedSearches = useQuery(savedSearchActions.savedSearches);
   const createDocument = useMutation({
     ...actions.createDocument,
     onSuccess: async ({ document }) => {
@@ -157,42 +117,45 @@ export const DocumentsPage = () => {
     ...actions.exportDocuments,
     onSuccess: saveDownload,
   });
+  const createSavedSearch = useMutation({
+    ...savedSearchActions.createSavedSearch,
+    onSuccess: async () => {
+      setSavedSearchOpen(false);
+      setSavedSearchName('');
+      await queryClient.invalidateQueries(savedSearchActions.savedSearchesInvalidates());
+    },
+  });
+  const deleteSavedSearch = useMutation({
+    ...savedSearchActions.deleteSavedSearch,
+    onSuccess: async () => {
+      setConfirmDeleteId(null);
+      await queryClient.invalidateQueries(savedSearchActions.savedSearchesInvalidates());
+    },
+  });
 
-  const updateFilter = (name: keyof DocumentFilters, value: string) =>
+  const updateFilter = (name: keyof DocumentFilterValues, value: string) =>
     setFilters((current) => ({ ...current, [name]: value }));
-  const filtersActive = Object.values(filters).some((value) => value.length > 0);
+  const filtersActive = hasDocumentFilter(documentFilter);
   const visibleDocuments = documents.data?.documents ?? [];
   const allDocuments = folderDocuments.data?.documents ?? visibleDocuments;
   const tagOptions = uniqueDocumentTags(allDocuments);
-  const tagTiles = tagFolders(allDocuments);
-  const yearTiles = yearFolders(allDocuments);
+  const savedSearchItems: SavedSearch[] = savedSearches.data?.savedSearches ?? [];
 
   useEffect(() => {
     if (allDocuments.length > 0) setArchiveHasDocuments(true);
   }, [allDocuments.length]);
 
-  const clearFilters = () =>
-    setFilters({
-      text: '',
-      docType: '',
-      person: '',
-      tag: '',
-      dateFrom: '',
-      dateTo: '',
-    });
+  const clearFilters = () => setFilters(emptyDocumentFilters());
 
-  const selectTagFolder = (tag: string) => {
-    setFilters((current) => ({ ...current, tag, dateFrom: '', dateTo: '' }));
-    setView('list');
+  const saveCurrentSearch = () => {
+    const name = savedSearchName.trim();
+    if (!name || !filtersActive) return;
+    createSavedSearch.mutate({ name, filter: documentFilter });
   };
 
-  const selectYearFolder = (year: string) => {
-    setFilters((current) => ({
-      ...current,
-      tag: '',
-      dateFrom: `${year}-01-01`,
-      dateTo: `${year}-12-31`,
-    }));
+  const applySavedSearch = (filter: SavedSearchFilter) => {
+    setFilters(toDocumentFilterValues(filter));
+    setSelectedIds([]);
     setView('list');
   };
 
@@ -254,14 +217,13 @@ export const DocumentsPage = () => {
             onChange={(event) => updateFilter('person', event.target.value)}
             sx={{ flex: 1 }}
           />
-          {filters.tag ? (
-            <TextField
-              label="Tag"
-              value={filters.tag}
-              onChange={(event) => updateFilter('tag', event.target.value)}
-              sx={{ flex: 1 }}
-            />
-          ) : null}
+          <TextField
+            label="Tag"
+            value={filters.tag}
+            onChange={(event) => updateFilter('tag', event.target.value)}
+            sx={{ flex: 1 }}
+            slotProps={{ htmlInput: { list: 'document-filter-tag-options' } }}
+          />
           <TextField
             label="Od"
             type="date"
@@ -276,13 +238,98 @@ export const DocumentsPage = () => {
             onChange={(event) => updateFilter('dateTo', event.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
           />
+          <Button
+            variant="outlined"
+            disabled={!filtersActive}
+            onClick={() => setSavedSearchOpen(true)}
+            sx={{ alignSelf: { xs: 'stretch', md: 'center' } }}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            Zapisz teczkę
+          </Button>
         </Stack>
+        <datalist id="document-filter-tag-options">
+          {tagOptions.map((tag) => (
+            <option key={tag} value={tag} />
+          ))}
+        </datalist>
       </Paper> : null}
 
       {archiveHasDocuments && view === 'folders' ? (
         <Box sx={{ mt: 3 }}>
-          <FolderGrid title="Tagi" tiles={tagTiles} onSelect={selectTagFolder} />
-          <FolderGrid title="Lata" tiles={yearTiles} onSelect={selectYearFolder} />
+          {savedSearches.isPending ? (
+            <StatusView state={{ kind: 'loading', label: 'Ładowanie teczek…' }} />
+          ) : null}
+          {savedSearches.isError ? (
+            <StatusView
+              state={{
+                kind: 'error',
+                message: savedSearches.error.message,
+                retry: {
+                  label: 'Spróbuj ponownie',
+                  onRetry: () => void savedSearches.refetch(),
+                },
+              }}
+            />
+          ) : null}
+          {savedSearches.isSuccess && savedSearchItems.length === 0 ? (
+            <StatusView
+              state={{
+                kind: 'empty',
+                title: 'Brak teczek',
+                body: 'Zapisz filtry z listy dokumentów.',
+              }}
+            />
+          ) : null}
+          {savedSearchItems.length > 0 ? (
+            <Stack sx={{ gap: 2 }}>
+              {savedSearchItems.map((savedSearch) => (
+                <Card key={savedSearch.id} variant="outlined">
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}
+                  >
+                    <CardActionArea onClick={() => applySavedSearch(savedSearch.filter)}>
+                      <CardContent>
+                        <Typography variant="h2">{savedSearch.name}</Typography>
+                        <Typography variant="body2" sx={{ mt: 1 }}>
+                          {documentFilterSummary(savedSearch.filter)}
+                        </Typography>
+                      </CardContent>
+                    </CardActionArea>
+                    <Stack
+                      direction="row"
+                      sx={{ gap: 1, p: 2, pt: { xs: 0, sm: 2 }, alignItems: 'center' }}
+                    >
+                      {confirmDeleteId === savedSearch.id ? (
+                        <>
+                          <Button
+                            size="small"
+                            color="error"
+                            disabled={deleteSavedSearch.isPending}
+                            onClick={() => deleteSavedSearch.mutate(savedSearch.id)}
+                          >
+                            Potwierdź
+                          </Button>
+                          <Button size="small" onClick={() => setConfirmDeleteId(null)}>
+                            Anuluj
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={() => setConfirmDeleteId(savedSearch.id)}
+                        >
+                          Usuń
+                        </Button>
+                      )}
+                    </Stack>
+                  </Stack>
+                </Card>
+              ))}
+            </Stack>
+          ) : null}
         </Box>
       ) : null}
 
@@ -496,6 +543,40 @@ export const DocumentsPage = () => {
         onClose={() => setCreateOpen(false)}
         onSubmit={(values) => createDocument.mutate(toDocumentInput(values))}
       />
+      <Dialog
+        open={savedSearchOpen}
+        onClose={() => setSavedSearchOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Zapisz teczkę</DialogTitle>
+        <DialogContent>
+          <TextField
+            margin="dense"
+            label="Nazwa"
+            value={savedSearchName}
+            onChange={(event) => setSavedSearchName(event.target.value)}
+            fullWidth
+            slotProps={{ htmlInput: { maxLength: 120 } }}
+          />
+          <Typography variant="body2" sx={{ mt: 2 }}>
+            {documentFilterSummary(documentFilter)}
+          </Typography>
+          {createSavedSearch.isError ? (
+            <Alert severity="error" sx={{ mt: 2 }}>{createSavedSearch.error.message}</Alert>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSavedSearchOpen(false)}>Anuluj</Button>
+          <Button
+            variant="contained"
+            disabled={!savedSearchName.trim() || createSavedSearch.isPending}
+            onClick={saveCurrentSearch}
+          >
+            Zapisz teczkę
+          </Button>
+        </DialogActions>
+      </Dialog>
     </PageContainer>
   );
 };
