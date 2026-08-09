@@ -168,6 +168,10 @@ tests at the core layer.
   web/contract sources; on that warning run `pnpm run build:web` or switch to
   `dev:web`.
 - Ports: API 47100, Vite dev 47180, Postgres 47542 (never 3000/8080/5432).
+- Container engine on the dev Mac is **Colima** (owner decision 2026-08-04;
+  Docker Desktop retired for RAM reasons, left installed but never started).
+  Same `docker` CLI via the `colima` context; if `docker ps` cannot reach the
+  daemon, run `colima start --memory 2 --cpu 2` — never launch Docker Desktop.
 - The fixed tenant lives at `default.localhost:47100`. Browsers reject
   `Domain=.localhost` cookies → per-subdomain login in dev only.
 - Better Auth CSRF requires an `Origin` header on auth POSTs (CLI sends its API URL).
