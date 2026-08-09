@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { appError, err, ok } from '#core/domain/index.js';
 
-import { runLoginAction } from './main.js';
+import {
+  loginCredentialSelectionIsValid,
+  normalizeStdinPassword,
+  runLoginAction,
+} from './main.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const tsx = join(root, 'node_modules', '.bin', 'tsx');
@@ -32,10 +36,32 @@ describe('CLI command surface', () => {
     expect(result.stdout).not.toContain('--tenant');
   }, CLI_TEST_TIMEOUT_MS);
 
-  it('documents the TOTP login option', () => {
+  it('documents login security options', () => {
     const loginHelp = run('login', '--help');
     expect(loginHelp.status).toBe(0);
     expect(loginHelp.stdout).toContain('--code <totp>');
+    expect(loginHelp.stdout).toContain('--password <password>');
+    expect(loginHelp.stdout).toContain('--password-stdin');
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('rejects password arguments combined with password stdin using the validation taxonomy', () => {
+    const result = run(
+      '--json',
+      'login',
+      '--email',
+      'demo@example.com',
+      '--password',
+      'secret',
+      '--password-stdin',
+    );
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: {
+        code: 'validation',
+        message: 'Use either --password or --password-stdin, not both',
+      },
+    });
   }, CLI_TEST_TIMEOUT_MS);
 
   it('documents account password commands', () => {
@@ -163,5 +189,20 @@ describe('login action', () => {
       error: { code: 'unauthorized', message: 'Invalid code' },
     });
     expect(process.exitCode).toBe(3);
+  });
+});
+
+describe('stdin password normalization', () => {
+  it('accepts exactly one password source', () => {
+    expect(loginCredentialSelectionIsValid('secret', false)).toBe(true);
+    expect(loginCredentialSelectionIsValid(undefined, true)).toBe(true);
+    expect(loginCredentialSelectionIsValid('secret', true)).toBe(false);
+    expect(loginCredentialSelectionIsValid(undefined, false)).toBe(false);
+  });
+
+  it('removes a Unix or Windows trailing newline without trimming password whitespace', () => {
+    expect(normalizeStdinPassword(' secret \n')).toBe(' secret ');
+    expect(normalizeStdinPassword('secret\r\n')).toBe('secret');
+    expect(normalizeStdinPassword('secret')).toBe('secret');
   });
 });

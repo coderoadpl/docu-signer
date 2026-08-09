@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
+import { text as consumeText } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 
 import { Command, CommanderError } from 'commander';
@@ -70,6 +71,20 @@ const loginArgsSchema = z.object({
   password: z.string().min(1),
   code: z.string().trim().min(1).optional(),
 });
+export const loginCredentialSelectionIsValid = (
+  password: string | undefined,
+  passwordStdin: boolean,
+): boolean => (password !== undefined) !== passwordStdin;
+const loginOptionsSchema = z
+  .object({
+    email: z.string().trim().min(1),
+    password: z.string().optional(),
+    passwordStdin: z.boolean(),
+    code: z.string().trim().min(1).optional(),
+  })
+  .refine(({ password, passwordStdin }) => loginCredentialSelectionIsValid(password, passwordStdin), {
+    message: 'Use exactly one of --password or --password-stdin',
+  });
 const changePasswordArgsSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(1),
@@ -81,6 +96,7 @@ interface LoginActionCtx {
   json: boolean;
   saveToken: (token: string) => void;
 }
+export const normalizeStdinPassword = (value: string): string => value.replace(/\r?\n$/, '');
 const magicLinkArgsSchema = z.object({ email: z.string().trim().min(1) });
 const passwordResetArgsSchema = z.object({ email: z.string().trim().min(1) });
 
@@ -236,11 +252,23 @@ program
   .command('login')
   .description('Sign in and store the session token')
   .requiredOption('--email <email>')
-  .requiredOption('--password <password>')
+  .option('--password <password>', 'password supplied as an argument')
+  .option('--password-stdin', 'read password from stdin', false)
   .option('--code <totp>', 'current TOTP code from your authenticator app')
-  .action(async (options: { email: string; password: string; code?: string }) => {
+  .action(async (options: { email: string; password?: string; passwordStdin: boolean; code?: string }) => {
     const ctx = cliCtx();
-    const input = parseArgs(loginArgsSchema, options, ctx.json);
+    if (options.password !== undefined && options.passwordStdin) {
+      emit(
+        err(validation('Use either --password or --password-stdin, not both')),
+        ctx.json,
+        () => '',
+      );
+      return;
+    }
+    const parsedOptions = parseArgs(loginOptionsSchema, options, ctx.json);
+    if (parsedOptions === undefined) return;
+    const password = parsedOptions.password ?? normalizeStdinPassword(await consumeText(process.stdin));
+    const input = parseArgs(loginArgsSchema, { ...parsedOptions, password }, ctx.json);
     if (input === undefined) return;
     await runLoginAction({
       auth: ctx.auth,
