@@ -98,9 +98,11 @@ rejected.)
 - Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
   timestamps (`createdAt`, `updatedAt`) never render in UI or exports. One
   carve-out (owner decision 2026-08-02): `deletedAt` records a user action and
-  renders as `Usunięto:` in the Kosz surfaces only — nowhere else.
-- Konto: personal passkeys and two-factor authentication. Removed upstream
-  verticals stay removed.
+  renders as `Usunięto:` in the Kosz surfaces only, and API token `lastUsedAt`
+  records a user action and renders as `Ostatnio użyty:` in Konto > Tokeny API —
+  nowhere else.
+- Konto: personal passkeys, API tokens and two-factor authentication. Removed
+  upstream verticals stay removed.
 
 ## Layer rules (enforced, but know them anyway)
 

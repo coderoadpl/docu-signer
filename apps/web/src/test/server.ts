@@ -15,6 +15,9 @@ export const server = setupServer(
   http.get('*/api/documents/trash', () =>
     HttpResponse.json({ ok: true, data: { documents: [] } }),
   ),
+  http.get('*/api/api-tokens', () =>
+    HttpResponse.json({ ok: true, data: { apiTokens: [] } }),
+  ),
   // SettingsPage's PasskeySection reads the passkey roster on mount; a default
   // empty list keeps every page-level test that isn't about passkeys quiet. A
   // passkey-focused test overrides this with its own `server.use(...)`.

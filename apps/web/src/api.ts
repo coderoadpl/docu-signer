@@ -5,7 +5,10 @@ import {
   changePasswordMutation,
   configQuery,
   approveDocumentMutation,
+  apiTokensInvalidates,
+  apiTokensQuery,
   createApiClient,
+  createApiTokenMutation,
   createDocumentMutation,
   createSavedSearchMutation,
   deleteDocumentFileMutation,
@@ -27,6 +30,7 @@ import {
   passkeysQuery,
   registerPasskeyMutation,
   removePasskeyMutation,
+  revokeApiTokenMutation,
   purgeDocumentMutation,
   requestFileUploadMutation,
   requestMagicLinkMutation,
@@ -98,6 +102,13 @@ export const actions = {
   registerPasskey: registerPasskeyMutation(authClient),
   removePasskey: removePasskeyMutation(authClient),
   signInPasskey: signInPasskeyMutation(authClient),
+};
+
+export const apiTokenActions = {
+  apiTokens: apiTokensQuery(apiClient),
+  createApiToken: createApiTokenMutation(apiClient),
+  revokeApiToken: revokeApiTokenMutation(apiClient),
+  apiTokensInvalidates,
 };
 
 export const savedSearchActions = {

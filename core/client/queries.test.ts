@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError, createApiClient } from './http.js';
 import {
+  apiTokensInvalidates,
+  apiTokensQuery,
   changePasswordMutation,
+  createApiTokenMutation,
   createDocumentMutation,
   createSavedSearchMutation,
   deleteDocumentFileMutation,
@@ -22,6 +25,7 @@ import {
   resetPasswordMutation,
   requestFileUploadMutation,
   restoreDocumentMutation,
+  revokeApiTokenMutation,
   savedSearchesInvalidates,
   savedSearchesQuery,
   trashedDocumentsQuery,
@@ -64,6 +68,16 @@ const savedSearch = {
   name: 'Protokoły',
   filter: { docType: 'protokol' as const, tag: 'odbiór' },
   createdAt: '2026-08-01T00:00:00.000Z',
+};
+
+const apiToken = {
+  id: '44444444-4444-4444-8444-444444444444',
+  userId: 'user-1',
+  name: 'Importer',
+  scopes: ['write:draft' as const],
+  createdAt: '2026-08-01T00:00:00.000Z',
+  lastUsedAt: null,
+  revokedAt: null,
 };
 
 const response = (data: unknown) =>
@@ -297,6 +311,40 @@ describe('saved search query descriptors', () => {
     await expect(
       observe(deleteSavedSearchMutation(api)).mutate(savedSearch.id),
     ).resolves.toEqual({ deleted: true });
+  });
+});
+
+describe('api token query descriptors', () => {
+  it('executes list/create/revoke through their own cache scope', async () => {
+    const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/api-tokens') && init?.method === 'GET') {
+        return response({ apiTokens: [apiToken] });
+      }
+      if (url.endsWith('/api/api-tokens') && init?.method === 'POST') {
+        return response({ apiToken, value: 'pat_secret' });
+      }
+      return response({ revoked: true });
+    });
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+    const client = newClient();
+    const observe = <TData, TVariables>(
+      descriptor: ConstructorParameters<typeof MutationObserver<TData, Error, TVariables>>[1],
+    ) => new MutationObserver(client, descriptor);
+
+    const list = apiTokensQuery(api);
+    expect(list.queryKey).toEqual(['api-tokens', 'list']);
+    await expect(client.fetchQuery(list)).resolves.toEqual({ apiTokens: [apiToken] });
+    expect(apiTokensInvalidates()).toEqual({ queryKey: ['api-tokens'] });
+    await expect(
+      observe(createApiTokenMutation(api)).mutate({
+        name: apiToken.name,
+        scopes: ['write:draft'],
+      }),
+    ).resolves.toEqual({ apiToken, value: 'pat_secret' });
+    await expect(
+      observe(revokeApiTokenMutation(api)).mutate(apiToken.id),
+    ).resolves.toEqual({ revoked: true });
   });
 });
 

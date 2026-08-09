@@ -1,5 +1,6 @@
 import { Container, Typography } from '@mui/material';
 
+import { ApiTokenSection } from './ApiTokenSection.js';
 import { PasskeySection } from './PasskeySection.js';
 import { PasswordSection } from './PasswordSection.js';
 import { TwoFactorSection } from './TwoFactorSection.js';
@@ -15,5 +16,6 @@ export const SettingsPage = () => (
     <PasswordSection />
     <TwoFactorSection />
     <PasskeySection />
+    <ApiTokenSection />
   </Container>
 );
