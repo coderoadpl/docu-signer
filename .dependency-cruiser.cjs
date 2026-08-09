@@ -96,14 +96,6 @@ module.exports = {
       },
     },
     {
-      name: 'island-core-is-portable',
-      severity: 'error',
-      comment:
-        'island cores (features/*/core) import no web composition: not api.ts, not a sibling feature, not any apps/web path outside their own core — the gateway + bound descriptors are injected in features/<name>/index.web.ts. A depcruise mirror of the ESLint parent-import ban, so the core typechecks without DOM and runs in plain node (ADR-0005 §Pure-TS cores).',
-      from: { path: '^apps/web/src/features/([^/]+)/core/' },
-      to: { path: '^apps/web/src/', pathNot: '^apps/web/src/features/$1/core/' },
-    },
-    {
       name: 'web-ui-is-presentational',
       severity: 'error',
       comment: 'components/ui: no core, adapters, features, routes or TanStack (frontend-lint-plan Phase 2)',

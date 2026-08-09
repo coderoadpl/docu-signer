@@ -3,7 +3,12 @@ import { createRequire } from 'node:module';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 
-import { observabilityEnvSchema, serverEnvSchema } from '#core/server/config.js';
+import {
+  deploySeedEnvSchema,
+  observabilityEnvSchema,
+  seedEnvSchema,
+  serverEnvSchema,
+} from '#core/server/config.js';
 
 import { lintMigrations } from './migration-lint.js';
 
@@ -17,8 +22,8 @@ import { lintMigrations } from './migration-lint.js';
  *     must be documented by name.
  *   counts:         numeric claims use invisible tokens verified against source;
  *     a required-token manifest prevents deleting the verification wrapper.
- *   env schema:     every key the config schema reads is documented in
- *     `.env.example`.
+ *   env schema:     config keys and `.env.example` keys match in both
+ *     directions.
  *   links:          every relative link in a tracked `.md` resolves to a file.
  *   delimiters:     no tool/XML delimiter leaks into committed prose.
  */
@@ -298,12 +303,28 @@ const envExample = readFileSync(join(repoRoot, '.env.example'), 'utf8');
 const declaredEnvKeys = new Set([
   ...Object.keys(serverEnvSchema.shape),
   ...Object.keys(observabilityEnvSchema.shape),
+  ...Object.keys(deploySeedEnvSchema.shape),
+  ...Object.keys(seedEnvSchema.shape),
+  'VITE_SENTRY_DSN',
 ]);
 for (const key of declaredEnvKeys) {
   if (!new RegExp(`^#?\\s*${key}=`, 'm').test(envExample)) {
     problems.push(
       `[env] "${key}" is read by the config schema but not documented in .env.example — ` +
         `add it (commented if platform-injected).`,
+    );
+  }
+}
+const documentedEnvKeys = new Set(
+  [...envExample.matchAll(/^#?\s*([A-Z][A-Z0-9_]*)=/gm)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  ),
+);
+for (const key of documentedEnvKeys) {
+  if (!declaredEnvKeys.has(key)) {
+    problems.push(
+      `[env] "${key}" is documented in .env.example but no config surface reads it — ` +
+        `remove the stale example or restore the config key.`,
     );
   }
 }
@@ -338,7 +359,7 @@ if (problems.length > 0) {
 const summary =
   `doc-lint: OK — ${DOC_PROMISED_ENFORCERS.length} promised enforcer(s) present, ` +
   `${ruleFiles.length} custom rule(s) documented, ${countTokensSeen} count token(s) verified, ` +
-  `${declaredEnvKeys.size} env key(s) in .env.example, ` +
+  `${declaredEnvKeys.size} config env key(s) matched bidirectionally, ` +
   `${trackedMarkdown.length} tracked .md file(s) clean of dead links and leaked delimiters, ` +
   `migration sequence + journal consistent.`;
 process.stdout.write(`${summary}\n`);

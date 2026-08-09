@@ -22,35 +22,32 @@ canonical WHATWG origins:
 
 ```json
 {
-  "version": 2,
-  "currentOrigin": "http://localhost:47100",
+  "version": 3,
+  "currentOrigin": "http://default.localhost:47100",
   "profiles": {
-    "http://localhost:47100": { "token": "…", "tenant": "acme" },
-    "https://docu-signer-nine.vercel.app": {
-      "token": "…",
-      "tenant": "default"
-    }
+    "http://default.localhost:47100": { "token": "…" },
+    "https://docu-signer-nine.vercel.app": { "token": "…" }
   }
 }
 ```
 
-Each origin owns its token and tenant. `origin list` reports configured origins,
-the active marker, token presence and tenant without exposing token values.
+Each origin owns its token. `origin list` reports configured origins, the active
+marker and token presence without exposing token values.
 `origin use <url>` selects an origin without a network call.
 
 The selection order is:
 
 ```text
 --api-url > APP_CLI_API_URL > podpisy-repository default > currentOrigin
---tenant  > APP_CLI_TENANT  > selected profile tenant
 ```
 
 The token always comes from the selected profile. There is deliberately no
 `APP_CLI_TOKEN`: login writes tokens, logout revokes and clears them, and an
 environment token would be neither safely persisted nor revocable.
 
-The repository default is `http://localhost:47100`. Detection walks upward from
-`process.cwd()`, parses `package.json`, and recognizes the fork by
+The repository default is `http://default.localhost:47100`, the host bound to
+the seeded tenant. Detection walks upward from `process.cwd()`, parses
+`package.json`, and recognizes the fork by
 `name: "podpisy"`. It does not depend on the checkout directory or `.git`, so
 renamed clones, worktrees and copied trees behave identically. The default port
 lives in `core/contract/defaults.ts`; both the CLI and
@@ -62,7 +59,8 @@ lives in `core/contract/defaults.ts`; both the CLI and
 read-only commands do not write config.
 
 Legacy files migrate automatically. Their API URL is canonicalized to the
-profile origin; token and tenant bytes are preserved. An absent or invalid
+profile origin and the token is preserved; the removed tenant selector is
+dropped. An absent or invalid
 legacy URL migrates under the development origin. The rewrite creates a sibling
 temporary file with mode `0600` and atomically renames it over `config.json`.
 Write or rename failure removes the temporary file and preserves the original
@@ -78,8 +76,10 @@ one stderr notice so `--json` still emits exactly one envelope on stdout.
 - Switching origins never clobbers another origin’s session.
 - Commands inside this fork default safely to the local server; targeting
   Production from the checkout must be explicit.
-- `APP_CLI_API_URL` and `APP_CLI_TENANT` are client-only inputs, so they do not
-  belong to the server environment schema or `.env.example`.
+- `APP_CLI_API_URL` is a client-only input, so it does not belong to the server
+  environment schema or `.env.example`.
+- `PODPISY_CLI_CONFIG_DIR` overrides the profile directory for isolated agent
+  and test runs; interactive use keeps `~/.config/agentproofarch`.
 - The existing config path is retained so the fork can migrate profiles written
   before this decision.
 - Concurrent writers remain last-writer-wins. The plaintext `0600` token store

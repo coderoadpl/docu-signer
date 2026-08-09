@@ -73,6 +73,6 @@ describe('CLI origin profiles', () => {
 
   it('canonicalizes API origins and retains the dev default', () => {
     expect(apiOrigin('https://archive.example/path')).toBe('https://archive.example');
-    expect(DEFAULT_DEV_API_URL).toBe('http://localhost:47100');
+    expect(DEFAULT_DEV_API_URL).toBe('http://default.localhost:47100');
   });
 });

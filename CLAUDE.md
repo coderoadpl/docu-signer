@@ -124,8 +124,8 @@ Per-layer one-screen summaries live beside the code — [`core/CLAUDE.md`](core/
 - Every tenant-scoped use-case authorizes FIRST — its opening statement is the
   capability predicate (`authorize` / `authorizeTenant` from `core/server`,
   default-deny; see `docs/architecture.md` §Authorization) — before any
-  repository access; a self-scoped read that carries no capability (e.g.
-  `listMyTenants`) is the only exception and is a reasoned allowlist entry.
+  repository access. There are no allowlisted exceptions today; any future
+  authentication-only exception must be named and reasoned explicitly.
 
 ## Verify features through the CLI first
 

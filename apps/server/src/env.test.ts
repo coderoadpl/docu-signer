@@ -14,7 +14,6 @@ beforeEach(() => {
   vi.stubEnv('APP_BASE_URL', undefined);
   vi.stubEnv('VERCEL_URL', undefined);
   vi.stubEnv('SECURE_COOKIES', undefined);
-  vi.stubEnv('TENANT_CREATION', undefined);
 });
 
 afterEach(() => {

@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 import { DEFAULT_DEV_PORT } from '#core/contract/index.js';
 
-export const DEFAULT_DEV_API_URL = `http://localhost:${String(DEFAULT_DEV_PORT)}`;
+export const DEFAULT_DEV_API_URL = `http://default.localhost:${String(DEFAULT_DEV_PORT)}`;
 
 const profileSchema = z
   .object({
@@ -69,7 +69,16 @@ export interface ResolvedCliConfig {
   profile: CliProfile;
 }
 
-const configFile = join(homedir(), '.config', 'agentproofarch', 'config.json');
+const configDirectory = z
+  .string()
+  .trim()
+  .min(1)
+  .optional()
+  .parse(process.env['PODPISY_CLI_CONFIG_DIR']);
+const configFile = join(
+  configDirectory ?? join(homedir(), '.config', 'agentproofarch'),
+  'config.json',
+);
 
 const emptyConfig = (): CliConfig => ({
   version: 3,
@@ -104,7 +113,7 @@ const legacyOrigin = (apiUrl: unknown): string => {
 const migrateLegacyConfig = (legacy: z.output<typeof legacyConfigSchema>): CliConfig => {
   const origin = legacyOrigin(legacy.apiUrl);
   const migrated = cliConfigSchema.parse({
-    version: 2,
+    version: 3,
     currentOrigin: origin,
     profiles: {
       [origin]: {
@@ -114,7 +123,7 @@ const migrateLegacyConfig = (legacy: z.output<typeof legacyConfigSchema>): CliCo
   });
   atomicWriteConfig(migrated);
   console.error(
-    `podpisy: migrated ~/.config/agentproofarch/config.json to per-origin profiles (${origin})`,
+    `podpisy: migrated ${configFile} to per-origin profiles (${origin})`,
   );
   return migrated;
 };
@@ -127,7 +136,7 @@ export const loadConfig = (): CliConfig => {
     const parsed = z.object({ code: z.string().optional() }).safeParse(error);
     if (parsed.success && parsed.data.code === 'ENOENT') return emptyConfig();
     throw new Error(
-      `podpisy: could not read ~/.config/agentproofarch/config.json: ${String(error)}`,
+      `podpisy: could not read ${configFile}: ${String(error)}`,
     );
   }
 
@@ -136,7 +145,7 @@ export const loadConfig = (): CliConfig => {
     raw = JSON.parse(text);
   } catch (error) {
     throw new Error(
-      `podpisy: invalid ~/.config/agentproofarch/config.json: malformed JSON (${String(error)})`,
+      `podpisy: invalid ${configFile}: malformed JSON (${String(error)})`,
     );
   }
 
@@ -147,7 +156,7 @@ export const loadConfig = (): CliConfig => {
   if (record.success && Object.hasOwn(record.data, 'version')) {
     if (record.data['version'] !== 3) return emptyConfig();
     throw new Error(
-      `podpisy: invalid ~/.config/agentproofarch/config.json: ${current.error.issues
+      `podpisy: invalid ${configFile}: ${current.error.issues
         .map((issue) => issue.message)
         .join('; ')}`,
     );
@@ -158,7 +167,7 @@ export const loadConfig = (): CliConfig => {
   if (legacy.success) return migrateLegacyConfig(legacy.data);
 
   throw new Error(
-    `podpisy: invalid ~/.config/agentproofarch/config.json: ${current.error.issues
+    `podpisy: invalid ${configFile}: ${current.error.issues
       .map((issue) => issue.message)
       .join('; ')}`,
   );
