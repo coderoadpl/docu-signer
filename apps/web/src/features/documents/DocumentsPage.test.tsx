@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -74,13 +74,74 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
-    await userEvent.type(
-      screen.getByLabelText('Szukaj po tytule'),
-      'Protokół',
-    );
+    fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
+      target: { value: 'Protokół' },
+    });
 
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
+  });
+
+  it('filters by person and tag autocomplete suggestions and signature status', async () => {
+    const seen = vi.fn();
+    const signed = {
+      ...document,
+      id: '22222222-2222-4222-8222-222222222222',
+      title: 'Podpisana umowa',
+      tags: ['podpisane'],
+      files: [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          documentId: '22222222-2222-4222-8222-222222222222',
+          role: 'signed-digital',
+          fileName: 'podpis.pdf',
+          contentType: 'application/pdf',
+          sizeBytes: 3,
+          storageKey: 'documents/tenant/doc/file',
+          createdAt: '2026-07-18T10:00:00.000Z',
+        },
+      ],
+    };
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen(Object.fromEntries(params.entries()));
+        if (params.get('signatureStatus') === 'signed') {
+          return HttpResponse.json({ ok: true, data: { documents: [signed] } });
+        }
+        return HttpResponse.json({ ok: true, data: { documents: [document, signed] } });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Osoba' }), {
+      target: { value: 'Anna' },
+    });
+    await userEvent.click(await screen.findByRole('option', { name: 'Anna Nowak' }));
+    await waitFor(() => expect(seen).toHaveBeenCalledWith({ person: 'Anna Nowak' }));
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
+      target: { value: 'podpis' },
+    });
+    await userEvent.click(await screen.findByRole('option', { name: 'podpisane' }));
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        person: 'Anna Nowak',
+        tag: 'podpisane',
+      }),
+    );
+
+    await userEvent.click(screen.getByLabelText('Status podpisu'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Podpisane' }));
+    expect((await screen.findAllByText('Podpisana umowa')).length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        person: 'Anna Nowak',
+        tag: 'podpisane',
+        signatureStatus: 'signed',
+      }),
+    );
   });
 
   it('shows one dominant create action and no tools for an empty archive', async () => {
@@ -121,7 +182,9 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
-    await userEvent.type(screen.getByLabelText('Szukaj po tytule'), 'brak');
+    fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
+      target: { value: 'brak' },
+    });
     expect(
       await screen.findByRole('heading', {
         name: 'Brak wyników dla tych filtrów',
@@ -207,8 +270,18 @@ describe('DocumentsPage', () => {
     ).toBeEnabled();
   });
 
-  it('shows teczki by tags and years and applies folder filters', async () => {
+  it('saves, applies and deletes teczki presets', async () => {
     const seen = vi.fn();
+    const savedCreate = vi.fn();
+    const savedDelete = vi.fn();
+    const savedSearch = {
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-1',
+      name: 'Odbiór',
+      filter: { tag: 'odbiór', signatureStatus: 'signed' },
+      createdAt: '2026-08-01T00:00:00.000Z',
+    };
+    let savedSearches: Array<typeof savedSearch> = [];
     const protocol = {
       ...document,
       id: '22222222-2222-4222-8222-222222222222',
@@ -234,26 +307,71 @@ describe('DocumentsPage', () => {
           data: { documents: [document, protocol] },
         });
       }),
+      http.get('/api/saved-searches', () =>
+        HttpResponse.json({ ok: true, data: { savedSearches } }),
+      ),
+      http.post('/api/saved-searches', async ({ request }) => {
+        const body = await request.json();
+        savedCreate(body);
+        savedSearches = [savedSearch];
+        return HttpResponse.json({ ok: true, data: { savedSearch } });
+      }),
+      http.delete('/api/saved-searches/:id', ({ params }) => {
+        savedDelete(params.id);
+        savedSearches = [];
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
     );
     await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
-    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
-    expect(screen.getByRole('heading', { name: 'Tagi' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Lata' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Tag')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
+      target: { value: 'odbiór' },
+    });
+    await userEvent.click(screen.getByLabelText('Status podpisu'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Podpisane' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz teczkę' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Zapisz teczkę' });
+    expect(
+      within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane'),
+    ).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('Nazwa'), {
+      target: { value: 'Odbiór' },
+    });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Zapisz teczkę' }));
 
-    await userEvent.click(screen.getByText('odbiór'));
-    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
-    await waitFor(() => expect(seen).toHaveBeenCalledWith({ tag: 'odbiór' }));
-
+    await waitFor(() =>
+      expect(savedCreate).toHaveBeenCalledWith({
+        name: 'Odbiór',
+        filter: { tag: 'odbiór', signatureStatus: 'signed' },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Zapisz teczkę' })).not.toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
+      target: { value: '' },
+    });
     await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
-    await userEvent.click(screen.getByText('2025'));
+    expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
+    expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('heading', { name: 'Odbiór' }));
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
     await waitFor(() =>
       expect(seen).toHaveBeenCalledWith({
-        dateFrom: '2025-01-01',
-        dateTo: '2025-12-31',
+        tag: 'odbiór',
+        signatureStatus: 'signed',
       }),
+    );
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));
+    expect(screen.getByRole('button', { name: 'Potwierdź' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Potwierdź' }));
+    await waitFor(() =>
+      expect(savedDelete).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333'),
     );
   });
 
@@ -280,14 +398,24 @@ describe('DocumentsPage', () => {
     if (!addButton) throw new Error('Missing add document button');
     await userEvent.click(addButton);
     const dialog = await screen.findByRole('dialog');
-    await userEvent.type(
-      within(dialog).getByRole('textbox', { name: 'Tytuł' }),
-      'Nowy dokument',
-    );
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Tytuł' }), {
+      target: { value: 'Nowy dokument' },
+    });
     expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('');
     await userEvent.click(within(dialog).getByText('Okres'));
-    await userEvent.type(within(dialog).getByLabelText('Od'), '2026-07-01');
+    fireEvent.change(within(dialog).getByLabelText('Od'), {
+      target: { value: '2026-07-01' },
+    });
     expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('2026-07-01');
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Osoba' }), {
+      target: { value: 'Anna Nowak' },
+    });
+    await userEvent.type(
+      within(dialog).getByRole('combobox', { name: 'Tagi' }),
+      'zarząd,ważne{Enter}',
+    );
+    expect(within(dialog).getByText('zarząd')).toBeInTheDocument();
+    expect(within(dialog).getByText('ważne')).toBeInTheDocument();
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );
@@ -298,6 +426,8 @@ describe('DocumentsPage', () => {
         documentDate: '2026-07-01',
         periodStart: '2026-07-01',
         periodEnd: null,
+        person: 'Anna Nowak',
+        tags: ['zarząd', 'ważne'],
       }),
     );
     expect(router.state.location.pathname).toBe(
@@ -325,9 +455,9 @@ describe('DocumentsPage', () => {
     expect(title).toHaveFocus();
     expect(title).toHaveAccessibleDescription('Tytuł jest wymagany');
 
-    await userEvent.type(title, 'Nowy dokument');
+    fireEvent.change(title, { target: { value: 'Nowy dokument' } });
     const date = within(dialog).getByLabelText('Data podpisania');
-    await userEvent.clear(date);
+    fireEvent.change(date, { target: { value: '' } });
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );

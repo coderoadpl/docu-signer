@@ -10,6 +10,7 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
+  CreateSavedSearch,
   CreateDocument,
   DocumentListFilter,
   ExportDocuments,
@@ -107,6 +108,11 @@ const documentsScopes = {
   detail: (documentId: string) => ['documents', 'detail', documentId] as const,
   file: (documentId: string, fileId: string) =>
     ['documents', 'detail', documentId, 'file', fileId] as const,
+};
+
+const savedSearchScopes = {
+  all: () => ['saved-searches'] as const,
+  lists: () => ['saved-searches', 'list'] as const,
 };
 
 const authScopes = {
@@ -237,6 +243,26 @@ export const exportDocumentsMutation = (api: ApiClient) =>
   });
 
 export const documentsInvalidates = () => ({ queryKey: documentsScopes.all() });
+
+export const savedSearchesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: savedSearchScopes.lists(),
+    call: ({ signal }) => api.listSavedSearches(signal),
+  });
+
+export const createSavedSearchMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...savedSearchScopes.all(), 'create'],
+    call: (input: CreateSavedSearch) => api.createSavedSearch(input),
+  });
+
+export const deleteSavedSearchMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...savedSearchScopes.all(), 'delete'],
+    call: (savedSearchId: string) => api.deleteSavedSearch(savedSearchId),
+  });
+
+export const savedSearchesInvalidates = () => ({ queryKey: savedSearchScopes.all() });
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any

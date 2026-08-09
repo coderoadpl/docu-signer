@@ -9,6 +9,9 @@ import { setupServer } from 'msw/node';
  */
 export const server = setupServer(
   http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: false, passwordResetEnabled: true } })),
+  http.get('*/api/saved-searches', () =>
+    HttpResponse.json({ ok: true, data: { savedSearches: [] } }),
+  ),
   // SettingsPage's PasskeySection reads the passkey roster on mount; a default
   // empty list keeps every page-level test that isn't about passkeys quiet. A
   // passkey-focused test overrides this with its own `server.use(...)`.

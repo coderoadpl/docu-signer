@@ -22,6 +22,9 @@ import {
   publicTenantDiscoveryPath,
   publicTenantProfileOutputSchema,
   publicTenantProfilePath,
+  savedSearchCreateOutputSchema,
+  savedSearchDeleteOutputSchema,
+  savedSearchListOutputSchema,
   type HttpMethod,
   type ReadMethod,
   type WriteMethod,
@@ -31,6 +34,7 @@ import {
   internal,
   ok,
   type AppError,
+  type CreateSavedSearch,
   type CreateDocument,
   type DocumentListFilter,
   type ExportDocuments,
@@ -368,6 +372,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.documentsExport.method,
       API_ROUTES.documentsExport.path,
       input,
+      signal,
+    ),
+  listSavedSearches: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.savedSearches.method,
+      API_ROUTES.savedSearches.path,
+      savedSearchListOutputSchema,
+      undefined,
+      signal,
+    ),
+  createSavedSearch: (input: CreateSavedSearch, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.savedSearchesCreate.method,
+      API_ROUTES.savedSearchesCreate.path,
+      savedSearchCreateOutputSchema,
+      input,
+      signal,
+    ),
+  deleteSavedSearch: (savedSearchId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.savedSearchDelete.method,
+      pathWith(API_ROUTES.savedSearchDelete.path, { savedSearchId }),
+      savedSearchDeleteOutputSchema,
+      undefined,
       signal,
     ),
   documentFileContentUrl: (documentId: string, fileId: string) =>

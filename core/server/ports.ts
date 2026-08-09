@@ -3,6 +3,7 @@ import type {
   Document,
   DocumentFile,
   DocumentListFilter,
+  SavedSearch,
   Result,
   StaffRole,
   Tenant,
@@ -43,6 +44,12 @@ export interface DocumentRepository {
     targetDocumentId: string,
   ): Promise<DocumentFile | null>;
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
+}
+
+export interface SavedSearchRepository {
+  listByTenant(tenantId: string): Promise<SavedSearch[]>;
+  create(input: Omit<SavedSearch, 'createdAt'>): Promise<SavedSearch>;
+  delete(tenantId: string, savedSearchId: string): Promise<boolean>;
 }
 
 export interface UploadTarget {

@@ -49,7 +49,12 @@ describe('API client', () => {
       }),
     );
     const api = createApiClient({ baseUrl: '', fetchImpl });
-    await api.listDocuments({ person: 'Jan', tag: 'podpis', dateFrom: '2026-01-01' });
+    await api.listDocuments({
+      person: 'Jan',
+      tag: 'podpis',
+      dateFrom: '2026-01-01',
+      signatureStatus: 'needs-signature',
+    });
     await api.createDocument({
       title: 'Umowa',
       docType: 'umowa-uod',
@@ -60,7 +65,7 @@ describe('API client', () => {
     });
 
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(
-      '/api/documents?person=Jan&tag=podpis&dateFrom=2026-01-01',
+      '/api/documents?person=Jan&tag=podpis&dateFrom=2026-01-01&signatureStatus=needs-signature',
     );
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
       method: 'POST',
@@ -73,6 +78,44 @@ describe('API client', () => {
         tags: [],
       }),
     });
+  });
+
+  it('calls saved search routes through the contract', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).endsWith('/api/saved-searches') && init?.method === 'GET') {
+        return json({ ok: true, data: { savedSearches: [] } });
+      }
+      if (String(input).endsWith('/api/saved-searches') && init?.method === 'POST') {
+        return json({
+          ok: true,
+          data: {
+            savedSearch: {
+              id: '11111111-1111-4111-8111-111111111111',
+              tenantId: 'tenant-default',
+              name: 'Protokoły',
+              filter: { docType: 'protokol' },
+              createdAt: '2026-08-01T00:00:00.000Z',
+            },
+          },
+        });
+      }
+      return json({ ok: true, data: { deleted: true } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await api.listSavedSearches();
+    await api.createSavedSearch({ name: 'Protokoły', filter: { docType: 'protokol' } });
+    await api.deleteSavedSearch('11111111-1111-4111-8111-111111111111');
+
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('/api/saved-searches');
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ name: 'Protokoły', filter: { docType: 'protokol' } }),
+    });
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      '/api/saved-searches/11111111-1111-4111-8111-111111111111',
+    );
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
   it('normalizes network, envelope, and contract failures', async () => {

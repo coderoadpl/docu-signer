@@ -11,6 +11,8 @@ import {
   finalizeFileUploadSchema,
   moveDocumentFileSchema,
   publicTenantProfileSchema,
+  createSavedSearchSchema,
+  savedSearchSchema,
   staffRoleSchema,
   updateDocumentSchema,
 } from '#core/domain/index.js';
@@ -116,6 +118,20 @@ export const documentFileMoveOutputSchema = z.object({
 
 export const exportDocumentsInputSchema = exportDocumentsSchema;
 
+export const savedSearchListOutputSchema = z.object({
+  savedSearches: z.array(savedSearchSchema),
+});
+
+export const savedSearchCreateInputSchema = createSavedSearchSchema;
+
+export const savedSearchCreateOutputSchema = z.object({
+  savedSearch: savedSearchSchema,
+});
+
+export const savedSearchDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
+
 export const PUBLIC_API_PREFIX = '/api/public';
 
 export const PUBLIC_API_ROUTES = {
@@ -183,6 +199,9 @@ export const API_ROUTES = {
     path: '/api/documents/:documentId/files/:fileId/export',
   },
   documentsExport: { method: 'POST', path: '/api/export' },
+  savedSearches: { method: 'GET', path: '/api/saved-searches' },
+  savedSearchesCreate: { method: 'POST', path: '/api/saved-searches' },
+  savedSearchDelete: { method: 'DELETE', path: '/api/saved-searches/:savedSearchId' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];

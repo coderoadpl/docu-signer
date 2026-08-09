@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { createDb } from '#adapters/db/client.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
+import { createSavedSearchRepository } from '#adapters/db/saved-searches-repository.js';
 import {
   createHealthPort,
   createTenantAccessReader,
@@ -19,6 +20,7 @@ import type {
   EmailPort,
   HealthPort,
   IdGenerator,
+  SavedSearchRepository,
   StoragePort,
   TenantAccessReader,
   TenantDomainRepository,
@@ -31,6 +33,7 @@ export interface AppDeps {
   auth: Auth;
   authPort: AuthPort;
   documents: DocumentRepository;
+  savedSearches: SavedSearchRepository;
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
@@ -151,6 +154,7 @@ export const createDeps = (env: Env): AppDeps => {
     auth,
     authPort: createAuthPort(auth),
     documents: createDocumentRepository(db),
+    savedSearches: createSavedSearchRepository(db),
     storage,
     tenantDomains,
     email,

@@ -6,8 +6,10 @@ import {
   configQuery,
   createApiClient,
   createDocumentMutation,
+  createSavedSearchMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
+  deleteSavedSearchMutation,
   disableTwoFactorMutation,
   directFileUploadMutation,
   documentFileQuery,
@@ -26,6 +28,8 @@ import {
   removePasskeyMutation,
   requestFileUploadMutation,
   requestMagicLinkMutation,
+  savedSearchesInvalidates,
+  savedSearchesQuery,
   requestPasswordResetMutation,
   resetPasswordMutation,
   signInMutation,
@@ -86,4 +90,11 @@ export const actions = {
   registerPasskey: registerPasskeyMutation(authClient),
   removePasskey: removePasskeyMutation(authClient),
   signInPasskey: signInPasskeyMutation(authClient),
+};
+
+export const savedSearchActions = {
+  savedSearches: savedSearchesQuery(apiClient),
+  createSavedSearch: createSavedSearchMutation(apiClient),
+  deleteSavedSearch: deleteSavedSearchMutation(apiClient),
+  savedSearchesInvalidates,
 };

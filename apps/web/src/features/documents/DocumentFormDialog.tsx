@@ -4,6 +4,7 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Autocomplete,
   Button,
   Dialog,
   DialogActions,
@@ -31,6 +32,7 @@ export const DocumentFormDialog = ({
   title,
   submitLabel,
   initialValues,
+  personOptions = [],
   tagOptions = [],
   pending,
   error,
@@ -41,6 +43,7 @@ export const DocumentFormDialog = ({
   title: string;
   submitLabel: string;
   initialValues?: DocumentFormValues;
+  personOptions?: string[];
   tagOptions?: string[];
   pending: boolean;
   error?: string | undefined;
@@ -50,6 +53,7 @@ export const DocumentFormDialog = ({
   const [values, setValues] = useState<DocumentFormValues>(
     initialValues ?? emptyDocumentForm(),
   );
+  const [tagInput, setTagInput] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{
     title?: string;
     documentDate?: string;
@@ -61,11 +65,12 @@ export const DocumentFormDialog = ({
   useEffect(() => {
     if (open) {
       setValues(initialValues ?? emptyDocumentForm());
+      setTagInput('');
       setFieldErrors({});
     }
   }, [initialValues, open]);
 
-  const field = (name: keyof DocumentFormValues, value: string) => {
+  const field = (name: Exclude<keyof DocumentFormValues, 'tags'>, value: string) => {
     setValues((current) =>
       name === 'periodStart' || name === 'periodEnd'
         ? suggestDocumentDate(current, name, value)
@@ -74,6 +79,19 @@ export const DocumentFormDialog = ({
     if (name === 'title' || name === 'documentDate' || name === 'periodEnd') {
       setFieldErrors((current) => ({ ...current, [name]: undefined }));
     }
+  };
+  const tagValues = (tags: string[]) =>
+    Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
+  const updateTags = (tags: string[]) =>
+    setValues((current) => ({ ...current, tags: tagValues(tags) }));
+  const updateTagInput = (input: string) => {
+    const parts = input.split(',');
+    if (parts.length === 1) {
+      setTagInput(input);
+      return;
+    }
+    updateTags([...values.tags, ...parts.slice(0, -1)]);
+    setTagInput(parts.at(-1) ?? '');
   };
 
   const submit = (event: FormEvent) => {
@@ -97,7 +115,7 @@ export const DocumentFormDialog = ({
       return;
     }
     if (errors.periodEnd) return;
-    onSubmit(values);
+    onSubmit({ ...values, tags: tagValues([...values.tags, tagInput]) });
   };
 
   return (
@@ -189,23 +207,27 @@ export const DocumentFormDialog = ({
               </Stack>
             </AccordionDetails>
           </Accordion>
-          <TextField
-            label="Osoba"
+          <Autocomplete
+            freeSolo
+            options={personOptions}
             value={values.person}
-            onChange={(event) => field('person', event.target.value)}
+            onChange={(_event, value) => field('person', value ?? '')}
+            onInputChange={(_event, value) => field('person', value)}
+            renderInput={(params) => <TextField {...params} label="Osoba" />}
           />
-          <TextField
-            label="Tagi"
-            helperText="Oddziel tagi przecinkami"
+          <Autocomplete
+            multiple
+            freeSolo
+            options={tagOptions}
             value={values.tags}
-            onChange={(event) => field('tags', event.target.value)}
-            slotProps={{ htmlInput: { list: 'document-tag-options' } }}
+            inputValue={tagInput}
+            onChange={(_event, value) => {
+              updateTags(value);
+              setTagInput('');
+            }}
+            onInputChange={(_event, value) => updateTagInput(value)}
+            renderInput={(params) => <TextField {...params} label="Tagi" />}
           />
-          <datalist id="document-tag-options">
-            {tagOptions.map((tag) => (
-              <option key={tag} value={tag} />
-            ))}
-          </datalist>
           {error ? <Alert severity="error">{error}</Alert> : null}
         </Stack>
       </DialogContent>

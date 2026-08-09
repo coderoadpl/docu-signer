@@ -49,6 +49,7 @@ import {
   formatFileSize,
   relatedDocuments,
   toDocumentInput,
+  uniqueDocumentPersons,
   uniqueDocumentTags,
   uploadErrorMessage,
 } from './documents.logic.js';
@@ -370,6 +371,7 @@ export const DocumentDetailPage = ({
 
   const document = documentQuery.data.document;
   const grouped = filesByRole(document.files);
+  const personOptions = uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]);
   const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
   const related = relatedDocuments(document, folderDocuments.data?.documents ?? []);
   const period =
@@ -521,10 +523,11 @@ export const DocumentDetailPage = ({
           periodStart: document.periodStart ?? '',
           periodEnd: document.periodEnd ?? '',
           person: document.person ?? '',
-          tags: document.tags.join(', '),
+          tags: document.tags,
         }}
         pending={updateDocument.isPending}
         error={updateDocument.error?.message}
+        personOptions={personOptions}
         tagOptions={tagOptions}
         onClose={() => setEditOpen(false)}
         onSubmit={(values) =>

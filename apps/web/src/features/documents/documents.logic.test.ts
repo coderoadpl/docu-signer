@@ -3,21 +3,24 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from '#core/client/index.js';
 
 import {
+  documentFilterSummary,
+  emptyDocumentFilters,
   filesByRole,
   fileNameStem,
   formatFileSize,
+  hasDocumentFilter,
   relatedDocuments,
   suggestDocumentDate,
-  tagFolders,
   toDocumentFilter,
+  toDocumentFilterValues,
   toDocumentInput,
+  uniqueDocumentPersons,
   uniqueDocumentTags,
   uploadErrorMessage,
-  yearFolders,
 } from './documents.logic.js';
 
 describe('document view logic', () => {
-  it('normalizes form values and comma-separated tags', () => {
+  it('normalizes form values and tag chips', () => {
     expect(
       toDocumentInput({
         title: '  Uchwała ',
@@ -26,7 +29,7 @@ describe('document view logic', () => {
         periodStart: '2026-07-01',
         periodEnd: '2026-07-31',
         person: '  Anna ',
-        tags: 'zarząd, ważne, ',
+        tags: ['zarząd', ' ważne ', 'zarząd', ''],
       }),
     ).toEqual({
       title: 'Uchwała',
@@ -45,7 +48,7 @@ describe('document view logic', () => {
         periodStart: '',
         periodEnd: '',
         person: ' ',
-        tags: '',
+        tags: [],
       }),
     ).toEqual({
       title: 'Notatka',
@@ -65,7 +68,7 @@ describe('document view logic', () => {
       periodStart: '',
       periodEnd: '',
       person: '',
-      tags: '',
+      tags: [],
     };
     expect(suggestDocumentDate(base, 'periodStart', '2026-07-01').documentDate).toBe(
       '2026-07-01',
@@ -87,6 +90,15 @@ describe('document view logic', () => {
   });
 
   it('omits blank filters and groups files by role', () => {
+    expect(emptyDocumentFilters()).toEqual({
+      text: '',
+      docType: '',
+      person: '',
+      tag: '',
+      dateFrom: '',
+      dateTo: '',
+      signatureStatus: '',
+    });
     expect(
       toDocumentFilter({
         text: ' umowa ',
@@ -95,6 +107,7 @@ describe('document view logic', () => {
         tag: '',
         dateFrom: '',
         dateTo: '2026-12-31',
+        signatureStatus: '',
       }),
     ).toEqual({ text: 'umowa', dateTo: '2026-12-31' });
     expect(
@@ -105,12 +118,25 @@ describe('document view logic', () => {
         tag: ' ważne ',
         dateFrom: '2026-01-01',
         dateTo: '',
+        signatureStatus: 'needs-signature',
       }),
     ).toEqual({
       docType: 'uchwala',
       person: 'Anna',
       tag: 'ważne',
       dateFrom: '2026-01-01',
+      signatureStatus: 'needs-signature',
+    });
+    expect(hasDocumentFilter({})).toBe(false);
+    expect(hasDocumentFilter({ tag: 'ważne', signatureStatus: 'signed' })).toBe(true);
+    expect(toDocumentFilterValues({ text: 'umowa', tag: 'ważne', signatureStatus: 'signed' })).toEqual({
+      text: 'umowa',
+      docType: '',
+      person: '',
+      tag: 'ważne',
+      dateFrom: '',
+      dateTo: '',
+      signatureStatus: 'signed',
     });
     const file = {
       id: '11111111-1111-4111-8111-111111111111',
@@ -128,7 +154,7 @@ describe('document view logic', () => {
     expect(formatFileSize(10)).toBe('10 B');
   });
 
-  it('builds folder counts from tags and covered years', () => {
+  it('builds tag suggestions and saved-search summaries', () => {
     const documents = [
       {
         tags: ['ważne', 'podpis'],
@@ -145,15 +171,28 @@ describe('document view logic', () => {
     ];
 
     expect(uniqueDocumentTags(documents)).toEqual(['podpis', 'ważne']);
-    expect(tagFolders(documents)).toEqual([
-      { label: 'podpis', count: 1 },
-      { label: 'ważne', count: 2 },
-    ]);
-    expect(yearFolders(documents)).toEqual([
-      { label: '2027', count: 1 },
-      { label: '2026', count: 1 },
-      { label: '2025', count: 1 },
-    ]);
+    expect(
+      uniqueDocumentPersons([
+        { person: 'Anna Nowak' },
+        { person: ' Jan Kowalski ' },
+        { person: 'Anna Nowak' },
+        { person: null },
+      ]),
+    ).toEqual(['Anna Nowak', 'Jan Kowalski']);
+    expect(
+      documentFilterSummary({
+        text: 'umowa',
+        docType: 'umowa-uod',
+        person: 'Anna',
+        tag: 'ważne',
+        dateFrom: '2026-01-01',
+        dateTo: '2026-12-31',
+        signatureStatus: 'needs-signature',
+      }),
+    ).toBe(
+      'Tytuł: umowa · Typ: Umowa UoD · Osoba: Anna · Tag: ważne · Od: 01.01.2026 · Do: 31.12.2026 · Status podpisu: Do podpisania',
+    );
+    expect(documentFilterSummary({})).toBe('Wszystkie dokumenty');
   });
 
   it('derives file name stems and related documents', () => {

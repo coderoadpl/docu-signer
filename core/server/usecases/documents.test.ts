@@ -341,6 +341,15 @@ describe('documents use-cases', () => {
     expect(created).toMatchObject({ ok: true, value: { tenantId: 'tenant-acme' } });
     const listed = await listDocuments(ctx(staff('tenant-acme')), {}, state.deps);
     expect(listed.ok && listed.value.map((document) => document.id)).toEqual([documentId]);
+    const listSpy = vi.spyOn(state.deps.documents, 'listByTenant');
+    await listDocuments(
+      ctx(staff('tenant-acme')),
+      { signatureStatus: 'needs-signature' },
+      state.deps,
+    );
+    expect(listSpy).toHaveBeenCalledWith('tenant-acme', {
+      signatureStatus: 'needs-signature',
+    });
     expect(await getDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
       ok: true,
       value: { title: 'Agreement', files: [] },

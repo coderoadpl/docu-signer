@@ -104,8 +104,16 @@ test('creates, uploads, previews and exports an archived document', async ({
   await expect(page.getByText('Okres: 01.01.2026 - 31.12.2026')).toBeVisible();
 
   await page.getByRole('button', { name: '← Dokumenty' }).click();
+  await page.getByLabel('Tag').fill('e2e');
+  await page.getByRole('button', { name: 'Zapisz teczkę' }).click();
+  const savedSearchDialog = page.getByRole('dialog', { name: 'Zapisz teczkę' });
+  await savedSearchDialog.getByLabel('Nazwa').fill(`E2E ${stamp}`);
+  await expect(savedSearchDialog.getByText('Tag: e2e')).toBeVisible();
+  await savedSearchDialog.getByRole('button', { name: 'Zapisz teczkę' }).click();
+  await expect(savedSearchDialog).toBeHidden();
+  await page.getByLabel('Tag').fill('');
   await page.getByRole('tab', { name: 'Teczki' }).click();
-  await page.getByText('2026').click();
+  await page.getByRole('heading', { name: `E2E ${stamp}` }).click();
   await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
   await page.getByRole('cell', { name: title, exact: true }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();

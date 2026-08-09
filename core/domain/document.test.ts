@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createDocumentSchema,
+  createSavedSearchSchema,
   documentListFilterSchema,
   exportDocumentsSchema,
   fileUploadRequestSchema,
@@ -27,6 +28,45 @@ describe('document schemas', () => {
       periodEnd: '2026-07-31',
       tags: [],
     });
+  });
+
+  it('normalizes saved searches around the document filter schema', () => {
+    expect(
+      createSavedSearchSchema.parse({
+        name: '  Anna protokoły  ',
+        filter: {
+          text: ' protokół ',
+          docType: 'protokol',
+          person: ' Anna ',
+          tag: ' odbiór ',
+          dateFrom: '2026-01-01',
+          signatureStatus: 'signed',
+        },
+      }),
+    ).toEqual({
+      name: 'Anna protokoły',
+      filter: {
+        text: 'protokół',
+        docType: 'protokol',
+        person: 'Anna',
+        tag: 'odbiór',
+        dateFrom: '2026-01-01',
+        signatureStatus: 'signed',
+      },
+    });
+    expect(createSavedSearchSchema.safeParse({ name: '', filter: {} }).success).toBe(false);
+    expect(
+      createSavedSearchSchema.safeParse({
+        name: 'Odwrócone daty',
+        filter: { dateFrom: '2026-02-01', dateTo: '2026-01-01' },
+      }).success,
+    ).toBe(false);
+    expect(
+      createSavedSearchSchema.safeParse({
+        name: 'Błędny status',
+        filter: { signatureStatus: 'unknown' },
+      }).success,
+    ).toBe(false);
   });
 
   it('rejects inverted dates, inverted periods, unsafe MIME types, oversized files, and bulk overflow', () => {

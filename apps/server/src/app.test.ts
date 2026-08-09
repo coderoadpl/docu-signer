@@ -8,7 +8,7 @@ import {
   looseEnvelopeSchema,
   TENANT_HEADER,
 } from '#core/contract/index.js';
-import { ok, type Document } from '#core/domain/index.js';
+import { ok, type Document, type DocumentListFilter } from '#core/domain/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
 
 import { buildApp } from './app.js';
@@ -44,6 +44,14 @@ const baseDeps = (): AppDeps => ({
     findFile: async () => null,
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
+  },
+  savedSearches: {
+    listByTenant: async () => [],
+    create: async (input) => ({
+      ...input,
+      createdAt: '2026-08-01T00:00:00.000Z',
+    }),
+    delete: async () => false,
   },
   storage: {
     put: async () => ok(undefined),
@@ -130,6 +138,7 @@ describe('buildApp', () => {
   it('lists only documents from the resolved tenant', async () => {
     const deps = authorizedDeps();
     let seenTenant = '';
+    let seenFilter: DocumentListFilter = {};
     const row: Document = {
       id: '11111111-1111-4111-8111-111111111111',
       tenantId: tenant.id,
@@ -143,16 +152,21 @@ describe('buildApp', () => {
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
     };
-    deps.documents.listByTenant = async (tenantId) => {
+    deps.documents.listByTenant = async (tenantId, filter) => {
       seenTenant = tenantId;
+      seenFilter = filter;
       return [row];
     };
-    const response = await buildApp(deps).request(API_PATHS.documents, {
-      headers: { [TENANT_HEADER]: tenant.slug },
-    });
+    const response = await buildApp(deps).request(
+      `${API_PATHS.documents}?signatureStatus=needs-signature`,
+      {
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
 
     expect(response.status).toBe(200);
     expect(seenTenant).toBe(tenant.id);
+    expect(seenFilter).toEqual({ signatureStatus: 'needs-signature' });
     expect(await response.json()).toMatchObject({
       ok: true,
       data: { documents: [{ title: 'Umowa' }] },
@@ -181,6 +195,86 @@ describe('buildApp', () => {
     expect(await response.json()).toMatchObject({
       ok: true,
       data: { document: { title: 'Umowa', tenantId: tenant.id } },
+    });
+  });
+
+  it('lists, creates, rejects invalid, and deletes saved searches', async () => {
+    const deps = authorizedDeps();
+    let seenTenant = '';
+    deps.savedSearches.listByTenant = async (tenantId) => {
+      seenTenant = tenantId;
+      return [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          tenantId,
+          name: 'Protokoły',
+          filter: { docType: 'protokol', tag: 'odbiór', signatureStatus: 'signed' },
+          createdAt: '2026-08-01T00:00:00.000Z',
+        },
+      ];
+    };
+    deps.savedSearches.create = async (input) => ({
+      ...input,
+      createdAt: '2026-08-01T00:00:00.000Z',
+    });
+    deps.savedSearches.delete = async (tenantId, savedSearchId) =>
+      tenantId === tenant.id && savedSearchId === '11111111-1111-4111-8111-111111111111';
+
+    const list = await buildApp(deps).request(API_ROUTES.savedSearches.path, {
+      headers: { [TENANT_HEADER]: tenant.slug },
+    });
+    expect(list.status).toBe(200);
+    expect(seenTenant).toBe(tenant.id);
+    expect(await list.json()).toMatchObject({
+      ok: true,
+      data: { savedSearches: [{ name: 'Protokoły' }] },
+    });
+
+    const create = await buildApp(deps).request(API_ROUTES.savedSearchesCreate.path, {
+      method: API_ROUTES.savedSearchesCreate.method,
+      headers: { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Umowy Anny',
+        filter: { docType: 'umowa-uod', person: 'Anna' },
+      }),
+    });
+    expect(create.status).toBe(200);
+    expect(await create.json()).toMatchObject({
+      ok: true,
+      data: { savedSearch: { tenantId: tenant.id, name: 'Umowy Anny' } },
+    });
+
+    const invalid = await buildApp(deps).request(API_ROUTES.savedSearchesCreate.path, {
+      method: API_ROUTES.savedSearchesCreate.method,
+      headers: { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Błędne daty',
+        filter: { dateFrom: '2026-08-02', dateTo: '2026-08-01' },
+      }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+
+    const deleted = await buildApp(deps).request(
+      '/api/saved-searches/11111111-1111-4111-8111-111111111111',
+      {
+        method: API_ROUTES.savedSearchDelete.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toMatchObject({ ok: true, data: { deleted: true } });
+  });
+
+  it('rejects anonymous saved search access with the unauthorized taxonomy', async () => {
+    const response = await buildApp(baseDeps()).request(API_ROUTES.savedSearches.path);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'unauthorized' },
     });
   });
 
