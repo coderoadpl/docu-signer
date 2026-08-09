@@ -6,7 +6,6 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -169,11 +168,18 @@ beforeEach(() => {
   installReadHandlers();
 });
 
+const enabledButton = async (name: string) => {
+  const button = await screen.findByRole('button', { name });
+  await waitFor(() => expect(button).toBeEnabled());
+  return button;
+};
+
 const drawStroke = async (cancel = false) => {
   const canvas = await screen.findByRole('application', {
     name: 'Powierzchnia do rysowania podpisu',
   });
   await waitFor(() => {
+    expect(canvas).toHaveAttribute('aria-busy', 'false');
     expect(canvas).toHaveAttribute('width', '400');
     expect(screen.queryByLabelText('Renderowanie strony PDF')).not.toBeInTheDocument();
   });
@@ -210,12 +216,12 @@ describe('DocumentSigningPage', () => {
 
     await drawStroke();
     await waitFor(() => expect(save).toBeEnabled());
-    await userEvent.click(screen.getByRole('button', { name: 'Cofnij kreskę' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cofnij kreskę' }));
     expect(save).toBeDisabled();
 
     await drawStroke(true);
     await waitFor(() => expect(save).toBeEnabled());
-    await userEvent.click(screen.getByRole('button', { name: 'Wyczyść' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Wyczyść' }));
     expect(save).toBeDisabled();
   });
 
@@ -279,10 +285,10 @@ describe('DocumentSigningPage', () => {
     await renderPage();
     await drawStroke();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Granatowy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Granatowy' }));
     const save = screen.getByRole('button', { name: 'Zapisz podpisany PDF' });
     await waitFor(() => expect(save).toBeEnabled());
-    await userEvent.click(save);
+    fireEvent.click(save);
 
     await waitFor(() => expect(uploaded).toBeDefined());
     expect(pdfMocks.flatten).toHaveBeenCalledWith(
@@ -320,12 +326,12 @@ describe('DocumentSigningPage', () => {
     await renderPage();
     await drawStroke();
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Przybij na tej stronie' }),
-    );
-    expect(screen.getByText('Wybrany odcisk: strona 1')).toBeInTheDocument();
+    fireEvent.click(await enabledButton('Przybij na tej stronie'));
+    expect(
+      await screen.findByText('Wybrany odcisk: strona 1'),
+    ).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));
+    fireEvent.click(await enabledButton('Usuń'));
 
     expect(screen.getByText('Położenie bieżącego rysunku')).toBeInTheDocument();
   });
@@ -335,10 +341,11 @@ describe('DocumentSigningPage', () => {
     await renderPage();
     await drawStroke();
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Przybij na każdej stronie' }),
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Zapisz podpisany PDF' }));
+    fireEvent.click(await enabledButton('Przybij na każdej stronie'));
+    expect(
+      await screen.findByText('Wybrany odcisk: strona 1'),
+    ).toBeInTheDocument();
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
 
     await waitFor(() =>
       expect(pdfMocks.flatten).toHaveBeenCalledWith(

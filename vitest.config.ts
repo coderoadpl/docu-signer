@@ -71,16 +71,15 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-01 after merging backup logic with pen signing and
-      // the restored document-query, route-contract and identity-resolution
-      // branches. The database-free run is statements 77.78%, branches 86.73%,
-      // functions 78.45%, and lines 77.78%; each floor is that measured value
+      // Re-measured 2026-08-01 after merging main into the dates-and-teczki
+      // branch. The database-free run is statements 79.73%, branches 86.49%,
+      // functions 78.54%, and lines 79.73%; each floor is that measured value
       // rounded down.
       thresholds: {
-        statements: 77,
+        statements: 79,
         branches: 86,
         functions: 78,
-        lines: 77,
+        lines: 79,
       },
     },
     projects: [

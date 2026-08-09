@@ -182,6 +182,7 @@ export const DocumentSigningPage = ({
   const [pageNumber, setPageNumber] = useState(1);
   const [pageRendering, setPageRendering] = useState(false);
   const [metrics, setMetrics] = useState<CanvasPdfMetrics>();
+  const [metricsPageNumber, setMetricsPageNumber] = useState<number>();
   const [strokes, setStrokes] = useState<InkStroke[]>([]);
   const [activeStroke, setActiveStroke] = useState<InkStroke>();
   const [placing, setPlacing] = useState(false);
@@ -210,7 +211,10 @@ export const DocumentSigningPage = ({
   const selectedStamp =
     selectedStampIndex === undefined ? undefined : stamps[selectedStampIndex];
   const activePlacement = selectedStamp?.placement ?? placement;
-  const canCommit = Boolean(metrics && (stamps.length > 0 || strokes.length > 0));
+  const pageReady = Boolean(
+    metrics && metricsPageNumber === pageNumber && !pageRendering,
+  );
+  const canCommit = Boolean(pageReady && (stamps.length > 0 || strokes.length > 0));
 
   useEffect(() => {
     if (!sourceQuery.data || !signable) return;
@@ -242,12 +246,14 @@ export const DocumentSigningPage = ({
     let current = true;
     setPageRendering(true);
     setMetrics(undefined);
+    setMetricsPageNumber(undefined);
     void renderSourcePage(pdf, pageNumber, pdfCanvas)
       .then((renderedMetrics) => {
         if (!current) return;
         inkCanvas.width = pdfCanvas.width;
         inkCanvas.height = pdfCanvas.height;
         setMetrics(renderedMetrics);
+        setMetricsPageNumber(pageNumber);
         setPageRendering(false);
       })
       .catch((error: unknown) => {
@@ -389,7 +395,7 @@ export const DocumentSigningPage = ({
     });
 
   const stampCurrentPage = () => {
-    if (!strokes.length) return;
+    if (!pageReady || !strokes.length) return;
     const next = appendSigningStamp(stamps, draftStamp(pageIndex));
     setStamps(next);
     setSelectedStampIndex(next.length - 1);
@@ -397,7 +403,7 @@ export const DocumentSigningPage = ({
   };
 
   const stampAllPages = () => {
-    if (!strokes.length || !pdf) return;
+    if (!pageReady || !strokes.length || !pdf) return;
     const next = stampEveryPage(
       stamps,
       {
@@ -530,14 +536,14 @@ export const DocumentSigningPage = ({
             <Button
               variant="contained"
               onClick={stampCurrentPage}
-              disabled={!strokes.length || committing}
+              disabled={!pageReady || !strokes.length || committing}
             >
               Przybij na tej stronie
             </Button>
             <Button
               variant="contained"
               onClick={stampAllPages}
-              disabled={!strokes.length || !pdf || committing}
+              disabled={!pageReady || !strokes.length || !pdf || committing}
             >
               Przybij na każdej stronie
             </Button>
@@ -637,10 +643,11 @@ export const DocumentSigningPage = ({
           ref={inkCanvasRef}
           role="application"
           aria-label="Powierzchnia do rysowania podpisu"
+          aria-busy={!pageReady}
           tabIndex={0}
           sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
           onPointerDown={(event) => {
-            if (!metrics || committing) return;
+            if (!pageReady || !metrics || committing) return;
             event.currentTarget.setPointerCapture(event.pointerId);
             if (placing) {
               const point = pointerPoint(event);
