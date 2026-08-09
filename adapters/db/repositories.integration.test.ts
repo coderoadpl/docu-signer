@@ -351,10 +351,26 @@ describe('PadSessionRepository', () => {
       tenantId: 'tenant-a',
       createdBy: 'user-owner',
       status: 'active',
+      lastPolledAt: null,
       currentRequest: null,
       submittedStrokes: null,
     });
     expect(await repository.findById('tenant-b', session.id)).toBeNull();
+    await expect(repository.findActiveByUser('tenant-a', 'user-owner')).resolves.toMatchObject({
+      id: session.id,
+    });
+
+    await expect(
+      repository.renew(
+        'tenant-a',
+        session.id,
+        '2026-08-04T15:00:00.000Z',
+        '2026-08-04T11:00:00.000Z',
+      ),
+    ).resolves.toMatchObject({
+      expiresAt: '2026-08-04T15:00:00.000Z',
+      lastPolledAt: '2026-08-04T11:00:00.000Z',
+    });
 
     const requested = await repository.requestSignature('tenant-a', session.id, {
       requestId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
@@ -385,6 +401,7 @@ describe('PadSessionRepository', () => {
       currentRequest: null,
       submittedStrokes: null,
     });
+    await expect(repository.findActiveByUser('tenant-a', 'user-owner')).resolves.toBeNull();
   });
 });
 

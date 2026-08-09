@@ -6,7 +6,10 @@ import {
   closePadSession,
   consumePadStrokes,
   createPadSession,
+  disconnectPadSession,
+  getActivePadSession,
   getPadState,
+  joinOwnPadSession,
   requestPadSignature,
   submitPadStrokes,
 } from './pad-sessions.js';
@@ -31,6 +34,12 @@ const visitor: Identity = {
   staffRole: null,
 };
 
+const otherOwner: Identity = {
+  ...owner(),
+  userId: 'user-other',
+  email: 'other@example.com',
+};
+
 const ctx = (identity: Identity) => ({ identity });
 
 const submitted = (id = requestId): PadSubmittedStrokes => ({
@@ -51,10 +60,26 @@ const fake = (initial: PadSession[] = []) => {
   const sessions = [...initial];
   const repository: PadSessionRepository = {
     create: async (input) => {
+      for (let index = 0; index < sessions.length; index += 1) {
+        const session = sessions[index];
+        if (
+          session?.tenantId === input.tenantId &&
+          session.createdBy === input.createdBy &&
+          session.status === 'active'
+        ) {
+          sessions[index] = {
+            ...session,
+            status: 'closed',
+            currentRequest: null,
+            submittedStrokes: null,
+          };
+        }
+      }
       const session: PadSession = {
         ...input,
         status: 'active',
         createdAt: '2026-08-04T10:00:00.000Z',
+        lastPolledAt: null,
         currentRequest: null,
         submittedStrokes: null,
       };
@@ -63,6 +88,23 @@ const fake = (initial: PadSession[] = []) => {
     },
     findById: async (tenantId, id) =>
       sessions.find((session) => session.tenantId === tenantId && session.id === id) ?? null,
+    findActiveByUser: async (tenantId, userId) =>
+      sessions.find(
+        (session) =>
+          session.tenantId === tenantId &&
+          session.createdBy === userId &&
+          session.status === 'active',
+      ) ?? null,
+    renew: async (tenantId, id, expiresAt, lastPolledAt) => {
+      const index = sessions.findIndex(
+        (session) =>
+          session.tenantId === tenantId && session.id === id && session.status === 'active',
+      );
+      const session = sessions[index];
+      if (!session) return null;
+      sessions[index] = { ...session, expiresAt, lastPolledAt };
+      return sessions[index] ?? null;
+    },
     requestSignature: async (tenantId, id, request) => {
       const index = sessions.findIndex(
         (session) => session.tenantId === tenantId && session.id === id,
@@ -122,6 +164,7 @@ const activeSession = (overrides: Partial<PadSession> = {}): PadSession => ({
   status: 'active',
   createdAt: '2026-08-04T10:00:00.000Z',
   expiresAt: '2026-08-04T14:00:00.000Z',
+  lastPolledAt: null,
   currentRequest: null,
   submittedStrokes: null,
   ...overrides,
@@ -155,6 +198,35 @@ describe('pad session use-cases', () => {
     expect(JSON.stringify(state.sessions)).toContain('hash:pad_secret');
   });
 
+  it('supersedes the same user\'s previous active session on create', async () => {
+    const state = fake([activeSession()]);
+    await expect(createPadSession(ctx(owner()), state.deps)).resolves.toMatchObject({
+      ok: true,
+      value: { session: { id: requestId, status: 'active' } },
+    });
+    expect(state.sessions).toEqual([
+      expect.objectContaining({ id: sessionId, status: 'closed' }),
+      expect.objectContaining({ id: requestId, status: 'active' }),
+    ]);
+  });
+
+  it('returns or creates only the signed-in user\'s active session', async () => {
+    const state = fake([activeSession()]);
+    await expect(getActivePadSession(ctx(owner()), state.deps)).resolves.toMatchObject({
+      ok: true,
+      value: { id: sessionId },
+    });
+    await expect(joinOwnPadSession(ctx(owner()), state.deps)).resolves.toMatchObject({
+      ok: true,
+      value: { id: sessionId },
+    });
+    await expect(joinOwnPadSession(ctx(otherOwner), state.deps)).resolves.toMatchObject({
+      ok: true,
+      value: { createdBy: 'user-other' },
+    });
+    expect(state.sessions.filter((session) => session.status === 'active')).toHaveLength(2);
+  });
+
   it('denies before repository access when the signed-in user lacks archive capability', async () => {
     const state = fake();
     const spy = vi.spyOn(state.deps.padSessions, 'create');
@@ -168,6 +240,15 @@ describe('pad session use-cases', () => {
   it('denies every pad action before repository access without the required capability', async () => {
     const state = fake([activeSession()]);
     const find = vi.spyOn(state.deps.padSessions, 'findById');
+    const findActive = vi.spyOn(state.deps.padSessions, 'findActiveByUser');
+    await expect(getActivePadSession(ctx(visitor), state.deps)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    await expect(joinOwnPadSession(ctx(visitor), state.deps)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
     await expect(getPadState(ctx(visitor), sessionId, 'pad_secret', state.deps)).resolves.toMatchObject({
       ok: false,
       error: { code: 'forbidden' },
@@ -186,7 +267,11 @@ describe('pad session use-cases', () => {
       ok: false,
       error: { code: 'forbidden' },
     });
+    await expect(
+      disconnectPadSession(ctx(visitor), sessionId, '', state.deps),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(find).not.toHaveBeenCalled();
+    expect(findActive).not.toHaveBeenCalled();
   });
 
   it('rejects cross-tenant desktop access and wrong pad secrets', async () => {
@@ -198,6 +283,60 @@ describe('pad session use-cases', () => {
       ok: false,
       error: { code: 'unauthorized' },
     });
+    await expect(getPadState(ctx(otherOwner), sessionId, '', state.deps)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('renews the sliding expiry and last-poll timestamp on every pad poll', async () => {
+    const state = fake([activeSession()]);
+    await getPadState(ctx(owner()), sessionId, '', state.deps);
+    expect(state.sessions[0]).toMatchObject({
+      expiresAt: '2026-08-04T14:00:00.000Z',
+      lastPolledAt: '2026-08-04T10:00:00.000Z',
+    });
+    vi.setSystemTime(new Date('2026-08-04T12:00:00.000Z'));
+    await getPadState(ctx(owner()), sessionId, '', state.deps);
+    expect(state.sessions[0]).toMatchObject({
+      expiresAt: '2026-08-04T16:00:00.000Z',
+      lastPolledAt: '2026-08-04T12:00:00.000Z',
+    });
+  });
+
+  it('retires a lapsed session instead of offering it to the owner', async () => {
+    const state = fake([activeSession({ expiresAt: '2026-08-04T09:59:59.000Z' })]);
+    await expect(getActivePadSession(ctx(owner()), state.deps)).resolves.toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(state.sessions[0]).toMatchObject({ id: sessionId, status: 'closed' });
+
+    const rejoined = fake([activeSession({ expiresAt: '2026-08-04T09:59:59.000Z' })]);
+    await expect(joinOwnPadSession(ctx(owner()), rejoined.deps)).resolves.toMatchObject({
+      ok: true,
+      value: { id: requestId, expiresAt: '2026-08-04T14:00:00.000Z' },
+    });
+    expect(rejoined.sessions[0]).toMatchObject({ id: sessionId, status: 'closed' });
+  });
+
+  it('refuses to end or disconnect another user\'s session', async () => {
+    const state = fake([activeSession()]);
+    await expect(closePadSession(ctx(otherOwner), sessionId, state.deps)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    await expect(
+      disconnectPadSession(ctx(otherOwner), sessionId, '', state.deps),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    await expect(
+      requestPadSignature(ctx(otherOwner), sessionId, { documentTitle: 'Umowa' }, state.deps),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    await expect(consumePadStrokes(ctx(otherOwner), sessionId, state.deps)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(state.sessions[0]).toMatchObject({ status: 'active' });
   });
 
   it('rejects expired and closed sessions', async () => {
@@ -288,16 +427,42 @@ describe('pad session use-cases', () => {
     });
     await expect(consumePadStrokes(ctx(owner()), sessionId, state.deps)).resolves.toEqual({
       ok: true,
-      value: submitted(),
+      value: {
+        submittedStrokes: submitted(),
+        lastPolledAt: '2026-08-04T10:00:00.000Z',
+      },
     });
     await expect(consumePadStrokes(ctx(owner()), sessionId, state.deps)).resolves.toEqual({
       ok: true,
-      value: null,
+      value: {
+        submittedStrokes: null,
+        lastPolledAt: '2026-08-04T10:00:00.000Z',
+      },
     });
     await expect(closePadSession(ctx(owner()), sessionId, state.deps)).resolves.toEqual({
       ok: true,
       value: undefined,
     });
+  });
+
+  it('makes desktop close and pad disconnect idempotent', async () => {
+    const desktop = fake([activeSession()]);
+    await expect(closePadSession(ctx(owner()), sessionId, desktop.deps)).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+    await expect(closePadSession(ctx(owner()), sessionId, desktop.deps)).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+
+    const pad = fake([activeSession()]);
+    await expect(
+      disconnectPadSession(ctx(otherOwner), sessionId, 'pad_secret', pad.deps),
+    ).resolves.toEqual({ ok: true, value: undefined });
+    await expect(
+      disconnectPadSession(ctx(otherOwner), sessionId, 'pad_secret', pad.deps),
+    ).resolves.toEqual({ ok: true, value: undefined });
   });
 
   it('rejects stale request ids', async () => {

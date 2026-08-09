@@ -55,6 +55,7 @@ export const padSessionSchema = z.object({
   status: padSessionStatusSchema,
   createdAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
+  lastPolledAt: z.iso.datetime().nullable(),
   currentRequest: padSignatureRequestSchema.nullable(),
   submittedStrokes: padSubmittedStrokesSchema.nullable(),
 });
@@ -64,6 +65,14 @@ export type PadSession = z.infer<typeof padSessionSchema>;
 export const padSessionCreateOutputSchema = z.object({
   session: padSessionSchema.omit({ secretHash: true, submittedStrokes: true }),
   secret: z.string().min(1),
+});
+
+export const padSessionActiveOutputSchema = z.object({
+  session: padSessionSchema.omit({ secretHash: true, submittedStrokes: true }).nullable(),
+});
+
+export const padSessionJoinOutputSchema = z.object({
+  session: padSessionSchema.omit({ secretHash: true, submittedStrokes: true }),
 });
 
 export const padSessionStateOutputSchema = z.object({
@@ -81,4 +90,5 @@ export const padSessionRequestOutputSchema = z.object({
 
 export const padSessionConsumeOutputSchema = z.object({
   submittedStrokes: padSubmittedStrokesSchema.nullable(),
+  lastPolledAt: z.iso.datetime().nullable(),
 });

@@ -40,6 +40,7 @@ import {
   createSavedSearch,
   closePadSession,
   consumePadStrokes,
+  disconnectPadSession,
   deleteDocument,
   deleteSavedSearch,
   exportDocuments,
@@ -48,7 +49,9 @@ import {
   getFileContent,
   getFileExport,
   getUserPreference,
+  getActivePadSession,
   getPadState,
+  joinOwnPadSession,
   listDocuments,
   listApiTokens,
   listTrashedDocuments,
@@ -312,6 +315,16 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result);
   });
 
+  app.get(API_ROUTES.padSessionActive.path, async (c) => {
+    const result = await getActivePadSession(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ session: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.padSessionJoin.path, async (c) => {
+    const result = await joinOwnPadSession(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ session: result.value }) : result);
+  });
+
   app.get(API_ROUTES.padSessionState.path, async (c) => {
     const result = await getPadState(
       ctxOf(c.get('identity')),
@@ -359,11 +372,21 @@ export const buildApp = (deps: AppDeps) => {
       c.req.param('sessionId'),
       deps,
     );
-    return respond(result.ok ? ok({ submittedStrokes: result.value }) : result);
+    return respond(result);
   });
 
   app.post(API_ROUTES.padSessionClose.path, async (c) => {
     const result = await closePadSession(ctxOf(c.get('identity')), c.req.param('sessionId'), deps);
+    return respond(result.ok ? ok({ closed: true as const }) : result);
+  });
+
+  app.post(API_ROUTES.padSessionDisconnect.path, async (c) => {
+    const result = await disconnectPadSession(
+      ctxOf(c.get('identity')),
+      c.req.param('sessionId'),
+      c.req.header(PAD_SECRET_HEADER) ?? '',
+      deps,
+    );
     return respond(result.ok ? ok({ closed: true as const }) : result);
   });
 

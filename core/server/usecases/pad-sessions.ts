@@ -30,32 +30,63 @@ type PublicPadSession = Omit<PadSession, 'secretHash' | 'submittedStrokes'>;
 const isExpired = (session: PadSession): boolean =>
   Date.parse(session.expiresAt) <= Date.now();
 
-const verifySecret = (
-  session: PadSession,
-  secret: string,
-  deps: Pick<PadSessionDeps, 'padSessionSecrets'>,
-): boolean => deps.padSessionSecrets.matchesHash(secret, session.secretHash);
+const publicSession = (session: PadSession): PublicPadSession => ({
+  id: session.id,
+  tenantId: session.tenantId,
+  createdBy: session.createdBy,
+  status: session.status,
+  createdAt: session.createdAt,
+  expiresAt: session.expiresAt,
+  lastPolledAt: session.lastPolledAt,
+  currentRequest: session.currentRequest,
+});
 
-const findDesktopSession = async (
+const createForUser = async (
   tenantId: string,
+  userId: string,
+  deps: PadSessionDeps,
+): Promise<{ session: PublicPadSession; secret: string }> => {
+  const secret = deps.padSessionSecrets.generate();
+  const session = await deps.padSessions.create({
+    id: deps.ids.nextId(),
+    tenantId,
+    createdBy: userId,
+    secretHash: deps.padSessionSecrets.hash(secret),
+    expiresAt: new Date(Date.now() + PAD_SESSION_TTL_MS).toISOString(),
+  });
+  return { session: publicSession(session), secret };
+};
+
+const findOwnDesktopSession = async (
+  tenantId: string,
+  userId: string,
   sessionId: string,
   deps: Pick<PadSessionDeps, 'padSessions'>,
 ): Promise<Result<PadSession, AppError>> => {
   const session = await deps.padSessions.findById(tenantId, sessionId);
-  return session ? ok(session) : err(notFound('Pad session not found'));
+  if (!session) return err(notFound('Pad session not found'));
+  return session.createdBy === userId
+    ? ok(session)
+    : err(forbidden('Pad session belongs to another user'));
 };
 
 const findPadSession = async (
   tenantId: string,
+  userId: string,
   sessionId: string,
   secret: string,
   deps: Pick<PadSessionDeps, 'padSessions' | 'padSessionSecrets'>,
 ): Promise<Result<PadSession, AppError>> => {
   const session = await deps.padSessions.findById(tenantId, sessionId);
-  if (!session || !verifySecret(session, secret, deps) || isExpired(session)) {
-    return err(unauthorized('Invalid pad session'));
+  if (!session || isExpired(session)) return err(unauthorized('Invalid pad session'));
+  if (secret) {
+    return deps.padSessionSecrets.matchesHash(secret, session.secretHash)
+      ? ok(session)
+      : err(unauthorized('Invalid pad session'));
   }
-  return ok(session);
+  return session.createdBy === userId
+    ? ok(session)
+    : err(forbidden('Pad session belongs to another user'));
 };
 
 export const createPadSession = async (
@@ -64,27 +95,33 @@ export const createPadSession = async (
 ): Promise<Result<{ session: PublicPadSession; secret: string }, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
-  const secret = deps.padSessionSecrets.generate();
-  const expiresAt = new Date(Date.now() + PAD_SESSION_TTL_MS).toISOString();
-  const session = await deps.padSessions.create({
-    id: deps.ids.nextId(),
-    tenantId: scope.value,
-    createdBy: ctx.identity.userId,
-    secretHash: deps.padSessionSecrets.hash(secret),
-    expiresAt,
-  });
-  return ok({
-    session: {
-      id: session.id,
-      tenantId: session.tenantId,
-      createdBy: session.createdBy,
-      status: session.status,
-      createdAt: session.createdAt,
-      expiresAt: session.expiresAt,
-      currentRequest: session.currentRequest,
-    },
-    secret,
-  });
+  return ok(await createForUser(scope.value, ctx.identity.userId, deps));
+};
+
+export const getActivePadSession = async (
+  ctx: Ctx,
+  deps: Pick<PadSessionDeps, 'padSessions'>,
+): Promise<Result<PublicPadSession | null, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:write');
+  if (!scope.ok) return scope;
+  const session = await deps.padSessions.findActiveByUser(scope.value, ctx.identity.userId);
+  if (!session) return ok(null);
+  if (!isExpired(session)) return ok(publicSession(session));
+  await deps.padSessions.close(scope.value, session.id);
+  return ok(null);
+};
+
+export const joinOwnPadSession = async (
+  ctx: Ctx,
+  deps: PadSessionDeps,
+): Promise<Result<PublicPadSession, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:write');
+  if (!scope.ok) return scope;
+  const active = await deps.padSessions.findActiveByUser(scope.value, ctx.identity.userId);
+  if (active && !isExpired(active)) return ok(publicSession(active));
+  if (active) await deps.padSessions.close(scope.value, active.id);
+  const created = await createForUser(scope.value, ctx.identity.userId, deps);
+  return ok(created.session);
 };
 
 export const getPadState = async (
@@ -95,12 +132,26 @@ export const getPadState = async (
 ): Promise<Result<{ status: PadSession['status']; currentRequest: PadSession['currentRequest'] }, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:read');
   if (!scope.ok) return scope;
-  const session = await findPadSession(scope.value, sessionId, secret, deps);
-  if (!session.ok) return session;
-  return ok({
-    status: session.value.status,
-    currentRequest: session.value.status === 'active' ? session.value.currentRequest : null,
-  });
+  const found = await findPadSession(
+    scope.value,
+    ctx.identity.userId,
+    sessionId,
+    secret,
+    deps,
+  );
+  if (!found.ok) return found;
+  if (found.value.status !== 'active') {
+    return ok({ status: found.value.status, currentRequest: null });
+  }
+  const lastPolledAt = new Date().toISOString();
+  const renewed = await deps.padSessions.renew(
+    scope.value,
+    sessionId,
+    new Date(Date.now() + PAD_SESSION_TTL_MS).toISOString(),
+    lastPolledAt,
+  );
+  if (!renewed) return err(unauthorized('Invalid pad session'));
+  return ok({ status: renewed.status, currentRequest: renewed.currentRequest });
 };
 
 export const requestPadSignature = async (
@@ -113,7 +164,12 @@ export const requestPadSignature = async (
   if (!scope.ok) return scope;
   const parsed = padSessionRequestInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid pad request', parsed.error.flatten()));
-  const session = await findDesktopSession(scope.value, sessionId, deps);
+  const session = await findOwnDesktopSession(
+    scope.value,
+    ctx.identity.userId,
+    sessionId,
+    deps,
+  );
   if (!session.ok) return session;
   if (isExpired(session.value)) return err(unauthorized('Pad session expired'));
   if (session.value.status !== 'active') return err(forbidden('Pad session is closed'));
@@ -136,7 +192,13 @@ export const submitPadStrokes = async (
   if (!scope.ok) return scope;
   const parsed = padSubmittedStrokesSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid pad strokes', parsed.error.flatten()));
-  const session = await findPadSession(scope.value, sessionId, secret, deps);
+  const session = await findPadSession(
+    scope.value,
+    ctx.identity.userId,
+    sessionId,
+    secret,
+    deps,
+  );
   if (!session.ok) return session;
   if (session.value.status !== 'active') return err(forbidden('Pad session is closed'));
   if (session.value.currentRequest?.requestId !== parsed.data.requestId) {
@@ -150,14 +212,22 @@ export const consumePadStrokes = async (
   ctx: Ctx,
   sessionId: string,
   deps: Pick<PadSessionDeps, 'padSessions'>,
-): Promise<Result<PadSubmittedStrokes | null, AppError>> => {
+): Promise<Result<{ submittedStrokes: PadSubmittedStrokes | null; lastPolledAt: string | null }, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
-  const session = await findDesktopSession(scope.value, sessionId, deps);
+  const session = await findOwnDesktopSession(
+    scope.value,
+    ctx.identity.userId,
+    sessionId,
+    deps,
+  );
   if (!session.ok) return session;
   if (isExpired(session.value)) return err(unauthorized('Pad session expired'));
   if (session.value.status !== 'active') return err(forbidden('Pad session is closed'));
-  return ok(await deps.padSessions.consumeStrokes(scope.value, sessionId));
+  return ok({
+    submittedStrokes: await deps.padSessions.consumeStrokes(scope.value, sessionId),
+    lastPolledAt: session.value.lastPolledAt,
+  });
 };
 
 export const closePadSession = async (
@@ -167,6 +237,31 @@ export const closePadSession = async (
 ): Promise<Result<void, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
+  const session = await deps.padSessions.findById(scope.value, sessionId);
+  if (!session) return ok(undefined);
+  if (session.createdBy !== ctx.identity.userId) {
+    return err(forbidden('Pad session belongs to another user'));
+  }
+  await deps.padSessions.close(scope.value, sessionId);
+  return ok(undefined);
+};
+
+export const disconnectPadSession = async (
+  ctx: Ctx,
+  sessionId: string,
+  secret: string,
+  deps: Pick<PadSessionDeps, 'padSessions' | 'padSessionSecrets'>,
+): Promise<Result<void, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:write');
+  if (!scope.ok) return scope;
+  const session = await findPadSession(
+    scope.value,
+    ctx.identity.userId,
+    sessionId,
+    secret,
+    deps,
+  );
+  if (!session.ok) return session;
   await deps.padSessions.close(scope.value, sessionId);
   return ok(undefined);
 };
