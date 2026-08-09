@@ -18,6 +18,7 @@ import type {
   FileUploadRequest,
   FinalizeFileUpload,
   MoveDocumentFile,
+  PadSubmittedStrokes,
   SetUserPreference,
   UpdateDocument,
 } from '#core/domain/index.js';
@@ -126,6 +127,12 @@ const apiTokenScopes = {
 const userPreferenceScopes = {
   all: () => ['user-preferences'] as const,
   detail: (key: string) => ['user-preferences', key] as const,
+};
+
+const padSessionScopes = {
+  all: () => ['pad-sessions'] as const,
+  detail: (sessionId: string) => ['pad-sessions', sessionId] as const,
+  state: (sessionId: string) => ['pad-sessions', sessionId, 'state'] as const,
 };
 
 const authScopes = {
@@ -336,6 +343,59 @@ export const setUserPreferenceMutation = (api: ApiClient) =>
 
 export const userPreferenceInvalidates = (key: string) => ({
   queryKey: userPreferenceScopes.detail(key),
+});
+
+export const createPadSessionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'create'],
+    call: () => api.createPadSession(),
+  });
+
+export const padSessionStateQuery = (
+  api: ApiClient,
+  sessionId: string,
+  secret: string,
+) =>
+  defineQuery({
+    queryKey: padSessionScopes.state(sessionId),
+    call: ({ signal }) => api.getPadState(sessionId, secret, signal),
+  });
+
+export const requestPadSignatureMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'request'],
+    call: ({ sessionId, input }: { sessionId: string; input: { documentTitle: string } }) =>
+      api.requestPadSignature(sessionId, input),
+  });
+
+export const submitPadStrokesMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'submit'],
+    call: ({
+      input,
+      secret,
+      sessionId,
+    }: {
+      input: PadSubmittedStrokes;
+      secret: string;
+      sessionId: string;
+    }) => api.submitPadStrokes(sessionId, secret, input),
+  });
+
+export const consumePadStrokesMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'consume'],
+    call: (sessionId: string) => api.consumePadStrokes(sessionId),
+  });
+
+export const closePadSessionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'close'],
+    call: (sessionId: string) => api.closePadSession(sessionId),
+  });
+
+export const padSessionInvalidates = (sessionId: string) => ({
+  queryKey: padSessionScopes.detail(sessionId),
 });
 
 /**

@@ -108,6 +108,7 @@ export const flattenSignedPdf = async (
       stamp.strokes,
       stamp.placement,
       metrics,
+      stamp.inkSize,
     )) {
       page.drawSvgPath(outline.path, {
         x: 0,

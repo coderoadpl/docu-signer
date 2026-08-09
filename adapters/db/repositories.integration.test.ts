@@ -4,6 +4,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDocumentRepository } from './documents-repository.js';
+import { createPadSessionRepository } from './pad-sessions-repository.js';
 import { createApiTokenRepository } from './api-tokens-repository.js';
 import { createTenantAccessReader } from './repositories.js';
 import { createSavedSearchRepository } from './saved-searches-repository.js';
@@ -331,6 +332,58 @@ describe('UserPreferenceRepository', () => {
     });
     await expect(repository.get('user-owner', 'documents.columns')).resolves.toMatchObject({
       value: { order: ['documentDate', 'title'], visible: ['documentDate'] },
+    });
+  });
+});
+
+describe('PadSessionRepository', () => {
+  it('round-trips request, submit, consume and close by tenant', async () => {
+    const repository = createPadSessionRepository(db);
+    const session = await repository.create({
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      tenantId: 'tenant-a',
+      createdBy: 'user-owner',
+      secretHash: 'hash:pad_secret',
+      expiresAt: '2026-08-04T14:00:00.000Z',
+    });
+    expect(session).toMatchObject({
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      tenantId: 'tenant-a',
+      createdBy: 'user-owner',
+      status: 'active',
+      currentRequest: null,
+      submittedStrokes: null,
+    });
+    expect(await repository.findById('tenant-b', session.id)).toBeNull();
+
+    const requested = await repository.requestSignature('tenant-a', session.id, {
+      requestId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      documentTitle: 'Umowa',
+    });
+    expect(requested).toMatchObject({
+      currentRequest: {
+        requestId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        documentTitle: 'Umowa',
+      },
+    });
+
+    const strokes = {
+      requestId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      inkColor: 'black' as const,
+      sourceSize: { width: 834, height: 620 },
+      strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
+    };
+    await expect(repository.submitStrokes('tenant-a', session.id, strokes)).resolves.toMatchObject({
+      submittedStrokes: strokes,
+    });
+    await expect(repository.consumeStrokes('tenant-b', session.id)).resolves.toBeNull();
+    await expect(repository.consumeStrokes('tenant-a', session.id)).resolves.toEqual(strokes);
+    await expect(repository.consumeStrokes('tenant-a', session.id)).resolves.toBeNull();
+    await expect(repository.close('tenant-a', session.id)).resolves.toBe(true);
+    await expect(repository.findById('tenant-a', session.id)).resolves.toMatchObject({
+      status: 'closed',
+      currentRequest: null,
+      submittedStrokes: null,
     });
   });
 });

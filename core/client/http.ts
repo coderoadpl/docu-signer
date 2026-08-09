@@ -24,6 +24,13 @@ import {
   healthOutputSchema,
   healthReadyOutputSchema,
   meOutputSchema,
+  PAD_SECRET_HEADER,
+  padSessionCloseOutputSchema,
+  padSessionConsumeOutputSchema,
+  padSessionCreateOutputSchema,
+  padSessionRequestOutputSchema,
+  padSessionStateOutputSchema,
+  padSessionSubmitOutputSchema,
   PUBLIC_API_ROUTES,
   publicTenantDiscoveryOutputSchema,
   publicTenantDiscoveryPath,
@@ -51,6 +58,7 @@ import {
   type FileUploadRequest,
   type FinalizeFileUpload,
   type MoveDocumentFile,
+  type PadSubmittedStrokes,
   type Result,
   type SetUserPreference,
   type UpdateDocument,
@@ -90,6 +98,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   outputSchema: S,
   body?: unknown,
   signal?: AbortSignal,
+  headers?: Record<string, string>,
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
@@ -101,6 +110,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(traceparent === undefined ? {} : { traceparent }),
         ...options.headers?.(),
+        ...headers,
       },
       body: body === undefined ? null : JSON.stringify(body),
       credentials: 'include',
@@ -491,6 +501,71 @@ export const createApiClient = (options: ApiClientOptions) => ({
       pathWith(API_ROUTES.userPreferenceSet.path, { key }),
       userPreferenceSetOutputSchema,
       input,
+      signal,
+    ),
+  createPadSession: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.padSessionsCreate.method,
+      API_ROUTES.padSessionsCreate.path,
+      padSessionCreateOutputSchema,
+      {},
+      signal,
+    ),
+  getPadState: (sessionId: string, secret: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.padSessionState.method,
+      pathWith(API_ROUTES.padSessionState.path, { sessionId }),
+      padSessionStateOutputSchema,
+      undefined,
+      signal,
+      { [PAD_SECRET_HEADER]: secret },
+    ),
+  requestPadSignature: (
+    sessionId: string,
+    input: { documentTitle: string },
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.padSessionRequest.method,
+      pathWith(API_ROUTES.padSessionRequest.path, { sessionId }),
+      padSessionRequestOutputSchema,
+      input,
+      signal,
+    ),
+  submitPadStrokes: (
+    sessionId: string,
+    secret: string,
+    input: PadSubmittedStrokes,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.padSessionSubmit.method,
+      pathWith(API_ROUTES.padSessionSubmit.path, { sessionId }),
+      padSessionSubmitOutputSchema,
+      input,
+      signal,
+      { [PAD_SECRET_HEADER]: secret },
+    ),
+  consumePadStrokes: (sessionId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.padSessionConsume.method,
+      pathWith(API_ROUTES.padSessionConsume.path, { sessionId }),
+      padSessionConsumeOutputSchema,
+      {},
+      signal,
+    ),
+  closePadSession: (sessionId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.padSessionClose.method,
+      pathWith(API_ROUTES.padSessionClose.path, { sessionId }),
+      padSessionCloseOutputSchema,
+      {},
       signal,
     ),
   documentFileContentUrl: (documentId: string, fileId: string) =>

@@ -226,7 +226,10 @@ child through its `Outlet`. A caller without access to the fixed archive sees a
 no-access state. `/app` redirects to `/app/documents`; the archive lives there,
 and personal authentication controls live at `/app/settings`. Unknown routes
 render a Polish not-found view inside the shell.
-Bare `/` redirects to `/app`.
+Bare `/` redirects to `/app`. `/pad/{sessionId}` is a standalone authenticated
+signing-pad route outside the archive shell: it requires the normal session plus
+the pad secret from the URL fragment, then polls the tenant-scoped pad session
+API without rendering document archive navigation.
 
 State rules:
 
@@ -912,6 +915,7 @@ raw insert, a forgotten code path, or a future adapter.
 | `documents.doc_type ∈ {umowa-uod, uchwala, protokol, rachunek, inny}` | **DB + app** | closed set → DB `CHECK` (`documents_doc_type_check`); the adapter zod-parses on read. Test: raw-SQL bad type → rejected. |
 | `document_files.role ∈ {source, signed-scan, signed-digital, other}` | **DB + app** | closed set → DB `CHECK` (`document_files_role_check`); the adapter zod-parses on read. Test: raw-SQL bad role → rejected. |
 | `document_files.size_bytes ∈ [0, 25 MiB]` | **DB + app** | upload policy → DB `CHECK` (`document_files_size_check`), server body limit, direct-upload token constraint and finalize schema. Test: raw-SQL oversized file → rejected. |
+| `pad_sessions.status ∈ {active, closed}` and submitted strokes ≤ 200 KiB | **DB + app** | closed set → DB `CHECK` (`pad_sessions_status_check`); strokes parse through the contract/domain schema and the submit route has its own body limit. Test: pad session use-cases, route handlers and repository integration cover request → submit → consume → close. |
 | every tenant-scoped row cascades from `tenants(id)` | **DB (FK `ON DELETE CASCADE`)** | see §Data lifecycle (tenant offboarding is a schema invariant). Test: the offboarding-cascade integration test. |
 
 — **TYPE**: closed unions surface in the domain zod schemas; the DB `CHECK`s are

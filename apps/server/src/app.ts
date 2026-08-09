@@ -5,6 +5,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import {
   API_PATHS,
   API_ROUTES,
+  PAD_SECRET_HEADER,
   apiTokenCreateInputSchema,
   TENANT_HEADER,
   documentCreateInputSchema,
@@ -14,6 +15,8 @@ import {
   exportDocumentsInputSchema,
   fileUploadRequestInputSchema,
   finalizeFileUploadInputSchema,
+  padSessionRequestInputSchema,
+  padSessionSubmitInputSchema,
   savedSearchCreateInputSchema,
   serverUploadMetadataSchema,
   userPreferenceKeyInputSchema,
@@ -33,7 +36,10 @@ import {
   approveDocument,
   createApiToken,
   createDocument,
+  createPadSession,
   createSavedSearch,
+  closePadSession,
+  consumePadStrokes,
   deleteDocument,
   deleteSavedSearch,
   exportDocuments,
@@ -42,6 +48,7 @@ import {
   getFileContent,
   getFileExport,
   getUserPreference,
+  getPadState,
   listDocuments,
   listApiTokens,
   listTrashedDocuments,
@@ -54,8 +61,10 @@ import {
   restoreDocument,
   revokeApiToken,
   requestFileUpload,
+  requestPadSignature,
   serverUpload,
   setUserPreference,
+  submitPadStrokes,
   updateDocument,
   type Ctx,
 } from '#core/server/index.js';
@@ -152,15 +161,22 @@ export const buildApp = (deps: AppDeps) => {
     maxSize: 100 * 1024,
     onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
   });
+  const padSubmitBodyLimit = bodyLimit({
+    maxSize: 200 * 1024,
+    onError: () => respond(err(validation('Pad strokes exceed the 200KB limit'))),
+  });
   const serverUploadBodyLimit = bodyLimit({
     maxSize: 25 * 1024 * 1024,
     onError: () => respond(err(validation('Upload exceeds the 25MB limit'))),
   });
   const jsonBodyRoutes = Object.values(API_ROUTES).filter(
     (route) =>
-      route.method !== 'GET' && route.path !== API_ROUTES.documentFileServerUpload.path,
+      route.method !== 'GET' &&
+      route.path !== API_ROUTES.documentFileServerUpload.path &&
+      route.path !== API_ROUTES.padSessionSubmit.path,
   );
   for (const route of jsonBodyRoutes) app.use(route.path, jsonBodyLimit);
+  app.use(API_ROUTES.padSessionSubmit.path, padSubmitBodyLimit);
   app.use(BETTER_AUTH_API_PATH_PATTERN, jsonBodyLimit);
   app.use(API_ROUTES.documentFileServerUpload.path, serverUploadBodyLimit);
 
@@ -289,6 +305,66 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ preference: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.padSessionsCreate.path, async (c) => {
+    const result = await createPadSession(ctxOf(c.get('identity')), deps);
+    return respond(result);
+  });
+
+  app.get(API_ROUTES.padSessionState.path, async (c) => {
+    const result = await getPadState(
+      ctxOf(c.get('identity')),
+      c.req.param('sessionId'),
+      c.req.header(PAD_SECRET_HEADER) ?? '',
+      deps,
+    );
+    return respond(result);
+  });
+
+  app.post(API_ROUTES.padSessionRequest.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = padSessionRequestInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid pad request', parsed.error.flatten())));
+    }
+    const result = await requestPadSignature(
+      ctxOf(c.get('identity')),
+      c.req.param('sessionId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.padSessionSubmit.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = padSessionSubmitInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid pad strokes', parsed.error.flatten())));
+    }
+    const result = await submitPadStrokes(
+      ctxOf(c.get('identity')),
+      c.req.param('sessionId'),
+      c.req.header(PAD_SECRET_HEADER) ?? '',
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ submitted: true as const }) : result);
+  });
+
+  app.post(API_ROUTES.padSessionConsume.path, async (c) => {
+    const result = await consumePadStrokes(
+      ctxOf(c.get('identity')),
+      c.req.param('sessionId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ submittedStrokes: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.padSessionClose.path, async (c) => {
+    const result = await closePadSession(ctxOf(c.get('identity')), c.req.param('sessionId'), deps);
+    return respond(result.ok ? ok({ closed: true as const }) : result);
   });
 
   app.get(API_PATHS.documents, async (c) => {

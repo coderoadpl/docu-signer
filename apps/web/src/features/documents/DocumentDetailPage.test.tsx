@@ -213,7 +213,7 @@ describe('DocumentDetailPage', () => {
 
     await userEvent.click(screen.getByRole('menuitem', { name: 'Usuń' }));
     expect(
-      screen.getByRole('heading', { name: 'Usunąć plik?' }),
+      await screen.findByRole('heading', { name: 'Usunąć plik?' }),
     ).toBeInTheDocument();
     expect(remove).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));

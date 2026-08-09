@@ -14,7 +14,12 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { SavedSearchFilter, UserPreferenceValue } from '#core/domain/index.js';
+import type {
+  PadSignatureRequest,
+  PadSubmittedStrokes,
+  SavedSearchFilter,
+  UserPreferenceValue,
+} from '#core/domain/index.js';
 import { user } from './auth-schema.js';
 
 const LEGACY_BOARD_IDS = ['personal', 'team'] as const;
@@ -197,6 +202,30 @@ export const apiTokens = pgTable(
       'api_tokens_scopes_check',
       sql`${table.scopes} <@ '["read", "write", "write:draft"]'::jsonb AND jsonb_array_length(${table.scopes}) BETWEEN 1 AND 3`,
     ),
+  ],
+);
+
+export const padSessions = pgTable(
+  'pad_sessions',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    secretHash: text('secret_hash').notNull(),
+    status: text('status', { enum: ['active', 'closed'] }).notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    currentRequest: jsonb('current_request').$type<PadSignatureRequest>(),
+    submittedStrokes: jsonb('submitted_strokes').$type<PadSubmittedStrokes>(),
+  },
+  (table) => [
+    index('pad_sessions_tenant_created_idx').on(table.tenantId, table.createdAt),
+    index('pad_sessions_tenant_expires_idx').on(table.tenantId, table.expiresAt),
+    check('pad_sessions_status_check', sql`${table.status} IN ('active', 'closed')`),
   ],
 );
 

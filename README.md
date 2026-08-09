@@ -42,7 +42,10 @@ full-screen Polish signing view renders one page at a time, captures pen,
 touch or mouse strokes, and lets the user undo, clear, move and resize the
 signature. Saving flattens the ink into the selected PDF page in the browser
 and uploads `<source>-podpisany.pdf` as a new `signed-digital` file; the source
-is never replaced. Signature ink is not stored separately or reused.
+is never replaced. Signature ink is not stored separately or reused. The same
+signing view can open **Pad QR**; a logged-in phone or tablet at `/pad/{sessionId}`
+becomes a blank signing pad for that desktop session, with the secret kept in
+the URL fragment and sent to the API only as a header.
 
 ## CLI — the agent feedback loop
 
@@ -116,7 +119,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`, dead
   links), and vitest with coverage across
-  **<!--count:test-files-->87<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->89<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → document archive →
@@ -128,8 +131,8 @@ Dependency lifecycle scripts are blocked unless explicitly named in
 configuration applies a three-day (`4320` minute) minimum-release-age cooldown.
 
 Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
-<!--count:integration-tests-->18<!--/count--> integration tests against a real
-Postgres and <!--count:e2e-tests-->20<!--/count--> Playwright test executions
+<!--count:integration-tests-->19<!--/count--> integration tests against a real
+Postgres and <!--count:e2e-tests-->22<!--/count--> Playwright test executions
 across <!--count:e2e-specs-->6<!--/count--> spec files: Chromium covers all
 six, and WebKit reruns `documents.spec.ts` to pin the Safari/pdf.js legacy
 regression.

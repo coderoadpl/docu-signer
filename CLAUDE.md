@@ -60,14 +60,14 @@ rejected.)
 - `pnpm run e2e` = the **browser** gate: Playwright drives real browsers over
   the real stack (isolated `agentproofarch_e2e` DB, `localhost` registered as a
   single-tenant custom domain, `entry.node.ts` serving the built bundle): Chromium
-  covers all six spec files (15 tests), and WebKit reruns `documents.spec.ts` to
-  pin the Safari/pdf.js legacy regression (20 test executions total):
+  covers all six spec files (16 tests), and WebKit reruns `documents.spec.ts` to
+  pin the Safari/pdf.js legacy regression (22 test executions total):
   `app.spec.ts` (login → archive navigation →
   failed-login → cache headers → liveness/readiness → anonymous redirect to login),
   `documents.spec.ts` (create → role uploads → source-only preview link +
   content-type → export; trash → restore roundtrip; signature pad pen/touch
-  stamp placement; draft-filter approve roundtrip; mass signing with a
-  signed-file target),
+  stamp placement; QR remote pad two-context mass signing; draft-filter approve
+  roundtrip; mass signing with a signed-file target),
   `magic-link.spec.ts` (trusted-user sign-in), `passkey.spec.ts`
   (registration → passkey sign-in), `settings.spec.ts` (account security and
   registration without tenant management), and `password-reset.spec.ts`
@@ -95,7 +95,9 @@ rejected.)
 - Dokumenty: archive metadata and PDF/image files by role, preview and export
   them, and hand-sign any source PDF in a full-screen pen/touch/mouse flow.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
-  replaces the source or persists a reusable signature.
+  replaces the source or persists a reusable signature. A desktop signing
+  session can create a QR remote pad at `/pad/{sessionId}`; the pad requires a
+  normal login plus the session secret from the URL fragment.
 - Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
   timestamps (`createdAt`, `updatedAt`) never render in UI or exports. Two
   carve-outs: `deletedAt` records a user action and renders as `Usunięto:` in

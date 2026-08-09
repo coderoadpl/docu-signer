@@ -351,6 +351,77 @@ const pointerEventAt = (
 };
 
 describe('DocumentSigningPage', () => {
+  it('creates and closes a QR pad session from the signing toolbar', async () => {
+    let closed = 0;
+    server.use(
+      http.post('/api/pad-sessions', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            secret: 'pad_secret',
+            session: {
+              id: '55555555-5555-4555-8555-555555555555',
+              tenantId: 'tenant-1',
+              createdBy: 'user-owner',
+              status: 'active',
+              createdAt: '2026-08-04T10:00:00.000Z',
+              expiresAt: '2026-08-04T14:00:00.000Z',
+              currentRequest: null,
+            },
+          },
+        }),
+      ),
+      http.post('/api/pad-sessions/:sessionId/close', () => {
+        closed += 1;
+        return HttpResponse.json({ ok: true, data: { closed: true } });
+      }),
+    );
+
+    await renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Pad QR' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
+    expect(await screen.findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
+    expect(screen.getByText(/Zeskanuj kod/u)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Zamknij sesję' }));
+    await waitFor(() => expect(closed).toBe(1));
+  });
+
+  it('closes an active QR pad session when leaving the signing page', async () => {
+    let closed = 0;
+    server.use(
+      http.post('/api/pad-sessions', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            secret: 'pad_secret',
+            session: {
+              id: '55555555-5555-4555-8555-555555555555',
+              tenantId: 'tenant-1',
+              createdBy: 'user-owner',
+              status: 'active',
+              createdAt: '2026-08-04T10:00:00.000Z',
+              expiresAt: '2026-08-04T14:00:00.000Z',
+              currentRequest: null,
+            },
+          },
+        }),
+      ),
+      http.post('/api/pad-sessions/:sessionId/close', () => {
+        closed += 1;
+        return HttpResponse.json({ ok: true, data: { closed: true } });
+      }),
+    );
+
+    const { unmount } = await renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Pad QR' }));
+    expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
+    expect(await screen.findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
+    unmount();
+
+    await waitFor(() => expect(closed).toBe(1));
+  });
+
   it('captures pointer strokes and supports undo, pointercancel and clear', async () => {
     await renderPage();
     const save = await screen.findByRole('button', {
@@ -1037,7 +1108,7 @@ describe('DocumentSigningPage', () => {
       `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Przejdź' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Dalej' }));
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Podsumowanie' })).toBeInTheDocument(),
@@ -1073,6 +1144,74 @@ describe('DocumentSigningPage', () => {
     } finally {
       elementBounds.mockRestore();
     }
+  });
+
+  it('confirms before closing a mass-signing document with unsaved stamps', async () => {
+    let closed = 0;
+    server.use(
+      http.post('/api/pad-sessions', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            secret: 'pad_secret',
+            session: {
+              id: '55555555-5555-4555-8555-555555555555',
+              tenantId: 'tenant-1',
+              createdBy: 'user-owner',
+              status: 'active',
+              createdAt: '2026-08-04T10:00:00.000Z',
+              expiresAt: '2026-08-04T14:00:00.000Z',
+              currentRequest: null,
+            },
+          },
+        }),
+      ),
+      http.post('/api/pad-sessions/:sessionId/close', () => {
+        closed += 1;
+        return HttpResponse.json({ ok: true, data: { closed: true } });
+      }),
+    );
+    const { router } = await renderPage(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?q=umowa&tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+    );
+    await signingCanvas();
+
+    fireEvent.click(await enabledButton('Pad QR'));
+    const qrDialog = await screen.findByRole('dialog', { name: 'Pad QR' });
+    expect(await within(qrDialog).findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
+    fireEvent.click(within(qrDialog).getByRole('button', { name: /^Zamknij$/u }));
+    await waitFor(() => expect(qrDialog).not.toBeInTheDocument());
+
+    fireEvent.click(await enabledButton('Złóż podpis'));
+    await drawSignaturePadStroke({ pointerId: 55, pointerType: 'pen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Złóż podpis' })).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByText('Wybrany odcisk: strona 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zamknij' }));
+
+    expect(await screen.findByText('Ten dokument ma niezapisane odciski.')).toBeVisible();
+    expect(router.state.location.pathname).toBe(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}`,
+    );
+    expect(closed).toBe(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wróć' }));
+    await waitFor(() =>
+      expect(screen.queryByText('Ten dokument ma niezapisane odciski.')).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zamknij' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Odrzuć i zamknij' }));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/app/documents'),
+    );
+    expect(router.state.location.search).toMatchObject({ q: 'umowa' });
+    await waitFor(() => expect(closed).toBe(1));
+    expect(pdfMocks.flatten).not.toHaveBeenCalled();
   });
 
   it('observes the mass-signing fit box when ResizeObserver is available', async () => {
@@ -1125,7 +1264,7 @@ describe('DocumentSigningPage', () => {
       expect(screen.queryByText('Wybrany odcisk: strona 1')).not.toBeInTheDocument(),
     );
 
-    fireEvent.click(await enabledButton('Przejdź'));
+    fireEvent.click(await enabledButton('Dalej'));
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Podsumowanie' })).toBeInTheDocument(),
@@ -1174,11 +1313,15 @@ describe('DocumentSigningPage', () => {
     fireEvent.change(screen.getByRole('slider', { name: 'Rozmiar' }), {
       target: { value: '150' },
     });
+    fireEvent.change(screen.getByRole('slider', { name: 'Grubość' }), {
+      target: { value: '150' },
+    });
 
-    fireEvent.click(await enabledButton('Przejdź'));
+    fireEvent.click(await enabledButton('Dalej'));
     await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalled());
     const stamp = pdfMocks.flatten.mock.calls[0]?.[1]?.[0]?.stamp;
     expect(stamp?.placement.scale).toBe(1.5);
+    expect(stamp?.inkSize).toBe(6);
     expect(stamp?.placement.offsetX).toBeLessThan(0.1);
     expect(stamp?.placement.offsetY).toBeLessThan(0.1);
     expect(stamp?.placement.offsetX).toBeGreaterThan(-0.2);
@@ -1248,12 +1391,12 @@ describe('DocumentSigningPage', () => {
       expect(screen.queryByText('Wybrany odcisk: strona 1')).not.toBeInTheDocument(),
     );
 
-    fireEvent.click(await enabledButton('Przejdź'));
+    fireEvent.click(await enabledButton('Dalej'));
 
     await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalledTimes(1));
   });
 
-  it('shows a busy Przejdź state and ignores extra taps during mass-signing upload', async () => {
+  it('shows a busy Dalej state and ignores extra taps during mass-signing upload', async () => {
     let releaseUpload: (() => void) | undefined;
     let uploadRequests = 0;
     server.use(
@@ -1300,7 +1443,7 @@ describe('DocumentSigningPage', () => {
     await drawSignaturePadStroke({ pointerId: 49, pointerType: 'pen' });
     fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
 
-    const proceed = await enabledButton('Przejdź');
+    const proceed = await enabledButton('Dalej');
     fireEvent.click(proceed);
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Zapisywanie…' })).toBeDisabled(),
@@ -1358,7 +1501,7 @@ describe('DocumentSigningPage', () => {
     await drawSignaturePadStroke({ pointerId: 42, pointerType: 'pen' });
     fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
 
-    fireEvent.click(await enabledButton('Przejdź'));
+    fireEvent.click(await enabledButton('Dalej'));
     await waitFor(() =>
       expect(pdfMocks.flatten).toHaveBeenCalledWith(
         expect.any(Uint8Array),
@@ -1381,7 +1524,7 @@ describe('DocumentSigningPage', () => {
       razem: 2,
     });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Przejdź' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Dalej' }));
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Podsumowanie' })).toBeInTheDocument(),
     );
@@ -1449,6 +1592,78 @@ describe('DocumentSigningPage', () => {
               placement: expect.objectContaining({
                 offsetX: expect.closeTo(0.6, 5),
                 offsetY: expect.closeTo(0.7, 5),
+              }),
+            }),
+          }),
+        ],
+      ),
+    );
+  });
+
+  it('keeps updating a selected stamp through a long touch drag', async () => {
+    installUploadHandlers();
+    await renderPage();
+    await drawStroke();
+
+    fireEvent.click(await enabledButton('Przybij na tej stronie'));
+    expect(
+      await screen.findByText('Wybrany odcisk: strona 1'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Przesuń' }));
+
+    const canvas = await signingCanvas();
+    expect(canvas).toHaveStyle({ touchAction: 'none' });
+    fireEvent.pointerDown(canvas, {
+      pointerId: 56,
+      pointerType: 'touch',
+      clientX: 154,
+      clientY: 246,
+      pressure: 0.5,
+      width: 12,
+      height: 12,
+    });
+    expect(canvas.setPointerCapture).toHaveBeenCalledWith(56);
+    for (const point of [
+      { clientX: 144, clientY: 231 },
+      { clientX: 134, clientY: 216 },
+      { clientX: 124, clientY: 201 },
+      { clientX: 114, clientY: 186 },
+      { clientX: 104, clientY: 171 },
+      { clientX: 94, clientY: 156 },
+      { clientX: 84, clientY: 141 },
+      { clientX: 74, clientY: 126 },
+      { clientX: 64, clientY: 111 },
+      { clientX: 54, clientY: 96 },
+    ]) {
+      fireEvent.pointerMove(canvas, {
+        pointerId: 56,
+        pointerType: 'touch',
+        clientX: point.clientX,
+        clientY: point.clientY,
+        pressure: 0.5,
+        width: 12,
+        height: 12,
+      });
+    }
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 56,
+        pointerType: 'touch',
+        bubbles: true,
+      }),
+    );
+
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+    await waitFor(() =>
+      expect(pdfMocks.flatten).toHaveBeenCalledWith(
+        expect.any(Uint8Array),
+        [
+          expect.objectContaining({
+            stamp: expect.objectContaining({
+              placement: expect.objectContaining({
+                offsetX: expect.closeTo(0.02, 5),
+                offsetY: expect.closeTo(0.12, 5),
               }),
             }),
           }),

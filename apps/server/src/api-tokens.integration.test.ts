@@ -4,10 +4,14 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createAuth } from '#adapters/auth/create-auth.js';
-import { createApiTokenSecrets } from '#adapters/auth/api-token-secrets.js';
+import {
+  createApiTokenSecrets,
+  createPadSessionSecrets,
+} from '#adapters/auth/api-token-secrets.js';
 import { createDb } from '#adapters/db/client.js';
 import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
+import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import {
   createHealthPort,
@@ -131,6 +135,8 @@ beforeAll(async () => {
     apiTokens: createApiTokenRepository(db),
     apiTokenSecrets: createApiTokenSecrets(),
     documents: createDocumentRepository(db),
+    padSessions: createPadSessionRepository(db),
+    padSessionSecrets: createPadSessionSecrets(),
     userPreferences: createUserPreferenceRepository(db),
     savedSearches: {
       listByTenant: async () => [],
