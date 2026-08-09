@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -59,7 +59,6 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { PolishDatePicker } from '../../components/ui/PolishDatePicker.js';
 import { formatPolishDate } from '../../lib/format-date.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
-import { DocumentTimelineView } from './DocumentTimelineView.js';
 import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
@@ -84,6 +83,12 @@ import {
   type DocumentsView,
   type DocumentFilterValues,
 } from './documents.logic.js';
+
+const LazyDocumentTimelineView = lazy(() =>
+  import('./DocumentTimelineView.js').then((module) => ({
+    default: module.DocumentTimelineView,
+  })),
+);
 
 const FileCounts = ({ files }: { files: Array<{ role: string }> }) => {
   const present = (['source', 'signed-scan', 'signed-digital', 'other'] as const)
@@ -684,7 +689,7 @@ export const DocumentsPage = () => {
         </Alert>
       ) : null}
 
-      {hasDocuments && view === 'list' ? <Paper variant="outlined" sx={{ mt: 3, p: 2.5 }}>
+      {hasDocuments && (view === 'list' || view === 'timeline') ? <Paper variant="outlined" sx={{ mt: 3, p: 2.5 }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 2, flexWrap: 'wrap' }}>
           <TextField
             label="Szukaj po tytule"
@@ -1501,16 +1506,20 @@ export const DocumentsPage = () => {
       ) : null}
 
       {visibleDocuments.length > 0 && view === 'timeline' ? (
-        <DocumentTimelineView
-          documents={visibleDocuments}
-          onOpenDocument={(id) =>
-            void navigate({
-              to: '/app/documents/$id',
-              params: { id },
-              search: currentDocumentsSearch,
-            })
-          }
-        />
+        <Suspense fallback={<LinearProgress aria-label="Ładowanie osi czasu" sx={{ mt: 3 }} />}>
+          <LazyDocumentTimelineView
+            documents={visibleDocuments}
+            dateFrom={filters.dateFrom}
+            dateTo={filters.dateTo}
+            onOpenDocument={(id) =>
+              void navigate({
+                to: '/app/documents/$id',
+                params: { id },
+                search: currentDocumentsSearch,
+              })
+            }
+          />
+        </Suspense>
       ) : null}
 
       <Menu

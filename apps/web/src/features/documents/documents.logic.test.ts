@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '#core/client/index.js';
+import { documentTypeSchema } from '#core/domain/index.js';
 
 import {
+  DOCUMENT_TYPE_COLORS,
   documentFilterSummary,
   documentFiltersFromSearch,
   documentsSearchFromSigningSearch,
@@ -13,7 +15,8 @@ import {
   fileNameStem,
   formatFileSize,
   formatCanonicalDocumentInterval,
-  createTimelineScale,
+  formatVisTimelineMajorLabel,
+  formatVisTimelineMinorLabel,
   groupDocumentsCanonically,
   groupDocumentsForTimeline,
   hasDocumentFilter,
@@ -24,7 +27,7 @@ import {
   signingQueueSearch,
   suggestDocumentDate,
   timelineIntervalForDocument,
-  timelineMonthTicks,
+  toVisTimelineData,
   toDocumentFilter,
   toDocumentFilterValues,
   toDocumentInput,
@@ -32,6 +35,7 @@ import {
   uniqueDocumentPersons,
   uniqueDocumentTags,
   uploadErrorMessage,
+  visTimelineWindowForRange,
 } from './documents.logic.js';
 
 describe('document view logic', () => {
@@ -618,32 +622,95 @@ describe('document view logic', () => {
     ]);
   });
 
-  it('builds a deterministic timeline x scale and month ticks', () => {
-    const emptyScale = createTimelineScale([], 120);
-    expect(emptyScale).toMatchObject({
-      start: '1970-01-01',
-      end: '1970-01-01',
-      width: 120,
-    });
-    expect(emptyScale.x('2026-01-01')).toBe(0);
+  it('maps timeline groups to escaped vis data with document and signature classes', () => {
+    const data = toVisTimelineData([
+      {
+        person: 'Żaneta <&>"\'',
+        intervals: [{ start: '2026-02-10', end: '2026-02-10' }],
+        documents: [
+          {
+            id: 'instant',
+            title: 'Punkt <&>"\'',
+            docType: 'inny',
+            start: '2026-02-10',
+            end: '2026-02-10',
+            instant: true,
+            signed: false,
+          },
+        ],
+      },
+      {
+        person: 'Anna',
+        intervals: [{ start: '2026-01-01', end: '2026-01-31' }],
+        documents: [
+          {
+            id: 'range',
+            title: 'Umowa <pierwsza>',
+            docType: 'umowa-uod',
+            start: '2026-01-01',
+            end: '2026-01-31',
+            instant: false,
+            signed: true,
+          },
+        ],
+      },
+    ]);
 
-    const scale = createTimelineScale(
-      [
-        { start: '2026-01-15', end: '2026-01-31' },
-        { start: '2026-03-01', end: '2026-03-31' },
-      ],
-      120,
+    expect(data.groups).toEqual([
+      { id: 'Anna', content: 'Anna' },
+      { id: 'Żaneta <&>"\'', content: 'Żaneta &lt;&amp;&gt;&quot;&#39;' },
+    ]);
+    expect(data.items).toEqual([
+      {
+        id: 'range',
+        group: 'Anna',
+        start: '2026-01-01',
+        end: '2026-01-31',
+        type: 'range',
+        content:
+          '<span class="doc-mark" aria-label="Podpisane">✓</span><span class="doc-title">Umowa &lt;pierwsza&gt;</span>',
+        className: 'doc doc--umowa-uod is-signed',
+        title: 'Umowa &lt;pierwsza&gt;\nUmowa UoD\n01.01.2026 - 31.01.2026\nPodpisane',
+      },
+      {
+        id: 'instant',
+        group: 'Żaneta <&>"\'',
+        start: '2026-02-10',
+        type: 'point',
+        content:
+          '<span class="doc-mark" aria-label="Do podpisania">○</span><span class="doc-title">Punkt &lt;&amp;&gt;&quot;&#39;</span>',
+        className: 'doc doc--inny is-unsigned',
+        title: 'Punkt &lt;&amp;&gt;&quot;&#39;\nInny\n10.02.2026\nDo podpisania',
+      },
+    ]);
+  });
+
+  it('keeps timeline colors exhaustive and builds deterministic range presets', () => {
+    expect(Object.keys(DOCUMENT_TYPE_COLORS).sort()).toEqual(
+      [...documentTypeSchema.options].sort(),
     );
 
-    expect(scale.start).toBe('2026-01-15');
-    expect(scale.end).toBe('2026-03-31');
-    expect(scale.width).toBeGreaterThanOrEqual(240);
-    expect(scale.x('2026-01-15')).toBe(0);
-    expect(Math.round(scale.x('2026-03-31'))).toBe(scale.width);
-    expect(timelineMonthTicks(scale)).toEqual([
-      { date: '2026-01-01', label: '01.2026', year: '2026' },
-      { date: '2026-02-01', label: '02.2026', year: '2026' },
-      { date: '2026-03-01', label: '03.2026', year: '2026' },
-    ]);
+    const today = new Date(2026, 0, 15, 12);
+    const threeMonths = visTimelineWindowForRange('three-months', today);
+    expect(threeMonths).not.toBeNull();
+    expect(threeMonths?.start).toEqual(new Date(2025, 11, 1));
+    expect(threeMonths?.end).toEqual(new Date(2026, 1, 28, 23, 59, 59, 999));
+    expect(visTimelineWindowForRange('year', today)).toEqual({
+      start: new Date(2026, 0, 1),
+      end: new Date(2026, 11, 31, 23, 59, 59, 999),
+    });
+    expect(visTimelineWindowForRange('all', today)).toBeNull();
+  });
+
+  it('formats vis axis labels with Polish Intl rules', () => {
+    const date = new Date(2026, 0, 15, 13, 5);
+    expect(formatVisTimelineMinorLabel(date, 'year')).toBe('2026');
+    expect(formatVisTimelineMinorLabel(date, 'month')).toMatch(/^sty/u);
+    expect(formatVisTimelineMinorLabel(date, 'day')).toMatch(/^15 sty/u);
+    expect(formatVisTimelineMinorLabel(date, 'hour')).toMatch(/13:05/u);
+    expect(formatVisTimelineMajorLabel(date, 'year')).toBe('');
+    expect(formatVisTimelineMajorLabel(date, 'month')).toBe('2026');
+    expect(formatVisTimelineMajorLabel(date, 'day')).toBe('styczeń 2026');
+    expect(formatVisTimelineMajorLabel(date, 'hour')).toBe('15 stycznia 2026');
   });
 });

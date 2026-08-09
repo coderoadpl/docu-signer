@@ -23,6 +23,14 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   inny: 'Inny',
 };
 
+export const DOCUMENT_TYPE_COLORS: Record<DocumentType, string> = {
+  'umowa-uod': '#385171',
+  uchwala: '#7a5c8f',
+  protokol: '#2f855a',
+  rachunek: '#b36b1f',
+  inny: '#5a6572',
+};
+
 export const FILE_ROLE_LABELS: Record<DocumentFileRole, string> = {
   source: 'Źródło',
   'signed-scan': 'Podpisany skan',
@@ -536,17 +544,20 @@ export interface TimelineGroup {
   documents: TimelineDocument[];
 }
 
-export interface TimelineScale {
+export interface VisTimelineItem {
+  id: string;
+  group: string;
   start: string;
-  end: string;
-  width: number;
-  x: (date: string) => number;
+  end?: string;
+  type: 'point' | 'range';
+  content: string;
+  className: string;
+  title: string;
 }
 
-export interface TimelineTick {
-  date: string;
-  label: string;
-  year: string;
+export interface VisTimelineGroup {
+  id: string;
+  content: string;
 }
 
 type TimelineDocumentInput = Pick<
@@ -554,32 +565,12 @@ type TimelineDocumentInput = Pick<
   'id' | 'title' | 'docType' | 'documentDate' | 'periodStart' | 'periodEnd' | 'person' | 'files'
 >;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const TIMELINE_MIN_WIDTH = 720;
-const TIMELINE_DAY_WIDTH = 3.2;
-
 const dateMs = (date: string): number => {
   const parts = date.split('-').map((part) => Number(part));
   const year = parts.at(0) ?? 0;
   const month = parts.at(1) ?? 1;
   const day = parts.at(2) ?? 1;
   return Date.UTC(year, month - 1, day);
-};
-
-const isoDateFromMs = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
-
-const startOfMonth = (date: string): string => {
-  const parts = date.split('-').map((part) => Number(part));
-  const year = parts.at(0) ?? 0;
-  const month = parts.at(1) ?? 1;
-  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
-};
-
-const addMonths = (date: string, months: number): string => {
-  const parts = date.split('-').map((part) => Number(part));
-  const year = parts.at(0) ?? 0;
-  const month = parts.at(1) ?? 1;
-  return new Date(Date.UTC(year, month - 1 + months, 1)).toISOString().slice(0, 10);
 };
 
 const normalizeInterval = (start: string, end: string): TimelineInterval =>
@@ -646,47 +637,98 @@ export const groupDocumentsForTimeline = (
     .sort((left, right) => left.person.localeCompare(right.person, 'pl'));
 };
 
-export const createTimelineScale = (
-  intervals: TimelineInterval[],
-  minWidth = TIMELINE_MIN_WIDTH,
-): TimelineScale => {
-  if (intervals.length === 0) {
-    return {
-      start: '1970-01-01',
-      end: '1970-01-01',
-      width: minWidth,
-      x: () => 0,
-    };
-  }
-  const starts = intervals.map((interval) => dateMs(interval.start));
-  const ends = intervals.map((interval) => dateMs(interval.end));
-  const min = Math.min(...starts);
-  const max = Math.max(...ends);
-  const spanDays = Math.max(1, Math.round((max - min) / DAY_MS));
-  const width = Math.max(minWidth, Math.ceil(spanDays * TIMELINE_DAY_WIDTH));
+const escapeHtml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+const timelineDocumentTooltip = (document: TimelineDocument): string => {
+  const dates = document.instant
+    ? formatPolishDate(document.start)
+    : `${formatPolishDate(document.start)} - ${formatPolishDate(document.end)}`;
+  return `${escapeHtml(document.title)}\n${DOCUMENT_TYPE_LABELS[document.docType]}\n${dates}\n${
+    SIGNATURE_STATUS_LABELS[document.signed ? 'signed' : 'needs-signature']
+  }`;
+};
+
+export const toVisTimelineData = (
+  timelineGroups: TimelineGroup[],
+): { items: VisTimelineItem[]; groups: VisTimelineGroup[] } => {
+  const groups = [...timelineGroups].sort((left, right) =>
+    left.person.localeCompare(right.person, 'pl'),
+  );
   return {
-    start: isoDateFromMs(min),
-    end: isoDateFromMs(max),
-    width,
-    x: (date: string) => ((dateMs(date) - min) / Math.max(1, max - min)) * width,
+    groups: groups.map(({ person }) => ({ id: person, content: escapeHtml(person) })),
+    items: groups.flatMap((group) =>
+      group.documents.map((document) => ({
+        id: document.id,
+        group: group.person,
+        start: document.start,
+        ...(document.instant ? {} : { end: document.end }),
+        type: document.instant ? 'point' : 'range',
+        content: `<span class="doc-mark" aria-label="${
+          document.signed ? 'Podpisane' : 'Do podpisania'
+        }">${document.signed ? '✓' : '○'}</span><span class="doc-title">${escapeHtml(
+          document.title,
+        )}</span>`,
+        className: `doc doc--${document.docType} ${
+          document.signed ? 'is-signed' : 'is-unsigned'
+        }`,
+        title: timelineDocumentTooltip(document),
+      })),
+    ),
   };
 };
 
-export const timelineMonthTicks = (scale: Pick<TimelineScale, 'start' | 'end'>): TimelineTick[] => {
-  const ticks: TimelineTick[] = [];
-  let cursor = startOfMonth(scale.start);
-  while (cursor <= scale.end) {
-    const parts = cursor.split('-');
-    const year = parts.at(0) ?? '';
-    const month = parts.at(1) ?? '';
-    ticks.push({
-      date: cursor,
-      label: `${month}.${year}`,
-      year,
-    });
-    cursor = addMonths(cursor, 1);
+export type VisTimelineRange = 'three-months' | 'year' | 'all';
+
+export const visTimelineWindowForRange = (
+  range: VisTimelineRange,
+  today: Date,
+): { start: Date; end: Date } | null => {
+  if (range === 'all') return null;
+  const year = today.getFullYear();
+  if (range === 'year') {
+    return {
+      start: new Date(year, 0, 1),
+      end: new Date(year, 11, 31, 23, 59, 59, 999),
+    };
   }
-  return ticks;
+  return {
+    start: new Date(year, today.getMonth() - 1, 1),
+    end: new Date(year, today.getMonth() + 2, 0, 23, 59, 59, 999),
+  };
+};
+
+export const formatVisTimelineMinorLabel = (date: Date, scale: string): string => {
+  if (scale === 'year') {
+    return new Intl.DateTimeFormat('pl-PL', { year: 'numeric' }).format(date);
+  }
+  if (scale === 'month') {
+    return new Intl.DateTimeFormat('pl-PL', { month: 'short' }).format(date);
+  }
+  if (scale === 'week' || scale === 'weekday' || scale === 'day') {
+    return new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short' }).format(date);
+  }
+  return new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit' }).format(date);
+};
+
+export const formatVisTimelineMajorLabel = (date: Date, scale: string): string => {
+  if (scale === 'year') return '';
+  if (scale === 'month') {
+    return new Intl.DateTimeFormat('pl-PL', { year: 'numeric' }).format(date);
+  }
+  if (scale === 'week' || scale === 'weekday' || scale === 'day') {
+    return new Intl.DateTimeFormat('pl-PL', { month: 'long', year: 'numeric' }).format(date);
+  }
+  return new Intl.DateTimeFormat('pl-PL', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
 };
 
 export const formatFileSize = (bytes: number): string => {
