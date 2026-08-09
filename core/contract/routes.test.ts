@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   API_PATHS,
   API_ROUTES,
+  PAD_SECRET_HEADER,
   apiTokenCreateInputSchema,
   apiTokenCreateOutputSchema,
   documentCreateInputSchema,
@@ -17,6 +18,13 @@ import {
   healthOutputSchema,
   healthReadyOutputSchema,
   meOutputSchema,
+  padSessionConsumeOutputSchema,
+  padSessionCreateOutputSchema,
+  padSessionRequestInputSchema,
+  padSessionRequestOutputSchema,
+  padSessionStateOutputSchema,
+  padSessionSubmitInputSchema,
+  padSessionSubmitOutputSchema,
   publicVersionSchema,
   savedSearchCreateInputSchema,
   savedSearchListOutputSchema,
@@ -87,6 +95,77 @@ describe('API route contract', () => {
       method: 'PUT',
       path: '/api/me/preferences/:key',
     });
+    expect(PAD_SECRET_HEADER).toBe('x-pad-secret');
+    expect(API_ROUTES.padSessionsCreate).toEqual({
+      method: 'POST',
+      path: '/api/pad-sessions',
+    });
+    expect(API_ROUTES.padSessionState).toEqual({
+      method: 'GET',
+      path: '/api/pad-sessions/:sessionId/state',
+    });
+    expect(API_ROUTES.padSessionRequest).toEqual({
+      method: 'POST',
+      path: '/api/pad-sessions/:sessionId/request',
+    });
+    expect(API_ROUTES.padSessionSubmit).toEqual({
+      method: 'POST',
+      path: '/api/pad-sessions/:sessionId/submit',
+    });
+    expect(API_ROUTES.padSessionConsume).toEqual({
+      method: 'POST',
+      path: '/api/pad-sessions/:sessionId/consume',
+    });
+    expect(API_ROUTES.padSessionClose).toEqual({
+      method: 'POST',
+      path: '/api/pad-sessions/:sessionId/close',
+    });
+  });
+
+  it('validates pad session contracts and stroke payloads', () => {
+    const request = {
+      requestId: '22222222-2222-4222-8222-222222222222',
+      documentTitle: 'Umowa',
+    };
+    const strokes = {
+      requestId: request.requestId,
+      inkColor: 'black',
+      sourceSize: { width: 834, height: 620 },
+      strokes: [
+        {
+          points: [
+            { x: 0.1, y: 0.2, pressure: 0.5 },
+            { x: 0.5, y: 0.8, pressure: 0.7 },
+          ],
+        },
+      ],
+    };
+    expect(
+      padSessionCreateOutputSchema.safeParse({
+        secret: 'secret',
+        session: {
+          id: '11111111-1111-4111-8111-111111111111',
+          tenantId: 'tenant-default',
+          createdBy: 'user-owner',
+          status: 'active',
+          createdAt: '2026-08-04T10:00:00.000Z',
+          expiresAt: '2026-08-04T14:00:00.000Z',
+          currentRequest: null,
+        },
+      }).success,
+    ).toBe(true);
+    expect(padSessionStateOutputSchema.safeParse({ status: 'active', currentRequest: request }).success).toBe(true);
+    expect(padSessionRequestInputSchema.safeParse({ documentTitle: ' Umowa ' }).success).toBe(true);
+    expect(padSessionRequestOutputSchema.safeParse({ request }).success).toBe(true);
+    expect(padSessionSubmitInputSchema.safeParse(strokes).success).toBe(true);
+    expect(padSessionSubmitOutputSchema.safeParse({ submitted: true }).success).toBe(true);
+    expect(padSessionConsumeOutputSchema.safeParse({ submittedStrokes: strokes }).success).toBe(true);
+    expect(
+      padSessionSubmitInputSchema.safeParse({
+        ...strokes,
+        strokes: [{ points: [{ x: 1.2, y: 0.2, pressure: 0.5 }] }],
+      }).success,
+    ).toBe(false);
   });
 
   it('validates document writes and trusted archive identity', () => {

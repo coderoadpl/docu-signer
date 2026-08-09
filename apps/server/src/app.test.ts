@@ -5,10 +5,11 @@ import { createDb } from '#adapters/db/client.js';
 import {
   API_PATHS,
   API_ROUTES,
+  PAD_SECRET_HEADER,
   looseEnvelopeSchema,
   TENANT_HEADER,
 } from '#core/contract/index.js';
-import { ok, type Document, type DocumentListFilter } from '#core/domain/index.js';
+import { ok, type Document, type DocumentListFilter, type PadSession } from '#core/domain/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
 
 import { buildApp } from './app.js';
@@ -65,6 +66,25 @@ const baseDeps = (): AppDeps => ({
     findFile: async () => null,
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
+  },
+  padSessions: {
+    create: async (input) => ({
+      ...input,
+      status: 'active',
+      createdAt: '2026-08-02T00:00:00.000Z',
+      currentRequest: null,
+      submittedStrokes: null,
+    }),
+    findById: async () => null,
+    requestSignature: async () => null,
+    submitStrokes: async () => null,
+    consumeStrokes: async () => null,
+    close: async () => false,
+  },
+  padSessionSecrets: {
+    generate: () => 'pad_secret',
+    hash: (value) => value,
+    matchesHash: (value, tokenHash) => value === tokenHash,
   },
   savedSearches: {
     listByTenant: async () => [],
@@ -291,6 +311,128 @@ describe('buildApp', () => {
 
     const anonymous = await buildApp(baseDeps()).request(API_ROUTES.documentsTrash.path);
     expect(anonymous.status).toBe(401);
+  });
+
+  it('drives pad session routes through the contract handlers', async () => {
+    const deps = authorizedDeps();
+    const requestId = '22222222-2222-4222-8222-222222222222';
+    const padSession: PadSession = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: tenant.id,
+      createdBy: user.userId,
+      secretHash: 'hash:pad_secret',
+      status: 'active' as const,
+      createdAt: '2026-08-04T10:00:00.000Z',
+      expiresAt: '2099-08-04T14:00:00.000Z',
+      currentRequest: null,
+      submittedStrokes: null,
+    };
+    let currentPadSession = padSession;
+    deps.ids = { nextId: () => requestId };
+    deps.padSessionSecrets = {
+      generate: () => 'pad_secret',
+      hash: (value) => `hash:${value}`,
+      matchesHash: (value, tokenHash) => `hash:${value}` === tokenHash,
+    };
+    deps.padSessions = {
+      create: async (input) => {
+        currentPadSession = { ...padSession, ...input, id: requestId };
+        return currentPadSession;
+      },
+      findById: async () => currentPadSession,
+      requestSignature: async (_tenantId, _sessionId, request) => {
+        currentPadSession = {
+          ...currentPadSession,
+          currentRequest: request,
+        };
+        return currentPadSession;
+      },
+      submitStrokes: async (_tenantId, _sessionId, strokes) => {
+        currentPadSession = {
+          ...currentPadSession,
+          submittedStrokes: strokes,
+        };
+        return currentPadSession;
+      },
+      consumeStrokes: async () => ({
+        requestId,
+        inkColor: 'black',
+        sourceSize: { width: 834, height: 620 },
+        strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
+      }),
+      close: async () => true,
+    };
+    const app = buildApp(deps);
+    const tenantHeader = { [TENANT_HEADER]: tenant.slug };
+
+    const created = await app.request(API_ROUTES.padSessionsCreate.path, {
+      method: API_ROUTES.padSessionsCreate.method,
+      headers: tenantHeader,
+    });
+    expect(created.status).toBe(200);
+    await expect(created.json()).resolves.toMatchObject({
+      ok: true,
+      data: { secret: 'pad_secret' },
+    });
+
+    const state = await app.request(
+      API_ROUTES.padSessionState.path.replace(':sessionId', padSession.id),
+      { headers: { ...tenantHeader, [PAD_SECRET_HEADER]: 'pad_secret' } },
+    );
+    expect(state.status).toBe(200);
+
+    const requested = await app.request(
+      API_ROUTES.padSessionRequest.path.replace(':sessionId', padSession.id),
+      {
+        method: API_ROUTES.padSessionRequest.method,
+        headers: tenantHeader,
+        body: JSON.stringify({ documentTitle: 'Umowa' }),
+      },
+    );
+    await expect(requested.json()).resolves.toMatchObject({
+      ok: true,
+      data: { request: { requestId, documentTitle: 'Umowa' } },
+    });
+
+    const submitted = await app.request(
+      API_ROUTES.padSessionSubmit.path.replace(':sessionId', padSession.id),
+      {
+        method: API_ROUTES.padSessionSubmit.method,
+        headers: {
+          ...tenantHeader,
+          'content-type': 'application/json',
+          [PAD_SECRET_HEADER]: 'pad_secret',
+        },
+        body: JSON.stringify({
+          requestId,
+          inkColor: 'black',
+          sourceSize: { width: 834, height: 620 },
+          strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
+        }),
+      },
+    );
+    await expect(submitted.json()).resolves.toMatchObject({
+      ok: true,
+      data: { submitted: true },
+    });
+
+    const consumed = await app.request(
+      API_ROUTES.padSessionConsume.path.replace(':sessionId', padSession.id),
+      { method: API_ROUTES.padSessionConsume.method, headers: tenantHeader },
+    );
+    await expect(consumed.json()).resolves.toMatchObject({
+      ok: true,
+      data: { submittedStrokes: { requestId } },
+    });
+
+    const closed = await app.request(
+      API_ROUTES.padSessionClose.path.replace(':sessionId', padSession.id),
+      { method: API_ROUTES.padSessionClose.method, headers: tenantHeader },
+    );
+    await expect(closed.json()).resolves.toMatchObject({
+      ok: true,
+      data: { closed: true },
+    });
   });
 
   it('serves document file content and export responses', async () => {

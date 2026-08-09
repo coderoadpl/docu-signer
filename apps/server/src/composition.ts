@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { createDb } from '#adapters/db/client.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
+import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createSavedSearchRepository } from '#adapters/db/saved-searches-repository.js';
 import {
   createHealthPort,
@@ -10,7 +11,10 @@ import {
   createTenantRepository,
 } from '#adapters/db/repositories.js';
 import { createAuth, createAuthPort, type Auth, type GoogleSettings } from '#adapters/auth/create-auth.js';
-import { createApiTokenSecrets } from '#adapters/auth/api-token-secrets.js';
+import {
+  createApiTokenSecrets,
+  createPadSessionSecrets,
+} from '#adapters/auth/api-token-secrets.js';
 import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
@@ -25,6 +29,8 @@ import type {
   EmailPort,
   HealthPort,
   IdGenerator,
+  PadSessionRepository,
+  PadSessionSecretPort,
   SavedSearchRepository,
   StoragePort,
   TenantAccessReader,
@@ -41,6 +47,8 @@ export interface AppDeps {
   apiTokens: ApiTokenRepository;
   apiTokenSecrets: ApiTokenSecretPort;
   documents: DocumentRepository;
+  padSessions: PadSessionRepository;
+  padSessionSecrets: PadSessionSecretPort;
   savedSearches: SavedSearchRepository;
   userPreferences: UserPreferenceRepository;
   storage: StoragePort;
@@ -165,6 +173,8 @@ export const createDeps = (env: Env): AppDeps => {
     apiTokens: createApiTokenRepository(db),
     apiTokenSecrets: createApiTokenSecrets(),
     documents: createDocumentRepository(db),
+    padSessions: createPadSessionRepository(db),
+    padSessionSecrets: createPadSessionSecrets(),
     savedSearches: createSavedSearchRepository(db),
     userPreferences: createUserPreferenceRepository(db),
     storage,

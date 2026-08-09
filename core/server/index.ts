@@ -7,3 +7,4 @@ export * from './usecases/api-tokens.js';
 export * from './usecases/saved-searches.js';
 export * from './usecases/user-preferences.js';
 export * from './usecases/public.js';
+export * from './usecases/pad-sessions.js';

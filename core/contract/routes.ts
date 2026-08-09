@@ -12,6 +12,12 @@ import {
   exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
+  padSessionConsumeOutputSchema as domainPadSessionConsumeOutputSchema,
+  padSessionCreateOutputSchema as domainPadSessionCreateOutputSchema,
+  padSessionRequestInputSchema as domainPadSessionRequestInputSchema,
+  padSessionRequestOutputSchema as domainPadSessionRequestOutputSchema,
+  padSessionStateOutputSchema as domainPadSessionStateOutputSchema,
+  padSubmittedStrokesSchema as domainPadSessionSubmitInputSchema,
   moveDocumentFileSchema,
   publicTenantProfileSchema,
   savedSearchSchema,
@@ -180,6 +186,26 @@ export const userPreferenceSetOutputSchema = z.object({
   preference: userPreferenceSchema,
 });
 
+export const padSessionCreateOutputSchema = domainPadSessionCreateOutputSchema;
+
+export const padSessionStateOutputSchema = domainPadSessionStateOutputSchema;
+
+export const padSessionRequestInputSchema = domainPadSessionRequestInputSchema;
+
+export const padSessionRequestOutputSchema = domainPadSessionRequestOutputSchema;
+
+export const padSessionSubmitInputSchema = domainPadSessionSubmitInputSchema;
+
+export const padSessionSubmitOutputSchema = z.object({
+  submitted: z.literal(true),
+});
+
+export const padSessionConsumeOutputSchema = domainPadSessionConsumeOutputSchema;
+
+export const padSessionCloseOutputSchema = z.object({
+  closed: z.literal(true),
+});
+
 export const PUBLIC_API_PREFIX = '/api/public';
 
 export const PUBLIC_API_ROUTES = {
@@ -259,6 +285,12 @@ export const API_ROUTES = {
   apiTokenRevoke: { method: 'POST', path: '/api/api-tokens/:apiTokenId/revoke' },
   userPreference: { method: 'GET', path: '/api/me/preferences/:key' },
   userPreferenceSet: { method: 'PUT', path: '/api/me/preferences/:key' },
+  padSessionsCreate: { method: 'POST', path: '/api/pad-sessions' },
+  padSessionState: { method: 'GET', path: '/api/pad-sessions/:sessionId/state' },
+  padSessionRequest: { method: 'POST', path: '/api/pad-sessions/:sessionId/request' },
+  padSessionSubmit: { method: 'POST', path: '/api/pad-sessions/:sessionId/submit' },
+  padSessionConsume: { method: 'POST', path: '/api/pad-sessions/:sessionId/consume' },
+  padSessionClose: { method: 'POST', path: '/api/pad-sessions/:sessionId/close' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -275,3 +307,4 @@ export const API_PATHS = {
 } as const;
 
 export const TENANT_HEADER = 'x-tenant';
+export const PAD_SECRET_HEADER = 'x-pad-secret';

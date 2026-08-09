@@ -69,6 +69,25 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
   },
+  padSessions: {
+    create: async (input) => ({
+      ...input,
+      status: 'active',
+      createdAt: '2026-08-02T00:00:00.000Z',
+      currentRequest: null,
+      submittedStrokes: null,
+    }),
+    findById: async () => null,
+    requestSignature: async () => null,
+    submitStrokes: async () => null,
+    consumeStrokes: async () => null,
+    close: async () => false,
+  },
+  padSessionSecrets: {
+    generate: () => 'pad_secret',
+    hash: (value) => value,
+    matchesHash: (value, tokenHash) => value === tokenHash,
+  },
   savedSearches: {
     listByTenant: async () => [],
     create: async (input) => ({

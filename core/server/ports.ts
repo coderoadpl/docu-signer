@@ -4,6 +4,9 @@ import type {
   Document,
   DocumentFile,
   DocumentListFilter,
+  PadSession,
+  PadSignatureRequest,
+  PadSubmittedStrokes,
   SavedSearch,
   Result,
   StaffRole,
@@ -90,6 +93,31 @@ export interface SavedSearchRepository {
 export interface UserPreferenceRepository {
   get(userId: string, key: string): Promise<UserPreference | null>;
   set(userId: string, key: string, value: UserPreferenceValue): Promise<UserPreference>;
+}
+
+export interface PadSessionRepository {
+  create(
+    input: Omit<PadSession, 'createdAt' | 'currentRequest' | 'submittedStrokes' | 'status'>,
+  ): Promise<PadSession>;
+  findById(tenantId: string, sessionId: string): Promise<PadSession | null>;
+  requestSignature(
+    tenantId: string,
+    sessionId: string,
+    request: PadSignatureRequest,
+  ): Promise<PadSession | null>;
+  submitStrokes(
+    tenantId: string,
+    sessionId: string,
+    strokes: PadSubmittedStrokes,
+  ): Promise<PadSession | null>;
+  consumeStrokes(tenantId: string, sessionId: string): Promise<PadSubmittedStrokes | null>;
+  close(tenantId: string, sessionId: string): Promise<boolean>;
+}
+
+export interface PadSessionSecretPort {
+  generate(): string;
+  hash(value: string): string;
+  matchesHash(value: string, tokenHash: string): boolean;
 }
 
 export interface UploadTarget {
