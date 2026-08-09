@@ -12,9 +12,10 @@ import {
   Paper,
   Slider,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -23,15 +24,19 @@ import { SigningShell } from '../../components/layout/SigningShell.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { InkSurface, SigningPageSurface } from '../../theme.js';
 import {
+  DEFAULT_SIGNING_INK_COLOR,
+  SIGNING_INK_COLORS,
   placeInkPoint,
   pointerToInkPoint,
   signedFileName,
+  signingInkColorById,
   smoothStroke,
   type CanvasPdfMetrics,
   type InkStroke,
   type SignaturePlacement,
+  type SigningInkColorId,
 } from './core/signing.js';
-import { uploadErrorMessage } from './documents.logic.js';
+import { canSignPdfFile, uploadErrorMessage } from './documents.logic.js';
 import {
   flattenSignedPdf,
   loadSourcePdf,
@@ -124,7 +129,6 @@ export const DocumentSigningPage = ({
 }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const theme = useTheme();
   const documentQuery = useQuery(actions.document(documentId));
   const sourceQuery = useQuery(actions.documentFile(documentId, fileId));
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -148,6 +152,9 @@ export const DocumentSigningPage = ({
   const [activeStroke, setActiveStroke] = useState<InkStroke>();
   const [placing, setPlacing] = useState(false);
   const [placement, setPlacement] = useState(DEFAULT_PLACEMENT);
+  const [inkColorId, setInkColorId] = useState<SigningInkColorId>(
+    DEFAULT_SIGNING_INK_COLOR.id,
+  );
   const [commitError, setCommitError] = useState<string>();
   const requestUpload = useMutation(actions.requestFileUpload);
   const directUpload = useMutation(actions.directFileUpload);
@@ -161,9 +168,8 @@ export const DocumentSigningPage = ({
   const sourceFile = documentQuery.data?.document.files.find(
     (file) => file.id === fileId,
   );
-  const signable =
-    sourceFile?.role === 'source' &&
-    sourceFile.contentType.toLowerCase() === 'application/pdf';
+  const signable = sourceFile ? canSignPdfFile(sourceFile) : false;
+  const inkColor = signingInkColorById(inkColorId);
 
   useEffect(() => {
     if (!sourceQuery.data || !signable) return;
@@ -221,9 +227,9 @@ export const DocumentSigningPage = ({
       activeStroke ? [...strokes, activeStroke] : strokes,
       placement,
       metrics,
-      theme.palette.text.primary,
+      inkColor.canvasColor,
     );
-  }, [activeStroke, metrics, placement, strokes, theme.palette.text.primary]);
+  }, [activeStroke, inkColor.canvasColor, metrics, placement, strokes]);
 
   if (documentQuery.isPending || sourceQuery.isPending) {
     return (
@@ -267,7 +273,8 @@ export const DocumentSigningPage = ({
         <StatusView
           state={{
             kind: 'error',
-            message: 'Do podpisania można wybrać tylko źródłowy plik PDF.',
+            message:
+              'Do podpisania można wybrać tylko źródłowy albo podpisany cyfrowo plik PDF.',
           }}
         />
       </SigningShell>
@@ -310,6 +317,7 @@ export const DocumentSigningPage = ({
         strokes,
         placement,
         { ...metrics, cssWidth: bounds.width, cssHeight: bounds.height },
+        inkColor,
       );
       const output = new File(
         [bytesAsArrayBuffer(signedBytes)],
@@ -387,6 +395,26 @@ export const DocumentSigningPage = ({
             >
               {placing ? 'Wróć do rysowania' : 'Ustaw podpis'}
             </Button>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={inkColorId}
+              onChange={(_, selected: SigningInkColorId | null) => {
+                if (selected) setInkColorId(selected);
+              }}
+              aria-label="Kolor tuszu"
+            >
+              {SIGNING_INK_COLORS.map((color) => (
+                <ToggleButton
+                  key={color.id}
+                  value={color.id}
+                  disabled={committing}
+                  aria-label={color.label}
+                >
+                  {color.label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
           </Stack>
           {placing ? (
             <Stack direction="row" sx={{ alignItems: 'center', gap: 2, mt: 1 }}>

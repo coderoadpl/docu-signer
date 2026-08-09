@@ -33,6 +33,7 @@ import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   FILE_ROLE_SYMBOLS,
+  canSignPdfFile,
   filesByRole,
   formatFileSize,
   toDocumentInput,
@@ -110,8 +111,7 @@ const FileRow = ({
           Pobierz
         </Link>
         <Link href={exportUrl}>Eksportuj</Link>
-        {file.role === 'source' &&
-        file.contentType.toLowerCase() === 'application/pdf' ? (
+        {canSignPdfFile(file) ? (
           <Button variant="contained" onClick={() => onSign(file)}>
             Podpisz
           </Button>

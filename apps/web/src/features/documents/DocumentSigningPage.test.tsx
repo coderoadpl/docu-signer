@@ -233,12 +233,23 @@ describe('DocumentSigningPage', () => {
     await renderPage();
     await drawStroke();
 
+    await userEvent.click(screen.getByRole('button', { name: 'Granatowy' }));
     const save = screen.getByRole('button', { name: 'Zapisz podpisany PDF' });
     await waitFor(() => expect(save).toBeEnabled());
     await userEvent.click(save);
 
     await waitFor(() => expect(uploaded).toBeDefined());
-    expect(pdfMocks.flatten).toHaveBeenCalledOnce();
+    expect(pdfMocks.flatten).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      0,
+      expect.any(Array),
+      expect.any(Object),
+      expect.any(Object),
+      expect.objectContaining({
+        id: 'navy',
+        canvasColor: '#1c2a5e',
+      }),
+    );
     expect(uploaded).toEqual({
       byteLength: 2048,
       contentType: 'application/pdf',

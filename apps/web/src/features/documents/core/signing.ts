@@ -28,6 +28,39 @@ export interface PdfInkSegment {
   width: number;
 }
 
+export type SigningInkColorId = 'black' | 'navy';
+
+export interface SigningInkColor {
+  id: SigningInkColorId;
+  label: string;
+  canvasColor: string;
+  pdfColor: {
+    red: number;
+    green: number;
+    blue: number;
+  };
+}
+
+export const SIGNING_INK_COLORS: readonly [SigningInkColor, SigningInkColor] = [
+  {
+    id: 'black',
+    label: 'Czarny',
+    canvasColor: '#0a0a0a',
+    pdfColor: { red: 0.04, green: 0.04, blue: 0.04 },
+  },
+  {
+    id: 'navy',
+    label: 'Granatowy',
+    canvasColor: '#1c2a5e',
+    pdfColor: { red: 0.11, green: 0.16, blue: 0.37 },
+  },
+];
+
+export const DEFAULT_SIGNING_INK_COLOR = SIGNING_INK_COLORS[0];
+
+export const signingInkColorById = (id: SigningInkColorId): SigningInkColor =>
+  SIGNING_INK_COLORS.find((color) => color.id === id) ?? DEFAULT_SIGNING_INK_COLOR;
+
 interface SmoothedSegment {
   start: InkPoint;
   control: InkPoint;
@@ -213,5 +246,10 @@ export const inkToPdfSegments = (
 
 export const signedFileName = (sourceName: string): string => {
   const stem = sourceName.replace(/\.pdf$/iu, '');
-  return `${stem || 'dokument'}-podpisany.pdf`;
+  const baseStem = stem || 'dokument';
+  const signedMatch = /^(.*-podpisany)(?:-(\d+))?$/u.exec(baseStem);
+  if (!signedMatch) return `${baseStem}-podpisany.pdf`;
+  const signedStem = signedMatch[1] ?? baseStem;
+  const currentVersion = signedMatch[2] ? Number(signedMatch[2]) : 1;
+  return `${signedStem}-${currentVersion + 1}.pdf`;
 };

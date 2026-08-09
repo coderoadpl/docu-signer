@@ -176,6 +176,13 @@ describe('pen signing geometry', () => {
       )[0]?.path,
     ).toContain('Q 183.6 -435.6 183.61 -435.6');
     expect(signedFileName('Umowa.PDF')).toBe('Umowa-podpisany.pdf');
+    expect(signedFileName('umowa.pdf')).toBe('umowa-podpisany.pdf');
+    expect(signedFileName('umowa-podpisany.pdf')).toBe(
+      'umowa-podpisany-2.pdf',
+    );
+    expect(signedFileName('umowa-podpisany-2.pdf')).toBe(
+      'umowa-podpisany-3.pdf',
+    );
     expect(signedFileName('.pdf')).toBe('dokument-podpisany.pdf');
   });
 });

@@ -82,6 +82,12 @@ export const filesByRole = (
   other: files.filter((file) => file.role === 'other'),
 });
 
+export const canSignPdfFile = (
+  file: Pick<DocumentFile, 'role' | 'contentType'>,
+): boolean =>
+  (file.role === 'source' || file.role === 'signed-digital') &&
+  file.contentType.toLowerCase() === 'application/pdf';
+
 export const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

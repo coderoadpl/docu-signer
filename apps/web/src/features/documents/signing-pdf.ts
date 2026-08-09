@@ -8,6 +8,7 @@ import {
   type CanvasPdfMetrics,
   type InkStroke,
   type SignaturePlacement,
+  type SigningInkColor,
 } from './core/signing.js';
 
 const viewportTransformSchema = z.tuple([
@@ -73,6 +74,7 @@ export const flattenSignedPdf = async (
   strokes: InkStroke[],
   placement: SignaturePlacement,
   metrics: CanvasPdfMetrics,
+  inkColor: SigningInkColor,
 ): Promise<Uint8Array> => {
   const { LineCapStyle, PDFDocument, rgb } = await import('pdf-lib');
   const pdf = await PDFDocument.load(sourceBytes, { updateMetadata: false });
@@ -81,7 +83,11 @@ export const flattenSignedPdf = async (
     page.drawSvgPath(segment.path, {
       x: 0,
       y: 0,
-      borderColor: rgb(0.04, 0.04, 0.04),
+      borderColor: rgb(
+        inkColor.pdfColor.red,
+        inkColor.pdfColor.green,
+        inkColor.pdfColor.blue,
+      ),
       borderWidth: segment.width,
       borderLineCap: LineCapStyle.Round,
     });
