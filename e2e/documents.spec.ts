@@ -200,6 +200,17 @@ const placeSignaturePadStroke = async ({
   await expectCanvasInkGrew(pageCanvas, pageBefore);
 };
 
+const reopenSigningPage = async (page: Page, sourceName: string) => {
+  await page.getByRole('button', { name: 'Zamknij' }).click();
+  const sourceSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Źródło/ }) });
+  await expect(sourceSection.getByText(sourceName)).toBeVisible();
+  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
+  await expect(page.getByRole('heading', { name: 'Podpisz dokument' })).toBeVisible();
+  await expect(page.getByText('Strona 1 z 2')).toBeVisible();
+};
+
 const signVisiblePdf = async (page: Page) => {
   await expect(
     page.getByRole('heading', { name: 'Podpisz dokument' }),
@@ -437,10 +448,11 @@ test.describe('signature pad dialog', () => {
 
   test('accepts pen and touch pointers and places stamps', async ({ page }) => {
     const stamp = Date.now();
+    const sourceName = `signature-pad-${stamp}.pdf`;
     await createSignableDocument(
       page,
       `Signature pad e2e ${stamp}`,
-      `signature-pad-${stamp}.pdf`,
+      sourceName,
     );
 
     await placeSignaturePadStroke({
@@ -480,5 +492,16 @@ test.describe('signature pad dialog', () => {
     await expect(
       page.getByRole('button', { name: 'Zapisz podpisany PDF' }),
     ).toBeEnabled();
+
+    await reopenSigningPage(page, sourceName);
+    await placeSignaturePadStroke({
+      page,
+      pointerType: 'pen',
+      points: [
+        { x: 0.28, y: 0.48 },
+        { x: 0.44, y: 0.36 },
+        { x: 0.62, y: 0.5 },
+      ],
+    });
   });
 });

@@ -212,18 +212,24 @@ const SignaturePadDialog = ({
     if (!open) return;
     if (!canvasElement) return;
     const updateMetrics = () => {
+      if (canvasRef.current !== canvasElement) return;
       const next = canvasMetrics(canvasElement);
       if (next) setMetrics(next);
     };
     updateMetrics();
+    const animationFrame = window.requestAnimationFrame(updateMetrics);
     if (typeof ResizeObserver === 'undefined') {
       window.addEventListener('resize', updateMetrics);
-      return () => window.removeEventListener('resize', updateMetrics);
+      return () => {
+        window.cancelAnimationFrame(animationFrame);
+        window.removeEventListener('resize', updateMetrics);
+      };
     }
     const observer = new ResizeObserver(updateMetrics);
     observer.observe(canvasElement);
     window.addEventListener('resize', updateMetrics);
     return () => {
+      window.cancelAnimationFrame(animationFrame);
       observer.disconnect();
       window.removeEventListener('resize', updateMetrics);
     };
@@ -443,6 +449,29 @@ export const DocumentSigningPage = ({
     metrics && metricsPageNumber === pageNumber && !pageRendering,
   );
   const canCommit = Boolean(pageReady && (stamps.length > 0 || strokes.length > 0));
+
+  useEffect(() => {
+    setPdf(undefined);
+    setPdfError(undefined);
+    setPageNumber(1);
+    setPageRendering(false);
+    setMetrics(undefined);
+    setMetricsPageNumber(undefined);
+    setStrokes([]);
+    setActiveStroke(undefined);
+    setPlacing(false);
+    setPlacement(DEFAULT_PLACEMENT);
+    setStamps([]);
+    setSelectedStampIndex(undefined);
+    setSignaturePadOpen(false);
+    setCommitError(undefined);
+    currentStrokeRef.current = undefined;
+    activePointerRef.current = undefined;
+    activePointerTypeRef.current = undefined;
+    activePenPointerRef.current = undefined;
+    lastPenSeenAtRef.current = undefined;
+    placementDragRef.current = undefined;
+  }, [documentId, fileId]);
 
   useEffect(() => {
     if (!sourceQuery.data || !signable) return;
