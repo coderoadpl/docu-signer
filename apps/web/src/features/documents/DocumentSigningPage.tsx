@@ -40,10 +40,11 @@ import {
   defaultSigningGestureMode,
   documentPointerDrawsInk,
   fitInkStrokesToPage,
+  inkToCanvasOutlines,
   isPalmSizedTouch,
-  placeInkPoint,
   penPriorityActive,
   pointerEventToInkPoints,
+  pointerEventUsesSimulatedPressure,
   placedInkBounds,
   removeSigningStamp,
   signingStampContainsPoint,
@@ -51,9 +52,9 @@ import {
   signedFileName,
   signedDigitalSourceHint,
   signingInkColorById,
-  smoothStroke,
   stampEveryPage,
   updateSigningStampPlacement,
+  type InkOutlinePoint,
   type CanvasPdfMetrics,
   type InkStroke,
   type SignaturePlacement,
@@ -117,6 +118,15 @@ const releasePointerCapture = (element: HTMLCanvasElement, pointerId: number) =>
 };
 
 const buttonTouchSx = { touchAction: 'manipulation' } as const;
+const selectionLockSx = {
+  WebkitTouchCallout: 'none',
+  WebkitUserSelect: 'none',
+  userSelect: 'none',
+} as const;
+const dialogSelectionLockSx = {
+  ...selectionLockSx,
+  '& *': selectionLockSx,
+} as const;
 
 const BusyButtonProgress = () => (
   <CircularProgress size={18} color="inherit" aria-hidden="true" />
@@ -129,6 +139,38 @@ interface InkLayer {
   selected: boolean;
 }
 
+const drawOutline = (
+  context: CanvasRenderingContext2D,
+  points: readonly InkOutlinePoint[],
+) => {
+  const first = points[0];
+  const second = points[1];
+  const third = points[2];
+  if (!first || !second || !third || points.length < 4) return;
+
+  context.beginPath();
+  context.moveTo(first.x, first.y);
+  context.quadraticCurveTo(
+    second.x,
+    second.y,
+    (second.x + third.x) / 2,
+    (second.y + third.y) / 2,
+  );
+  for (let index = 2; index < points.length - 1; index += 1) {
+    const point = points[index];
+    const next = points[index + 1];
+    if (!point || !next) continue;
+    context.quadraticCurveTo(
+      point.x,
+      point.y,
+      (point.x + next.x) / 2,
+      (point.y + next.y) / 2,
+    );
+  }
+  context.closePath();
+  context.fill();
+};
+
 const drawInk = (
   canvas: HTMLCanvasElement,
   layers: InkLayer[],
@@ -137,33 +179,14 @@ const drawInk = (
   const context = canvas.getContext('2d');
   if (!context) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
   for (const layer of layers) {
-    context.strokeStyle = layer.color;
-    for (const stroke of layer.strokes) {
-      const placed = {
-        points: stroke.points.map((point) =>
-          placeInkPoint(point, layer.strokes, layer.placement),
-        ),
-      };
-      for (const segment of smoothStroke(placed)) {
-        const pressure =
-          (segment.start.pressure + segment.control.pressure + segment.end.pressure) / 3;
-        context.beginPath();
-        context.moveTo(
-          segment.start.x * canvas.width,
-          segment.start.y * canvas.height,
-        );
-        context.quadraticCurveTo(
-          segment.control.x * canvas.width,
-          segment.control.y * canvas.height,
-          segment.end.x * canvas.width,
-          segment.end.y * canvas.height,
-        );
-        context.lineWidth = (1.5 + pressure * 2.5) * metrics.devicePixelRatio;
-        context.stroke();
-      }
+    context.fillStyle = layer.color;
+    for (const outline of inkToCanvasOutlines(
+      layer.strokes,
+      layer.placement,
+      metrics,
+    )) {
+      drawOutline(context, outline.points);
     }
     if (layer.selected) {
       const bounds = placedInkBounds(layer.strokes, layer.placement);
@@ -295,6 +318,13 @@ const SignaturePadDialog = ({
       event.nativeEvent,
       event.currentTarget.getBoundingClientRect(),
     );
+  const strokeForEvent = (event: ReactPointerEvent<HTMLCanvasElement>) => ({
+    points: pointsForEvent(event),
+    simulatePressure: pointerEventUsesSimulatedPressure(
+      event.nativeEvent,
+      event.pointerType,
+    ),
+  });
 
   const finishPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (activePointerRef.current !== event.pointerId) return;
@@ -308,9 +338,15 @@ const SignaturePadDialog = ({
   };
 
   return (
-    <Dialog open={open} onClose={onCancel} fullWidth maxWidth="md">
-      <DialogTitle>Złóż podpis</DialogTitle>
-      <DialogContent>
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      fullWidth
+      maxWidth="md"
+      slotProps={{ paper: { sx: dialogSelectionLockSx } }}
+    >
+      <DialogTitle sx={selectionLockSx}>Złóż podpis</DialogTitle>
+      <DialogContent sx={selectionLockSx}>
         <InkSurface
           ref={setCanvasRef}
           role="application"
@@ -323,9 +359,8 @@ const SignaturePadDialog = ({
             touchAction: 'none',
           }}
           onPointerDown={(event) => {
-            const points = pointsForEvent(event);
-            if (!points.length) return;
-            const stroke = { points };
+            const stroke = strokeForEvent(event);
+            if (!stroke.points.length) return;
             activePointerRef.current = event.pointerId;
             currentStrokeRef.current = stroke;
             setActiveStroke(stroke);
@@ -337,7 +372,10 @@ const SignaturePadDialog = ({
             const current = currentStrokeRef.current;
             if (!current) return;
             const points = pointsForEvent(event);
-            const next = { points: [...current.points, ...points] };
+            const next = {
+              ...current,
+              points: [...current.points, ...points],
+            };
             currentStrokeRef.current = next;
             setActiveStroke(next);
             event.preventDefault();
@@ -346,7 +384,14 @@ const SignaturePadDialog = ({
           onPointerCancel={finishPointer}
         />
       </DialogContent>
-      <DialogActions sx={{ flexWrap: 'wrap', gap: 1, touchAction: 'manipulation' }}>
+      <DialogActions
+        sx={{
+          flexWrap: 'wrap',
+          gap: 1,
+          touchAction: 'manipulation',
+          ...selectionLockSx,
+        }}
+      >
         <Button
           onClick={() => setStrokes((current) => current.slice(0, -1))}
           disabled={!strokes.length}
@@ -928,7 +973,6 @@ export const DocumentSigningPage = ({
       event.nativeEvent,
       event.currentTarget.getBoundingClientRect(),
     );
-
   const touchIgnoredForPenPriority = (
     event: ReactPointerEvent<HTMLCanvasElement>,
   ) =>
@@ -1582,7 +1626,13 @@ export const DocumentSigningPage = ({
               if (massMode) return;
               if (gestureMode === 'pan') return;
               if (!pointerDrawsInk(event)) return;
-              const stroke = { points };
+              const stroke = {
+                points,
+                simulatePressure: pointerEventUsesSimulatedPressure(
+                  event.nativeEvent,
+                  event.pointerType,
+                ),
+              };
               activePointerRef.current = event.pointerId;
               activePointerTypeRef.current = event.pointerType;
               currentStrokeRef.current = stroke;
@@ -1630,7 +1680,10 @@ export const DocumentSigningPage = ({
               if (activePointerRef.current !== event.pointerId) return;
               const current = currentStrokeRef.current;
               if (!current) return;
-              const next = { points: [...current.points, ...pointerPoints(event)] };
+              const next = {
+                ...current,
+                points: [...current.points, ...pointerPoints(event)],
+              };
               currentStrokeRef.current = next;
               setActiveStroke(next);
               event.preventDefault();

@@ -202,15 +202,19 @@ const enabledButton = async (name: string) => {
 };
 
 class RecordingCanvasContext {
+  fillStyle = '';
   strokeStyle = '';
-  lineCap: CanvasLineCap = 'butt';
-  lineJoin: CanvasLineJoin = 'miter';
   lineWidth = 1;
+  readonly fillStyles: string[] = [];
   readonly strokeStyles: string[] = [];
   readonly clearRect = vi.fn();
   readonly beginPath = vi.fn();
   readonly moveTo = vi.fn();
   readonly quadraticCurveTo = vi.fn();
+  readonly closePath = vi.fn();
+  readonly fill = vi.fn(() => {
+    this.fillStyles.push(this.fillStyle);
+  });
   readonly stroke = vi.fn(() => {
     this.strokeStyles.push(this.strokeStyle);
   });
@@ -927,7 +931,7 @@ describe('DocumentSigningPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Granatowy' }));
     await drawStroke();
 
-    await waitFor(() => expect(context.strokeStyles).toContain('#2244aa'));
+    await waitFor(() => expect(context.fillStyles).toContain('#2244aa'));
   });
 
   it('flattens and finalizes a new signed-digital PDF through direct upload', async () => {

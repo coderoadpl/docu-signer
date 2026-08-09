@@ -103,6 +103,9 @@ importers:
       pdfjs-dist:
         specifier: ^6.2.108
         version: 6.2.108
+      perfect-freehand:
+        specifier: 1.2.3
+        version: 1.2.3
       pg:
         specifier: ^8.16.3
         version: 8.22.0
@@ -3955,6 +3958,9 @@ packages:
   pdfjs-dist@6.2.108:
     resolution: {integrity: sha512-YxFb+SQcodN2rnX9Tn3dHYlqfb7NjlzzfONPpJd+AKoKtUjEdevTfbC07d5TcczzOK6261auRkP/M8OBHs9vFQ==}
     engines: {node: '>=22.13.0 || >=24'}
+
+  perfect-freehand@1.2.3:
+    resolution: {integrity: sha512-bHZSfqDHGNlPpgH2yxXgPHlQSPpEbo+qg7li0M78J9vNAi2yjwLeA4x79BEQhX44lEWpCLSFCeRZwpw0niiXPA==}
 
   pg-cloudflare@1.4.0:
     resolution: {integrity: sha512-Vo7z/6rrQYxpNRylp4Tlob2elzbh+N/MOQbxFVWCxS7oEx6jF53GTJFxK2WWpKuBRkmiin4Mt+xofFDjx09R0A==}
@@ -8584,6 +8590,8 @@ snapshots:
   pdfjs-dist@6.2.108:
     optionalDependencies:
       '@napi-rs/canvas': 1.0.3
+
+  perfect-freehand@1.2.3: {}
 
   pg-cloudflare@1.4.0:
     optional: true
