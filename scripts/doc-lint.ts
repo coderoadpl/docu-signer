@@ -11,6 +11,7 @@ import {
   serverEnvSchema,
 } from '#core/server/config.js';
 
+import { compareCspPolicies, parseHonoCsp, parseVercelCsp } from './csp-lint.js';
 import { lintMigrations } from './migration-lint.js';
 
 /**
@@ -42,6 +43,8 @@ const LEAKED_DELIMITERS = ['</content>', '</invoke>'];
 const eslintConfigPath = join(repoRoot, 'eslint.config.js');
 const depcruiseConfigPath = join(repoRoot, '.dependency-cruiser.cjs');
 const rulesDir = join(repoRoot, 'eslint-plugin-agentproofarch', 'rules');
+const serverAppPath = join(repoRoot, 'apps/server/src/app.ts');
+const vercelConfigPath = join(repoRoot, 'vercel.json');
 
 type ConfigTarget = 'eslint' | 'depcruise';
 
@@ -119,6 +122,16 @@ const configFileFor = (target: ConfigTarget): string =>
   target === 'eslint' ? 'eslint.config.js' : '.dependency-cruiser.cjs';
 
 const problems: string[] = [];
+
+try {
+  const serverCsp = parseHonoCsp(readFileSync(serverAppPath, 'utf8'), 'apps/server/src/app.ts');
+  const vercelCsp = parseVercelCsp(readFileSync(vercelConfigPath, 'utf8'), 'vercel.json');
+  problems.push(
+    ...compareCspPolicies(serverCsp, vercelCsp, 'apps/server/src/app.ts', 'vercel.json'),
+  );
+} catch (cause) {
+  problems.push(`[csp] could not compare apps/server/src/app.ts with vercel.json: ${String(cause)}`);
+}
 
 const trackedMarkdown = execFileSync('git', ['ls-files', '-z', '*.md'], {
   cwd: repoRoot,
@@ -379,6 +392,7 @@ const summary =
   `doc-lint: OK — ${DOC_PROMISED_ENFORCERS.length} promised enforcer(s) present, ` +
   `${ruleFiles.length} custom rule(s) documented, ${countTokensSeen} count token(s) verified, ` +
   `${declaredEnvKeys.size} config env key(s) matched bidirectionally, ` +
+  `server and Vercel CSP directives matched, ` +
   `${trackedMarkdown.length} tracked .md file(s) clean of dead links and leaked delimiters, ` +
   `migration sequence + journal consistent.`;
 process.stdout.write(`${summary}\n`);

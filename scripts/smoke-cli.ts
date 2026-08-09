@@ -46,6 +46,7 @@ export const run = (
   args: string[],
   env: NodeJS.ProcessEnv,
   cwd: string = rootDir,
+  stdin?: string,
 ): Promise<Run> =>
   new Promise((resolve) => {
     const child = spawn(cmd, args, { cwd, env: { ...process.env, ...env } });
@@ -61,6 +62,7 @@ export const run = (
       resolve({ code: 1, stdout, stderr: `${stderr}${String(cause)}` }),
     );
     child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    child.stdin?.end(stdin);
   });
 
 const envelope = z.discriminatedUnion('ok', [
@@ -232,10 +234,10 @@ export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<vo
   const authHome = mkdtempSync(join(tmpdir(), 'smoke-cli-auth-'));
   const anonHome = mkdtempSync(join(tmpdir(), 'smoke-cli-anon-'));
   homes.push(authHome, anonHome);
-  const cli = (args: string[], home = authHome): Promise<Run> =>
+  const cli = (args: string[], home = authHome, stdin?: string): Promise<Run> =>
     run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', target.baseUrl, ...args], {
       HOME: home,
-    });
+    }, rootDir, stdin);
 
   const health = healthSchema.parse(expectOk(await cli(['health']), 'health'));
   if (assertHealthAttestation(health.sha, target) === 'anonymous-only') return;
@@ -246,9 +248,8 @@ export const driveCli = async (target: SmokeTarget, homes: string[]): Promise<vo
       'login',
       '--email',
       target.email,
-      '--password',
-      target.password,
-    ]),
+      '--password-stdin',
+    ], authHome, `${target.password}\n`),
     'login',
   );
   const me = meSchema.parse(expectOk(await cli(['whoami']), 'whoami'));
