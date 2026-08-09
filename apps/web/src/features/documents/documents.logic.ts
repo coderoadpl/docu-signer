@@ -27,11 +27,11 @@ export const FILE_ROLE_LABELS: Record<DocumentFileRole, string> = {
   other: 'Inne',
 };
 
-export const FILE_ROLE_SYMBOLS: Record<DocumentFileRole, string> = {
-  source: '◻',
-  'signed-scan': '▧',
-  'signed-digital': '✦',
-  other: '•',
+export const FILE_ROLE_SHORT_LABELS: Record<DocumentFileRole, string> = {
+  source: 'Źródło',
+  'signed-scan': 'Skan',
+  'signed-digital': 'Cyfrowy',
+  other: 'Inne',
 };
 
 export const SIGNATURE_STATUS_LABELS: Record<DocumentSignatureStatus, string> = {
