@@ -10,24 +10,28 @@ import {
   defaultSigningGestureMode,
   documentPointerDrawsInk,
   fitInkStrokesToPage,
-  inkToPdfSegments,
+  inkToCanvasOutlines,
+  inkToPdfPaths,
   isPalmSizedTouch,
+  outlinePointsToSvgPath,
   placeInkPoint,
   penPriorityActive,
   placedInkBounds,
   pointerEventToInkPoints,
+  pointerEventUsesSimulatedPressure,
   removeSigningStamp,
   pointerToInkPoint,
   signingStampContainsPoint,
   signingStampsForPage,
+  signingInkColorById,
   signedFileName,
   signedDigitalSourceHint,
-  smoothStroke,
   stampEveryPage,
   updateSigningStampPlacement,
   DEFAULT_SIGNING_INK_COLOR,
   SIGNING_INK_COLORS,
   type CanvasPdfMetrics,
+  type InkOutlinePoint,
   type InkStroke,
 } from './signing.js';
 
@@ -41,6 +45,25 @@ const metrics = (
   devicePixelRatio: 2,
   viewportTransform,
 });
+
+const outlineBounds = (points: readonly InkOutlinePoint[]) => {
+  const first = points[0];
+  if (!first) throw new Error('Expected outline points');
+  return points.slice(1).reduce(
+    (bounds, point) => ({
+      left: Math.min(bounds.left, point.x),
+      right: Math.max(bounds.right, point.x),
+      top: Math.min(bounds.top, point.y),
+      bottom: Math.max(bounds.bottom, point.y),
+    }),
+    {
+      left: first.x,
+      right: first.x,
+      top: first.y,
+      bottom: first.y,
+    },
+  );
+};
 
 describe('pen signing geometry', () => {
   it('normalizes pointer coordinates and pressure with a mouse fallback', () => {
@@ -73,37 +96,12 @@ describe('pen signing geometry', () => {
         pdfColor: { red: 0.13, green: 0.27, blue: 0.67 },
       }),
     );
+    expect(signingInkColorById('black')).toBe(DEFAULT_SIGNING_INK_COLOR);
+    expect(signingInkColorById('navy')).toBe(SIGNING_INK_COLORS[1]);
   });
 
-  it('smooths a polyline with quadratic midpoints and preserves a dot', () => {
-    const stroke: InkStroke = {
-      points: [
-        { x: 0, y: 0, pressure: 0.25 },
-        { x: 0.25, y: 0.5, pressure: 0.25 },
-        { x: 0.75, y: 1, pressure: 0.75 },
-      ],
-    };
-    expect(smoothStroke(stroke)).toEqual([
-      {
-        start: stroke.points[0],
-        control: stroke.points[1],
-        end: { x: 0.5, y: 0.75, pressure: 0.5 },
-      },
-      {
-        start: { x: 0.5, y: 0.75, pressure: 0.5 },
-        control: stroke.points[2],
-        end: stroke.points[2],
-      },
-    ]);
-    const dot = { points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] };
-    expect(smoothStroke(dot)).toEqual([
-      { start: dot.points[0], control: dot.points[0], end: dot.points[0] },
-    ]);
-    expect(smoothStroke({ points: [] })).toEqual([]);
-  });
-
-  it('uses the same quadratic curve geometry for PDF paths', () => {
-    const segments = inkToPdfSegments(
+  it('builds closed filled outline geometry for PDF paths', () => {
+    const paths = inkToPdfPaths(
       [
         {
           points: [
@@ -124,10 +122,10 @@ describe('pen signing geometry', () => {
       },
     );
 
-    expect(segments.map((segment) => segment.path)).toEqual([
-      'M 0 -100 Q 50 -40 75 -60',
-      'M 75 -60 Q 100 -80 100 -80',
-    ]);
+    expect(paths).toHaveLength(1);
+    expect(paths[0]?.path).toMatch(/^M -?\d/u);
+    expect(paths[0]?.path.endsWith(' Z')).toBe(true);
+    expect(paths[0]?.points.length).toBeGreaterThan(4);
   });
 
   it('expands coalesced pointer samples into normalized ink points', () => {
@@ -170,6 +168,42 @@ describe('pen signing geometry', () => {
         bounds,
       ),
     ).toEqual([{ x: 1, y: 1, pressure: 0.6 }]);
+    expect(
+      pointerEventUsesSimulatedPressure(
+        {
+          clientX: 110,
+          clientY: 220,
+          pressure: 0,
+          getCoalescedEvents: () => [],
+        },
+        'mouse',
+      ),
+    ).toBe(true);
+    expect(
+      pointerEventUsesSimulatedPressure(
+        {
+          clientX: 110,
+          clientY: 220,
+          pressure: 0.6,
+          getCoalescedEvents: () => [],
+        },
+        'pen',
+      ),
+    ).toBe(false);
+    expect(
+      pointerEventUsesSimulatedPressure(
+        {
+          clientX: 110,
+          clientY: 220,
+          pressure: 0.6,
+          getCoalescedEvents: () => [
+            { clientX: 111, clientY: 221, pressure: 0 },
+            { clientX: 112, clientY: 222, pressure: 0.5 },
+          ],
+        },
+        'touch',
+      ),
+    ).toBe(true);
   });
 
   it('defines deterministic document gesture and pen priority rules', () => {
@@ -331,8 +365,8 @@ describe('pen signing geometry', () => {
     expect(point.y).toBeCloseTo(expected.y);
   });
 
-  it('applies placement, pressure widths and PDF-safe SVG Y coordinates', () => {
-    const segments = inkToPdfSegments(
+  it('applies placement, pressure and PDF-safe SVG Y coordinates', () => {
+    const paths = inkToPdfPaths(
       [
         {
           points: [
@@ -351,12 +385,14 @@ describe('pen signing geometry', () => {
         viewportTransform: [1, 0, 0, -1, 0, 200],
       },
     );
-    expect(segments).toHaveLength(1);
-    expect(segments[0]?.path).toBe('M 35 -147.5 Q 45 -122.5 45 -122.5');
-    expect(segments[0]?.width).toBeCloseTo(3.3333);
+    const outline = paths[0];
+    expect(paths).toHaveLength(1);
+    expect(outline?.path.endsWith(' Z')).toBe(true);
+    expect(outline?.points.every((point) => point.y < 0)).toBe(true);
+    expect(outline ? outlineBounds(outline.points).left : 0).toBeGreaterThan(30);
   });
 
-  it('renders one- and two-point strokes as PDF curve segments', () => {
+  it('renders one- and two-point strokes as filled PDF outlines', () => {
     const valid = {
       cssWidth: 100,
       cssHeight: 100,
@@ -366,32 +402,123 @@ describe('pen signing geometry', () => {
       viewportTransform: [1, 0, 0, -1, 0, 100] as const,
     };
 
+    const dot = inkToPdfPaths(
+      [{ points: [{ x: 0.2, y: 0.3, pressure: 0.5 }] }],
+      { offsetX: 0, offsetY: 0, scale: 1 },
+      valid,
+    )[0];
+    const line = inkToPdfPaths(
+      [
+        {
+          points: [
+            { x: 0.2, y: 0.3, pressure: 0.2 },
+            { x: 0.4, y: 0.5, pressure: 0.8 },
+          ],
+        },
+      ],
+      { offsetX: 0, offsetY: 0, scale: 1 },
+      valid,
+    )[0];
+
+    expect(dot?.path.endsWith(' Z')).toBe(true);
+    expect(line?.path.endsWith(' Z')).toBe(true);
+    expect(dot?.points.length).toBeGreaterThan(4);
+    expect(line?.points.length).toBeGreaterThan(4);
+  });
+
+  it('keeps a sharp hairpin outline closed and within the expected stroke envelope', () => {
+    const hairpin: InkStroke = {
+      points: [
+        { x: 0.2, y: 0.5, pressure: 0.35 },
+        { x: 0.42, y: 0.5, pressure: 0.7 },
+        { x: 0.44, y: 0.24, pressure: 0.85 },
+        { x: 0.46, y: 0.5, pressure: 0.7 },
+        { x: 0.72, y: 0.5, pressure: 0.35 },
+      ],
+    };
+    const surface = {
+      cssWidth: 500,
+      cssHeight: 300,
+      backingWidth: 500,
+      backingHeight: 300,
+      devicePixelRatio: 1,
+      viewportTransform: [1, 0, 0, -1, 0, 300] as const,
+    };
+
+    const outline = inkToCanvasOutlines(
+      [hairpin],
+      { offsetX: 0, offsetY: 0, scale: 1 },
+      surface,
+    )[0];
+    expect(outline?.path).toBe(outlinePointsToSvgPath(outline?.points ?? []));
+    expect(outline?.path.endsWith(' Z')).toBe(true);
+    expect(outline?.points.length).toBeGreaterThan(4);
+
+    const bounds = outline ? outlineBounds(outline.points) : undefined;
+    const centerlineWidth = (0.72 - 0.2) * surface.cssWidth;
+    const centerlineHeight = (0.5 - 0.24) * surface.cssHeight;
+    expect(bounds ? bounds.right - bounds.left : 0).toBeLessThan(centerlineWidth + 18);
+    expect(bounds ? bounds.bottom - bounds.top : 0).toBeLessThan(centerlineHeight + 18);
+  });
+
+  it('keeps fallback geometry paths deterministic', () => {
+    const simulatedStroke: InkStroke = {
+      simulatePressure: true,
+      points: [
+        { x: 0.5, y: 0.5, pressure: 0.5 },
+        { x: 0.5, y: 0.5, pressure: 0.5 },
+      ],
+    };
+    const valid = {
+      cssWidth: 100,
+      cssHeight: 100,
+      backingWidth: 100,
+      backingHeight: 100,
+      devicePixelRatio: 1,
+      viewportTransform: [1, 0, 0, -1, 0, 100] as const,
+    };
+
+    expect(outlinePointsToSvgPath([])).toBe('');
+    const missingFirst: InkOutlinePoint[] = [];
+    missingFirst.length = 4;
+    expect(outlinePointsToSvgPath(missingFirst)).toBe('');
+    const missingSecond: InkOutlinePoint[] = [{ x: 0, y: 0 }];
+    missingSecond.length = 4;
+    expect(outlinePointsToSvgPath(missingSecond)).toBe('');
+    const missingThird: InkOutlinePoint[] = [
+      { x: 0, y: 0 },
+      { x: 1, y: 1 },
+    ];
+    missingThird.length = 4;
+    expect(outlinePointsToSvgPath(missingThird)).toBe('');
+    const missingLoopPoint: InkOutlinePoint[] = [
+      { x: 0, y: 0 },
+      { x: 1, y: 1 },
+      { x: 2, y: 2 },
+    ];
+    missingLoopPoint.length = 5;
+    missingLoopPoint[4] = { x: 4, y: 4 };
+    expect(outlinePointsToSvgPath(missingLoopPoint).endsWith('Z')).toBe(true);
     expect(
-      inkToPdfSegments(
-        [{ points: [{ x: 0.2, y: 0.3, pressure: 0.5 }] }],
+      fitInkStrokesToPage({
+        strokes: [simulatedStroke],
+        sourceSize: { width: 100, height: 100 },
+        pageSize: { width: 100, height: 100 },
+      }),
+    ).toEqual([simulatedStroke]);
+    expect(
+      inkToCanvasOutlines(
+        [{ points: [] }],
         { offsetX: 0, offsetY: 0, scale: 1 },
         valid,
       ),
-    ).toEqual([
-      {
-        path: 'M 20 -70 Q 20 -70 20.01 -70',
-        width: 2.75,
-      },
-    ]);
+    ).toEqual([]);
     expect(
-      inkToPdfSegments(
-        [
-          {
-            points: [
-              { x: 0.2, y: 0.3, pressure: 0.2 },
-              { x: 0.4, y: 0.5, pressure: 0.8 },
-            ],
-          },
-        ],
-        { offsetX: 0, offsetY: 0, scale: 1 },
-        valid,
-      )[0]?.path,
-    ).toBe('M 20 -70 Q 40 -50 40 -50');
+      pointerEventUsesSimulatedPressure(
+        { clientX: 0, clientY: 0, pressure: 0.7 },
+        'touch',
+      ),
+    ).toBe(false);
   });
 
   it('rejects invalid canvas transforms and derives an obvious filename', () => {
@@ -421,16 +548,16 @@ describe('pen signing geometry', () => {
     expect(placeInkPoint(point, [], { offsetX: 1, offsetY: 1, scale: 2 })).toBe(
       point,
     );
-    expect(inkToPdfSegments([], { offsetX: 0, offsetY: 0, scale: 1 }, valid)).toEqual(
+    expect(inkToPdfPaths([], { offsetX: 0, offsetY: 0, scale: 1 }, valid)).toEqual(
       [],
     );
     expect(
-      inkToPdfSegments(
+      inkToPdfPaths(
         [{ points: [point] }],
         { offsetX: 0, offsetY: 0, scale: 1 },
         valid,
       )[0]?.path,
-    ).toContain('Q 183.6 -435.6 183.61 -435.6');
+    ).toContain(' Z');
     expect(signedFileName('Umowa.PDF')).toBe('Umowa-podpisany.pdf');
     expect(signedFileName('umowa.pdf')).toBe('umowa-podpisany.pdf');
     expect(signedFileName('umowa-podpisany.pdf')).toBe(

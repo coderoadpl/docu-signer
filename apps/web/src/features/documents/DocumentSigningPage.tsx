@@ -10,6 +10,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -39,10 +40,11 @@ import {
   defaultSigningGestureMode,
   documentPointerDrawsInk,
   fitInkStrokesToPage,
+  inkToCanvasOutlines,
   isPalmSizedTouch,
-  placeInkPoint,
   penPriorityActive,
   pointerEventToInkPoints,
+  pointerEventUsesSimulatedPressure,
   placedInkBounds,
   removeSigningStamp,
   signingStampContainsPoint,
@@ -50,9 +52,9 @@ import {
   signedFileName,
   signedDigitalSourceHint,
   signingInkColorById,
-  smoothStroke,
   stampEveryPage,
   updateSigningStampPlacement,
+  type InkOutlinePoint,
   type CanvasPdfMetrics,
   type InkStroke,
   type SignaturePlacement,
@@ -100,12 +102,74 @@ const bytesAsArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
   return buffer;
 };
 
+const releasePointerCapture = (element: HTMLCanvasElement, pointerId: number) => {
+  if (typeof element.releasePointerCapture !== 'function') return;
+  if (
+    typeof element.hasPointerCapture === 'function' &&
+    !element.hasPointerCapture(pointerId)
+  ) {
+    return;
+  }
+  try {
+    element.releasePointerCapture(pointerId);
+  } catch {
+    return;
+  }
+};
+
+const buttonTouchSx = { touchAction: 'manipulation' } as const;
+const selectionLockSx = {
+  WebkitTouchCallout: 'none',
+  WebkitUserSelect: 'none',
+  userSelect: 'none',
+} as const;
+const dialogSelectionLockSx = {
+  ...selectionLockSx,
+  '& *': selectionLockSx,
+} as const;
+
+const BusyButtonProgress = () => (
+  <CircularProgress size={18} color="inherit" aria-hidden="true" />
+);
+
 interface InkLayer {
   strokes: InkStroke[];
   placement: SignaturePlacement;
   color: string;
   selected: boolean;
 }
+
+const drawOutline = (
+  context: CanvasRenderingContext2D,
+  points: readonly InkOutlinePoint[],
+) => {
+  const first = points[0];
+  const second = points[1];
+  const third = points[2];
+  if (!first || !second || !third || points.length < 4) return;
+
+  context.beginPath();
+  context.moveTo(first.x, first.y);
+  context.quadraticCurveTo(
+    second.x,
+    second.y,
+    (second.x + third.x) / 2,
+    (second.y + third.y) / 2,
+  );
+  for (let index = 2; index < points.length - 1; index += 1) {
+    const point = points[index];
+    const next = points[index + 1];
+    if (!point || !next) continue;
+    context.quadraticCurveTo(
+      point.x,
+      point.y,
+      (point.x + next.x) / 2,
+      (point.y + next.y) / 2,
+    );
+  }
+  context.closePath();
+  context.fill();
+};
 
 const drawInk = (
   canvas: HTMLCanvasElement,
@@ -115,33 +179,14 @@ const drawInk = (
   const context = canvas.getContext('2d');
   if (!context) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
   for (const layer of layers) {
-    context.strokeStyle = layer.color;
-    for (const stroke of layer.strokes) {
-      const placed = {
-        points: stroke.points.map((point) =>
-          placeInkPoint(point, layer.strokes, layer.placement),
-        ),
-      };
-      for (const segment of smoothStroke(placed)) {
-        const pressure =
-          (segment.start.pressure + segment.control.pressure + segment.end.pressure) / 3;
-        context.beginPath();
-        context.moveTo(
-          segment.start.x * canvas.width,
-          segment.start.y * canvas.height,
-        );
-        context.quadraticCurveTo(
-          segment.control.x * canvas.width,
-          segment.control.y * canvas.height,
-          segment.end.x * canvas.width,
-          segment.end.y * canvas.height,
-        );
-        context.lineWidth = (1.5 + pressure * 2.5) * metrics.devicePixelRatio;
-        context.stroke();
-      }
+    context.fillStyle = layer.color;
+    for (const outline of inkToCanvasOutlines(
+      layer.strokes,
+      layer.placement,
+      metrics,
+    )) {
+      drawOutline(context, outline.points);
     }
     if (layer.selected) {
       const bounds = placedInkBounds(layer.strokes, layer.placement);
@@ -273,9 +318,17 @@ const SignaturePadDialog = ({
       event.nativeEvent,
       event.currentTarget.getBoundingClientRect(),
     );
+  const strokeForEvent = (event: ReactPointerEvent<HTMLCanvasElement>) => ({
+    points: pointsForEvent(event),
+    simulatePressure: pointerEventUsesSimulatedPressure(
+      event.nativeEvent,
+      event.pointerType,
+    ),
+  });
 
   const finishPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (activePointerRef.current !== event.pointerId) return;
+    releasePointerCapture(event.currentTarget, event.pointerId);
     const stroke = currentStrokeRef.current;
     if (stroke?.points.length) setStrokes((current) => [...current, stroke]);
     currentStrokeRef.current = undefined;
@@ -285,9 +338,15 @@ const SignaturePadDialog = ({
   };
 
   return (
-    <Dialog open={open} onClose={onCancel} fullWidth maxWidth="md">
-      <DialogTitle>Złóż podpis</DialogTitle>
-      <DialogContent>
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      fullWidth
+      maxWidth="md"
+      slotProps={{ paper: { sx: dialogSelectionLockSx } }}
+    >
+      <DialogTitle sx={selectionLockSx}>Złóż podpis</DialogTitle>
+      <DialogContent sx={selectionLockSx}>
         <InkSurface
           ref={setCanvasRef}
           role="application"
@@ -300,9 +359,8 @@ const SignaturePadDialog = ({
             touchAction: 'none',
           }}
           onPointerDown={(event) => {
-            const points = pointsForEvent(event);
-            if (!points.length) return;
-            const stroke = { points };
+            const stroke = strokeForEvent(event);
+            if (!stroke.points.length) return;
             activePointerRef.current = event.pointerId;
             currentStrokeRef.current = stroke;
             setActiveStroke(stroke);
@@ -314,7 +372,10 @@ const SignaturePadDialog = ({
             const current = currentStrokeRef.current;
             if (!current) return;
             const points = pointsForEvent(event);
-            const next = { points: [...current.points, ...points] };
+            const next = {
+              ...current,
+              points: [...current.points, ...points],
+            };
             currentStrokeRef.current = next;
             setActiveStroke(next);
             event.preventDefault();
@@ -323,10 +384,18 @@ const SignaturePadDialog = ({
           onPointerCancel={finishPointer}
         />
       </DialogContent>
-      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+      <DialogActions
+        sx={{
+          flexWrap: 'wrap',
+          gap: 1,
+          touchAction: 'manipulation',
+          ...selectionLockSx,
+        }}
+      >
         <Button
           onClick={() => setStrokes((current) => current.slice(0, -1))}
           disabled={!strokes.length}
+          sx={buttonTouchSx}
         >
           Cofnij
         </Button>
@@ -338,6 +407,7 @@ const SignaturePadDialog = ({
             activePointerRef.current = undefined;
           }}
           disabled={!strokes.length && !activeStroke}
+          sx={buttonTouchSx}
         >
           Wyczyść
         </Button>
@@ -357,7 +427,9 @@ const SignaturePadDialog = ({
           ))}
         </ToggleButtonGroup>
         <Box sx={{ flexGrow: 1 }} />
-        <Button onClick={onCancel}>Anuluj</Button>
+        <Button onClick={onCancel} sx={buttonTouchSx}>
+          Anuluj
+        </Button>
         <Button
           variant="contained"
           onClick={() => {
@@ -368,6 +440,7 @@ const SignaturePadDialog = ({
             });
           }}
           disabled={!strokes.length || !metrics}
+          sx={buttonTouchSx}
         >
           Użyj podpisu
         </Button>
@@ -640,6 +713,10 @@ export const DocumentSigningPage = ({
     pageReady &&
       (massMode ? stamps.length > 0 : stamps.length > 0 || strokes.length > 0),
   );
+  const signingPadBlocked = !pageReady || committing;
+  const signingPadBusy = !committing && !pageReady;
+  const massProceedBlockedByReadiness = stamps.length > 0 && !canCommit;
+  const massProceedBusy = committing || massProceedBlockedByReadiness;
 
   useEffect(() => {
     setPdf(undefined);
@@ -896,7 +973,6 @@ export const DocumentSigningPage = ({
       event.nativeEvent,
       event.currentTarget.getBoundingClientRect(),
     );
-
   const touchIgnoredForPenPriority = (
     event: ReactPointerEvent<HTMLCanvasElement>,
   ) =>
@@ -935,6 +1011,7 @@ export const DocumentSigningPage = ({
     });
 
   const finishPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    releasePointerCapture(event.currentTarget, event.pointerId);
     if (activePenPointerRef.current === event.pointerId) {
       activePenPointerRef.current = undefined;
       lastPenSeenAtRef.current = event.timeStamp;
@@ -1209,147 +1286,166 @@ export const DocumentSigningPage = ({
           )
         ) : (
           <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1 }}>
-          <Stack
-            direction="row"
-            sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
-          >
-            <Button
-              onClick={() => setPageNumber((page) => Math.max(1, page - 1))}
-              disabled={pageNumber === 1 || pageRendering}
-            >
-              ← Poprzednia
-            </Button>
-            <Typography aria-live="polite">
-              Strona {pageNumber} z {pdf?.numPages ?? '…'}
-            </Typography>
-            <Button
-              onClick={() =>
-                setPageNumber((page) => Math.min(pdf?.numPages ?? page, page + 1))
-              }
-              disabled={!pdf || pageNumber === pdf.numPages || pageRendering}
-            >
-              Następna →
-            </Button>
-            <Button
-              variant="contained"
-              onClick={() => setSignaturePadOpen(true)}
-              disabled={!pageReady || committing}
-            >
-              Złóż podpis
-            </Button>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={gestureMode}
-              onChange={(_, selected: SigningGestureMode | null) => {
-                if (selected) setGestureMode(selected);
+            <Stack
+              direction="row"
+              sx={{
+                alignItems: 'center',
+                gap: 1,
+                flexWrap: 'wrap',
+                touchAction: 'manipulation',
               }}
-              aria-label="Tryb gestów"
             >
-              <ToggleButton value="draw" disabled={committing} aria-label="Rysuj">
-                Rysuj
-              </ToggleButton>
-              <ToggleButton value="pan" disabled={committing} aria-label="Przesuń">
-                Przesuń
-              </ToggleButton>
-            </ToggleButtonGroup>
-            <Button
-              onClick={() => setStrokes((current) => current.slice(0, -1))}
-              disabled={!strokes.length || committing}
-            >
-              Cofnij kreskę
-            </Button>
-            <Button
-              onClick={() => {
-                setStrokes([]);
-                setPlacing(false);
-                setPlacement(DEFAULT_PLACEMENT);
-                setSelectedStampIndex(undefined);
-                currentStrokeRef.current = undefined;
-                activePointerRef.current = undefined;
-                activePointerTypeRef.current = undefined;
-              }}
-              disabled={!strokes.length || committing}
-            >
-              Wyczyść
-            </Button>
-            <Button
-              variant={placing ? 'contained' : 'outlined'}
-              onClick={() => setPlacing((current) => !current)}
-              disabled={(!strokes.length && selectedStampIndex === undefined) || committing}
-            >
-              {placing ? 'Wróć do rysowania' : 'Ustaw położenie'}
-            </Button>
-            <Button
-              variant="contained"
-              onClick={stampCurrentPage}
-              disabled={!pageReady || !strokes.length || committing}
-            >
-              Przybij na tej stronie
-            </Button>
-            <Button
-              variant="contained"
-              onClick={stampAllPages}
-              disabled={!pageReady || !strokes.length || !pdf || committing}
-            >
-              Przybij na każdej stronie
-            </Button>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={inkColorId}
-              onChange={(_, selected: SigningInkColorId | null) => {
-                if (selected) setInkColorId(selected);
-              }}
-              aria-label="Kolor tuszu"
-            >
-              {SIGNING_INK_COLORS.map((color) => (
-                <ToggleButton
-                  key={color.id}
-                  value={color.id}
-                  disabled={committing}
-                  aria-label={color.label}
-                >
-                  {color.label}
+              <Button
+                onClick={() => setPageNumber((page) => Math.max(1, page - 1))}
+                disabled={pageNumber === 1 || pageRendering}
+                sx={buttonTouchSx}
+              >
+                ← Poprzednia
+              </Button>
+              <Typography aria-live="polite">
+                Strona {pageNumber} z {pdf?.numPages ?? '…'}
+              </Typography>
+              <Button
+                onClick={() =>
+                  setPageNumber((page) => Math.min(pdf?.numPages ?? page, page + 1))
+                }
+                disabled={!pdf || pageNumber === pdf.numPages || pageRendering}
+                sx={buttonTouchSx}
+              >
+                Następna →
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => setSignaturePadOpen(true)}
+                disabled={signingPadBlocked}
+                startIcon={signingPadBusy ? <BusyButtonProgress /> : undefined}
+                sx={buttonTouchSx}
+              >
+                {signingPadBusy ? 'Renderowanie…' : 'Złóż podpis'}
+              </Button>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={gestureMode}
+                onChange={(_, selected: SigningGestureMode | null) => {
+                  if (selected) setGestureMode(selected);
+                }}
+                aria-label="Tryb gestów"
+              >
+                <ToggleButton value="draw" disabled={committing} aria-label="Rysuj">
+                  Rysuj
                 </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-            <ToggleButton
-              value="finger-drawing"
-              selected={fingerDrawing}
-              onChange={() => setFingerDrawing((current) => !current)}
-              disabled={committing}
-              aria-label="Rysowanie palcem"
-            >
-              Rysowanie palcem
-            </ToggleButton>
-          </Stack>
-          {placing ? (
-            <StampPlacementControls
-              activePlacement={activePlacement}
-              committing={committing}
-              label={
-                selectedStamp
-                  ? `Wybrany odcisk: strona ${selectedStamp.pageIndex + 1}`
-                  : 'Położenie bieżącego rysunku'
-              }
-              marginTop={1}
-              onRemove={removeSelectedStamp}
-              onResize={resizeActivePlacement}
-              removeDisabled={selectedStampIndex === undefined}
-              sliderId="signature-size"
-            />
-          ) : (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              Odciski w sesji: {stamps.length}
-            </Typography>
-          )}
-        </Paper>
+                <ToggleButton value="pan" disabled={committing} aria-label="Przesuń">
+                  Przesuń
+                </ToggleButton>
+              </ToggleButtonGroup>
+              <Button
+                onClick={() => setStrokes((current) => current.slice(0, -1))}
+                disabled={!strokes.length || committing}
+                sx={buttonTouchSx}
+              >
+                Cofnij kreskę
+              </Button>
+              <Button
+                onClick={() => {
+                  setStrokes([]);
+                  setPlacing(false);
+                  setPlacement(DEFAULT_PLACEMENT);
+                  setSelectedStampIndex(undefined);
+                  currentStrokeRef.current = undefined;
+                  activePointerRef.current = undefined;
+                  activePointerTypeRef.current = undefined;
+                }}
+                disabled={!strokes.length || committing}
+                sx={buttonTouchSx}
+              >
+                Wyczyść
+              </Button>
+              <Button
+                variant={placing ? 'contained' : 'outlined'}
+                onClick={() => setPlacing((current) => !current)}
+                disabled={
+                  (!strokes.length && selectedStampIndex === undefined) || committing
+                }
+                sx={buttonTouchSx}
+              >
+                {placing ? 'Wróć do rysowania' : 'Ustaw położenie'}
+              </Button>
+              <Button
+                variant="contained"
+                onClick={stampCurrentPage}
+                disabled={!pageReady || !strokes.length || committing}
+                sx={buttonTouchSx}
+              >
+                Przybij na tej stronie
+              </Button>
+              <Button
+                variant="contained"
+                onClick={stampAllPages}
+                disabled={!pageReady || !strokes.length || !pdf || committing}
+                sx={buttonTouchSx}
+              >
+                Przybij na każdej stronie
+              </Button>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={inkColorId}
+                onChange={(_, selected: SigningInkColorId | null) => {
+                  if (selected) setInkColorId(selected);
+                }}
+                aria-label="Kolor tuszu"
+              >
+                {SIGNING_INK_COLORS.map((color) => (
+                  <ToggleButton
+                    key={color.id}
+                    value={color.id}
+                    disabled={committing}
+                    aria-label={color.label}
+                  >
+                    {color.label}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              <ToggleButton
+                value="finger-drawing"
+                selected={fingerDrawing}
+                onChange={() => setFingerDrawing((current) => !current)}
+                disabled={committing}
+                aria-label="Rysowanie palcem"
+              >
+                Rysowanie palcem
+              </ToggleButton>
+            </Stack>
+            {placing ? (
+              <StampPlacementControls
+                activePlacement={activePlacement}
+                committing={committing}
+                label={
+                  selectedStamp
+                    ? `Wybrany odcisk: strona ${selectedStamp.pageIndex + 1}`
+                    : 'Położenie bieżącego rysunku'
+                }
+                marginTop={1}
+                onRemove={removeSelectedStamp}
+                onResize={resizeActivePlacement}
+                removeDisabled={selectedStampIndex === undefined}
+                sliderId="signature-size"
+              />
+            ) : (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Odciski w sesji: {stamps.length}
+              </Typography>
+            )}
+          </Paper>
         )
       }
       footer={
         massMode ? (
-          <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1.5 }}>
+          <Paper
+            square
+            sx={{ px: { xs: 1.5, md: 3 }, py: 1.5, touchAction: 'manipulation' }}
+          >
             {commitError ? <Alert severity="error" sx={{ mb: 1 }}>{commitError}</Alert> : null}
             {selectedStamp ? (
               <StampPlacementControls
@@ -1370,38 +1466,59 @@ export const DocumentSigningPage = ({
               <Typography variant="body2" color="text.secondary">
                 Dokument {Math.min(sequenceSignedCount + massSkippedCount + 1, sequenceTotal)} z {sequenceTotal}
               </Typography>
-              <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 1 }}>
+              <Stack
+                direction="row"
+                sx={{ justifyContent: 'flex-end', gap: 1, touchAction: 'manipulation' }}
+              >
                 <Button
                   variant="contained"
                   onClick={() => setSignaturePadOpen(true)}
-                  disabled={!pageReady || committing}
+                  disabled={signingPadBlocked}
+                  startIcon={signingPadBusy ? <BusyButtonProgress /> : undefined}
+                  sx={buttonTouchSx}
                 >
-                  Złóż podpis
+                  {signingPadBusy ? 'Renderowanie…' : 'Złóż podpis'}
                 </Button>
                 <Button
                   variant="contained"
                   onClick={() => void proceedMassSigning()}
-                  disabled={committing || (stamps.length > 0 && !canCommit)}
+                  disabled={massProceedBusy}
+                  startIcon={massProceedBusy ? <BusyButtonProgress /> : undefined}
+                  sx={buttonTouchSx}
                 >
-                  {committing ? 'Zapisywanie…' : 'Przejdź'}
+                  {committing
+                    ? 'Zapisywanie…'
+                    : massProceedBlockedByReadiness
+                      ? 'Renderowanie…'
+                      : 'Przejdź'}
                 </Button>
               </Stack>
             </Stack>
           </Paper>
         ) : (
-          <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1.5 }}>
-          {commitError ? <Alert severity="error" sx={{ mb: 1 }}>{commitError}</Alert> : null}
-          <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 2 }}>
-            <Button onClick={close} disabled={committing}>Anuluj</Button>
-            <Button
-              variant="contained"
-              onClick={() => void commit()}
-              disabled={!canCommit || committing}
+          <Paper
+            square
+            sx={{ px: { xs: 1.5, md: 3 }, py: 1.5, touchAction: 'manipulation' }}
+          >
+            {commitError ? <Alert severity="error" sx={{ mb: 1 }}>{commitError}</Alert> : null}
+            <Stack
+              direction="row"
+              sx={{ justifyContent: 'flex-end', gap: 2, touchAction: 'manipulation' }}
             >
-              {committing ? 'Zapisywanie…' : 'Zapisz podpisany PDF'}
-            </Button>
-          </Stack>
-        </Paper>
+              <Button onClick={close} disabled={committing} sx={buttonTouchSx}>
+                Anuluj
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => void commit()}
+                disabled={!canCommit || committing}
+                startIcon={committing ? <BusyButtonProgress /> : undefined}
+                sx={buttonTouchSx}
+              >
+                {committing ? 'Zapisywanie…' : 'Zapisz podpisany PDF'}
+              </Button>
+            </Stack>
+          </Paper>
         )
       }
       fitMain={massMode}
@@ -1509,7 +1626,13 @@ export const DocumentSigningPage = ({
               if (massMode) return;
               if (gestureMode === 'pan') return;
               if (!pointerDrawsInk(event)) return;
-              const stroke = { points };
+              const stroke = {
+                points,
+                simulatePressure: pointerEventUsesSimulatedPressure(
+                  event.nativeEvent,
+                  event.pointerType,
+                ),
+              };
               activePointerRef.current = event.pointerId;
               activePointerTypeRef.current = event.pointerType;
               currentStrokeRef.current = stroke;
@@ -1557,7 +1680,10 @@ export const DocumentSigningPage = ({
               if (activePointerRef.current !== event.pointerId) return;
               const current = currentStrokeRef.current;
               if (!current) return;
-              const next = { points: [...current.points, ...pointerPoints(event)] };
+              const next = {
+                ...current,
+                points: [...current.points, ...pointerPoints(event)],
+              };
               currentStrokeRef.current = next;
               setActiveStroke(next);
               event.preventDefault();

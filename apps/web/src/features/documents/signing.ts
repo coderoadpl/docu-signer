@@ -1,3 +1,5 @@
+import { getStroke, type StrokeOptions } from 'perfect-freehand';
+
 export interface InkPoint {
   x: number;
   y: number;
@@ -16,6 +18,7 @@ export interface PointerInkEvent extends PointerInkSample {
 
 export interface InkStroke {
   points: InkPoint[];
+  simulatePressure?: boolean;
 }
 
 export interface SignaturePlacement {
@@ -45,9 +48,14 @@ export interface CanvasPdfMetrics {
   viewportTransform: readonly [number, number, number, number, number, number];
 }
 
-export interface PdfInkSegment {
+export interface InkOutlinePoint {
+  x: number;
+  y: number;
+}
+
+export interface InkOutlinePath {
   path: string;
-  width: number;
+  points: InkOutlinePoint[];
 }
 
 export type SigningGestureMode = 'draw' | 'pan';
@@ -85,25 +93,26 @@ export const DEFAULT_SIGNING_INK_COLOR = SIGNING_INK_COLORS[0];
 export const signingInkColorById = (id: SigningInkColorId): SigningInkColor =>
   SIGNING_INK_COLORS.find((color) => color.id === id) ?? DEFAULT_SIGNING_INK_COLOR;
 
-export interface SmoothedSegment {
-  start: InkPoint;
-  control: InkPoint;
-  end: InkPoint;
-}
-
 const SIGNING_PEN_PRIORITY_MS = 500;
+const SIGNING_INK_SIZE_PX = 4;
+
+// WHY: these options keep pressure-sensitive ink legible for signatures while
+// damping direction-change thorns seen with the previous centerline renderer.
+const PERFECT_FREEHAND_INK_OPTIONS = {
+  thinning: 0.6,
+  smoothing: 0.5,
+  streamline: 0.5,
+  last: true,
+} satisfies StrokeOptions;
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
   Math.min(maximum, Math.max(minimum, value));
 
-const midpoint = (first: InkPoint, second: InkPoint): InkPoint => ({
-  x: (first.x + second.x) / 2,
-  y: (first.y + second.y) / 2,
-  pressure: (first.pressure + second.pressure) / 2,
-});
-
 const cloneStrokes = (strokes: InkStroke[]): InkStroke[] =>
   strokes.map((stroke) => ({
+    ...(stroke.simulatePressure === undefined
+      ? {}
+      : { simulatePressure: stroke.simulatePressure }),
     points: stroke.points.map((point) => ({ ...point })),
   }));
 
@@ -132,6 +141,16 @@ export const pointerEventToInkPoints = (
   return samples.map((sample) =>
     pointerToInkPoint(sample.clientX, sample.clientY, sample.pressure, bounds),
   );
+};
+
+export const pointerEventUsesSimulatedPressure = (
+  event: PointerInkEvent,
+  pointerType: string,
+): boolean => {
+  if (pointerType === 'pen') return false;
+  const coalesced = event.getCoalescedEvents?.() ?? [];
+  const samples = coalesced.length > 0 ? coalesced : [event];
+  return samples.every((sample) => sample.pressure <= 0 || sample.pressure === 0.5);
 };
 
 export const defaultSigningGestureMode = ({
@@ -188,24 +207,6 @@ export const documentPointerDrawsInk = ({
     return fingerDrawing && !penPriority;
   }
   return true;
-};
-
-export const smoothStroke = (stroke: InkStroke): SmoothedSegment[] => {
-  const first = stroke.points[0];
-  if (!first) return [];
-  if (stroke.points.length === 1) {
-    return [{ start: first, control: first, end: first }];
-  }
-
-  const segments: SmoothedSegment[] = [];
-  let start = first;
-  for (const [index, control] of stroke.points.slice(1).entries()) {
-    const next = stroke.points[index + 2];
-    const end = next ? midpoint(control, next) : control;
-    segments.push({ start, control, end });
-    start = end;
-  }
-  return segments;
 };
 
 export const inkBounds = (strokes: InkStroke[]) => {
@@ -337,6 +338,9 @@ export const fitInkStrokesToPage = ({
   const normalizedHeight = cssHeight / pageSize.height;
 
   return strokes.map((stroke) => ({
+    ...(stroke.simulatePressure === undefined
+      ? {}
+      : { simulatePressure: stroke.simulatePressure }),
     points: stroke.points.map((point) => ({
       ...point,
       x: 0.5 + ((point.x - bounds.left) / inkWidth - 0.5) * normalizedWidth,
@@ -502,68 +506,97 @@ export const canvasCssPointToPdf = (
   };
 };
 
-const cssLengthToPdf = (length: number, metrics: CanvasPdfMetrics): number => {
-  const origin = canvasCssPointToPdf({ x: 0, y: 0 }, metrics);
-  const end = canvasCssPointToPdf({ x: length, y: 0 }, metrics);
-  return Math.hypot(end.x - origin.x, end.y - origin.y);
-};
-
 const svgNumber = (value: number): string => String(Number(value.toFixed(4)));
 
-const segmentPath = (
-  start: { x: number; y: number },
-  control: { x: number; y: number },
-  end: { x: number; y: number },
+const outlinePathSize = (placement: SignaturePlacement): number =>
+  SIGNING_INK_SIZE_PX * placement.scale;
+
+const average = (first: number, second: number): number => (first + second) / 2;
+
+export const outlinePointsToSvgPath = (
+  points: readonly InkOutlinePoint[],
 ): string => {
-  const effectiveEnd =
-    start.x === end.x && start.y === end.y
-      ? { x: end.x + 0.01, y: end.y }
-      : end;
-  // pdf-lib applies the SVG convention (positive Y downward) before emitting
-  // PDF operators, so PDF user-space Y values are negated in the path string.
-  return `M ${svgNumber(start.x)} ${svgNumber(-start.y)} Q ${svgNumber(control.x)} ${svgNumber(-control.y)} ${svgNumber(effectiveEnd.x)} ${svgNumber(-effectiveEnd.y)}`;
+  if (points.length < 4) return '';
+  const first = points[0];
+  const second = points[1];
+  const third = points[2];
+  if (!first || !second || !third) return '';
+
+  const commands = [
+    `M ${svgNumber(first.x)} ${svgNumber(first.y)}`,
+    `Q ${svgNumber(second.x)} ${svgNumber(second.y)} ${svgNumber(average(second.x, third.x))} ${svgNumber(average(second.y, third.y))}`,
+  ];
+
+  for (let index = 2; index < points.length - 1; index += 1) {
+    const point = points[index];
+    const next = points[index + 1];
+    if (!point || !next) continue;
+    commands.push(
+      `Q ${svgNumber(point.x)} ${svgNumber(point.y)} ${svgNumber(average(point.x, next.x))} ${svgNumber(average(point.y, next.y))}`,
+    );
+  }
+  commands.push('Z');
+  return commands.join(' ');
 };
 
-const lineWidth = (pressure: number): number => 1.5 + clamp(pressure, 0.1, 1) * 2.5;
-
-export const inkToPdfSegments = (
+const inkToCssOutlines = (
   strokes: InkStroke[],
   placement: SignaturePlacement,
   metrics: CanvasPdfMetrics,
-): PdfInkSegment[] =>
+): InkOutlinePath[] =>
   strokes.flatMap((stroke) => {
-    const placedStroke = {
-      points: stroke.points.map((point) => placeInkPoint(point, strokes, placement)),
+    const outline = getStroke(
+      stroke.points.map((point) => {
+        const placed = placeInkPoint(point, strokes, placement);
+        return {
+          x: placed.x * metrics.cssWidth,
+          y: placed.y * metrics.cssHeight,
+          pressure: placed.pressure,
+        };
+      }),
+      {
+        ...PERFECT_FREEHAND_INK_OPTIONS,
+        size: outlinePathSize(placement),
+        simulatePressure: stroke.simulatePressure ?? false,
+      },
+    ).map(([x, y]) => ({ x, y }));
+    const path = outlinePointsToSvgPath(outline);
+    return path.length > 0 ? [{ path, points: outline }] : [];
+  });
+
+export const inkToCanvasOutlines = (
+  strokes: InkStroke[],
+  placement: SignaturePlacement,
+  metrics: CanvasPdfMetrics,
+): InkOutlinePath[] =>
+  inkToCssOutlines(strokes, placement, metrics).map((outline) => {
+    const points = outline.points.map((point) => ({
+      x: (point.x / metrics.cssWidth) * metrics.backingWidth,
+      y: (point.y / metrics.cssHeight) * metrics.backingHeight,
+    }));
+    return {
+      path: outlinePointsToSvgPath(points),
+      points,
     };
-    return smoothStroke(placedStroke).map((segment) => {
-      const start = canvasCssPointToPdf(
-        {
-          x: segment.start.x * metrics.cssWidth,
-          y: segment.start.y * metrics.cssHeight,
-        },
-        metrics,
-      );
-      const control = canvasCssPointToPdf(
-        {
-          x: segment.control.x * metrics.cssWidth,
-          y: segment.control.y * metrics.cssHeight,
-        },
-        metrics,
-      );
-      const end = canvasCssPointToPdf(
-        {
-          x: segment.end.x * metrics.cssWidth,
-          y: segment.end.y * metrics.cssHeight,
-        },
-        metrics,
-      );
-      const pressure =
-        (segment.start.pressure + segment.control.pressure + segment.end.pressure) / 3;
+  });
+
+export const inkToPdfPaths = (
+  strokes: InkStroke[],
+  placement: SignaturePlacement,
+  metrics: CanvasPdfMetrics,
+): InkOutlinePath[] =>
+  inkToCssOutlines(strokes, placement, metrics).map((outline) => {
+    const points = outline.points.map(({ x, y }) => {
+      const point = canvasCssPointToPdf({ x, y }, metrics);
       return {
-        path: segmentPath(start, control, end),
-        width: cssLengthToPdf(lineWidth(pressure), metrics),
+        x: point.x,
+        y: -point.y,
       };
     });
+    return {
+      path: outlinePointsToSvgPath(points),
+      points,
+    };
   });
 
 export const signedFileName = (sourceName: string): string => {

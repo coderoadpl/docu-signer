@@ -92,7 +92,7 @@ describe('PDF signature flattening', () => {
     expect(drawSvgPath).toHaveBeenCalled();
     expect(drawSvgPath.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
-        borderColor: rgb(0.13, 0.27, 0.67),
+        color: rgb(0.13, 0.27, 0.67),
       }),
     );
   });

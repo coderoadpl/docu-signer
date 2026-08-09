@@ -5,7 +5,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 import {
-  inkToPdfSegments,
+  inkToPdfPaths,
   type CanvasPdfMetrics,
   type SigningStamp,
 } from './signing.js';
@@ -100,25 +100,23 @@ export const flattenSignedPdf = async (
   sourceBytes: Uint8Array,
   stamps: readonly SigningStampWithMetrics[],
 ): Promise<Uint8Array> => {
-  const { LineCapStyle, PDFDocument, rgb } = await import('pdf-lib');
+  const { PDFDocument, rgb } = await import('pdf-lib');
   const pdf = await PDFDocument.load(sourceBytes, { updateMetadata: false });
   for (const { stamp, metrics } of stamps) {
     const page = pdf.getPage(stamp.pageIndex);
-    for (const segment of inkToPdfSegments(
+    for (const outline of inkToPdfPaths(
       stamp.strokes,
       stamp.placement,
       metrics,
     )) {
-      page.drawSvgPath(segment.path, {
+      page.drawSvgPath(outline.path, {
         x: 0,
         y: 0,
-        borderColor: rgb(
+        color: rgb(
           stamp.inkColor.pdfColor.red,
           stamp.inkColor.pdfColor.green,
           stamp.inkColor.pdfColor.blue,
         ),
-        borderWidth: segment.width,
-        borderLineCap: LineCapStyle.Round,
       });
     }
   }
