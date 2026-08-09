@@ -274,9 +274,9 @@ export type CanonicalGroupedDocumentInput = Pick<
 >;
 
 const DOC_TYPE_PRECEDENCE: Partial<Record<DocumentType, number>> = {
-  protokol: 0,
-  rachunek: 1,
-  'umowa-uod': 2,
+  'umowa-uod': 0,
+  protokol: 1,
+  rachunek: 2,
 };
 
 const personGroupLabel = (person: string | null | undefined): string =>
@@ -422,17 +422,6 @@ export interface SigningQueueTarget {
 
 const commaParts = (value: string | undefined): string[] =>
   value ? value.split(',').map((part) => part.trim()).filter(Boolean) : [];
-
-export const signingQueueTargets = (
-  documents: Array<Pick<DocumentWithFiles, 'id' | 'files'>>,
-): SigningQueueTarget[] =>
-  documents.flatMap((document) => {
-    if (hasSignedDocumentFile(document)) return [];
-    const file = document.files.find(
-      (item) => item.role === 'source' && canSignPdfFile(item),
-    );
-    return file ? [{ documentId: document.id, fileId: file.id }] : [];
-  });
 
 const newestFileFirst = (
   left: Pick<DocumentFile, 'createdAt'>,

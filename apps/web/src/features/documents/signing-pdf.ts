@@ -63,9 +63,15 @@ export const renderSourcePage = async (
   pdf: LoadedSourcePdf,
   pageNumber: number,
   canvas: HTMLCanvasElement,
+  fitBox?: { width: number; height: number },
 ): Promise<CanvasPdfMetrics> => {
   const page = await pdf.document.getPage(pageNumber);
-  const viewport = page.getViewport({ scale: 1.5 });
+  const baseViewport = page.getViewport({ scale: 1 });
+  const fitScale =
+    fitBox && fitBox.width > 0 && fitBox.height > 0
+      ? Math.min(fitBox.width / baseViewport.width, fitBox.height / baseViewport.height)
+      : undefined;
+  const viewport = page.getViewport({ scale: fitScale ?? 1.5 });
   const devicePixelRatio = Math.max(window.devicePixelRatio || 1, 1);
   const metrics = {
     cssWidth: viewport.width,

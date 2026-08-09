@@ -76,8 +76,6 @@ import {
   hasDocumentFilter,
   massSigningQueueSearch,
   massSigningQueueTargets,
-  signingQueueSearch,
-  signingQueueTargets,
   toDocumentFilter,
   toDocumentFilterValues,
   toDocumentInput,
@@ -376,7 +374,6 @@ export const DocumentsPage = () => {
   const selectedDocuments = visibleDocuments.filter((document) =>
     selectedIds.includes(document.id),
   );
-  const signingTargets = signingQueueTargets(visibleDocuments);
   const massSigningTargets = massSigningQueueTargets(visibleDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
   const visibleColumnIds = columnSettings.order.filter((column) =>
@@ -412,23 +409,6 @@ export const DocumentsPage = () => {
   const clearFilters = () => {
     setSelectedIds([]);
     void navigateToDocumentsSearch(view, emptyDocumentFilters(), true);
-  };
-
-  const startSigningSequence = () => {
-    const [first, ...remaining] = signingTargets;
-    if (!first) return;
-    void navigate({
-      to: '/app/documents/$id/sign/$fileId',
-      params: { id: first.documentId, fileId: first.fileId },
-      search: {
-        ...currentDocumentsSearch,
-        ...signingQueueSearch({
-          signedCount: 0,
-          targets: remaining,
-          total: signingTargets.length,
-        }),
-      },
-    });
   };
 
   const startMassSigning = () => {
@@ -1114,15 +1094,6 @@ export const DocumentsPage = () => {
             onClick={startMassSigning}
           >
             Masowe podpisywanie
-          </Button>
-        ) : null}
-        {signingTargets.length > 0 ? (
-          <Button
-            variant="outlined"
-            disabled={bulkBusy}
-            onClick={startSigningSequence}
-          >
-            Podpisuj kolejno
           </Button>
         ) : null}
         <Button

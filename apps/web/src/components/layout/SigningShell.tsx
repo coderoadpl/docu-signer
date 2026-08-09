@@ -48,6 +48,7 @@ export const SigningShell = ({
         ...(fitMain
           ? {
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
             }

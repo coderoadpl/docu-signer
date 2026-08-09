@@ -4,6 +4,7 @@ import {
   appendSigningStamp,
   canvasCssPointToPdf,
   centeredInkPlacement,
+  clampSignaturePlacementToPage,
   createSigningStamp,
   defaultSignaturePlacement,
   defaultSigningGestureMode,
@@ -605,6 +606,53 @@ describe('pen signing geometry', () => {
       0,
       2,
     ]);
+  });
+
+  it('clamps moved stamp placement only to the page bounds', () => {
+    const stroke: InkStroke = {
+      points: [
+        { x: 0.3, y: 0.4, pressure: 0.5 },
+        { x: 0.5, y: 0.6, pressure: 0.5 },
+      ],
+    };
+
+    expect(
+      clampSignaturePlacementToPage([stroke], {
+        offsetX: -0.25,
+        offsetY: 0.18,
+        scale: 1,
+      }),
+    ).toEqual({
+      offsetX: -0.25,
+      offsetY: 0.18,
+      scale: 1,
+    });
+    expect(
+      clampSignaturePlacementToPage([stroke], {
+        offsetX: -0.4,
+        offsetY: 0.55,
+        scale: 1,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        offsetX: expect.closeTo(-0.3, 5),
+        offsetY: expect.closeTo(0.4, 5),
+        scale: 1,
+      }),
+    );
+    expect(
+      clampSignaturePlacementToPage([stroke], {
+        offsetX: 0.15,
+        offsetY: -0.1,
+        scale: 6,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        offsetX: expect.closeTo(0.1, 5),
+        offsetY: 0,
+        scale: 6,
+      }),
+    );
   });
 
   it('hit-tests placed stamps with touch-friendly padding', () => {

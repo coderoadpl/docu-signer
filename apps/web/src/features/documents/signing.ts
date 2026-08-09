@@ -370,6 +370,37 @@ export const defaultSignaturePlacement = ({
   };
 };
 
+export const clampSignaturePlacementToPage = (
+  strokes: InkStroke[],
+  placement: SignaturePlacement,
+): SignaturePlacement => {
+  const bounds = placedInkBounds(strokes, placement);
+  if (!bounds) return { ...placement };
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  const offsetX =
+    width >= 1
+      ? placement.offsetX + 0.5 - (bounds.left + bounds.right) / 2
+      : clamp(
+          placement.offsetX,
+          placement.offsetX - bounds.left,
+          placement.offsetX + 1 - bounds.right,
+        );
+  const offsetY =
+    height >= 1
+      ? placement.offsetY + 0.5 - (bounds.top + bounds.bottom) / 2
+      : clamp(
+          placement.offsetY,
+          placement.offsetY - bounds.top,
+          placement.offsetY + 1 - bounds.bottom,
+        );
+  return {
+    ...placement,
+    offsetX,
+    offsetY,
+  };
+};
+
 export const signedDigitalSourceHint = ({
   fileName,
   role,
@@ -402,7 +433,10 @@ export const updateSigningStampPlacement = (
 ): SigningStamp[] =>
   stamps.map((stamp, index) =>
     index === stampIndex
-      ? createSigningStamp({ ...stamp, placement })
+      ? createSigningStamp({
+          ...stamp,
+          placement: clampSignaturePlacementToPage(stamp.strokes, placement),
+        })
       : createSigningStamp(stamp),
   );
 
