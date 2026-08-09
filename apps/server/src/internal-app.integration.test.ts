@@ -20,6 +20,25 @@ const itestUrl = (() => {
   return url.toString();
 })();
 
+const closePool = async (pool: pg.Pool): Promise<void> => {
+  const clientCount = pool.totalCount;
+  if (clientCount === 0) {
+    await pool.end();
+    return;
+  }
+
+  let removedClientCount = 0;
+  const clientsClosed = new Promise<void>((resolve) => {
+    pool.on('remove', () => {
+      removedClientCount += 1;
+      if (removedClientCount === clientCount) resolve();
+    });
+  });
+
+  await pool.end();
+  await clientsClosed;
+};
+
 let appPool: pg.Pool;
 let db: ReturnType<typeof drizzleNodePg<typeof schema>>;
 let app: ReturnType<typeof buildInternalApp>;
@@ -44,14 +63,10 @@ beforeAll(async () => {
   try {
     await migrateNodePg(drizzleNodePg(migrationPool), { migrationsFolder: 'drizzle' });
   } finally {
-    await migrationPool.end();
+    await closePool(migrationPool);
   }
 
   appPool = new pg.Pool({ connectionString: itestUrl });
-  // Same hazard as repositories.integration.test.ts: afterAll's FORCE drop can
-  // race the pool's socket teardown and a 57P01-terminated client would crash
-  // the run via an unhandled 'error' event.
-  appPool.on('error', () => {});
   db = drizzleNodePg(appPool, { schema });
   await db
     .insert(tenants)
@@ -67,7 +82,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await appPool.end();
+  await closePool(appPool);
   await withAdmin(async (admin) => {
     await admin.query(`DROP DATABASE IF EXISTS ${ITEST_DB} WITH (FORCE)`);
   });

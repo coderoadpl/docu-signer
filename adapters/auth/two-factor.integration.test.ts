@@ -17,6 +17,25 @@ const itestUrl = (() => {
   return url.toString();
 })();
 
+const closePool = async (pool: pg.Pool): Promise<void> => {
+  const clientCount = pool.totalCount;
+  if (clientCount === 0) {
+    await pool.end();
+    return;
+  }
+
+  let removedClientCount = 0;
+  const clientsClosed = new Promise<void>((resolve) => {
+    pool.on('remove', () => {
+      removedClientCount += 1;
+      if (removedClientCount === clientCount) resolve();
+    });
+  });
+
+  await pool.end();
+  await clientsClosed;
+};
+
 const BASE_URL = 'http://localhost:47100';
 let auth: Auth;
 let authPool: pg.Pool;
@@ -58,13 +77,9 @@ beforeAll(async () => {
   try {
     await migrateNodePg(drizzleNodePg(migrationPool), { migrationsFolder: 'drizzle' });
   } finally {
-    await migrationPool.end();
+    await closePool(migrationPool);
   }
   authPool = new pg.Pool({ connectionString: itestUrl });
-  // The FORCE drop in afterAll can terminate a still-open pooled socket; sink the
-  // resulting 'error' so the teardown race never fails the suite (integration
-  // teardown doctrine).
-  authPool.on('error', () => {});
   auth = createAuth(drizzleNodePg(authPool, { schema }), {
     secret: 'two-factor-itest-secret-32-characters',
     baseUrl: BASE_URL,
@@ -77,7 +92,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await authPool.end().catch(() => {});
+  await closePool(authPool);
   const admin = new pg.Client({ connectionString: baseDatabaseUrl });
   await admin.connect();
   try {

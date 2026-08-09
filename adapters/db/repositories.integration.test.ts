@@ -15,6 +15,25 @@ const baseDatabaseUrl =
 const itestUrl = new URL(baseDatabaseUrl);
 itestUrl.pathname = `/${ITEST_DB}`;
 
+const closePool = async (pool: pg.Pool): Promise<void> => {
+  const clientCount = pool.totalCount;
+  if (clientCount === 0) {
+    await pool.end();
+    return;
+  }
+
+  let removedClientCount = 0;
+  const clientsClosed = new Promise<void>((resolve) => {
+    pool.on('remove', () => {
+      removedClientCount += 1;
+      if (removedClientCount === clientCount) resolve();
+    });
+  });
+
+  await pool.end();
+  await clientsClosed;
+};
+
 let pool: pg.Pool;
 let db: NodePgDatabase<typeof schema>;
 
@@ -39,7 +58,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await pool.end();
+  await closePool(pool);
   const admin = new pg.Client({ connectionString: baseDatabaseUrl });
   await admin.connect();
   await admin.query(`DROP DATABASE IF EXISTS ${ITEST_DB} WITH (FORCE)`);

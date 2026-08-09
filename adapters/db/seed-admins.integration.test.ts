@@ -27,6 +27,25 @@ const itestUrl = (() => {
   return url.toString();
 })();
 
+const closePool = async (pool: pg.Pool): Promise<void> => {
+  const clientCount = pool.totalCount;
+  if (clientCount === 0) {
+    await pool.end();
+    return;
+  }
+
+  let removedClientCount = 0;
+  const clientsClosed = new Promise<void>((resolve) => {
+    pool.on('remove', () => {
+      removedClientCount += 1;
+      if (removedClientCount === clientCount) resolve();
+    });
+  });
+
+  await pool.end();
+  await clientsClosed;
+};
+
 let appPool: pg.Pool;
 let db: Db;
 
@@ -57,15 +76,14 @@ beforeAll(async () => {
   try {
     await migrateNodePg(drizzleNodePg(migrationPool), { migrationsFolder: 'drizzle' });
   } finally {
-    await migrationPool.end();
+    await closePool(migrationPool);
   }
   appPool = new pg.Pool({ connectionString: itestUrl });
-  appPool.on('error', () => {});
   db = drizzleNodePg(appPool, { schema });
 }, 60_000);
 
 afterAll(async () => {
-  await appPool.end();
+  await closePool(appPool);
   await dropDatabase();
 });
 

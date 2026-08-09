@@ -17,6 +17,25 @@ const seedDatabaseUrl = (() => {
 })();
 const tsxBin = join(process.cwd(), 'node_modules/.bin/tsx');
 
+const closePool = async (pool: pg.Pool): Promise<void> => {
+  const clientCount = pool.totalCount;
+  if (clientCount === 0) {
+    await pool.end();
+    return;
+  }
+
+  let removedClientCount = 0;
+  const clientsClosed = new Promise<void>((resolve) => {
+    pool.on('remove', () => {
+      removedClientCount += 1;
+      if (removedClientCount === clientCount) resolve();
+    });
+  });
+
+  await pool.end();
+  await clientsClosed;
+};
+
 const recreateDatabase = async (): Promise<void> => {
   const admin = new pg.Client({ connectionString: baseDatabaseUrl });
   await admin.connect();
@@ -30,7 +49,7 @@ const recreateDatabase = async (): Promise<void> => {
   try {
     await migrateNodePg(drizzleNodePg(migrationPool), { migrationsFolder: 'drizzle' });
   } finally {
-    await migrationPool.end();
+    await closePool(migrationPool);
   }
 };
 
