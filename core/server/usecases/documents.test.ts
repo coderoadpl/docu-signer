@@ -23,6 +23,7 @@ import {
   getFileContent,
   getFileExport,
   listDocuments,
+  moveDocumentFile,
   removeFile,
   requestFileUpload,
   serverUpload,
@@ -33,6 +34,7 @@ import {
 const documentId = '11111111-1111-4111-8111-111111111111';
 const fileId = '22222222-2222-4222-8222-222222222222';
 const uploadId = '33333333-3333-4333-8333-333333333333';
+const movedDocumentId = '44444444-4444-4444-8444-444444444444';
 
 const staff = (tenantId: string | null, role: 'owner' | 'admin' = 'owner'): Identity => ({
   userId: 'u1',
@@ -60,6 +62,8 @@ const documentRow = (tenantId = 'tenant-acme'): Document => ({
   title: 'Agreement',
   docType: 'umowa-uod',
   documentDate: '2026-07-01',
+  periodStart: null,
+  periodEnd: null,
   person: null,
   tags: ['contract'],
   createdAt: '2026-07-01T10:00:00.000Z',
@@ -77,7 +81,11 @@ const fileRow = (): DocumentFile => ({
   createdAt: '2026-07-01T10:00:00.000Z',
 });
 
-const fake = (initialDocuments: Document[] = [], initialFiles: DocumentFile[] = []) => {
+const fake = (
+  initialDocuments: Document[] = [],
+  initialFiles: DocumentFile[] = [],
+  idSequence: string[] = [documentId, uploadId, fileId],
+) => {
   const documents = [...initialDocuments];
   const files = [...initialFiles];
   const blobs = new Map<string, Uint8Array>();
@@ -157,6 +165,22 @@ const fake = (initialDocuments: Document[] = [], initialFiles: DocumentFile[] = 
             (document) => document.id === id && document.tenantId === tenantId,
           ),
       ) ?? null,
+    moveFileToDocument: async (tenantId, sourceDocumentId, idOfFile, targetDocumentId) => {
+      const sourceOwned = documents.some(
+        (document) => document.id === sourceDocumentId && document.tenantId === tenantId,
+      );
+      const targetOwned = documents.some(
+        (document) => document.id === targetDocumentId && document.tenantId === tenantId,
+      );
+      const index = files.findIndex(
+        (file) => file.id === idOfFile && file.documentId === sourceDocumentId,
+      );
+      const current = files[index];
+      if (!sourceOwned || !targetOwned || !current) return null;
+      const moved = { ...current, documentId: targetDocumentId };
+      files[index] = moved;
+      return moved;
+    },
     deleteFile: async (tenantId, id, idOfFile) => {
       const index = files.findIndex(
         (file) =>
@@ -189,7 +213,7 @@ const fake = (initialDocuments: Document[] = [], initialFiles: DocumentFile[] = 
     createUploadUrl: async () => ok(null),
   };
 
-  const ids = [documentId, uploadId, fileId];
+  const ids = [...idSequence];
   return {
     deps: {
       documents: repo,
@@ -208,6 +232,8 @@ const createInput = {
   title: 'Agreement',
   docType: 'umowa-uod' as const,
   documentDate: '2026-07-01',
+  periodStart: null,
+  periodEnd: null,
   tags: ['contract'],
 };
 
@@ -260,6 +286,17 @@ describe('documents use-cases', () => {
         run: (deps) => removeFile(ctx(member), documentId, fileId, deps),
       },
       {
+        name: 'moveDocumentFile',
+        run: (deps) =>
+          moveDocumentFile(
+            ctx(member),
+            documentId,
+            fileId,
+            { title: 'Moved', docType: 'umowa-uod' },
+            deps,
+          ),
+      },
+      {
         name: 'getFileContent',
         run: (deps) => getFileContent(ctx(visitor), documentId, fileId, deps),
       },
@@ -284,6 +321,7 @@ describe('documents use-cases', () => {
         vi.spyOn(state.deps.documents, 'delete'),
         vi.spyOn(state.deps.documents, 'createFile'),
         vi.spyOn(state.deps.documents, 'findFile'),
+        vi.spyOn(state.deps.documents, 'moveFileToDocument'),
         vi.spyOn(state.deps.documents, 'deleteFile'),
       ];
       const result = await testCase.run(state.deps);
@@ -373,6 +411,73 @@ describe('documents use-cases', () => {
         state.deps,
       ),
     ).toEqual({ ok: true, value: undefined });
+  });
+
+  it('moves a file into a new document with copied metadata defaults', async () => {
+    const state = fake([documentRow()], [fileRow()], [movedDocumentId]);
+    const moved = await moveDocumentFile(
+      ctx(staff('tenant-acme')),
+      documentId,
+      fileId,
+      { title: 'Moved file', docType: 'protokol' },
+      state.deps,
+    );
+
+    expect(moved).toMatchObject({
+      ok: true,
+      value: {
+        id: movedDocumentId,
+        title: 'Moved file',
+        docType: 'protokol',
+        documentDate: '2026-07-01',
+        tags: ['contract'],
+        files: [{ id: fileId, documentId: movedDocumentId }],
+      },
+    });
+    expect(state.files[0]?.documentId).toBe(movedDocumentId);
+  });
+
+  it('does not create a move target for cross-tenant or missing-file requests', async () => {
+    const crossTenant = fake([documentRow()], [fileRow()], [movedDocumentId]);
+    expect(
+      await moveDocumentFile(
+        ctx(staff('tenant-other')),
+        documentId,
+        fileId,
+        { title: 'Moved file', docType: 'protokol' },
+        crossTenant.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(crossTenant.documents).toHaveLength(1);
+
+    const missingFile = fake([documentRow()], [], [movedDocumentId]);
+    expect(
+      await moveDocumentFile(
+        ctx(staff('tenant-acme')),
+        documentId,
+        fileId,
+        { title: 'Moved file', docType: 'protokol' },
+        missingFile.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(missingFile.documents).toHaveLength(1);
+  });
+
+  it('cleans up the move target when the file move reports not_found', async () => {
+    const state = fake([documentRow()], [fileRow()], [movedDocumentId]);
+    expect(
+      await moveDocumentFile(
+        ctx(staff('tenant-acme')),
+        documentId,
+        fileId,
+        { title: 'Moved file', docType: 'protokol' },
+        {
+          ...state.deps,
+          documents: { ...state.deps.documents, moveFileToDocument: async () => null },
+        },
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(state.documents.map((document) => document.id)).toEqual([documentId]);
   });
 
   it('finalizes only tenant-owned existing storage keys and exports stored files', async () => {

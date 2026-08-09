@@ -71,13 +71,13 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-08-01 after the iPad signing gesture update. The
-      // database-free run is statements 80.23%, branches 86.95%, functions
-      // 78.83%, and lines 80.23%; each floor is that measured value rounded
-      // down.
+      // Re-measured 2026-08-01 after merging the dates-and-teczki branch with
+      // the iPad signing gesture update. The database-free run is statements
+      // 80.62%, branches 87.01%, functions 78.62%, and lines 80.62%; each
+      // floor is that measured value rounded down.
       thresholds: {
         statements: 80,
-        branches: 86,
+        branches: 87,
         functions: 78,
         lines: 80,
       },
@@ -108,9 +108,6 @@ export default defineConfig({
         test: {
           name: 'web',
           environment: 'jsdom',
-          // jsdom + msw + user-event under parallel CI CPU load intermittently
-          // pushes render/settle waits past the 5s default; 15s removes the
-          // flake without masking a genuinely hung test.
           testTimeout: 15_000,
           include: ['apps/web/**/*.test.ts', 'apps/web/**/*.test.tsx'],
           exclude: [...configDefaults.exclude],

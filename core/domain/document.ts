@@ -24,17 +24,30 @@ const documentFileRoleSchema = z.enum([
 
 export type DocumentFileRole = z.infer<typeof documentFileRoleSchema>;
 
-export const documentSchema = z.object({
+const periodIsOrdered = (value: {
+  periodStart?: string | null | undefined;
+  periodEnd?: string | null | undefined;
+}): boolean =>
+  !value.periodStart || !value.periodEnd || value.periodStart <= value.periodEnd;
+
+const documentFieldsSchema = z.object({
   id: z.uuid(),
   tenantId: z.string().min(1),
   title: z.string().min(1).max(300),
   docType: documentTypeSchema,
   documentDate: z.iso.date(),
+  periodStart: z.iso.date().nullable(),
+  periodEnd: z.iso.date().nullable(),
   person: z.string().nullable(),
   tags: z.array(z.string()),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
+
+export const documentSchema = documentFieldsSchema.refine(
+  periodIsOrdered,
+  'periodStart must not be after periodEnd',
+);
 
 export type Document = z.infer<typeof documentSchema>;
 
@@ -51,23 +64,35 @@ export const documentFileSchema = z.object({
 
 export type DocumentFile = z.infer<typeof documentFileSchema>;
 
-export const documentWithFilesSchema = documentSchema.extend({
-  files: z.array(documentFileSchema),
-});
+export const documentWithFilesSchema = documentFieldsSchema
+  .extend({
+    files: z.array(documentFileSchema),
+  })
+  .refine(periodIsOrdered, 'periodStart must not be after periodEnd');
 
 export type DocumentWithFiles = z.infer<typeof documentWithFilesSchema>;
 
-export const createDocumentSchema = z.object({
+const createDocumentFieldsSchema = z.object({
   title: z.string().trim().min(1, 'Title must not be empty').max(300, 'Title too long'),
   docType: documentTypeSchema,
   documentDate: z.iso.date(),
+  periodStart: z.iso.date().nullable().optional(),
+  periodEnd: z.iso.date().nullable().optional(),
   person: z.string().trim().min(1).nullable().optional(),
   tags: z.array(z.string().trim().min(1)).default([]),
 });
 
+export const createDocumentSchema = createDocumentFieldsSchema.refine(
+  periodIsOrdered,
+  'periodStart must not be after periodEnd',
+);
+
 export type CreateDocument = z.input<typeof createDocumentSchema>;
 
-export const updateDocumentSchema = createDocumentSchema.extend({});
+export const updateDocumentSchema = createDocumentFieldsSchema.refine(
+  periodIsOrdered,
+  'periodStart must not be after periodEnd',
+);
 
 export type UpdateDocument = z.input<typeof updateDocumentSchema>;
 
@@ -75,6 +100,7 @@ export const documentListFilterSchema = z
   .object({
     docType: documentTypeSchema.optional(),
     person: z.string().trim().min(1).optional(),
+    tag: z.string().trim().min(1).optional(),
     text: z.string().trim().min(1).optional(),
     dateFrom: z.iso.date().optional(),
     dateTo: z.iso.date().optional(),
@@ -117,6 +143,21 @@ export const finalizeFileUploadSchema = z.object({
 });
 
 export type FinalizeFileUpload = z.infer<typeof finalizeFileUploadSchema>;
+
+const moveDocumentFileFieldsSchema = z.object({
+  title: z.string().trim().min(1, 'Title must not be empty').max(300, 'Title too long'),
+  docType: documentTypeSchema,
+  documentDate: z.iso.date().optional(),
+  periodStart: z.iso.date().nullable().optional(),
+  periodEnd: z.iso.date().nullable().optional(),
+});
+
+export const moveDocumentFileSchema = moveDocumentFileFieldsSchema.refine(
+  periodIsOrdered,
+  'periodStart must not be after periodEnd',
+);
+
+export type MoveDocumentFile = z.input<typeof moveDocumentFileSchema>;
 
 export const exportDocumentsSchema = z.object({
   documentIds: z

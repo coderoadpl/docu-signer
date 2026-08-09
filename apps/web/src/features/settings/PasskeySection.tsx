@@ -18,17 +18,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
-import { formatPolishDate } from '../../lib/format-date.js';
 
 const errorText = (error: unknown): string =>
   error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : 'Wystąpił nieoczekiwany błąd';
 
-/**
- * US-028a passkeys settings (web). Register a passkey under a display name (the
- * browser runs the WebAuthn ceremony), list the caller's passkeys with their
- * creation date, and remove one behind an inline confirmation. Every provider
- * call goes through `AuthClientPort`, so this component names no auth route or SDK.
- */
 export const PasskeySection = () => {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
@@ -112,10 +105,7 @@ export const PasskeySection = () => {
                 )
               }
             >
-              <ListItemText
-                primary={passkey.name.length > 0 ? passkey.name : 'Klucz bez nazwy'}
-                secondary={`Dodano ${formatPolishDate(passkey.createdAt)}`}
-              />
+              <ListItemText primary={passkey.name.length > 0 ? passkey.name : 'Klucz bez nazwy'} />
             </ListItem>
           ))}
         </List>

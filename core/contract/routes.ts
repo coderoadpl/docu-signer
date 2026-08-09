@@ -9,6 +9,7 @@ import {
   exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
+  moveDocumentFileSchema,
   publicTenantProfileSchema,
   staffRoleSchema,
   updateDocumentSchema,
@@ -106,6 +107,12 @@ export const documentFileDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
+export const documentFileMoveInputSchema = moveDocumentFileSchema;
+
+export const documentFileMoveOutputSchema = z.object({
+  document: documentWithFilesSchema,
+});
+
 export const exportDocumentsInputSchema = exportDocumentsSchema;
 
 export const PUBLIC_API_PREFIX = '/api/public';
@@ -161,6 +168,10 @@ export const API_ROUTES = {
   documentFileDelete: {
     method: 'DELETE',
     path: '/api/documents/:documentId/files/:fileId',
+  },
+  documentFileMove: {
+    method: 'POST',
+    path: '/api/documents/:documentId/files/:fileId/move',
   },
   documentFileContent: {
     method: 'GET',

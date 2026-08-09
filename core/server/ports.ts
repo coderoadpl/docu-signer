@@ -21,7 +21,10 @@ export interface DocumentRepository {
   update(
     tenantId: string,
     documentId: string,
-    input: Pick<Document, 'title' | 'docType' | 'documentDate' | 'person' | 'tags'>,
+    input: Pick<
+      Document,
+      'title' | 'docType' | 'documentDate' | 'periodStart' | 'periodEnd' | 'person' | 'tags'
+    >,
   ): Promise<Document | null>;
   delete(tenantId: string, documentId: string): Promise<boolean>;
   createFile(
@@ -32,6 +35,12 @@ export interface DocumentRepository {
     tenantId: string,
     documentId: string,
     fileId: string,
+  ): Promise<DocumentFile | null>;
+  moveFileToDocument(
+    tenantId: string,
+    sourceDocumentId: string,
+    fileId: string,
+    targetDocumentId: string,
   ): Promise<DocumentFile | null>;
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
 }
