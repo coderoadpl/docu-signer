@@ -716,7 +716,8 @@ test('mass signing can receive a signature from a QR pad browser context', async
     .poll(() => new URL(page.url()).searchParams.get('q'))
     .toBe(title);
   await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Masowe podpisywanie' }).click();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${title}` }).click();
+  await page.getByRole('button', { name: 'Masowe podpisywanie (1)' }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
   await expectReviewPdfFitsViewport(page);
 
@@ -797,7 +798,10 @@ test('mass signing signs, skips and signs an already signed document', async ({ 
   await expect(page.getByRole('cell', { name: firstTitle, exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: secondTitle, exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: thirdTitle, exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Masowe podpisywanie' }).click();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${firstTitle}` }).click();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${secondTitle}` }).click();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${thirdTitle}` }).click();
+  await page.getByRole('button', { name: 'Masowe podpisywanie (3)' }).click();
 
   await expect(page.getByRole('heading', { name: thirdTitle })).toBeVisible();
   await expectReviewPdfFitsViewport(page);

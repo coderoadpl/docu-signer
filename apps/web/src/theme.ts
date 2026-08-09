@@ -1,5 +1,5 @@
 import { useMemo, type ElementType } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, TableCell, Typography } from '@mui/material';
 import { createTheme, styled, type Theme, type ThemeOptions } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 
@@ -231,6 +231,10 @@ export const FileDropZone = styled(Box)(({ theme }) => ({
 
 export const SigningSurface = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.background.default,
+}));
+
+export const StickyTableCell = styled(TableCell)(({ theme }) => ({
+  backgroundColor: theme.palette.background.paper,
 }));
 
 export const SigningPageSurface = styled(Box)(({ theme }) => ({

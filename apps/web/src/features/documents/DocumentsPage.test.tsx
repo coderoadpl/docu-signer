@@ -688,7 +688,7 @@ describe('DocumentsPage', () => {
     expect(await screen.findByText('Zatwierdzono 2, błędów 0.')).toBeInTheDocument();
   });
 
-  it('starts mass signing visible PDFs in canonical grouped order', async () => {
+  it('starts mass signing selected PDFs in canonical grouped order', async () => {
     const baseFile = {
       id: '33333333-3333-4333-8333-333333333333',
       documentId: DOCUMENT_ID,
@@ -769,7 +769,19 @@ describe('DocumentsPage', () => {
     );
     const { router } = await renderPage('/app/documents?q=masowe');
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Masowe podpisywanie' }));
+    const massSigningButton = await screen.findByRole('button', {
+      name: 'Masowe podpisywanie (0)',
+    });
+    expect(massSigningButton).toBeDisabled();
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Podpisana umowa' })[0] ??
+        screen.getByLabelText('Zaznacz dokument: Podpisana umowa'),
+    );
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Protokół' })[0] ??
+        screen.getByLabelText('Zaznacz dokument: Protokół'),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Masowe podpisywanie (2)' }));
 
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(
@@ -779,11 +791,11 @@ describe('DocumentsPage', () => {
     expect(router.state.location.search).toMatchObject({
       q: 'masowe',
       tryb: 'masowe',
-      kolejka: `${protocolId},${billId}`,
-      pliki: '99999999-9999-4999-8999-999999999999,ffffffff-ffff-4fff-8fff-ffffffffffff',
+      kolejka: protocolId,
+      pliki: '99999999-9999-4999-8999-999999999999',
       podpisane: 0,
       pominiete: 0,
-      razem: 3,
+      razem: 2,
     });
   });
 
