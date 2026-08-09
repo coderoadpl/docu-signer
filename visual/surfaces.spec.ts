@@ -55,7 +55,8 @@ test('authenticated app bar chrome', async ({ page }) => {
   await submitSignIn(page);
 
   const chrome = page.getByRole('banner');
-  await expect(chrome.getByRole('button', { name: 'Zmień firmę' })).toContainText('Acme Sp. z o.o.');
+  await expect(chrome).toContainText('Archiwum dokumentów');
+  await expect(chrome).toContainText(DEMO_EMAIL);
 
   await expect(chrome).toHaveScreenshot('app-shell-chrome.png');
 });
@@ -87,7 +88,7 @@ test('StatusView error inside AppShell', async ({ page }) => {
   await expect(page).toHaveScreenshot('layout-status-view-error.png', { fullPage: true });
 });
 
-test('StatusView empty inside FocusCard', async ({ page }) => {
+test('StatusView empty inside AppShell', async ({ page }) => {
   await openLogin(page);
   await page.route('**/api/me', async (route) => {
     await route.fulfill({
@@ -96,16 +97,9 @@ test('StatusView empty inside FocusCard', async ({ page }) => {
       body: JSON.stringify(EMPTY_ME),
     });
   });
-  await page.route('**/api/tenants', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ ok: true, data: { tenants: [] } }),
-    });
-  });
   await submitSignIn(page);
   await expect(
-    page.getByRole('heading', { name: 'Nie ma tu jeszcze firmy — utwórz pierwszą' }),
+    page.getByRole('heading', { name: 'Brak dostępu do archiwum' }),
   ).toBeVisible();
 
   await expect(page).toHaveScreenshot('layout-status-view-empty.png', { fullPage: true });

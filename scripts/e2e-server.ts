@@ -51,9 +51,8 @@ const migrateAndSeed = async (databaseUrl: string): Promise<void> => {
 /**
  * Production serves one tenant per domain; the browser resolves the tenant from
  * the Host header, never a header the CLI injects. Registering `localhost` as a
- * verified custom domain for the seeded `acme` tenant makes http://localhost the
- * single-tenant page it would be in production, so the login flow lands straight
- * on that tenant's ledger.
+ * verified custom domain for the seeded default tenant makes http://localhost the
+ * single-tenant page it would be in production.
  */
 const registerLocalhostTenant = async (databaseUrl: string): Promise<void> => {
   const client = new pg.Client({ connectionString: databaseUrl });
@@ -63,7 +62,7 @@ const registerLocalhostTenant = async (databaseUrl: string): Promise<void> => {
       `INSERT INTO tenant_domains (id, tenant_id, domain, kind, verified)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (domain) DO NOTHING`,
-      ['domain-e2e-localhost', 'tenant-acme', 'localhost', 'custom', true],
+      ['domain-e2e-localhost', 'tenant-default', 'localhost', 'custom', true],
     );
   } finally {
     await client.end();
@@ -124,9 +123,6 @@ const bootServer = (): void => {
       SMTP_HOST: 'localhost',
       SMTP_PORT: String(MAILPIT_SMTP_PORT),
       SMTP_SECURE: 'false',
-      // Surfaced by the domains settings page (US-019) as the DNS record tenants
-      // create; the noop provisioner still verifies every domain regardless.
-      SELF_HOST_TARGET_CNAME: 'apps.agentproofarch.test',
       // The suite fires many sign-ins from one shared bucket (no client IP
       // behind the harness) — production keeps the limiter on.
       AUTH_RATE_LIMIT: 'off',

@@ -1,5 +1,8 @@
 # ADR-0007: EmailPort shape and the magic-link transport
 
+> **Partially superseded in Podpisy on 2026-08-01.** Email transport and magic-link
+> authentication remain; member provisioning and first-sign-in binding do not.
+
 Date: 2026-07-21 · Status: accepted (owner-approved)
 
 ## Context

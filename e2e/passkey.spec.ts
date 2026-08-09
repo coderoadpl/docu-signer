@@ -28,7 +28,7 @@ const signInWithPassword = async (page: Page): Promise<void> => {
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toContainText('Acme');
+  await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
 };
 
 test('register a passkey in settings, then sign in with it (US-028a)', async ({ page }) => {
@@ -44,7 +44,7 @@ test('register a passkey in settings, then sign in with it (US-028a)', async ({ 
   await page.goto('/login');
 
   await page.getByRole('button', { name: 'Zaloguj się kluczem dostępu' }).click();
-  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toContainText('Acme');
+  await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
 
   const me = await page.request.get('/api/me');
   expect(me.ok()).toBeTruthy();

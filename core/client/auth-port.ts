@@ -5,7 +5,7 @@ export interface AuthSessionResult {
 }
 
 /** A social identity provider the app can offer (FR-26). */
-export type SocialProvider = 'google';
+type SocialProvider = 'google';
 
 export interface SocialSignInInput {
   provider: SocialProvider;
@@ -13,7 +13,7 @@ export interface SocialSignInInput {
   callbackURL?: string;
 }
 
-export interface SocialSignInResult {
+interface SocialSignInResult {
   /** The provider authorization URL the client redirects to, or null on failure. */
   url: string | null;
 }
@@ -24,7 +24,7 @@ export interface MagicLinkRequest {
   callbackURL?: string;
 }
 
-export interface TwoFactorEnableResult {
+interface TwoFactorEnableResult {
   /** otpauth:// URI for an authenticator app (rendered as a QR by the UI). */
   totpURI: string;
   backupCodes: string[];

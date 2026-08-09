@@ -119,7 +119,8 @@ const trackedMarkdown = execFileSync('git', ['ls-files', '-z', '*.md'], {
   encoding: 'utf8',
 })
   .split('\0')
-  .filter((entry) => entry.length > 0);
+  .filter((entry) => entry.length > 0)
+  .filter((entry) => existsSync(join(repoRoot, entry)));
 
 // ── Leaked-delimiter check: every git-tracked `.md`. ────────────────────────
 for (const rel of trackedMarkdown) {

@@ -42,7 +42,6 @@ const staff = (tenantId: string | null, role: 'owner' | 'admin' = 'owner'): Iden
   tenantSlug: tenantId ? 'acme' : null,
   tenantName: tenantId ? 'Acme Inc' : null,
   staffRole: tenantId ? role : null,
-  memberId: null,
 });
 
 const member: Identity = {
@@ -53,7 +52,6 @@ const member: Identity = {
   tenantSlug: 'acme',
   tenantName: 'Acme Inc',
   staffRole: null,
-  memberId: 'member-1',
 };
 
 const documentRow = (tenantId = 'tenant-acme'): Document => ({
@@ -204,7 +202,7 @@ const fake = (initialDocuments: Document[] = [], initialFiles: DocumentFile[] = 
   };
 };
 
-const ctx = (identity: Identity) => ({ identity, tenantCreationMode: 'open' as const });
+const ctx = (identity: Identity) => ({ identity });
 
 const createInput = {
   title: 'Agreement',

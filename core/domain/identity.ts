@@ -12,5 +12,4 @@ export interface Identity {
   tenantSlug: string | null;
   tenantName: string | null;
   staffRole: StaffRole | null;
-  memberId: string | null;
 }

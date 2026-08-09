@@ -1,5 +1,9 @@
 # ADR-0004: No-exceptions enforcement — CI gates, post-deploy verification, and config-regression probes
 
+> **Current mechanism, historical examples.** Podpisy retains the gates and
+> doc/config checks; smoke now drives documents and removed island/scaffolder
+> probes are no longer part of the count.
+
 Date: 2026-07-17 · Status: accepted (2026-07-17), with one sub-decision deferred to the owner (see Consequences)
 
 ## Context

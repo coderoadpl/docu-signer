@@ -16,7 +16,6 @@ const verified: TenantDomain = {
 const noopBackfills: BackfillPort = {
   loadCheckpoint: async () => null,
   saveCheckpoint: async () => {},
-  normalizeMemberEmails: async () => ({ processed: 0, nextCursor: null, done: true }),
 };
 
 const deps = (
@@ -26,12 +25,6 @@ const deps = (
   tenantDomains: {
     findByDomain,
     listVerifiedDomains: async () => [],
-    listByTenant: async () => [],
-    findAnyByDomain: async () => null,
-    findByTenantAndDomain: async () => null,
-    add: async (input) => input,
-    setVerified: async () => null,
-    removeByTenantAndDomain: async () => 0,
   } satisfies TenantDomainRepository,
   backfills,
 });
@@ -76,25 +69,6 @@ describe('internal domain-check endpoint', () => {
 });
 
 describe('internal backfill endpoint', () => {
-  const trackingBackfills = (): BackfillPort => {
-    let checkpoint: Awaited<ReturnType<BackfillPort['loadCheckpoint']>> = null;
-    return {
-      loadCheckpoint: async () => checkpoint,
-      saveCheckpoint: async (next) => {
-        checkpoint = next;
-      },
-      normalizeMemberEmails: async (_cursor, limit) => ({ processed: limit, nextCursor: 'z', done: true }),
-    };
-  };
-
-  it('runs one batch of a registered backfill and reports progress', async () => {
-    const app = buildInternalApp(deps(async () => verified, trackingBackfills()));
-    const res = await app.request('/internal/backfills/members-email-normalize?limit=5', { method: 'POST' });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toMatchObject({ name: 'members-email-normalize', processed: 5, done: true });
-  });
-
   it('answers 404 for an unregistered backfill name', async () => {
     const app = buildInternalApp(deps(async () => verified));
     const res = await app.request('/internal/backfills/no-such-backfill', { method: 'POST' });

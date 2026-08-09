@@ -33,7 +33,7 @@ enterprise customer questionnaire)
   account existence through better-auth defaults).
 - Support access / break-glass procedure; abuse quotas (tenant-creation
   velocity); vulnerability management.
-- Data governance matrix: classification, DSAR flow beyond member export,
+- Data governance matrix: classification and DSAR flow for archived documents,
   legal holds.
 
 ## Product platform (trigger: named per entry)
@@ -51,23 +51,9 @@ enterprise customer questionnaire)
   Storybook + Lost Pixel is the component-isolation alternative when the need is
   per-component rather than per-page. Chromatic is excluded (paid). Trigger: the
   first UI-heavy consumer of the foundation.
-- ~~US-020 Vercel domain-provisioning adapter (`DomainPort`)~~ — **BUILT** (the
-  trigger fired: tenant subdomains bridged through company DNS with one plain
-  wildcard CNAME `*.agentproofarch.coderoad.pl → cname.vercel-dns.com`, and a
-  records-only zone can carry no DNS-01 wildcard cert, so every per-tenant host
-  needs its own HTTP-01 cert and therefore its own programmatic attach).
-  `adapters/domain-provisioning/vercel.ts` + `DOMAIN_PROVISIONER=vercel` ship with
-  `VERCEL_TOKEN`/`VERCEL_PROJECT_ID`(+`VERCEL_TEAM_ID`) and a boot refusal when
-  the block is incomplete (see
-  [architecture.md](architecture.md#ports-complete-list)). Hobby
-  caps at 50 custom domains per project. **Residual, still open: the adapter has
-  never run against the live Domains API** — its behaviour is proven only against
-  a stubbed `fetch`, because CI and the build machine have no token. The owner
-  supplying `VERCEL_TOKEN` in the Vercel env (A1-S5) is what closes that gap; the
-  first live add/check/remove against a real project is the acceptance run.
 - Cost guards and attribution — trigger: first surprising vendor bill.
 - CLI distribution + version handshake — trigger: first external CLI consumer.
-- Per-tenant IdP / enterprise SSO (tenant-configured SAML/OIDC federation) — trigger: first enterprise customer ask.
+- Enterprise SSO — trigger: first enterprise customer ask.
 - Billing/entitlements; search; load testing; IaC — trigger: the respective
   product need.
 - Foundation upgrade contract (R2-29): release manifest, tagged revisions,
@@ -100,12 +86,9 @@ enterprise customer questionnaire)
   edit to `core/domain/slug.ts`.
 - `domainNameSchema` accepts raw IPv4 (`192.168.1.1`) as a custom domain
   (S6 verification). Trigger: next edit to the domain chain.
-- Revoked-staff denial is `tenant_not_found`, byte-identical to a stranger's —
+- Archive-access denial is `tenant_not_found`, byte-identical to a stranger's —
   deliberate existence-hiding, recorded so nobody "fixes" it to `forbidden`
   (S2 verification).
-- Cross-subdomain session on a real base domain (switcher keeps the session in
-  prod) is documented but not locally testable (S6). Trigger: first custom
-  base-domain deployment — verify live, then delete this row.
 - Post-deploy production smoke automation is external to this repository.
   `smoke:remote` remains the verification primitive and requires caller-supplied
   `BASE_URL` and `EXPECTED_SHA`.

@@ -1,5 +1,9 @@
 # Provider-coupling audit
 
+> **Historical upstream audit.** Its member, staff, tenant-creation and domain
+> recommendations no longer describe shipped Podpisy surfaces; only the retained
+> authentication and tenant-resolution plumbing remains current.
+
 Date: 2026-07-11. Trigger: the "tenant = Better Auth organization" discovery
 during the ADR-0002 review. This is the full sweep of the architecture and the
 demo for similar hidden assumptions, with priorities and fixes.

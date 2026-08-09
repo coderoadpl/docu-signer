@@ -13,7 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import { BOARD_IDS } from '#core/domain/index.js';
+const LEGACY_BOARD_IDS = ['personal', 'team'] as const;
 
 export const tenants = pgTable(
   'tenants',
@@ -109,7 +109,7 @@ export const cards = pgTable(
     // Which board this card lives on. Defaults to 'personal' so every card that
     // predates the team board — and every payload that omits `board` — stays on
     // the personal board with no backfill.
-    board: text('board', { enum: BOARD_IDS }).notNull().default('personal'),
+    board: text('board', { enum: LEGACY_BOARD_IDS }).notNull().default('personal'),
     // Board-agnostic: the legal column set is data of a board, validated at the
     // use-case boundary, so the substrate stores a plain string.
     column: text('column').notNull(),

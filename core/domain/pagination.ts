@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const DEFAULT_PAGE_LIMIT = 50;
+const DEFAULT_PAGE_LIMIT = 50;
 export const MAX_PAGE_LIMIT = 100;
 
 export const paginationQuerySchema = z.object({
@@ -12,9 +12,6 @@ export const paginationQuerySchema = z.object({
     .transform((limit) => Math.min(limit, MAX_PAGE_LIMIT))
     .default(DEFAULT_PAGE_LIMIT),
 });
-
-export type PaginationQuery = z.output<typeof paginationQuerySchema>;
-export type PaginationQueryInput = z.input<typeof paginationQuerySchema>;
 
 export const encodeOpaqueCursor = (value: unknown): string =>
   btoa(encodeURIComponent(JSON.stringify(value)))

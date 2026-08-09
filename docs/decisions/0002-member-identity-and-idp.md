@@ -1,5 +1,8 @@
 # ADR-0002: Member identity — global authentication, tenant-owned relationship
 
+> **Superseded in Podpisy on 2026-08-01.** The member and staff verticals were
+> removed; their tables remain only as non-destructively retained schema lineage.
+
 Date: 2026-07-11 · Status: accepted (owner-approved)
 
 ## Context

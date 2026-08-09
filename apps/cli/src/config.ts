@@ -18,7 +18,6 @@ export const DEFAULT_DEV_API_URL = `http://localhost:${String(DEFAULT_DEV_PORT)}
 const profileSchema = z
   .object({
     token: z.string().nullable(),
-    tenant: z.string().nullable(),
   })
   .strict();
 
@@ -31,7 +30,7 @@ const canonicalOriginSchema = z
 
 export const cliConfigSchema = z
   .object({
-    version: z.literal(2),
+    version: z.literal(3),
     currentOrigin: canonicalOriginSchema,
     profiles: z.record(canonicalOriginSchema, profileSchema),
   })
@@ -52,9 +51,8 @@ export type CliConfig = z.output<typeof cliConfigSchema>;
 export type CliProfile = z.output<typeof profileSchema>;
 export type CliOriginSource = 'flag' | 'env' | 'repo' | 'stored';
 
-export interface CliEnv {
+interface CliEnv {
   APP_CLI_API_URL?: string | undefined;
-  APP_CLI_TENANT?: string | undefined;
 }
 
 export interface ResolveCliConfigInput {
@@ -62,7 +60,6 @@ export interface ResolveCliConfigInput {
   cwd: string;
   env: CliEnv;
   apiUrl?: string;
-  tenant?: string;
 }
 
 export interface ResolvedCliConfig {
@@ -70,13 +67,12 @@ export interface ResolvedCliConfig {
   origin: string;
   originSource: CliOriginSource;
   profile: CliProfile;
-  tenant: string | null;
 }
 
 const configFile = join(homedir(), '.config', 'agentproofarch', 'config.json');
 
 const emptyConfig = (): CliConfig => ({
-  version: 2,
+  version: 3,
   currentOrigin: DEFAULT_DEV_API_URL,
   profiles: {},
 });
@@ -113,7 +109,6 @@ const migrateLegacyConfig = (legacy: z.output<typeof legacyConfigSchema>): CliCo
     profiles: {
       [origin]: {
         token: legacy.token,
-        tenant: legacy.tenant,
       },
     },
   });
@@ -150,7 +145,7 @@ export const loadConfig = (): CliConfig => {
 
   const record = recordSchema.safeParse(raw);
   if (record.success && Object.hasOwn(record.data, 'version')) {
-    if (record.data['version'] !== 2) return emptyConfig();
+    if (record.data['version'] !== 3) return emptyConfig();
     throw new Error(
       `podpisy: invalid ~/.config/agentproofarch/config.json: ${current.error.issues
         .map((issue) => issue.message)
@@ -173,7 +168,7 @@ export const saveConfig = (config: CliConfig): void => {
   atomicWriteConfig(cliConfigSchema.parse(config));
 };
 
-export const isPodpisyRepo = (cwd: string): boolean => {
+const isPodpisyRepo = (cwd: string): boolean => {
   let directory = resolve(cwd);
   const root = parse(directory).root;
   while (true) {
@@ -197,9 +192,8 @@ export const resolveCliConfig = (input: ResolveCliConfigInput): ResolvedCliConfi
           ? { apiUrl: DEFAULT_DEV_API_URL, originSource: 'repo' as const }
           : { apiUrl: input.config.currentOrigin, originSource: 'stored' as const };
   const origin = apiOrigin(apiSelection.apiUrl);
-  const profile = input.config.profiles[origin] ?? { token: null, tenant: null };
-  const tenant = input.tenant ?? input.env.APP_CLI_TENANT ?? profile.tenant;
-  return { ...apiSelection, origin, profile, tenant };
+  const profile = input.config.profiles[origin] ?? { token: null };
+  return { ...apiSelection, origin, profile };
 };
 
 export const updateOriginProfile = (
@@ -208,7 +202,7 @@ export const updateOriginProfile = (
   patch: Partial<CliProfile>,
   setCurrent: boolean,
 ): CliConfig => {
-  const profile = config.profiles[origin] ?? { token: null, tenant: null };
+  const profile = config.profiles[origin] ?? { token: null };
   return cliConfigSchema.parse({
     ...config,
     currentOrigin: setCurrent ? origin : config.currentOrigin,

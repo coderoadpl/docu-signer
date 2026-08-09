@@ -6,29 +6,15 @@ import {
   API_PATHS,
   API_ROUTES,
   TENANT_HEADER,
-  cardCreateInputSchema,
-  cardMoveInputSchema,
-  cardsListQuerySchema,
   documentCreateInputSchema,
   documentListInputSchema,
   documentUpdateInputSchema,
   exportDocumentsInputSchema,
   fileUploadRequestInputSchema,
   finalizeFileUploadInputSchema,
-  memberEnsureInputSchema,
-  memberExportQuerySchema,
-  memberRemoveInputSchema,
-  memberUpdateInputSchema,
-  staffGrantInputSchema,
-  staffRevokeInputSchema,
   serverUploadMetadataSchema,
-  tenantCreateInputSchema,
-  todoCreateInputSchema,
 } from '#core/contract/index.js';
 import {
-  domainAddInputSchema,
-  domainCheckInputSchema,
-  domainRemoveInputSchema,
   err,
   internal,
   notFound,
@@ -39,41 +25,20 @@ import {
   type Identity,
 } from '#core/domain/index.js';
 import {
-  addCard,
-  addDomain,
-  addTodo,
-  checkDomain,
-  createTenant,
   createDocument,
   deleteDocument,
-  ensureMember,
-  exportMember,
   exportDocuments,
   finalizeFileUpload,
   getDocument,
   getFileContent,
   getFileExport,
-  grantAdmin,
-  listCards,
-  listDomains,
   listDocuments,
-  listMembers,
-  listMyTenants,
-  listStaff,
-  listTodos,
-  moveCard,
-  removeDomain,
   removeFile,
-  removeMember,
   resolveIdentity,
-  revokeAdmin,
   requestFileUpload,
   runBackfillBatch,
-  tenantCreationContext,
   serverUpload,
   updateDocument,
-  updateMember,
-  type AuthenticatedUser,
   type Ctx,
 } from '#core/server/index.js';
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
@@ -106,17 +71,6 @@ const INLINE_DOCUMENT_CONTENT_TYPES = [
   'image/webp',
 ] as const;
 
-const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
-  userId: user.userId,
-  email: user.email,
-  name: user.name,
-  tenantId: null,
-  tenantSlug: null,
-  tenantName: null,
-  staffRole: null,
-  memberId: null,
-});
-
 const attachmentHeaders = (
   fileName: string,
   contentType: string,
@@ -144,10 +98,7 @@ const bytesResponse = (
 export const buildApp = (deps: AppDeps) => {
   const app = new Hono<Vars>();
 
-  const ctxOf = (identity: Identity): Ctx => ({
-    identity,
-    tenantCreationMode: deps.tenantCreationMode,
-  });
+  const ctxOf = (identity: Identity): Ctx => ({ identity });
 
   // Security baseline (architecture §Security baseline). style-src allows
   // inline because emotion injects runtime <style> tags; scripts stay 'self'.
@@ -258,31 +209,6 @@ export const buildApp = (deps: AppDeps) => {
   // identity resolution or authorization. Open CORS is scoped to this group only.
   registerPublicRoutes(app, deps);
 
-  // Tenant listing and creation sit ABOVE tenant resolution: they are not scoped
-  // by the tenant the current host resolves to (§Authorization). Serving them
-  // here lets the switcher and post-register onboarding work on ANY host,
-  // including a tenant domain the caller has no access to (where the `/api/*`
-  // middleware below would 403).
-  app.get(API_PATHS.tenants, async (c) => {
-    const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
-    if (!user) return respond(err(unauthorized()));
-    const result = await listMyTenants(ctxOf(tenantlessIdentity(user)), deps);
-    return respond(result.ok ? ok({ tenants: result.value }) : result);
-  });
-
-  app.post(API_PATHS.tenants, async (c) => {
-    const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
-    if (!user) return respond(err(unauthorized()));
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = tenantCreateInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid tenant payload', parsed.error.flatten())));
-    }
-    const ctx = await tenantCreationContext(user, deps.tenantCreationMode, deps);
-    const result = await createTenant(ctx, parsed.data, deps);
-    return respond(result.ok ? ok({ tenant: result.value }) : result);
-  });
-
   app.use('/api/*', async (c, next) => {
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
     const identity = await resolveIdentity(
@@ -309,32 +235,16 @@ export const buildApp = (deps: AppDeps) => {
           identity.tenantId &&
           identity.tenantSlug &&
           identity.tenantName &&
-          (identity.staffRole || identity.memberId)
+          identity.staffRole
             ? {
                 id: identity.tenantId,
                 slug: identity.tenantSlug,
                 name: identity.tenantName,
                 staffRole: identity.staffRole,
-                memberId: identity.memberId,
               }
             : null,
       }),
     );
-  });
-
-  app.get(API_PATHS.todos, async (c) => {
-    const result = await listTodos(ctxOf(c.get('identity')), deps);
-    return respond(result.ok ? ok({ todos: result.value }) : result);
-  });
-
-  app.post(API_PATHS.todos, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = todoCreateInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid todo payload', parsed.error.flatten())));
-    }
-    const result = await addTodo(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok({ todo: result.value }) : result);
   });
 
   app.get(API_PATHS.documents, async (c) => {
@@ -502,163 +412,6 @@ export const buildApp = (deps: AppDeps) => {
     return new Response(zipResponseStream(entries), {
       headers: attachmentHeaders('eksport-dokumentow.zip', 'application/zip'),
     });
-  });
-
-  app.get(API_PATHS.cards, async (c) => {
-    const parsed = cardsListQuerySchema.safeParse({ board: c.req.query('board') });
-    if (!parsed.success) {
-      return respond(err(validation('Invalid board', parsed.error.flatten())));
-    }
-    const result = await listCards(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok({ cards: result.value }) : result);
-  });
-
-  app.post(API_PATHS.cards, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = cardCreateInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid card payload', parsed.error.flatten())));
-    }
-    const result = await addCard(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok({ card: result.value }) : result);
-  });
-
-  app.post(API_PATHS.cardsMove, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = cardMoveInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid card move payload', parsed.error.flatten())));
-    }
-    const result = await moveCard(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok({ card: result.value }) : result);
-  });
-
-  app.get(API_PATHS.members, async (c) => {
-    const result = await listMembers(
-      ctxOf(c.get('identity')),
-      { cursor: c.req.query('cursor'), limit: c.req.query('limit') },
-      deps,
-    );
-    return respond(
-      result.ok
-        ? ok({
-            items: result.value.items,
-            members: result.value.items,
-            nextCursor: result.value.nextCursor,
-          })
-        : result,
-    );
-  });
-
-  app.post(API_PATHS.members, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = memberEnsureInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid member payload', parsed.error.flatten())));
-    }
-    const result = await ensureMember(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok(result.value) : result);
-  });
-
-  app.post(API_PATHS.membersUpdate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = memberUpdateInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid member update payload', parsed.error.flatten())));
-    }
-    const result = await updateMember(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok({ member: result.value }) : result);
-  });
-
-  app.post(API_PATHS.membersRemove, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = memberRemoveInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid member reference', parsed.error.flatten())));
-    }
-    const result = await removeMember(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok(result.value) : result);
-  });
-
-  app.get(API_PATHS.membersExport, async (c) => {
-    const parsed = memberExportQuerySchema.safeParse({ id: c.req.query('id') });
-    if (!parsed.success) {
-      return respond(err(validation('Invalid member reference', parsed.error.flatten())));
-    }
-    const result = await exportMember(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok(result.value) : result);
-  });
-
-  app.get(API_PATHS.staff, async (c) => {
-    const result = await listStaff(
-      ctxOf(c.get('identity')),
-      { cursor: c.req.query('cursor'), limit: c.req.query('limit') },
-      deps,
-    );
-    return respond(
-      result.ok
-        ? ok({
-            items: result.value.items,
-            staff: result.value.items,
-            nextCursor: result.value.nextCursor,
-          })
-        : result,
-    );
-  });
-
-  app.post(API_PATHS.staff, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = staffGrantInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid admin grant payload', parsed.error.flatten())));
-    }
-    const result = await grantAdmin(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok(result.value) : result);
-  });
-
-  app.post(API_PATHS.staffRevoke, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = staffRevokeInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid staff reference', parsed.error.flatten())));
-    }
-    const result = await revokeAdmin(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok(result.value) : result);
-  });
-
-  app.get(API_PATHS.domains, async (c) => {
-    const result = await listDomains(ctxOf(c.get('identity')), deps);
-    return respond(result.ok ? ok({ domains: result.value, target: deps.domainTarget }) : result);
-  });
-
-  app.post(API_PATHS.domains, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = domainAddInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
-    }
-    const result = await addDomain(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok({ domain: result.value }) : result);
-  });
-
-  app.post(API_PATHS.domainsCheck, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = domainCheckInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
-    }
-    const result = await checkDomain(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok(result.value) : result);
-  });
-
-  app.post(API_PATHS.domainsRemove, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = domainRemoveInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
-    }
-    const result = await removeDomain(ctxOf(c.get('identity')), parsed.data, deps);
-    return respond(result.ok ? ok(result.value) : result);
   });
 
   // Total the API surface: any /api/* request that reached here matched no route

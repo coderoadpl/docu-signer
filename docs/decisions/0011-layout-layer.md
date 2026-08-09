@@ -1,5 +1,8 @@
 # ADR-0011: The layout layer — page skeletons as a named, enforced structural element
 
+> **Layout decision retained; inventory superseded on 2026-08-01.** The shell now
+> exposes only the document archive and account settings.
+
 Date: 2026-07-27 · Status: accepted (owner-approved) · Builds on
 [ADR-0005](0005-client-application-state.md) (features are islands; the view↔core
 seam), [ADR-0004](0004-no-exceptions-enforcement.md) (a promise in prose maps to

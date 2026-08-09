@@ -3,98 +3,31 @@ import { expect, test, type Page } from '@playwright/test';
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
 const DEMO_PASSWORD = 'demo1234';
 
-const signInDemo = async (page: Page): Promise<void> => {
+const signIn = async (page: Page): Promise<void> => {
   await page.goto('/login');
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Zmień firmę' })).toContainText('Acme');
 };
 
-const registerAccount = async (page: Page, email: string): Promise<void> => {
-  await page.goto('/register');
-  await page.getByLabel('Imię i nazwisko').fill('Staff Target');
-  await page.getByLabel('Adres e-mail').fill(email);
-  await page.getByLabel('Hasło', { exact: true }).fill('staff-target-1');
-  await page.getByRole('button', { name: 'Utwórz konto' }).click();
-  await expect(page.getByLabel('Nazwa nowej firmy')).toBeVisible();
-};
+test('account settings contains only personal security controls', async ({ page }) => {
+  await signIn(page);
+  await page.getByRole('link', { name: 'Konto' }).click();
 
-test('register lands the new user in /app onboarding and creates the first tenant', async ({ page }) => {
-  const stamp = Date.now();
-  const email = `e2e-reg-${stamp}@agentproofarch.dev`;
-  const tenantName = `E2E First ${stamp}`;
+  await expect(page.getByRole('heading', { name: 'Konto', level: 1 })).toBeVisible();
+  await expect(page.getByText(/uwierzytelnianie dwuskładnikowe/i)).toBeVisible();
+  await expect(page.getByText(/klucze dostępu/i)).toBeVisible();
+  await expect(page.getByText(/firma|domena|administrator/i)).toHaveCount(0);
+});
 
+test('registration creates an account without exposing tenant management', async ({ page }) => {
+  const email = `e2e-reg-${String(Date.now())}@agentproofarch.dev`;
   await page.goto('/register');
-  await page.getByLabel('Imię i nazwisko').fill('E2E Registrant');
+  await page.getByLabel('Imię i nazwisko').fill('E2E User');
   await page.getByLabel('Adres e-mail').fill(email);
   await page.getByLabel('Hasło', { exact: true }).fill('registrant-pass-1');
   await page.getByRole('button', { name: 'Utwórz konto' }).click();
 
-  await expect(page.getByLabel('Nazwa nowej firmy')).toBeVisible();
-
-  await page.getByLabel('Nazwa nowej firmy').fill(tenantName);
-  await page.getByRole('button', { name: 'Utwórz firmę' }).click();
-
-  await expect(page.getByRole('link', { name: new RegExp(tenantName) })).toBeVisible();
-});
-
-test('an owner creates a tenant and sees it in the header switcher', async ({ page }) => {
-  const stamp = Date.now();
-  const tenantName = `E2E Brand ${stamp}`;
-
-  await signInDemo(page);
-  await page.goto('/app/settings');
-  await page.getByLabel('Nazwa nowej firmy').fill(tenantName);
-  await page.getByRole('button', { name: 'Utwórz firmę' }).click();
-
-  await expect(page.getByText(new RegExp(tenantName))).toBeVisible();
-
-  await page.getByRole('button', { name: 'Zmień firmę' }).click();
-  await expect(page.getByRole('menu')).toContainText(tenantName);
-});
-
-test('an owner grants then revokes admin access, gated by a confirmation dialog', async ({ page, browser }) => {
-  const stamp = Date.now();
-  const email = `e2e-staff-${stamp}@agentproofarch.dev`;
-
-  // Register the grant target in an isolated browser context so its session
-  // cookie never lands in the context the owner drives below.
-  const targetContext = await browser.newContext();
-  await registerAccount(await targetContext.newPage(), email);
-  await targetContext.close();
-
-  await signInDemo(page);
-  await page.goto('/app/settings/staff');
-  await page.getByLabel('E-mail nowego administratora').fill(email);
-  await page.getByRole('button', { name: 'Nadaj ↵' }).click();
-  await expect(page.getByText(email)).toBeVisible();
-
-  const row = page.getByRole('listitem').filter({ hasText: email });
-  await row.getByRole('button', { name: 'Odbierz' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Odbierz' }).click();
-  await expect(page.getByText(email)).toHaveCount(0);
-});
-
-test('an owner adds, checks and removes a custom domain', async ({ page }) => {
-  const stamp = Date.now();
-  const domain = `shop-${stamp}.acme.test`;
-
-  await signInDemo(page);
-  await page.goto('/app/settings/domains');
-
-  await expect(page.getByText(/rekord CNAME wskazujący domenę na apps\.agentproofarch\.test/)).toBeVisible();
-
-  await page.getByLabel('Nowa domena').fill(domain);
-  await page.getByRole('button', { name: 'Dodaj domenę' }).click();
-
-  const row = page.getByRole('listitem').filter({ hasText: domain });
-  await expect(row).toContainText('oczekuje');
-
-  await row.getByRole('button', { name: 'Sprawdź' }).click();
-  await expect(row).toContainText('zweryfikowana');
-
-  await row.getByRole('button', { name: 'Usuń' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Usuń' }).click();
-  await expect(page.getByText(domain)).toHaveCount(0);
+  await expect(page.getByText('Brak dostępu do archiwum')).toBeVisible();
+  await expect(page.getByText(/utwórz firmę|zmień firmę/i)).toHaveCount(0);
 });

@@ -10,24 +10,11 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
-  DomainAddInput,
-  DomainCheckInput,
-  DomainRemoveInput,
-  MemberEnsureInput,
-  StaffGrantInput,
-  StaffRevokeInput,
-  TenantCreateInput,
-} from '#core/contract/index.js';
-import type {
-  BoardId,
-  CardMove,
   CreateDocument,
   DocumentListFilter,
   ExportDocuments,
   FileUploadRequest,
   FinalizeFileUpload,
-  NewCard,
-  NewTodo,
   UpdateDocument,
 } from '#core/domain/index.js';
 
@@ -66,7 +53,7 @@ type DefineQueryInput<TQueryFnData, TQueryKey extends QueryKey> = Omit<
   'queryFn'
 > & { call: ReadCall<TQueryFnData, TQueryKey> };
 
-export const defineQuery = <TQueryFnData, TQueryKey extends QueryKey>(
+const defineQuery = <TQueryFnData, TQueryKey extends QueryKey>(
   input: DefineQueryInput<TQueryFnData, TQueryKey>,
 ): QueryDescriptor<TQueryFnData, TQueryKey> => {
   const { call, ...rest } = input;
@@ -86,7 +73,7 @@ type DefineMutationInput<TData, TVariables> = Omit<
   'mutationFn'
 > & { call: WriteCall<TData, TVariables> };
 
-export const defineMutation = <TData, TVariables>(
+const defineMutation = <TData, TVariables>(
   input: DefineMutationInput<TData, TVariables>,
 ): MutationDescriptor<TData, TVariables> => {
   const { call, ...rest } = input;
@@ -97,24 +84,13 @@ export const defineMutation = <TData, TVariables>(
  * Query keys are the public API of each resource: general → specific, matched
  * by prefix for invalidation and per-prefix defaults. Never hand-copy a key.
  */
-export const meScopes = {
+const meScopes = {
   all: () => ['me'] as const,
 };
 
-export const tenantsScopes = {
-  all: () => ['tenants'] as const,
-};
-
-/** Invalidation filters (constructed here, never inline in apps/web). */
-export const tenantsInvalidates = () => ({ queryKey: tenantsScopes.all() });
 export const meInvalidates = () => ({ queryKey: meScopes.all() });
 
-export const todosScopes = {
-  all: () => ['todos'] as const,
-  lists: () => ['todos', 'list'] as const,
-};
-
-export const documentsScopes = {
+const documentsScopes = {
   all: () => ['documents'] as const,
   lists: () => ['documents', 'list'] as const,
   list: (filter: DocumentListFilter) => ['documents', 'list', filter] as const,
@@ -122,40 +98,18 @@ export const documentsScopes = {
   detail: (documentId: string) => ['documents', 'detail', documentId] as const,
 };
 
-export const cardsScopes = {
-  all: () => ['cards'] as const,
-  lists: () => ['cards', 'list'] as const,
-  /** One board's list — a distinct cache entry so personal and team never mix. */
-  list: (board: BoardId) => ['cards', 'list', board] as const,
-};
-
-export const membersScopes = {
-  all: () => ['members'] as const,
-  lists: () => ['members', 'list'] as const,
-};
-
-export const staffScopes = {
-  all: () => ['staff'] as const,
-  lists: () => ['staff', 'list'] as const,
-};
-
-export const domainsScopes = {
-  all: () => ['domains'] as const,
-  lists: () => ['domains', 'list'] as const,
-};
-
-export const authScopes = {
+const authScopes = {
   all: () => ['auth'] as const,
 };
 
-export const passkeysScopes = {
+const passkeysScopes = {
   all: () => ['passkeys'] as const,
 };
 
 /** Register/remove change the roster, so both invalidate the passkey list scope. */
 export const passkeysInvalidates = () => ({ queryKey: passkeysScopes.all() });
 
-export const configScopes = {
+const configScopes = {
   all: () => ['config'] as const,
 };
 
@@ -170,33 +124,6 @@ export const meQuery = (api: ApiClient) =>
     queryKey: meScopes.all(),
     call: ({ signal }) => api.me(signal),
   });
-
-export const tenantsQuery = (api: ApiClient) =>
-  defineQuery({
-    queryKey: tenantsScopes.all(),
-    call: ({ signal }) => api.listTenants(signal),
-  });
-
-export const createTenantMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...tenantsScopes.all(), 'create'],
-    call: (input: TenantCreateInput) => api.createTenant(input),
-  });
-
-export const todosQuery = (api: ApiClient) =>
-  defineQuery({
-    queryKey: todosScopes.lists(),
-    call: ({ signal }) => api.listTodos(signal),
-  });
-
-export const addTodoMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...todosScopes.all(), 'create'],
-    call: (input: NewTodo) => api.addTodo(input),
-  });
-
-/** The invalidation filter `addTodoMutation` applies after it settles. */
-export const addTodoInvalidates = () => ({ queryKey: todosScopes.lists() });
 
 export const documentsQuery = (api: ApiClient, filter: DocumentListFilter = {}) =>
   defineQuery({
@@ -275,120 +202,6 @@ export const exportDocumentsMutation = (api: ApiClient) =>
   });
 
 export const documentsInvalidates = () => ({ queryKey: documentsScopes.all() });
-
-export const cardsQuery = (api: ApiClient, board: BoardId = 'personal') =>
-  defineQuery({
-    queryKey: cardsScopes.list(board),
-    call: ({ signal }) => api.listCards(board, signal),
-  });
-
-export const addCardMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...cardsScopes.all(), 'create'],
-    call: (input: NewCard) => api.addCard(input),
-  });
-
-export const moveCardMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...cardsScopes.all(), 'move'],
-    call: (input: CardMove) => api.moveCard(input),
-  });
-
-/** Both card writes reorder the board, so both invalidate the list scope. */
-export const cardsInvalidates = () => ({ queryKey: cardsScopes.lists() });
-
-export const membersQuery = (api: ApiClient) =>
-  defineQuery({
-    queryKey: membersScopes.lists(),
-    call: async ({ signal }) => {
-      const members = [];
-      let cursor: string | undefined;
-      while (true) {
-        const page = await api.listMembers(cursor === undefined ? {} : { cursor }, signal);
-        if (!page.ok) return page;
-        members.push(...page.value.items);
-        if (page.value.nextCursor === null) {
-          return {
-            ok: true,
-            value: { items: members, members, nextCursor: null },
-          };
-        }
-        cursor = page.value.nextCursor;
-      }
-    },
-  });
-
-export const ensureMemberMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...membersScopes.all(), 'ensure'],
-    call: (input: MemberEnsureInput) => api.ensureMember(input),
-  });
-
-/** The invalidation filter `ensureMemberMutation` applies after it settles. */
-export const ensureMemberInvalidates = () => ({ queryKey: membersScopes.lists() });
-
-export const staffQuery = (api: ApiClient) =>
-  defineQuery({
-    queryKey: staffScopes.lists(),
-    call: async ({ signal }) => {
-      const staff = [];
-      let cursor: string | undefined;
-      while (true) {
-        const page = await api.listStaff(cursor === undefined ? {} : { cursor }, signal);
-        if (!page.ok) return page;
-        staff.push(...page.value.items);
-        if (page.value.nextCursor === null) {
-          return {
-            ok: true,
-            value: { items: staff, staff, nextCursor: null },
-          };
-        }
-        cursor = page.value.nextCursor;
-      }
-    },
-  });
-
-export const grantStaffMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...staffScopes.all(), 'grant'],
-    call: (input: StaffGrantInput) => api.grantStaff(input),
-  });
-
-export const revokeStaffMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...staffScopes.all(), 'revoke'],
-    call: (input: StaffRevokeInput) => api.revokeStaff(input),
-  });
-
-/** Both staff writes change the roster, so both invalidate the staff list scope. */
-export const staffInvalidates = () => ({ queryKey: staffScopes.lists() });
-
-export const domainsQuery = (api: ApiClient) =>
-  defineQuery({
-    queryKey: domainsScopes.lists(),
-    call: ({ signal }) => api.listDomains(signal),
-  });
-
-export const addDomainMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...domainsScopes.all(), 'add'],
-    call: (input: DomainAddInput) => api.addDomain(input),
-  });
-
-export const checkDomainMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...domainsScopes.all(), 'check'],
-    call: (input: DomainCheckInput) => api.checkDomain(input),
-  });
-
-export const removeDomainMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...domainsScopes.all(), 'remove'],
-    call: (input: DomainRemoveInput) => api.removeDomain(input),
-  });
-
-/** Every domain write changes the roster, so all invalidate the domain list scope. */
-export const domainsInvalidates = () => ({ queryKey: domainsScopes.lists() });
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any

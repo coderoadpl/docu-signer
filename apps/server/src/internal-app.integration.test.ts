@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createBackfillRepository } from '#adapters/db/backfill-repository.js';
 import { createTenantDomainRepository } from '#adapters/db/repositories.js';
-import { members, tenantDomains, tenants } from '#adapters/db/schema.js';
+import { tenantDomains, tenants } from '#adapters/db/schema.js';
 import * as schema from '#adapters/db/schema.js';
 
 import { buildInternalApp } from './internal-app.js';
@@ -62,15 +62,6 @@ beforeAll(async () => {
     { id: 'd-pending', tenantId: 't-acme', domain: 'pending.acme.com', kind: 'custom', verified: false },
   ]);
 
-  await db.insert(members).values(
-    Array.from({ length: 5 }, (_unused, i) => ({
-      id: `bf-member-${i}`,
-      tenantId: 't-acme',
-      email: `Person${i}@EXAMPLE.com`,
-      createdAt: '2026-01-01T00:00:00.000Z',
-    })),
-  );
-
   app = buildInternalApp({
     tenantDomains: createTenantDomainRepository(db),
     backfills: createBackfillRepository(db),
@@ -101,28 +92,12 @@ describe('domain-check endpoint against Postgres', () => {
   });
 });
 
-describe('backfill endpoint against Postgres (batch-checkpointed to completion)', () => {
-  const runBatch = async (limit: number) => {
-    const res = await app.request(`/internal/backfills/members-email-normalize?limit=${limit}`, {
+describe('backfill endpoint against Postgres', () => {
+  it('returns 404 for the removed demo backfill', async () => {
+    const res = await app.request('/internal/backfills/members-email-normalize?limit=2', {
       method: 'POST',
     });
-    expect(res.status).toBe(200);
-    return res.json();
-  };
-
-  it('drives the demo backfill to completion across multiple calls, resuming from the checkpoint', async () => {
-    const first = await runBatch(2);
-    expect(first).toMatchObject({ processed: 2, done: false });
-    const second = await runBatch(2);
-    expect(second).toMatchObject({ processed: 4, done: false });
-    const third = await runBatch(2);
-    expect(third).toMatchObject({ processed: 5, done: true });
-
-    const extra = await runBatch(2);
-    expect(extra).toMatchObject({ processed: 5, done: true });
-
-    const rows = await db.select({ email: members.email }).from(members);
-    expect(rows.every((row) => row.email === row.email.toLowerCase())).toBe(true);
-    expect(rows).toHaveLength(5);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ error: 'not_found' });
   });
 });

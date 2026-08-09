@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const SLUG_MIN_LENGTH = 3;
+const SLUG_MIN_LENGTH = 3;
 export const SLUG_MAX_LENGTH = 63;
 
 /**
@@ -60,5 +60,3 @@ export const canonicalSlugSchema = z
 
 /** The value-object schema: normalizes free input, then enforces the canonical shape. */
 export const slugSchema = z.string().transform(normalizeSlug).pipe(canonicalSlugSchema);
-
-export type Slug = z.infer<typeof canonicalSlugSchema>;

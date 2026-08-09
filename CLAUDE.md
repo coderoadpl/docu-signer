@@ -24,7 +24,7 @@ upstream doctrine, and prefer simplicity + a delta line over new ADRs.
   tree matches `pnpm-lock.yaml`, drops+recreates an isolated
   `agentproofarch_smoke` database (never touches your dev-seeded data), migrates
   and seeds it, boots the real server (`entry.node.ts`) on an ephemeral port and
-  drives health → sign-in → todos through the CLI, asserting taxonomy exit codes
+  drives health → sign-in → documents through the CLI, asserting taxonomy exit codes
   (including unauthorized = exit 3). Assumes `pnpm run db:up`. Runs in a few
   seconds warm; a first run can take ~20-30s.
   Integration tests (`pnpm run test:integration`, opt-in `VITEST_INTEGRATION=1`)
@@ -60,16 +60,12 @@ rejected.)
 - `pnpm run e2e` = the **browser** gate: Playwright drives a real Chromium over
   the real stack (isolated `agentproofarch_e2e` DB, `localhost` registered as a
   single-tenant custom domain, `entry.node.ts` serving the built bundle) across
-  seven spec files (16 tests): `app.spec.ts` (login → seeded todos → add-todo →
-  failed-login → cache headers → liveness/readiness → anonymous redirect to
-  login), `board.spec.ts` (the personal board: add,
-  reorder, persist across reload, move across columns, undo),
+  five spec files (9 tests): `app.spec.ts` (login → archive navigation →
+  failed-login → cache headers → liveness/readiness → anonymous redirect to login),
   `documents.spec.ts` (create → role uploads → paired preview → export),
-  `magic-link.spec.ts` (provisioned-member sign-in), `passkey.spec.ts`
-  (registration → passkey sign-in), `settings.spec.ts` (registration and
-  tenant/member/domain administration), and
-  `team-board.spec.ts` (the team board: entry-column-only, the WIP guard
-  blocking and releasing, and a legal chain persisting). The harness boots the
+  `magic-link.spec.ts` (trusted-user sign-in), `passkey.spec.ts`
+  (registration → passkey sign-in), and `settings.spec.ts` (account security and
+  registration without tenant management). The harness boots the
   server with `AUTH_RATE_LIMIT: 'off'` (`scripts/e2e-server.ts`) — the baseline
   is on (including dev), but the specs replay many logins that would otherwise
   trip the limiter and flake the run. It needs a browser and Postgres, so it is
@@ -129,7 +125,7 @@ pnpm run db:up && pnpm run db:migrate && pnpm run db:seed
 pnpm run dev:server &          # port 47100
 pnpm --silent run cli --json health
 pnpm --silent run cli login --email demo@agentproofarch.dev --password demo1234
-pnpm --silent run cli --tenant acme todo list
+pnpm --silent run cli document list
 ```
 
 `--json` prints exactly one JSON envelope on stdout; exit codes come from
@@ -137,25 +133,6 @@ pnpm --silent run cli --tenant acme todo list
 contract → port → use-case index → adapter schema → composition → server routes
 → client → client queries → CLI → web binding → web route, in that order, with
 tests at the core layer.
-
-Client state follows the island-core model (`docs/architecture.md`
-§Client application state, ADR-0005): a feature's `core/` is pure TS —
-events in, selectors out — with lint-enforced purity; scaffold a new island
-with `pnpm run new:island -- <name>`. How a core graduates rungs is read off
-the two living boards in `docs/island-graduation.md`.
-
-Start every new resource with the scaffolder — it is the canonical entry point:
-`pnpm run new:resource -- <singular-name>` (e.g. `blog-post`). It generates the
-files a resource owns outright (domain type, use-cases + test, repository, web
-page + route) and prints an ordered checklist for the shared files you must wire
-by hand, each with its anchor line and a paste-ready snippet. It deliberately
-does **not** edit shared files: the generated code imports symbols that don't
-exist yet, so `pnpm run check` stays RED through the type-forced steps (domain,
-contract, port/use-case, client wiring). Three steps are **not** type-forced — a
-missing CLI command, an unregistered web route, and a hand-registered server
-route (routes are wired by hand against `API_PATHS`, with no parity check) all
-typecheck fine — so `check` can go green with those still unwired; the checklist,
-not the compiler, is what guarantees they are done.
 
 ## Dev notes
 
@@ -167,7 +144,7 @@ not the compiler, is what guarantees they are done.
   web/contract sources; on that warning run `pnpm run build:web` or switch to
   `dev:web`.
 - Ports: API 47100, Vite dev 47180, Postgres 47542 (never 3000/8080/5432).
-- Tenants live on subdomains: `acme.localhost:47100`. Browsers reject
+- The fixed tenant lives at `default.localhost:47100`. Browsers reject
   `Domain=.localhost` cookies → per-subdomain login in dev only.
 - Better Auth CSRF requires an `Origin` header on auth POSTs (CLI sends its API URL).
 - Seed is idempotent; demo credentials `demo@agentproofarch.dev` / `demo1234`.

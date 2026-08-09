@@ -1,5 +1,9 @@
 # Frontend lint plan
 
+> **Foundation history.** Board/todo fixtures and scaffolder references below
+> document how the rules were proven upstream; those product surfaces and scripts
+> are not shipped by Podpisy.
+
 Enforcement spec for `architecture.md` §Frontend. Method: **warn → fix →
 error** — a rule lands at `warn`, violations are fixed in the same or next
 session, then it is promoted; a rule only counts once it fails `pnpm run check`.

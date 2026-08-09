@@ -112,22 +112,12 @@ const truncateAfter = async (client: pg.Client, stage: string): Promise<void> =>
   }
   if (stage === 'tenant-admins') {
     await client.query(
-      'DELETE FROM tenant_admins; DELETE FROM members; DELETE FROM tenant_domains; DELETE FROM todos; DELETE FROM documents',
-    );
-    return;
-  }
-  if (stage === 'members') {
-    await client.query(
-      'DELETE FROM members; DELETE FROM tenant_domains; DELETE FROM todos; DELETE FROM documents',
+      'DELETE FROM tenant_admins; DELETE FROM tenant_domains; DELETE FROM documents',
     );
     return;
   }
   if (stage === 'tenant-domains') {
-    await client.query('DELETE FROM tenant_domains; DELETE FROM todos; DELETE FROM documents');
-    return;
-  }
-  if (stage === 'todos') {
-    await client.query('DELETE FROM todos; DELETE FROM documents');
+    await client.query('DELETE FROM tenant_domains; DELETE FROM documents');
     return;
   }
   if (stage === 'documents') {
@@ -158,12 +148,11 @@ describe('seed convergence', () => {
       expect(expected.users.map((row) => row.email)).toEqual([
         'admin@podpisy.test',
         'demo@agentproofarch.dev',
+        'mag@example.com',
         'owner@podpisy.test',
       ]);
       expect(expected.tenants).toEqual([
-        { id: 'tenant-acme', slug: 'acme', name: 'Acme Sp. z o.o.' },
-        { id: 'tenant-default', slug: 'default', name: 'Amazing Company' },
-        { id: 'tenant-globex', slug: 'globex', name: 'Globex Corp' },
+        { id: 'tenant-default', slug: 'default', name: 'Archiwum dokumentów' },
       ]);
       expect(expected.admins.map((row) => ({
         id: row.id,
@@ -171,12 +160,6 @@ describe('seed convergence', () => {
         email: row.email,
         role: row.role,
       }))).toEqual([
-        {
-          id: 'admin-acme',
-          tenant_id: 'tenant-acme',
-          email: 'demo@agentproofarch.dev',
-          role: 'owner',
-        },
         {
           id: 'admin-default-1',
           tenant_id: 'tenant-default',
@@ -190,24 +173,36 @@ describe('seed convergence', () => {
           role: 'admin',
         },
         {
-          id: 'admin-globex',
-          tenant_id: 'tenant-globex',
+          id: 'admin-default-demo',
+          tenant_id: 'tenant-default',
           email: 'demo@agentproofarch.dev',
+          role: 'owner',
+        },
+        {
+          id: 'admin-default-magic',
+          tenant_id: 'tenant-default',
+          email: 'mag@example.com',
           role: 'admin',
         },
       ]);
-      expect(expected.members).toHaveLength(3);
-      expect(expected.domains).toHaveLength(2);
-      expect(expected.todos).toHaveLength(3);
+      expect(expected.members).toEqual([]);
+      expect(expected.domains).toEqual([
+        {
+          id: 'domain-default-localhost',
+          tenant_id: 'tenant-default',
+          domain: 'default.localhost',
+          kind: 'subdomain',
+          verified: true,
+        },
+      ]);
+      expect(expected.todos).toEqual([]);
       expect(expected.documents).toEqual([]);
       expect(expected.documentFiles).toEqual([]);
 
       for (const stage of [
         'tenants',
         'tenant-admins',
-        'members',
         'tenant-domains',
-        'todos',
         'documents',
       ]) {
         await truncateAfter(client, stage);

@@ -2,7 +2,10 @@
 
 Normative reference for agentproofarch. The [PRD](prd-agentproofarch-foundation.md)
 §3 is the original source; this document is its distilled, implementation-facing
-form. The repository root implements it.
+form. This fork preserves the structural rules but, per [FOUNDATION.md](../FOUNDATION.md),
+removed the upstream demo verticals on 2026-08-01. Product-specific examples of
+todos, boards, members, staff administration, tenant creation/switching and domain
+management describe upstream history, not surfaces shipped by Podpisy.
 
 ## The promise
 
@@ -41,16 +44,12 @@ never carries silent gaps.
   (eslint-plugin-boundaries + dependency-cruiser), not conventions. `pnpm run
   check` is the static gate; `pnpm run smoke` is the runtime gate — it verifies
   the installed dependency tree matches the lockfile, boots the real server
-  against a real database and drives health → sign-in → todos through the
+  against a real database and drives health → sign-in → documents through the
   CLI, asserting taxonomy exit codes. Static-green is not done; the app must
   actually run.
 - **The Vercel deploy target is built** with serverless functions and Neon.
-  The caddy provisioner and internal domain-check endpoint remain runtime
-  capabilities for externally packaged Node deployments, but this repository
-  does not ship or gate a self-host deployment package. The Vercel Domains API
-  adapter (US-020) ships too — per-tenant hosts attached to the Vercel project
-  over the REST API, offline-tested against a stubbed `fetch`, with live
-  verification pending the owner's `VERCEL_TOKEN`. **Vendor packages are contained**: `@vercel/*` and
+  The deploy seed binds the configured host to the fixed `default` tenant; this
+  fork ships no tenant-domain provisioning surface. **Vendor packages are contained**: `@vercel/*` and
   `@neondatabase/*` may be imported only inside `adapters/` and platform entry
   files (lint-enforced). This is dependency containment, not a ban on the
   vendor's *name* — the bare platform-detection string `VERCEL` is legitimately
@@ -65,8 +64,7 @@ core/domain     entities, Result, error taxonomy, zod schemas   → zod only
 core/contract   API routes + I/O schemas + error envelope       → domain
 core/server     use-cases + ports (interfaces)                  → domain, contract
 core/client     typed HTTP client + query definitions           → contract
-adapters/*      implement ports (db, auth, domain provisioning:
-                vercel + caddy + noop)                        → core
+adapters/*      implement ports (db, auth, storage, email)     → core
 apps/server     HTTP wiring + composition root                  → everything server-side
 apps/web        SPA (no SSR)                                    → core/client (+ auth client adapter)
 apps/cli        commands                                        → core/client
@@ -80,9 +78,7 @@ Dependency rules (enforced):
   import `core/server` or `adapters/db`.
 - Server adapters are instantiated exclusively in the composition root
   (`apps/server/src/composition.ts`), where env decides implementations
-  (`DB_DRIVER` selects the db driver; `DOMAIN_PROVISIONER` selects the
-  domain-provisioning adapter — `vercel` on the Vercel target, `caddy` on
-  self-host, `noop` by default). The
+  (`DB_DRIVER` selects the db driver). The
   one deliberate exception is the
   auth *client* adapter, constructed in `apps/web/src/api.ts` (web) and the
   CLI's `cliCtx`; the standalone DB operations `adapters/db/migrate.ts`,
@@ -145,8 +141,8 @@ apps/web/src/
   main.tsx          composition root: providers + router wiring only
   api.ts            binds core/client action factories once — the only module
                     that sees ApiClient, AuthClientPort and adapters
-  AppLayout.tsx     the stateful shell composition (ADR-0011): auth guard,
-                    tenant switcher, onboarding — renders components/layout/AppShell
+  AppLayout.tsx     the stateful shell composition (ADR-0011): auth guard and
+                    product navigation — renders components/layout/AppShell
   routes/           route components — thin: parse params, render a feature
   features/<name>/  feature folders (islands): core/ — the island core (events
                     in, selectors out) — plus views, hooks, <Name>.logic.ts
@@ -223,21 +219,11 @@ per [ADR-0011](decisions/0011-layout-layer.md) into the chrome skeleton
 no server state) and a thin stateful composition (`AppLayout.tsx`, beside
 `main.tsx`) that renders it. The shell guards auth
 (an anonymous hit on any `/app/*` route redirects to `/login`), owns the shared
-chrome — the header **tenant switcher** (lists the caller's tenants; selecting one
-navigates to that tenant's host, the same subdomain mechanism `lib/tenant.ts`
-uses), the **logout** action, and the primary navigation — and renders the active
-child through its `Outlet`. When the caller has no accessible tenant on the
-current host (the tenant-less apex, or a tenant domain they lack access to) the
-shell renders the **create-tenant onboarding** instead of a child, which is where
-a freshly-registered user lands (US-016) to create their first tenant (with its
-owner row). `/app` is a role-aware redirect (staff land on `/app/documents`,
-members on `/app/ledger`); the ledger is `/app/ledger`; the document archive is
-`/app/documents`; the boards are `/app/board` and
-`/app/team-board`; `/app/members` is the staff customer roster; and settings live
-at `/app/settings` (current tenant + role, tenant switch/create), with
-`/app/settings/staff` (the FR-8 staff roster — grant-by-email and confirmed
-revoke, owner-only) and `/app/settings/domains` (US-019 custom domains) as
-sub-pages. Unknown routes render a Polish not-found view inside the shell.
+chrome — the **logout** action and primary navigation — and renders the active
+child through its `Outlet`. A caller without access to the fixed archive sees a
+no-access state. `/app` redirects to `/app/documents`; the archive lives there,
+and personal authentication controls live at `/app/settings`. Unknown routes
+render a Polish not-found view inside the shell.
 Bare `/` redirects to `/app`.
 
 State rules:
@@ -298,7 +284,8 @@ reason. A rule without a matrix is prose, and prose decays.
 > [ADR-0005](decisions/0005-client-application-state.md); the underlying spike
 > report is not committed to the repo — its findings are summarized in that ADR.
 
-**The seam.** Every feature has `features/<name>/core/` — a pure TS module
+**The seam.** A feature that needs client-owned state may have
+`features/<name>/core/` — a pure TS module
 whose public API is **events in, selectors out**. Views talk exclusively to
 their own island's core; the machine inside is invisible (a view cannot tell
 a store from a statechart). The core's API *is* the facade — never a generic
@@ -324,7 +311,7 @@ core unit tests read outcomes only through selectors after events ·
 
 **The ladder + graduation triggers.** The seam is uniform; the machine
 escalates. Rung 1 — **descriptors**: thin re-exports of the feature's bound
-actions (scaffolded; the default for CRUD). Rung 2 — **island store**: real
+actions (the default for CRUD). Rung 2 — **island store**: real
 client state driven by events. Rung 3 — **statechart (XState)**: explicit
 states and transitions. A core graduates only when a measurable trigger
 fires: state survives component unmount; multi-component coordination in the
@@ -516,33 +503,10 @@ oracle — the UI wrapper adds no domain behavior to test · **REVIEW+AI**:
 flag UI states (drag, pending, undo) appearing in the table or the derived
 machine, and verdict logic duplicated outside the oracle.
 
-**Demo exemplars — the two living boards.** Two boards over the same
-tasks subdomain, the living proof that domain ≠ feature (one subdomain,
-several islands): the **personal board**
-(`apps/web/src/features/board/`; free card movement, optimistic moves
-+ rollback + undo) exercises rung 2 — an `@xstate/store` island store; the
-**team board** (`apps/web/src/features/team-board/`; WIP limits + an
-enforced status path from the `core/domain/team-board.ts` transition
-table, which `core/server/usecases/cards.ts` enforces on mutation)
-exercises rung 3 — the table-derived statechart, consulted as an oracle by
-the island's store and view. Both satisfy the spike-learnings requirements
-recorded in ADR-0005: fail-loud transitions, `toIndex` clamped before the
-gateway, WIP=1 coverage in the drift test with a planted-mutant detection
-proof, and `as`-free event carriers. Both are also **portable by construction**:
-each `core/index.ts` is a `createBoardCore`/`createTeamBoardCore` factory that
-imports no api.ts, bound once in `features/<name>/index.web.ts` (gateway +
-descriptors injected there), typechecked without DOM by `typecheck:islands`, and
-node-tested through the public factory. Side by side in the tree, the
-pair is the "how an island core graduates" guide — readable from the current
-state of the repo, not from git archaeology; the guided reading of that
-diff (triggers, anatomy, derivation contract, costs) is
-[island-graduation.md](island-graduation.md). Every other feature remains
-rung 1, honestly: no other feature fires a graduation
-trigger. The pre-existing features (todos, auth) predate the seam and carry
-no explicit `core/` folder yet; they gain one when first touched by real
-client state, and every **new** island starts from the scaffolder —
-`pnpm run new:island -- <name>` generates the rung-1 seam (events, selectors,
-core test, view, route) with marked extension points for the machine.
+**Product status.** The upstream personal and team-board exemplars that once
+demonstrated rungs 2 and 3 were removed from Podpisy on 2026-08-01. The ladder
+remains architectural guidance, but this fork does not ship an island scaffolder
+or a living board exemplar.
 
 The action set is CQRS-partitioned: every action is either a query (safe
 read) or a command (unsafe write) — no hybrids, enforced by read/write tags
@@ -629,35 +593,25 @@ partners — all arrive with the external consumer that triggers real versioning
 
 ## Identity and multi-tenancy
 
-Authentication is separated from relationship
-([ADR-0002](decisions/0002-member-identity-and-idp.md)): one global account
-per email holds *authentication only* (passwordless + magic link allowed)
-behind a narrow, OIDC-shaped `AuthPort` — the provider (Better Auth default)
-is swappable by design, and its topology (embedded / separate container /
-SaaS) is a composition-root choice. Two populations on top of it:
-
-- **Tenant staff** — our `tenant_admins` aggregate: flat `owner | admin`
-  grants, deliberately no teams/organizations concept (multiple admins are
-  just multiple rows).
-- **End customers ("members")** — our own tenant-scoped aggregate (profile,
-  tags, GDPR consents, owned email snapshot, export).
+Authentication is separated from archive access: one global account per email
+holds authentication (password, magic link, passkeys and 2FA) behind a narrow
+`AuthPort`. The provider is Better Auth by default and remains replaceable.
+Podpisy resolves access through the retained `tenants` and `tenant_admins`
+plumbing for the fixed `default` tenant. Member, staff-administration and
+tenant-management verticals are not shipped.
 
 Product-required auth methods — magic link, social login, passkeys, 2FA —
 are provider features exposed only through `AuthClientPort` and required
 from the proof of concept onwards. `userId` is an opaque string: foundation
 tables never FK provider tables.
 
-No auth-provider organization/team feature is used for either population —
-the provider supplies identity only (`userId`, email, name, verification
-status) and `tenants` is a foundation entity, never a provider object.
-Provider org APIs let users list their organizations (would leak a
-customer's other tenants), provider-attached relationship data would turn an
-IdP swap into a data migration, and tenant creation must not depend on the
-auth provider.
+No auth-provider organization/team feature is used: the provider supplies
+identity only (`userId`, email and name), while archive access remains in the
+application database.
 
-Tenant resolution per request: custom domain (from `tenant_domains`) →
-subdomain of `APP_BASE_DOMAIN` (slug) → `X-Tenant` header (CLI); membership is
-always verified. Every tenant-scoped use-case takes `ctx: { identity }` first
+Tenant resolution per request remains plumbing: exact host binding (from
+`tenant_domains`) → subdomain of `APP_BASE_DOMAIN` (slug) → `X-Tenant` header.
+Access is always verified. Every tenant-scoped use-case takes `ctx: { identity }` first
 and every tenant-scoped repository call requires `tenantId`. Sessions span
 `APP_BASE_DOMAIN` subdomains; each custom domain is its own cookie world
 (sign-in per domain — deliberate isolation).
@@ -672,95 +626,35 @@ accepts human input while only one canonical form is ever persisted or resolved.
 ### Authorization
 
 **Default-deny at every use-case entry** (NORMATIVE NOW). Tenant resolution
-answers *which* tenant and *whether* the caller belongs to it
-([ADR-0002](decisions/0002-member-identity-and-idp.md)); authorization answers
+answers *which* tenant and *whether* the caller has archive access; authorization answers
 *what* they may do there, and the two are separate steps. The capability model
-lives in `core/domain/authorization.ts`: a closed `Capability` union (one entry
-per aggregate action — `todo:read`, `todo:write`, `card:read`, `card:write`,
-`member:read`, `staff:read`, `staff:grant`, `staff:revoke`, `tenant:create`, …)
-and a pure `decide(identity, capability)` predicate over four principals derived
-from the identity — **owner** and **admin** (the two staff grants, now DISTINCT
-principals), **member** (an end-customer membership, no staff grant) and
-**visitor** (neither — the tenant-less identity). Owner and admin were a single
-`staff` principal until FR-8; the staff-grant surface is the first capability
-where they diverge, so the split is honest rather than cosmetic. The policy is a
+lives in `core/domain/authorization.ts`: a closed `Capability` union containing
+`document:read` and `document:write`, and a pure `decide(identity, capability)`
+predicate over **owner**, **admin** and **visitor**. The policy is a
 `Record<Capability, Principal[]>` grant table: a capability names exactly the
 principals that hold it and **nothing is granted by wildcard** — a principal
-absent from a capability's list is denied. The demo policy (staff-shared rows
-collapsed to one `owner+admin` column; only `staff:grant`/`staff:revoke` split
-them; `tenant:create` is the one row derived from an env-selected mode, below):
+absent from a capability's list is denied.
 
-| capability       | owner | admin | member | visitor (tenant-less) |
-| ---------------- | ----- | ----- | ------ | --------------------- |
-| `todo:read`      | allow | allow | allow  | deny                  |
-| `todo:write`     | allow | allow | allow  | deny                  |
-| `card:read`      | allow | allow | allow  | deny                  |
-| `card:write`     | allow | allow | allow  | deny                  |
-| `document:read`  | allow | allow | deny   | deny                  |
-| `document:write` | allow | allow | deny   | deny                  |
-| `member:*`       | allow | allow | deny   | deny                  |
-| `staff:read`     | allow | allow | deny   | deny                  |
-| `staff:grant`    | allow | deny  | deny   | deny                  |
-| `staff:revoke`   | allow | deny  | deny   | deny                  |
-| `domain:read`    | allow | allow | deny   | deny                  |
-| `domain:write`   | allow | deny  | deny   | deny                  |
-| `tenant:create` — `TENANT_CREATION=open` (default) | allow | allow | deny | allow |
-| `tenant:create` — `TENANT_CREATION=staff` | allow | allow | deny | deny |
-| `tenant:create` — `TENANT_CREATION=closed` | deny | deny | deny | deny |
-
-Members are full collaborators on the tenant's boards (todos and cards are
-collaborative aggregates) but may not administer tenants; owners and admins share
-every collaborative and customer-management capability, and **only an owner may
-grant or revoke admin access** (FR-8) — an admin runs the tenant but cannot mint
-or remove staff, and the last owner cannot be revoked (lockout guard, a
-`validation` error in `revokeAdmin`). Granting admin is to an EXISTING account by
-email — there are no invitations (post-MVP), so `grantAdmin` returns `not_found`
-when the email has no account. Custom domains (US-019) follow the same
-owner/admin split: `domain:read` (the settings roster) is staff-readable, but
-`domain:write` — attaching, verifying and detaching a domain — is owner-only, so
-an admin runs the tenant without changing where it is reachable. `tenant:create` is
-tenant-less self-service (the caller becomes owner atomically —
-`createTenantWithOwner`), and its grant row is the one **mode-dependent** row in
-the table ([ADR-0010](decisions/0010-tenant-creation-policy.md)): the env key
-**`TENANT_CREATION`** (single env schema, `core/server/config.ts`) selects `open`
-(default — a visitor holds it, so any authenticated account addressing the base
-domain self-serves a tenant: the public-SaaS shape), `staff` (only existing
-owners/admins spawn further tenants; the first one comes from seed/operator) or
-`closed` (operator-only, via seed/ops). The policy stays data — the mode derives
-that row's principal list, `decide` gains no branch, no new principal exists and
-default-deny is unchanged, so `closed`'s empty list denies by the ordinary rule
-and a denied create surfaces as the existing `forbidden` error, with no new error
-code. Under every mode a member of one tenant may not provision others; the
-member-deny cell is **use-case-layer only**: over HTTP the create route
-deliberately sits above tenant resolution, every authenticated caller presents as
-visitor, and a member could in any case drop the tenant header and present as one
-legitimately — the cell exists as defense-in-depth for future callers that carry
-a member context, not as an HTTP-reachable barrier. That same property is what
-the `staff` mode has to overcome: because the create route builds a tenant-less
-identity, an owner or admin also arrives as a visitor there, so `staff` is only
-distinguishable from `closed` once the create path derives the principal from the
-caller's staff grants **across the instance** (`listTenantsForStaff`, the read
-behind `listMyTenants`) rather than from a resolved tenant.
+| capability       | owner | admin | visitor (tenant-less) |
+| ---------------- | ----- | ----- | --------------------- |
+| `document:read`  | allow | allow | deny                  |
+| `document:write` | allow | allow | deny                  |
 
 **One line per use-case.** Every tenant-scoped use-case runs the predicate — via
 the `authorize` / `authorizeTenant` helpers in `core/server` — as its first
 statement, **before any repository access**:
 
 ```ts
-export const listTodos = async (ctx: Ctx, deps: TodoDeps) => {
-  const scope = authorizeTenant(ctx, 'todo:read'); // deny → forbidden (exit 4)
+export const listDocuments = async (ctx: Ctx, deps: DocumentDeps) => {
+  const scope = authorizeTenant(ctx, 'document:read'); // deny → forbidden (exit 4)
   if (!scope.ok) return scope;                      // else scope.value is the tenantId
-  return ok(await deps.todos.listByTenant(scope.value));
+  return ok(await deps.documents.listByTenant(scope.value, {}));
 };
 ```
 
 `authorizeTenant` both denies and hands back the resolved non-null `tenantId`, so
 an allowed caller narrows to its tenant without a second guard and a tenant-less
-caller is denied there rather than reaching a repository; `authorize` is the
-tenant-agnostic variant used by `createTenant` (tenant-less self-service). A
-capability is modelled only where authorization is a real decision: `listMyTenants`
-enumerates the caller's *own* staff memberships, so it is gated by authentication
-and carries no capability — a self-scoped read is not an access decision.
+caller is denied there rather than reaching a repository.
 
 **Public routes sit BEFORE identity resolution and never authorize** (US-028,
 [ADR-0006](decisions/0006-public-read-only-surface.md)). The public contract group
@@ -787,18 +681,14 @@ capability *name*, not the *call* · **LINT**: n/a (the predicate is a call-site
 discipline, not a syntactic shape a rule can match) · **TEST**: the `decide` unit
 suite asserts every capability × principal cell (an exhaustive
 `Record<Capability, Record<Principal, boolean>>`); each tenant-scoped use-case
-test asserts staff-allowed, member allowed/denied per policy and tenant-less
-denied; `new:resource` scaffolds all three outcomes as real tests for every new
-aggregate — staff allowed, member allowed per the baseline collaborative policy
-(the test title carries the flip-to-forbidden guidance for a staff-only
-aggregate) and the tenant-less caller `forbidden`; and a config-regression
+test asserts owner/admin allowed and tenant-less denied; and a config-regression
 **structural probe** (`config-regression/authorization.test.ts`) asserts every
 exported tenant-scoped use-case (first param `ctx: Ctx`) references the
 `authorize`/`authorizeTenant` helper, so a new use-case cannot silently skip
 authorization — its honest limit is that it matches the helper *in the function
 body* (a regex over source), not that the call precedes repository access, and an
-intentional authentication-only use-case is a named, reasoned allowlist entry
-(`listMyTenants`), not a silent omission · **REVIEW+AI**: flag a tenant-scoped
+intentional authentication-only use-case must be a named, reasoned allowlist entry,
+not a silent omission · **REVIEW+AI**: flag a tenant-scoped
 use-case that touches a repository before the predicate, any grant that widens a
 capability to a principal the table above does not name, and any new entry added
 to the probe's authentication-only allowlist without a self-scoped-read rationale.
@@ -918,7 +808,7 @@ carrying amounts outside the shared schema.
 tables declare `timestamp('…', { withTimezone: true })`; the domain and
 contract keep speaking ISO-8601 strings (driver-agnostic, as today) with the
 mapping at the adapter's schema column. Existing tables are grandfathered:
-the app tables' `created_at` columns (`tenants`, `members`, `todos` in
+the retained legacy tables' `created_at` columns (`tenants`, `members`, `todos` in
 `adapters/db/app-schema.ts`) are text ISO-8601, and the generated Better
 Auth tables use naive `timestamp` — documented legacy, deliberately **not
 migrated now** (nothing ranges or sorts across zones on them; converting is a
@@ -953,11 +843,9 @@ standard `{ ok: true, data }` envelope): `{ items, nextCursor }`, where
 `nextCursor` is a string to pass back or `null` on the last page. Why not
 offset/limit: offsets skew under concurrent writes (rows shift between pages)
 and cost the database the full skipped prefix, while a keyed cursor is stable
-and index-backed. The members and staff rosters implement this grammar
-additively: their named arrays remain for existing consumers while `items` and
-`nextCursor` carry the shared pagination shape. Existing todos and cards return
-the full tenant-scoped array — **exempt** as small bounded lists; if one ever
-needs paging it adopts this grammar additively, per §API versioning.
+and index-backed. The document archive currently returns its bounded filtered
+array without a cursor; if archive volume triggers pagination, it adopts this
+grammar additively per §API versioning.
 — **TYPE**: the envelope is one shared generic zod schema in `core/contract`
 (landing with the first paginated endpoint), so later endpoints cannot invent
 a rival shape without a visible new schema · **LINT**: n/a · **TEST**:
@@ -969,8 +857,8 @@ opaque token.
 **Concurrency is last-write-wins, documented per aggregate** (NORMATIVE NOW).
 Every current aggregate resolves concurrent writes by LWW — the later write
 wins, unconditionally — and that is the *documented contract*, not an
-accident: todos and cards are short-lived, per-tenant rows where a lost
-update costs a re-drag, not data. The named upgrade is a `version` column
+accident. The document archive is operated by two trusted users; its named
+upgrade is a `version` column
 with optimistic concurrency (`WHERE version = $expected`, miss → the existing
 `conflict` error code, exit 6), adopted **per aggregate** when its trigger
 fires: the first aggregate where two writers plausibly edit the same
@@ -995,14 +883,9 @@ raw insert, a forgotten code path, or a future adapter.
 |---|---|---|
 | `tenant_admins.role ∈ {owner, admin}` | **DB + app** | closed set → DB `CHECK` (`tenant_admins_role_check`, migration `0006`); the adapter also zod-parses on read (`staffMemberSchema`). Test: integration inserts a bad role via raw SQL → the DB rejects it. |
 | `tenant_domains.kind ∈ {subdomain, custom}` | **DB** | closed set → DB `CHECK` (`tenant_domains_kind_check`). Test: raw-SQL bad kind → rejected. |
-| `cards.board ∈ {personal, team}` | **DB + app** | closed set → DB `CHECK` (`cards_board_check`); the use-cases validate at their boundary. Test: raw-SQL bad board → rejected. |
-| `cards.column` legal for its `board` | **DB + app** | per-board closed set → compound DB `CHECK` (`cards_column_check`, `(board,column)` pairs); each board also validates its column at the use-case. Test: raw-SQL `personal`/`in-dev` → rejected. |
 | `documents.doc_type ∈ {umowa-uod, uchwala, protokol, rachunek, inny}` | **DB + app** | closed set → DB `CHECK` (`documents_doc_type_check`); the adapter zod-parses on read. Test: raw-SQL bad type → rejected. |
 | `document_files.role ∈ {source, signed-scan, signed-digital, other}` | **DB + app** | closed set → DB `CHECK` (`document_files_role_check`); the adapter zod-parses on read. Test: raw-SQL bad role → rejected. |
 | `document_files.size_bytes ∈ [0, 25 MiB]` | **DB + app** | upload policy → DB `CHECK` (`document_files_size_check`), server body limit, direct-upload token constraint and finalize schema. Test: raw-SQL oversized file → rejected. |
-| `members.marketing_consents[].channel ∈ MarketingChannel` | **app-only (zod at the read boundary)** | the payload is jsonb — a per-element closed set a column `CHECK` cannot express — so the guard is `memberSchema.parse` at the repository boundary, which rejects LOUDLY (throws) rather than leaking an untyped channel into core. Test: raw-SQL garbage channel → `findMember` throws. |
-| `cards` row shape (int position ≥ 0, board enum, string[] visited) | **app-only (zod at the read boundary)** | structural shape the CHECKs don't fully cover → `cardSchema.parse` on read throws on a corrupted row. Test: raw-SQL negative position → `listByTenant` throws. |
-| tenant always has ≥ 1 owner | **app (one atomic conditional statement)** | a cross-row cardinality invariant Postgres cannot express as a column constraint → the atomic last-owner-safe revoke (§Transactions, `revokeLastOwnerSafe`); the owner count is taken under a row lock so concurrent revokes serialize. Test: an integration test fires two concurrent revokes and asserts the tenant never reaches zero owners. |
 | every tenant-scoped row cascades from `tenants(id)` | **DB (FK `ON DELETE CASCADE`)** | see §Data lifecycle (tenant offboarding is a schema invariant). Test: the offboarding-cascade integration test. |
 
 — **TYPE**: closed unions surface in the domain zod schemas; the DB `CHECK`s are
@@ -1046,8 +929,7 @@ on the other is a trap:
 
 1. a **single-statement CTE** (`WITH … INSERT … ; INSERT … SELECT FROM …`) issued
    as one `db.execute` — the universal idiom, atomic everywhere, no driver branch.
-   This is how `createTenantWithOwner` inserts the tenant and its founding owner
-   grant in one round-trip.
+   Use this when a future operation must write several related rows atomically.
 2. **`db.batch([...])`** when the writes cannot be expressed as one statement — one
    HTTP request/transaction on `neon-http`, one `BEGIN/COMMIT` on `node-postgres`.
 
@@ -1056,18 +938,7 @@ because it silently degrades to non-atomic on `neon-http`. It may be used only f
 self-host-only maintenance paths that never run on Vercel, and such a path must
 say so.
 
-**MUST-ATOMIC list.** These operations must never be observable half-done and are
-therefore each implemented as ONE port method (so the compiler, not review,
-prevents a caller from half-doing it) backed by a sanctioned idiom:
-
-<!-- MUST-ATOMIC:begin -->
-- `TenantRepository.createTenantWithOwner` — the tenant row and its founding
-  owner grant; a tenant with no owner is unadministrable. Single-statement CTE.
-- `StaffRepository.revokeLastOwnerSafe` — the last-owner lockout check and the
-  grant delete, as one conditional `DELETE … WHERE … AND (owner count > 1)`, so
-  two concurrent revokes can never both pass the count and drop the tenant to
-  zero owners (§Data conventions, invariant matrix). Single conditional statement.
-<!-- MUST-ATOMIC:end -->
+**MUST-ATOMIC list.** No currently shipped Podpisy use-case is on this list.
 
 — **TYPE**: each MUST-ATOMIC operation is a single port method whose signature
 takes the whole unit of work, so a use-case cannot call one half and skip the
@@ -1075,9 +946,7 @@ other · **LINT**: n/a · **TEST**: an adapter test counts driver round-trips
 (exactly one `execute`) for the CTE operations, and an integration test fires two
 concurrent writers at the race-prone ones and asserts the invariant holds ·
 **REVIEW+AI**: reject a MUST-ATOMIC operation split across two port calls, and
-reject `db.transaction()` on any code path that can run on `neon-http`. A
-config-regression probe parses this list and asserts every entry names a single
-port method.
+reject `db.transaction()` on any code path that can run on `neon-http`.
 
 ## Public surface
 
@@ -1095,7 +964,7 @@ authenticated app remains a static SPA.
 the public read-only contract routes are live as the `PUBLIC_API_ROUTES` group in
 `core/contract` — a structurally distinct registry under `/api/public/*`,
 unauthenticated `GET` only. The demo route is the **public tenant profile**
-(`slug`, `displayName`, `contentVersion` — never emails, members, staff or todos),
+(`slug`, `displayName`, `contentVersion` — never emails, access grants or documents),
 served by `getPublicTenantProfile`, a use-case that takes **no identity** and runs
 no `authorize`. It is registered on the main app before the `/api/*`
 tenant-resolution middleware, so a public request never reaches identity
@@ -1125,7 +994,7 @@ forget and any opt-in is a visible, local exception.
   `/assets/(.*)` gets `Cache-Control: public, max-age=31536000, immutable` (via the
   `vercel.json` headers block) while `index.html` keeps the platform's
   revalidate-always default so a new deploy is picked up immediately. Self-host
-  parity: the Node `serveStatic` (or Caddy) sets the same two headers, so both
+  parity: the Node `serveStatic` path sets the same two headers, so both
   targets behave identically from one commit.
 - **No `ETag`/`Last-Modified`/304 on the JSON API.** HTTP revalidation would
   duplicate the only client read cache — TanStack Query, governed by
@@ -1195,7 +1064,7 @@ code.
   outbound-mail seam (US-026). `link` is the optional primary-action URL a
   transactional mail carries; a transport embeds it in the body and otherwise
   ignores the field. Two adapters in `adapters/email/`, selected by
-  `EMAIL_TRANSPORT` like `DOMAIN_PROVISIONER`: `smtp` (default — any RFC relay,
+  `EMAIL_TRANSPORT`: `smtp` (default — any RFC relay,
   Amazon SES SMTP creds included) and `ses` (Amazon SES direct over the SESv2 HTTP
   API, standard AWS_* credentials). There is **no dev transport**: dev/e2e/CI run
   the real `smtp` adapter pointed at a local **Mailpit** (docker-compose.dev.yml)
@@ -1203,61 +1072,14 @@ code.
   read the message back over Mailpit's HTTP API to recover the link, so there is
   no in-app dev route to keep off production. The magic-link sender in
   `create-auth.ts` is one consumer of `sendMail`, not the port's shape.
-- `TodoRepository`, `CardRepository`, `TenantDomainRepository`,
-  `TenantRepository`, `TenantAccessReader`: the per-aggregate repository ports
-  (todos, board cards, tenant domains, tenants + owner grants, staff/member
-  access reads). `TenantDomainRepository` carries both the resolution reads
-  (`findByDomain` verified-only, `listVerifiedDomains`) and the US-019 tenant
-  CRUD (`listByTenant`, `findAnyByDomain`/`findByTenantAndDomain`, `add`,
-  `setVerified`, `removeByTenantAndDomain`).
+- `DocumentRepository`: tenant-scoped archive metadata and file records.
+- `StoragePort`: private document bytes, metadata and upload targets.
+- `TenantDomainRepository`, `TenantRepository`, `TenantAccessReader`: read-only
+  tenant-resolution and archive-access plumbing.
 - `HealthPort`: database ping for the readiness route (`/api/health/ready` and
   the compat `/api/health`); liveness never calls it.
-- `IdGenerator`, `Clock`: the two injected primitives (id minting, ISO now) that
-  keep use-cases pure and deterministic in tests.
-
-**BUILT** (US-021 + US-020, DECIDE A2):
-
-- `DomainPort` (`provision`/`check`/`remove` tenant domains) lives in
-  `core/server/ports.ts`. Three adapters ship in `adapters/domain-provisioning/`,
-  selected by `DOMAIN_PROVISIONER` in the composition root:
-
-  | provisioner | target | `provision`/`remove` | `check` |
-  |---|---|---|---|
-  | `vercel` | Vercel | attach/detach the host on the Vercel project (Domains API) | the project's domain + config endpoints report `verified` and not `misconfigured` |
-  | `caddy` | Docker self-host | no-op (Caddy issues on demand) | DNS lookup that the domain resolves to `SELF_HOST_TARGET_CNAME`/`_IP` |
-  | `noop` (default) | dev | no-op | always accepts |
-
-  `DomainPort` now also backs the US-019 web/CLI domain surface: `addDomain`
-  provisions then writes an unverified row, `checkDomain` runs `check` and
-  persists the resulting `verified` flag, and `removeDomain` detaches then
-  releases. On self-host, TLS is issued with zero per-tenant config: Caddy's
-  `on_demand_tls { ask … }` calls an **internal-only** domain-check endpoint
-  (see §Self-host custom domains and TLS) before minting a certificate.
-
-  **The Vercel adapter (US-020) — why per-host attach, not a wildcard.** A
-  wildcard cert on Vercel needs an ACME DNS-01 challenge, which needs NS
-  delegation (§Tenant addressing). Where the base domain is a company zone that
-  cannot be delegated — the demo's own case, one plain wildcard CNAME record
-  `*.agentproofarch.coderoad.pl → cname.vercel-dns.com` bridged through company
-  DNS — every tenant host resolves, but certs are **per host over HTTP-01**, so
-  each host must be attached to the Vercel project individually. That attach is
-  exactly what this adapter does: `provision` POSTs the host to the project's
-  domains, `remove` deletes it, `check` reads the domain and its config back.
-  Attach is convergent, so an already-attached host (`409`) is a success — the
-  use-case may retry. `DOMAIN_PROVISIONER=vercel` must be selected
-  **explicitly** together with `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` (+
-  `VERCEL_TEAM_ID` for a team-owned project); it is never inferred from running
-  on Vercel, because the platform env carries no API token, and composition
-  **fails fast at boot** when `vercel` is selected without that block (the
-  `EMAIL_TRANSPORT=ses` rule, same shape). The token travels only in the
-  `Authorization` header — never logged, never echoed into an error detail; auth
-  failures name the misconfigured env key instead. Every API response is
-  zod-parsed at the boundary, and the injected `fetch` makes the whole adapter
-  testable offline (success, idempotent `409`, `401`/`403`, `5xx`, network
-  failure, corrupted JSON). **Honest status: verified only against a stubbed
-  `fetch`.** Live verification against the real Domains API is pending the
-  owner's `VERCEL_TOKEN` — until that runs, no claim is made about the live API's
-  behaviour beyond the documented contract.
+- `IdGenerator`: injected UUID minting for deterministic use-case tests.
+- `BackfillPort`: retained deploy-backfill checkpoints.
 
 **BUILT** (US-026/US-028a, A1 sub-package 4): the provider auth methods that were
 "normative when triggered" are now wired — this package was the trigger.
@@ -1280,12 +1102,8 @@ exists.
 
 ## Storage and email ports
 
-Two capabilities every product eventually needs — persisting binary objects and
-sending mail. `EmailPort` is now **built** (US-026 pulled its trigger — magic
-link); `StoragePort` stays **deferred** until a feature persists a caller-supplied
-binary. The foundation fixes the port shape, the per-target adapters and the
-tenant-scoping rules; the demo adds each port only when a feature pulls its
-trigger (the JobsPort precedent: pattern normative, demo implements on first need). Both live in `core/server`, are
+Podpisy builds both binary storage for document files and transactional mail for
+magic links. Both ports live in `core/server`, are
 instantiated only in the composition root, and are called only from use-cases —
 never from routes, never from adapters. Ports return plain `Promise`; the
 use-case wraps the result in `Result<T, AppError>`, matching the existing
@@ -1293,24 +1111,13 @@ repository ports.
 
 **StoragePort** — binary object persistence.
 
-- Shape: `put(tenantId, path, body, opts)`, `getSignedUrl(tenantId, path, opts)`,
-  `remove(tenantId, path)` — `tenantId` first, like every repository method.
-- **Tenant scoping is the port's job** (NORMATIVE): the caller passes a logical
-  `path` (`avatars/<id>.png`); the adapter composes the real key as
-  `tenants/<tenantId>/<path>` and rejects any `path` that escapes the prefix
-  (`..`, leading `/`, absolute keys). The key space is closed by construction, so
-  one tenant can never address another's objects.
-- **Reads go through short-lived signed URLs** (NORMATIVE): objects are private,
-  the client never receives a bucket credential or a permanent public URL; public
-  assets, if ever needed, are an explicit separate method.
-- Adapters follow the Vercel-default / Docker-escape-hatch split (`STORAGE_DRIVER`
-  selects, like `DB_DRIVER`): Vercel Blob on Vercel; any S3-compatible endpoint
-  (MinIO, Neon Object Storage, R2, B2) on self-host; a filesystem adapter in dev
-  and an in-memory fake asserting the tenant-prefixed key in tests. `@vercel/blob`
-  stays inside `adapters/` under the existing `@vercel/*` boundary rule.
-- **Trigger** (WHEN TRIGGERED): the first feature persisting a caller-supplied
-  binary — avatar, product/download asset, or a GDPR-export file that outlives one
-  request. In-request bytes streamed straight to a response do not trigger it.
+- Shape: `put`, `get`, `head`, `delete`, and `createUploadUrl` over a complete,
+  server-generated storage key. Document use-cases generate tenant-prefixed keys;
+  clients never choose arbitrary object paths.
+- Objects are private. Reads flow through authenticated document routes, and
+  direct uploads receive a constrained temporary target.
+- `STORAGE_DRIVER` selects filesystem storage locally or Vercel Blob on Vercel;
+  an in-memory adapter supports unit tests. Vendor imports remain in adapters.
 
 **EmailPort** — transactional mail. **BUILT** (US-026, A1 sub-package 4; see
 [ADR-0007](decisions/0007-email-port-and-magic-link-transport.md) for the shape
@@ -1331,7 +1138,7 @@ decision).
   link is the only sender and its handler is idempotent (each token mints one
   session).
 - Adapters as built (`adapters/email/`, selected by `EMAIL_TRANSPORT` in the
-  composition root, the `DOMAIN_PROVISIONER` pattern): `smtp` (default) — any RFC
+  composition root): `smtp` (default) — any RFC
   SMTP relay via nodemailer, **Amazon SES SMTP creds work unchanged** (owner
   default: "niech sobie ktoś to podmieni" — swap the relay behind the port); `ses`
   — Amazon SES **direct** over the SESv2 HTTP API (`@aws-sdk/client-sesv2`,
@@ -1360,64 +1167,15 @@ all app-domain, decided per product.
 ## Deployment
 
 Vercel is the packaged target: `vercel.json` and `api/index.ts` provide the
-serverless entry, Neon uses `DB_DRIVER=neon-http`, and tenant domains use
-`DOMAIN_PROVISIONER=vercel` with the Vercel API credentials. The Node entry,
-node-postgres driver, caddy provisioner, and internal domain-check app remain
-available for an external deployment package. `DOMAIN_PROVISIONER=noop` remains
-the default. The required CI set is `check`, `smoke`, and `e2e`; `visual` is
+serverless entry and Neon uses `DB_DRIVER=neon-http`. The deploy seed binds
+`APP_BASE_DOMAIN` to the fixed `default` tenant. The Node entry and node-postgres
+driver remain the local/runtime escape hatch. The required CI set is `check`,
+`smoke`, and `e2e`; `visual` is
 advisory and `ai-review` is separately secret-gated.
 
 Vercel is invocation-only: no resident process, so no queue workers,
 schedulers, websockets or long-running jobs. A product that needs a resident
 process must supply and verify its own long-lived Node packaging.
-
-## Caddy custom domains and TLS runtime (US-021)
-
-An externally packaged Caddy deployment can issue a tenant certificate with
-zero per-tenant config through on-demand TLS. The flow is a single question
-Caddy asks the app before it mints a cert:
-
-```
-TLS handshake for shop.acme.com
-        │
-        ▼
-Caddy  ── GET http://app:47101/internal/domain-check?domain=shop.acme.com ──▶  app (internal port)
-        ◀── 200 (verified tenant domain)  /  404 (unknown or unverified) ──
-        │
-   200 → issue + cache the cert, reverse_proxy → app:47100
-   4xx → refuse; no cert is minted
-```
-
-Two properties make this safe:
-
-- **The ask endpoint is unreachable from the public internet.** It is served by a
-  *separate* Hono app (`apps/server/src/internal-app.ts`), mounted by the Node
-  entry (`entry.node.ts`) on its own port (`INTERNAL_PORT`, 47101). External
-  deployment packaging must keep that port private — the public app on `:47100`
-  does not serve `/internal/*` at all. Network-internal isolation beats
-  path-obscurity: even a public routing mistake cannot expose it, because it does
-  not run in the public app.
-- **It answers 200 only for a verified domain.** The handler returns 200 iff the
-  host exists and is `verified` in `tenant_domains`; every other case is 404, so
-  Caddy will not obtain certificates for domains no tenant has proven. Proven by
-  unit tests (`internal-app.test.ts`) and a real-Postgres integration test
-  (`internal-app.integration.test.ts`: positive + negative).
-
-| concern | mechanism | where |
-|---|---|---|
-| Cert issuance | Caddy `on_demand_tls { ask }` → app | external deployment configuration |
-| Issue/refuse decision | `GET /internal/domain-check?domain=` → 200/404 | `apps/server/src/internal-app.ts` |
-| Endpoint isolation | separate app on `INTERNAL_PORT`, never published | `entry.node.ts` + external network policy |
-| DNS precondition (verify UI) | `caddy` `DomainPort.check` resolves domain → `SELF_HOST_TARGET_CNAME`/`_IP` | `adapters/domain-provisioning/caddy.ts` |
-| Provisioner selection | `DOMAIN_PROVISIONER=caddy` (self-host) / `vercel` (Vercel target) / `noop` (default) | `apps/server/src/composition.ts` |
-
-The `DomainPort.check` (DNS resolution) and the ask endpoint are complementary:
-the endpoint gates certificate issuance at handshake time on *verified* state;
-`check` is what a future domains-settings "Verify" action (US-019) calls to
-confirm the operator pointed DNS at the deploy before flipping `verified`. The
-Vercel Domains API `DomainPort` (US-020) is the same seam on the other target and
-does not affect self-host: it attaches each host to the Vercel project instead of
-resolving DNS itself (see §Ports).
 
 ## Environments (Vercel target)
 
@@ -1508,67 +1266,21 @@ the shared integration surface. Both are fully automatic and fully
 agent-reachable. Local (`*.localhost`) is the machine loop; every *deployed*
 non-production environment is a preview or the stable staging URL.
 
-**Tenant addressing per environment.** Tenants live on subdomains of the app's
-base domain — but what "base domain" means differs per environment, and the code
-handles each honestly. The server resolves a tenant per request in one fixed
+**Tenant addressing per environment.** The server retains multi-tenant
+resolution plumbing even though Podpisy exposes one fixed archive. It resolves
+a tenant per request in one fixed
 order (`core/server/usecases/resolve-identity.ts`): (1) an **exact
 custom-domain** match in `tenant_domains`, else (2) the **subdomain label of
 `APP_BASE_DOMAIN`** treated as the tenant slug, else (3) the **`X-Tenant`
 header** (CLI and other non-browser clients). The consequence of step 2: with a
-real owned base domain, a **single wildcard domain makes every tenant resolve
-automatically by subdomain — no per-tenant registration needed.**
+real owned base domain, a wildcard can resolve tenant slugs without an in-app
+domain-management surface.
 
-- **Local dev**: full subdomain tenancy on `*.localhost`
-  (`acme.localhost:47100`). One caveat browsers impose: `Domain=.localhost`
-  cookies are rejected, so a session does NOT span sibling subdomains in dev —
-  login is per-subdomain. This is a browser rule, not a bug; the e2e harness
-  works within it.
-- **Vercel's shared apex (`<project>.vercel.app`)**: tenant subdomains are
-  **impossible by platform restriction, confirmed live.** Vercel refuses to add
-  a subdomain under a project's own `*.vercel.app`; the dashboard error is
-  verbatim *"`<team>` does not have access to `*.<project>.vercel.app`
-  domains"*. So `acme.<project>.vercel.app` cannot be attached at all.
-  `tenantUrl()` therefore returns `null` on this apex and the web app runs
-  single-tenant per deployment URL (tenant switching via the CLI's `--tenant`).
-- **A real base domain with a wildcard** (`*.example.com` attached to the
-  project): full subdomain tenancy returns, one wildcard resolves all tenants
-  (step 2 above), and one session spans sibling subdomains (the cookie domain is
-  the real base). This is the production shape; ADR-0003 and the domains feature
-  (`tenant_domains` + provisioner ports) are built for it. **Cert mechanics
-  (from research):** a wildcard cert on Vercel needs an ACME **DNS-01**
-  challenge, which requires **NS delegation to Vercel** (Vercel-hosted DNS) *or*
-  the narrow `_acme-challenge` NS delegation. A records-only path (no NS
-  delegation) can only issue certs for **individual, non-wildcard per-tenant
-  hosts** (HTTP-01 via CNAME) — that is what the built US-020 adapter is for
-  (`DOMAIN_PROVISIONER=vercel`): each tenant host is attached to the project
-  programmatically so it gets its own HTTP-01 cert, no wildcard needed. Hobby
-  caps at **50 custom domains per project**;
-  wildcard is not itself Pro-gated (Pro is a ToS/commercial requirement, not a
-  technical wildcard gate).
-- **Self-host**: Caddy's on-demand TLS serves any custom tenant domain that
-  passes the internal domain check (§Docker self-host) — subdomain and
-  custom-domain tenancy both work.
-
-**The demo's live setup (in progress, pending eu.org approval — honest).** The
-demo takes a free **eu.org** domain, `agentproofarch.eu.org`, delegated to
-Vercel's nameservers — allowed precisely because it is *not* the company's
-`coderoad.pl` zone, so the delegation carries no risk to production DNS. That NS
-delegation buys the DNS-01 wildcard cert, giving browser multi-tenancy at zero
-cost. Production env is `APP_BASE_DOMAIN=agentproofarch.eu.org` +
-`APP_BASE_URL`. Until the eu.org registration is approved and the wildcard is
-live, the deployed web stays single-tenant on `*.vercel.app` and the CLI's
-`X-Tenant` carries multi-tenancy.
-
-**The company-DNS bridge (the owner's chosen shape for tenant subdomains).** The
-company zone `coderoad.pl` cannot be NS-delegated, so tenants are bridged with a
-single **plain wildcard CNAME record**, `*.agentproofarch.coderoad.pl →
-cname.vercel-dns.com`, added in company DNS. That record resolves every tenant
-host, but records-only means **no DNS-01 wildcard cert** — so each per-tenant host
-must be attached to the Vercel project to get its own HTTP-01 cert, which is
-precisely the US-020 adapter's job (`DOMAIN_PROVISIONER=vercel`, §Ports). On that
-target `SELF_HOST_TARGET_CNAME=cname.vercel-dns.com` is what US-019's UI shows a
-tenant bringing its own domain. Pending the owner's `VERCEL_TOKEN`, the attach
-path is offline-tested only.
+- **Local dev**: the archive is `default.localhost:47100`.
+- **Vercel**: `db:seed:deploy` binds `APP_BASE_DOMAIN` to `default`, so each
+  deployment URL serves the same fixed tenant.
+- **A real base domain**: the same host binding applies. Additional subdomain or
+  `X-Tenant` resolution remains core plumbing, not a user-facing feature.
 
 Rules (RECOMMENDED topology — the normative path for apps built on this
 foundation):
@@ -1714,23 +1426,18 @@ ignores branches.
 production** ([ADR-0004](decisions/0004-no-exceptions-enforcement.md)), it must
 be safe to run repeatedly without corrupting the tenant it touches:
 
-- **A dedicated canary tenant, never a real customer.** The run signs in as a
-  ring-fenced smoke account in its own tenant (default slug `acme` for local/dev;
-  overridden per environment). Its data is disposable and belongs to no creator.
+- **A dedicated canary account.** The run signs in to the fixed `default` archive
+  with credentials supplied by the environment.
 - **Never `db:seed` against a real database.** `smoke:remote` only drives the
   public CLI/API — it never seeds. Only the isolated local `smoke` harness (its
   own throwaway `agentproofarch_smoke` DB) uses the demo seed. Deployments run
   the idempotent, admin-only `db:seed:deploy` after every build-time migration;
   it creates no demo/example data.
-- **Non-self-poisoning by construction.** Every card a run creates is parked in
-  an **unbounded** column before it ends (`done` on both boards — absent from
-  `TEAM_WIP_LIMITS`), and the team card walks the full legal chain
-  `todo→in-dev→review→done`. So repeated runs never accumulate in the bounded
-  `in-dev`/`review` columns and can never hit a WIP limit that would turn the
-  verification false-red. Callers must serialize runs that share a canary so
-  overlapping executions do not race the `before + 1` assertions.
+- **Non-self-poisoning by construction.** The authenticated drive creates one
+  uniquely identified document, uploads and exports it, then removes it and
+  asserts the archive returned to its starting size.
 - **Credentials via CI secrets; forks override the defaults.** `SMOKE_EMAIL` /
-  `SMOKE_PASSWORD` / `SMOKE_TENANT` / `BASE_URL` come from repository secrets in
+  `SMOKE_PASSWORD` / `BASE_URL` come from repository secrets in
   CI, not the repo. The script's baked-in defaults are the local canary only; a
   fork pointing at its own deployment **must** supply its own values, and the
   `deployment_status` job is already fenced to the canonical repo.
@@ -2026,10 +1733,10 @@ the gates.
   copied read-mostly and edited only to *record* a deliberate divergence (doc-lint
   forces this when a config changes); app-specific docs and ADRs live in the app's
   own tree and numbering, never by mutating foundation docs in place.
-- **`` stays exemplary** (NORMATIVE NOW): it is the fixture the gates run
+- **The repository stays exemplary** (NORMATIVE NOW): it is the fixture the gates run
   against and the thing every product forks from, so it carries only the walking
-  skeleton (auth, tenants, one tasks subdomain — todos plus the two exemplar
-  boards — end-to-end) — a change that would not generalise to every app on the
+  skeleton (auth, fixed-tenant plumbing and the document archive end-to-end) —
+  a change that would not generalise to every app on the
   foundation does not belong in it.
 
 **Extract configs to a package** (NORMATIVE WHEN TRIGGERED — a real second app

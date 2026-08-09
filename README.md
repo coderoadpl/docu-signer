@@ -1,16 +1,13 @@
 # Podpisy
 
-Agent-first, strictly layered full-stack TypeScript foundation for multi-tenant SaaS.
+Agent-first, strictly layered full-stack TypeScript document archive.
 The architecture is defined in [docs/architecture.md](docs/architecture.md)
 (and distilled from [docs/prd-agentproofarch-foundation.md](docs/prd-agentproofarch-foundation.md));
-this repo is the **walking skeleton**: auth, foundation-owned tenants (flat
-`owner`/`admin` grants — no organizations/teams concept), tenant resolution by
-domain, one tasks subdomain — todos plus the two exemplar boards (personal +
-team) — flowing through every layer, a full CLI and a web SPA. The upstream reference is live at
+this repo is the **walking skeleton**: authentication, account security,
+tenant-scoped document storage, health surfaces, a CLI and a web SPA. Tenant
+resolution remains infrastructure; tenant, staff, member and domain-management
+surfaces from the upstream demo are intentionally absent. The upstream reference is live at
 <https://agentproofarch.vercel.app> (`demo@agentproofarch.dev` / `demo1234`).
-
-New here? Read [docs/first-feature.md](docs/first-feature.md) — it adds a
-real resource end-to-end in 30 minutes.
 
 ## Quickstart (local demo)
 
@@ -19,7 +16,7 @@ corepack enable && corepack prepare --activate
 pnpm install --frozen-lockfile
 pnpm run db:up        # Postgres 16 in Docker on port 47542
 pnpm run db:migrate
-pnpm run db:seed      # demo user + two tenants + todos
+pnpm run db:seed      # two trusted archive users + the default tenant
 pnpm run dev:web      # frontend: Vite + hot reload on 47180 — the canonical dev path
 ```
 
@@ -28,14 +25,11 @@ server serving a built bundle instead of the Vite dev server):
 
 ```bash
 pnpm run build:web
-pnpm run dev:server   # API + built SPA on http://acme.localhost:47100
+pnpm run dev:server   # API + built SPA on http://default.localhost:47100
 ```
 
-Open **http://acme.localhost:47100** and **http://globex.localhost:47100** —
-sign in as `demo@agentproofarch.dev` / `demo1234`. Each tenant domain shows its
-own isolated todos (and its own accent color). Note: on `localhost` browsers
-reject cross-subdomain cookies, so you sign in per tenant domain; on a real
-base domain one session spans all tenant subdomains. `dev:server` serves
+Open **http://default.localhost:47100** and sign in as
+`demo@agentproofarch.dev` / `demo1234`. `dev:server` serves
 whatever `dist/web` holds (a gitignored build) — after a contract change an
 old bundle fails every page, so rebuild or use `dev:web`.
 
@@ -44,23 +38,18 @@ old bundle fails every page, so rebuild or use `dev:web`.
 ```bash
 pnpm --silent run cli register --name Demo --email demo@agentproofarch.dev --password demo1234
 pnpm --silent run cli login --email demo@agentproofarch.dev --password demo1234
-pnpm --silent run cli tenant list
-pnpm --silent run cli tenant switch acme
-pnpm --silent run cli todo list
-pnpm --silent run cli --tenant globex todo add Something for Globex
-pnpm --silent run cli card list --board team           # team board cards
-pnpm --silent run cli card add Ship it --board team --column todo
-pnpm --silent run cli card move <id> --board team --to in-dev
-pnpm --silent run cli --json whoami        # single JSON document on stdout
+pnpm --silent run cli document list
+pnpm --silent run cli document add "Signed agreement" --date 2026-08-01 --type umowa-uod
+pnpm --silent run cli document upload <id> agreement.pdf --role source
+pnpm --silent run cli document export <id> --output agreement.zip
+pnpm --silent run cli --json whoami                    # single JSON document on stdout
 pnpm --silent run cli logout                           # drops the stored token
 ```
 
-Full command set (<!--count:cli-command-groups-->15<!--/count--> top-level groups):
+Full command set (<!--count:cli-command-groups-->9<!--/count--> top-level groups):
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
-`tenant list|create|switch`, `origin list|use`, `todo list|add`,
-`document list|show|add|upload|export`, `card list|add|move`,
-`member list|ensure|update|remove|export`, `staff list|grant|revoke`,
-`domain list|add|check|remove`, `public profile`.
+`origin list|use`, `document list|show|add|upload|export|remove`,
+`public profile`.
 
 Every command supports `--json` and exits with a code mapped from the error
 taxonomy (`validation`=2, `unauthorized`=3, `forbidden`=4, `not_found`=5,
@@ -106,11 +95,11 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`, dead
   links), and vitest with coverage across
-  **<!--count:test-files-->106<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->74<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
-  real server (`entry.node.ts`) and drives health → sign-in → todos →
-  unauthorized through the CLI, asserting taxonomy exit codes. **Done =
+  real server (`entry.node.ts`) and drives health → sign-in → document archive →
+  cleanup → unauthorized through the CLI, asserting taxonomy exit codes. **Done =
   `check` green AND `smoke` green.** Static-green is not done.
 
 Dependency lifecycle scripts are blocked unless explicitly named in
@@ -118,64 +107,35 @@ Dependency lifecycle scripts are blocked unless explicitly named in
 configuration applies a three-day (`4320` minute) minimum-release-age cooldown.
 
 Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
-<!--count:integration-tests-->55<!--/count--> integration tests against a real
-Postgres and <!--count:e2e-tests-->16<!--/count--> Playwright tests across
-<!--count:e2e-specs-->7<!--/count--> spec files:
+<!--count:integration-tests-->10<!--/count--> integration tests against a real
+Postgres and <!--count:e2e-tests-->9<!--/count--> Playwright tests across
+<!--count:e2e-specs-->5<!--/count--> spec files:
 
 ```bash
 pnpm run test:integration   # repositories, against a real Postgres
 pnpm run e2e                # real Chromium over the real stack
 ```
 
-<!--count:config-regression-->59<!--/count--> config-regression probes guard the
-covered boundary and island-core rules — most feed a violating fixture and
+<!--count:config-regression-->39<!--/count--> config-regression probes guard the
+covered boundary rules — most feed a violating fixture and
 assert the gate still goes red, a few are structural rule-presence checks rather
 than fixture-feeding probes — so you can't silently delete one of those rules and
 stay green ([ADR-0004](docs/decisions/0004-no-exceptions-enforcement.md)).
-
-## Adding a resource
-
-Start with the scaffolder — the canonical entry point:
-
-```bash
-pnpm run new:resource -- <singular-name>    # e.g. note, blog-post
-```
-
-It generates the files a resource owns (domain type, use-cases + test,
-repository, web page + route) and prints an ordered checklist for the shared
-files you wire by hand, each with its anchor line and a paste-ready snippet. It
-does **not** edit shared files: the generated code imports symbols that don't
-exist yet, so `pnpm run check` stays RED through the type-forced steps (domain,
-contract, port/use-case, client wiring). Three steps — the CLI command,
-server-route registration, and the web route — typecheck fine while unwired, so
-for those the checklist, not the compiler, enforces completion. Full narrated
-walkthrough:
-[docs/first-feature.md](docs/first-feature.md).
-
-Its client-state sibling scaffolds a feature (island) with a rung-1 island
-core — the events-in / selectors-out seam of
-[ADR-0005](docs/decisions/0005-client-application-state.md):
-
-```bash
-pnpm run new:island -- <name>               # e.g. personal-board
-```
 
 ## Tenant resolution
 
 Per request: (1) exact custom-domain match in `tenant_domains`,
 (2) subdomain of `APP_BASE_DOMAIN` (subdomain = tenant slug),
-(3) `X-Tenant` header (CLI). Membership is verified in every case; every
+(3) `X-Tenant` header. Access is verified in every case; every
 tenant-scoped use-case takes `ctx.identity` and every repository call requires
 `tenantId`.
 
 ## Deployment
 
 The Vercel serverless target remains available through `vercel.json` and
-`api/index.ts`, with Neon selected by `DB_DRIVER=neon-http`. Tenant domains use
-the Vercel Domains API when `DOMAIN_PROVISIONER=vercel`. The caddy domain
-provisioner and internal domain-check runtime remain available behind
-`DOMAIN_PROVISIONER=caddy`, while the default remains `noop`. This fork does not
-ship a self-host deployment package or its CI gate.
+`api/index.ts`, with Neon selected by `DB_DRIVER=neon-http`. The deploy seed
+binds `APP_BASE_DOMAIN` to the fixed `default` tenant. This fork does not ship
+tenant-domain management or a self-host deployment package.
 
 ## Operating hygiene for agent-driven repos
 

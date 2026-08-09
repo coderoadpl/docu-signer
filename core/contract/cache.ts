@@ -11,7 +11,7 @@
  * `no-store`, and errors on public routes are pinned to `no-store` at that seam
  * too, so a transient failure can never be cached at the edge.
  */
-export const PUBLIC_CACHE_PROFILES = {
+const PUBLIC_CACHE_PROFILES = {
   /**
    * Discovery of the current content version — deliberately short so a consumer
    * re-checks cheaply; the real payload lives behind the long-cached versioned

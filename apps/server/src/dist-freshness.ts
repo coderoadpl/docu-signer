@@ -9,7 +9,7 @@ import { join } from 'node:path';
  * The build is gitignored, so git looks clean while the app is broken.
  */
 
-export const newestMtimeMs = (dir: string): number => {
+const newestMtimeMs = (dir: string): number => {
   let newest = 0;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);

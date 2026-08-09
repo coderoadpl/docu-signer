@@ -17,10 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 const usecasesDir = join(import.meta.dirname, '..', 'core', 'server', 'usecases');
 
-const AUTH_ONLY: Record<string, string> = {
-  listMyTenants:
-    'self-scoped read of the caller-own staff memberships — authentication is the control, no capability',
-};
+const AUTH_ONLY: Record<string, string> = {};
 
 const HELPER_CALL = /\bauthorize(?:Tenant)?\s*\(/;
 const CTX_FIRST = /=\s*async\s*\(\s*ctx:\s*Ctx\b/;
@@ -56,11 +53,6 @@ describe('authorization structural guard', () => {
   it('finds the known tenant-scoped use-cases (guards against a broken, vacuous scan)', () => {
     const names = new Set(tenantScoped.map((useCase) => useCase.name));
     for (const known of [
-      'listTodos',
-      'addTodo',
-      'listCards',
-      'addCard',
-      'moveCard',
       'createDocument',
       'listDocuments',
       'getDocument',
@@ -73,11 +65,6 @@ describe('authorization structural guard', () => {
       'getFileContent',
       'getFileExport',
       'exportDocuments',
-      'createTenant',
-      'listMyTenants',
-      'listStaff',
-      'grantAdmin',
-      'revokeAdmin',
     ]) {
       expect(names.has(known)).toBe(true);
     }

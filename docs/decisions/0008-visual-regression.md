@@ -1,5 +1,8 @@
 # ADR-0008: Visual regression — Playwright screenshots with CI-rendered baselines
 
+> **Mechanism retained; surfaces superseded on 2026-08-01.** Current visual
+> coverage targets the document archive and account settings, not the ledger or boards.
+
 Date: 2026-07-25 · Status: accepted (owner-approved) · Builds on
 [ADR-0004](0004-no-exceptions-enforcement.md) (enforcement, not convention) and
 the flake doctrine (`CLAUDE.md`: a flake is a P1 bug, never rerun-to-green).
