@@ -38,6 +38,8 @@ describe('API client', () => {
             title: 'Umowa',
             docType: 'umowa-uod',
             documentDate: '2026-08-01',
+            periodStart: null,
+            periodEnd: null,
             person: null,
             tags: [],
             createdAt: '2026-08-01T00:00:00.000Z',
@@ -47,16 +49,18 @@ describe('API client', () => {
       }),
     );
     const api = createApiClient({ baseUrl: '', fetchImpl });
-    await api.listDocuments({ person: 'Jan', dateFrom: '2026-01-01' });
+    await api.listDocuments({ person: 'Jan', tag: 'podpis', dateFrom: '2026-01-01' });
     await api.createDocument({
       title: 'Umowa',
       docType: 'umowa-uod',
       documentDate: '2026-08-01',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
       tags: [],
     });
 
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(
-      '/api/documents?person=Jan&dateFrom=2026-01-01',
+      '/api/documents?person=Jan&tag=podpis&dateFrom=2026-01-01',
     );
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
       method: 'POST',
@@ -64,6 +68,8 @@ describe('API client', () => {
         title: 'Umowa',
         docType: 'umowa-uod',
         documentDate: '2026-08-01',
+        periodStart: '2026-08-01',
+        periodEnd: '2026-08-31',
         tags: [],
       }),
     });

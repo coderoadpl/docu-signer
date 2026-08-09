@@ -362,13 +362,22 @@ document
   .command('add <title...>')
   .description('Create a document entry')
   .requiredOption('--type <type>', 'umowa-uod|uchwala|protokol|rachunek|inny')
-  .requiredOption('--date <date>', 'document date (YYYY-MM-DD)')
+  .requiredOption('--date <date>', 'signature date (YYYY-MM-DD)')
+  .option('--period-start <date>', 'period start (YYYY-MM-DD)')
+  .option('--period-end <date>', 'period end (YYYY-MM-DD)')
   .option('--person <person>', 'person')
   .option('--tag <tag...>', 'tags')
   .action(
     async (
       titleWords: string[],
-      options: { type: string; date: string; person?: string; tag?: string[] },
+      options: {
+        type: string;
+        date: string;
+        periodStart?: string;
+        periodEnd?: string;
+        person?: string;
+        tag?: string[];
+      },
     ) => {
       const ctx = cliCtx();
       const input = parseArgs(
@@ -377,6 +386,8 @@ document
           title: titleWords.join(' '),
           docType: options.type,
           documentDate: options.date,
+          ...(options.periodStart === undefined ? {} : { periodStart: options.periodStart }),
+          ...(options.periodEnd === undefined ? {} : { periodEnd: options.periodEnd }),
           ...(options.person === undefined ? {} : { person: options.person }),
           tags: options.tag ?? [],
         },

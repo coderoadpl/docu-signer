@@ -1125,6 +1125,10 @@ repository ports.
   clients never choose arbitrary object paths.
 - Objects are private. Reads flow through authenticated document routes, and
   direct uploads receive a constrained temporary target.
+- File moves create the target document before moving the file row. A normal
+  repository miss deletes that target and returns `not_found`; a thrown
+  infrastructure failure still rejects for composition-edge normalization and is
+  not transactionally compensated.
 - `STORAGE_DRIVER` selects filesystem storage locally or Vercel Blob on Vercel;
   an in-memory adapter supports unit tests. Vendor imports remain in adapters.
 

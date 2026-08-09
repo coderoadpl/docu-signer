@@ -71,6 +71,8 @@ const document = {
   title: 'Umowa do podpisu',
   docType: 'umowa-uod',
   documentDate: '2026-08-01',
+  periodStart: null,
+  periodEnd: null,
   person: 'Anna Nowak',
   tags: [],
   createdAt: '2026-08-01T10:00:00.000Z',
@@ -204,7 +206,11 @@ const signingCanvas = async () => {
   const canvas = await screen.findByRole('application', {
     name: 'Powierzchnia do rysowania podpisu',
   });
-  await waitFor(() => expect(canvas).toHaveAttribute('aria-busy', 'false'));
+  await waitFor(() => {
+    expect(canvas).toHaveAttribute('aria-busy', 'false');
+    expect(canvas).toHaveAttribute('width', '400');
+    expect(screen.queryByLabelText('Renderowanie strony PDF')).not.toBeInTheDocument();
+  });
   return canvas;
 };
 

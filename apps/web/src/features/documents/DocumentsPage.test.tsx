@@ -24,6 +24,8 @@ const document = {
   title: 'Umowa z Anną',
   docType: 'umowa-uod',
   documentDate: '2026-07-18',
+  periodStart: null,
+  periodEnd: null,
   person: 'Anna Nowak',
   tags: ['ważne'],
   createdAt: '2026-07-18T10:00:00.000Z',
@@ -181,7 +183,7 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     await screen.findAllByText('Uchwała zarządu');
-    const emptyExport = screen.getByRole('button', {
+    const emptyExport = await screen.findByRole('button', {
       name: 'Eksportuj zaznaczone (0)',
     });
     expect(emptyExport).toBeDisabled();
@@ -205,13 +207,65 @@ describe('DocumentsPage', () => {
     ).toBeEnabled();
   });
 
+  it('shows teczki by tags and years and applies folder filters', async () => {
+    const seen = vi.fn();
+    const protocol = {
+      ...document,
+      id: '22222222-2222-4222-8222-222222222222',
+      title: 'Protokół odbioru',
+      docType: 'protokol',
+      documentDate: '2026-01-15',
+      periodStart: '2025-12-15',
+      periodEnd: '2026-01-15',
+      tags: ['odbiór'],
+    };
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen(Object.fromEntries(params.entries()));
+        if (params.get('tag') === 'odbiór') {
+          return HttpResponse.json({ ok: true, data: { documents: [protocol] } });
+        }
+        if (params.get('dateFrom') === '2025-01-01') {
+          return HttpResponse.json({ ok: true, data: { documents: [protocol] } });
+        }
+        return HttpResponse.json({
+          ok: true,
+          data: { documents: [document, protocol] },
+        });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
+    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
+    expect(screen.getByRole('heading', { name: 'Tagi' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Lata' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('odbiór'));
+    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(seen).toHaveBeenCalledWith({ tag: 'odbiór' }));
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
+    await userEvent.click(screen.getByText('2025'));
+    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        dateFrom: '2025-01-01',
+        dateTo: '2025-12-31',
+      }),
+    );
+  });
+
   it('creates a document and navigates to its detail', async () => {
+    const create = vi.fn();
     server.use(
       http.get('/api/documents', () =>
         HttpResponse.json({ ok: true, data: { documents: [] } }),
       ),
       http.post('/api/documents', async ({ request }) => {
         const input = documentCreateInputSchema.parse(await request.json());
+        create(input);
         return HttpResponse.json({
           ok: true,
           data: { document: { ...document, ...input } },
@@ -230,11 +284,22 @@ describe('DocumentsPage', () => {
       within(dialog).getByRole('textbox', { name: 'Tytuł' }),
       'Nowy dokument',
     );
+    expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('');
+    await userEvent.click(within(dialog).getByText('Okres'));
+    await userEvent.type(within(dialog).getByLabelText('Od'), '2026-07-01');
+    expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('2026-07-01');
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );
 
     expect(await screen.findByText('Szczegóły dokumentu')).toBeInTheDocument();
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentDate: '2026-07-01',
+        periodStart: '2026-07-01',
+        periodEnd: null,
+      }),
+    );
     expect(router.state.location.pathname).toBe(
       `/app/documents/${DOCUMENT_ID}`,
     );
@@ -261,12 +326,12 @@ describe('DocumentsPage', () => {
     expect(title).toHaveAccessibleDescription('Tytuł jest wymagany');
 
     await userEvent.type(title, 'Nowy dokument');
-    const date = within(dialog).getByLabelText('Data dokumentu');
+    const date = within(dialog).getByLabelText('Data podpisania');
     await userEvent.clear(date);
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );
     expect(date).toHaveFocus();
-    expect(date).toHaveAccessibleDescription('Data dokumentu jest wymagana');
+    expect(date).toHaveAccessibleDescription('Data podpisania jest wymagana');
   });
 });

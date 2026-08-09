@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, gte, ilike, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, exists, ilike, inArray, sql, type SQL } from 'drizzle-orm';
 
 import {
   documentFileSchema,
@@ -26,9 +26,14 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     const conditions: SQL[] = [eq(documents.tenantId, tenantId)];
     if (filter.docType) conditions.push(eq(documents.docType, filter.docType));
     if (filter.person) conditions.push(ilike(documents.person, `%${filter.person}%`));
+    if (filter.tag) conditions.push(sql`${documents.tags} @> ${JSON.stringify([filter.tag])}::jsonb`);
     if (filter.text) conditions.push(ilike(documents.title, `%${filter.text}%`));
-    if (filter.dateFrom) conditions.push(gte(documents.documentDate, filter.dateFrom));
-    if (filter.dateTo) conditions.push(lte(documents.documentDate, filter.dateTo));
+    if (filter.dateFrom) {
+      conditions.push(sql`coalesce(${documents.periodEnd}, ${documents.documentDate}) >= ${filter.dateFrom}`);
+    }
+    if (filter.dateTo) {
+      conditions.push(sql`coalesce(${documents.periodStart}, ${documents.documentDate}) <= ${filter.dateTo}`);
+    }
     const rows = await db
       .select()
       .from(documents)
@@ -119,6 +124,41 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
       )
       .limit(1);
     return rows[0] ? toDocumentFile(rows[0].file) : null;
+  },
+  moveFileToDocument: async (tenantId, sourceDocumentId, fileId, targetDocumentId) => {
+    const rows = await db
+      .update(documentFiles)
+      .set({ documentId: targetDocumentId })
+      .where(
+        and(
+          eq(documentFiles.id, fileId),
+          eq(documentFiles.documentId, sourceDocumentId),
+          exists(
+            db
+              .select({ id: documents.id })
+              .from(documents)
+              .where(
+                and(
+                  eq(documents.id, sourceDocumentId),
+                  eq(documents.tenantId, tenantId),
+                ),
+              ),
+          ),
+          exists(
+            db
+              .select({ id: documents.id })
+              .from(documents)
+              .where(
+                and(
+                  eq(documents.id, targetDocumentId),
+                  eq(documents.tenantId, tenantId),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning();
+    return rows[0] ? toDocumentFile(rows[0]) : null;
   },
   deleteFile: async (tenantId, documentId, fileId) => {
     const rows = await db

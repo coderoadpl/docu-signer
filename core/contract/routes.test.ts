@@ -32,6 +32,10 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/documents',
     });
+    expect(API_ROUTES.documentFileMove).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/files/:fileId/move',
+    });
   });
 
   it('validates document writes and trusted archive identity', () => {

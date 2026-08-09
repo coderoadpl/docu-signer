@@ -19,7 +19,7 @@ const passkeyRow = (over: { id: string; name: string; createdAt: string }) => ({
 });
 
 describe('PasskeySection', () => {
-  it('lists registered passkeys with their creation date (US-028a)', async () => {
+  it('lists registered passkeys without rendering storage timestamps (US-028a)', async () => {
     server.use(
       http.get('*/passkey/list-user-passkeys', () =>
         HttpResponse.json([passkeyRow({ id: 'pk-1', name: 'MacBook Touch ID', createdAt: '2026-07-03T00:00:00.000Z' })]),
@@ -29,7 +29,7 @@ describe('PasskeySection', () => {
     renderWithProviders(<PasskeySection />);
 
     expect(await screen.findByText('MacBook Touch ID')).toBeInTheDocument();
-    expect(screen.getByText(/Dodano/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Dodano/i)).not.toBeInTheDocument();
   });
 
   it('shows the empty state when no passkeys are registered', async () => {

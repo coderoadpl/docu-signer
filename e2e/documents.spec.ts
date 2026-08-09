@@ -86,8 +86,20 @@ test('creates, uploads, previews and exports an archived document', async ({
   await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
   await dialog.getByLabel('Osoba').fill('Jan Kowalski');
   await dialog.getByLabel('Tagi').fill('e2e, podpis');
+  await dialog.getByText('Okres').click();
+  await dialog.getByLabel('Od', { exact: true }).fill('2026-01-01');
+  await dialog.getByLabel('Do', { exact: true }).fill('2026-12-31');
   await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
 
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByText('Data podpisania: 01.01.2026')).toBeVisible();
+  await expect(page.getByText('Okres: 01.01.2026 - 31.12.2026')).toBeVisible();
+
+  await page.getByRole('button', { name: '← Dokumenty' }).click();
+  await page.getByRole('tab', { name: 'Teczki' }).click();
+  await page.getByText('2026').click();
+  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('cell', { name: title, exact: true }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
   const sourceSection = page
@@ -140,4 +152,14 @@ test('creates, uploads, previews and exports an archived document', async ({
   await sourceSection.getByRole('link', { name: 'Eksportuj' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toContain('umowa-e2e');
+
+  await sourceSection.getByRole('button', { name: 'Przenieś do nowego dokumentu' }).click();
+  const moveDialog = page.getByRole('dialog', { name: 'Przenieś do nowego dokumentu' });
+  await expect(moveDialog.getByRole('textbox', { name: 'Tytuł' })).toHaveValue(
+    sourceName.replace(/\.pdf$/u, ''),
+  );
+  await moveDialog.getByRole('button', { name: 'Przenieś' }).click();
+  await expect(
+    page.getByRole('heading', { name: sourceName.replace(/\.pdf$/u, '') }),
+  ).toBeVisible();
 });

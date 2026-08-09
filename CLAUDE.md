@@ -92,6 +92,8 @@ rejected.)
   them, and hand-sign any source PDF in a full-screen pen/touch/mouse flow.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
   replaces the source or persists a reusable signature.
+- Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
+  timestamps (`createdAt`, `updatedAt`) never render in UI or exports.
 - Konto: personal passkeys and two-factor authentication. Removed upstream
   verticals stay removed.
 
