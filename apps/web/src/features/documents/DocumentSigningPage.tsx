@@ -605,11 +605,18 @@ export const DocumentSigningPage = ({
       fingerDrawing,
       mode: gestureMode,
       penPriority: touchIgnoredForPenPriority(event),
-      pointer: {
-        height: event.height,
-        pointerType: event.pointerType,
-        width: event.width,
-      },
+      pointer: { pointerType: event.pointerType },
+    });
+
+  const pointerStartsPlacementDrag = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ) =>
+    event.pointerType !== 'touch' ||
+    fingerDrawing ||
+    !isPalmSizedTouch({
+      height: event.height,
+      pointerType: event.pointerType,
+      width: event.width,
     });
 
   const finishPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -960,12 +967,7 @@ export const DocumentSigningPage = ({
             const ignoreTouch =
               gestureMode === 'draw' &&
               event.pointerType === 'touch' &&
-              (touchIgnoredForPenPriority(event) ||
-                isPalmSizedTouch({
-                  height: event.height,
-                  pointerType: event.pointerType,
-                  width: event.width,
-                }));
+              touchIgnoredForPenPriority(event);
             if (ignoreTouch) {
               event.preventDefault();
               return;
@@ -973,10 +975,12 @@ export const DocumentSigningPage = ({
             const points = pointerPoints(event);
             const point = points[0];
             if (!point) return;
-            const hit = signingStampsForPage(stamps, pageIndex)
-              .slice()
-              .reverse()
-              .find(({ stamp }) => signingStampContainsPoint(stamp, point));
+            const hit = pointerStartsPlacementDrag(event)
+              ? signingStampsForPage(stamps, pageIndex)
+                  .slice()
+                  .reverse()
+                  .find(({ stamp }) => signingStampContainsPoint(stamp, point))
+              : undefined;
             if (hit) {
               setSelectedStampIndex(hit.stampIndex);
               placementDragRef.current = {
@@ -992,6 +996,7 @@ export const DocumentSigningPage = ({
             }
             if (placing) {
               setSelectedStampIndex(undefined);
+              if (!pointerStartsPlacementDrag(event)) return;
               if (!strokes.length) return;
               if (!signingStampContainsPoint(draftStamp(pageIndex), point)) return;
               placementDragRef.current = {
