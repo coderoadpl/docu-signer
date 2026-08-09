@@ -131,9 +131,19 @@ const FileRow = ({
   onDelete: (file: DocumentFile) => void;
 }) => {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [afterMenuClose, setAfterMenuClose] = useState<(() => void) | undefined>();
   const contentUrl = actions.documentFileContentUrl(documentId, file.id);
   const exportUrl = actions.documentFileExportUrl(documentId, file.id);
   const closeMenu = () => setMenuAnchor(null);
+  const runAfterMenuClose = (action: () => void) => {
+    setAfterMenuClose(() => action);
+    closeMenu();
+  };
+  const handleMenuExited = () => {
+    if (!afterMenuClose) return;
+    afterMenuClose();
+    setAfterMenuClose(undefined);
+  };
   return (
     <ListItem
       disableGutters
@@ -156,7 +166,7 @@ const FileRow = ({
         direction="row"
         sx={{ alignItems: 'center', flexShrink: 0, gap: 0.5 }}
       >
-        <Tooltip title="Podgląd" describeChild>
+        <Tooltip title="Podgląd" describeChild disableInteractive>
           <IconButton
             aria-label={`Podgląd pliku ${file.fileName}`}
             component="a"
@@ -168,7 +178,7 @@ const FileRow = ({
             <VisibilityIcon />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Pobierz" describeChild>
+        <Tooltip title="Pobierz" describeChild disableInteractive>
           <IconButton
             aria-label={`Pobierz plik ${file.fileName}`}
             component="a"
@@ -188,39 +198,39 @@ const FileRow = ({
             Podpisz
           </Button>
         ) : null}
-        <Tooltip title="Więcej" describeChild>
-          <IconButton
-            aria-label={`Więcej akcji dla pliku ${file.fileName}`}
-            aria-controls={menuAnchor ? `file-actions-${file.id}` : undefined}
-            aria-haspopup="menu"
-            aria-expanded={menuAnchor ? true : undefined}
-            onClick={(event) => setMenuAnchor(event.currentTarget)}
-            size="small"
-          >
-            <MoreVertIcon />
-          </IconButton>
-        </Tooltip>
+        <IconButton
+          aria-label={`Więcej akcji dla pliku ${file.fileName}`}
+          aria-controls={menuAnchor ? `file-actions-${file.id}` : undefined}
+          aria-haspopup="menu"
+          aria-expanded={menuAnchor ? true : undefined}
+          onClick={(event) => setMenuAnchor(event.currentTarget)}
+          size="small"
+          title="Więcej"
+        >
+          <MoreVertIcon />
+        </IconButton>
         <Menu
           id={`file-actions-${file.id}`}
           anchorEl={menuAnchor}
           open={Boolean(menuAnchor)}
           onClose={closeMenu}
+          slotProps={{
+            transition: { onExited: handleMenuExited },
+          }}
         >
           <MenuItem component="a" href={exportUrl} onClick={closeMenu}>
             Eksportuj
           </MenuItem>
           <MenuItem
             onClick={() => {
-              closeMenu();
-              onMove(file);
+              runAfterMenuClose(() => onMove(file));
             }}
           >
             Przenieś do nowego dokumentu
           </MenuItem>
           <MenuItem
             onClick={() => {
-              closeMenu();
-              onDelete(file);
+              runAfterMenuClose(() => onDelete(file));
             }}
           >
             <Typography color="error">Usuń</Typography>
