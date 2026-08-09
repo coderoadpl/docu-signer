@@ -16,6 +16,7 @@ import { PadPage } from './PadPage.js';
 
 const SESSION_ID = '11111111-1111-4111-8111-111111111111';
 const REQUEST_ID = '22222222-2222-4222-8222-222222222222';
+const pointerCapture = vi.fn();
 
 const me = {
   userId: 'user-owner',
@@ -45,6 +46,64 @@ const renderPad = () => {
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
+const useActiveRequest = () => {
+  server.use(
+    http.get('*/api/pad-sessions/:sessionId/state', () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          status: 'active',
+          currentRequest: {
+            requestId: REQUEST_ID,
+            documentTitle: 'Umowa do podpisu',
+          },
+        },
+      }),
+    ),
+  );
+};
+
+const drawStroke = (
+  canvas: HTMLElement,
+  pointerType: 'mouse' | 'pen' | 'touch',
+  pointerId: number,
+) => {
+  fireEvent.pointerDown(canvas, {
+    pointerId,
+    pointerType,
+    clientX: 40,
+    clientY: 40,
+    pressure: 0.5,
+    buttons: 1,
+  });
+  fireEvent.pointerMove(canvas, {
+    pointerId,
+    pointerType,
+    clientX: 120,
+    clientY: 90,
+    pressure: 0.5,
+    buttons: 1,
+  });
+  fireEvent.pointerUp(canvas, {
+    pointerId,
+    pointerType,
+    clientX: 120,
+    clientY: 90,
+    pressure: 0,
+    buttons: 0,
+  });
+};
+
+const tap = (
+  target: HTMLElement,
+  pointerType: 'mouse' | 'pen' | 'touch',
+  pointerId: number,
+) => {
+  fireEvent.pointerDown(target, { pointerId, pointerType, buttons: 1 });
+  fireEvent.pointerUp(target, { pointerId, pointerType, buttons: 0 });
+  fireEvent.click(target);
+};
+
 describe('PadQrDialog', () => {
   it('renders loading and error states before a QR URL exists', () => {
     const closeSession = vi.fn();
@@ -60,7 +119,7 @@ describe('PadQrDialog', () => {
 
     expect(screen.getByLabelText('Tworzenie sesji pada')).toBeVisible();
     expect(screen.getByRole('alert')).toHaveTextContent('Nie udało się utworzyć sesji pada.');
-    const closeSessionButton = screen.getByRole('button', { name: 'Zamknij sesję' });
+    const closeSessionButton = screen.getByRole('button', { name: 'Zakończ całą sesję' });
     expect(closeSessionButton).toBeDisabled();
     fireEvent.click(closeSessionButton);
     expect(closeSession).not.toHaveBeenCalled();
@@ -86,15 +145,16 @@ describe('PadQrDialog', () => {
       'data:image/png;base64,abc',
     );
     expect(screen.getByText(/Zeskanuj kod/u)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Zamknij sesję' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zakończ całą sesję' }));
     expect(closeSession).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Zamknij' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Schowaj kod QR' }));
     expect(close).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('PadPage', () => {
   beforeEach(() => {
+    pointerCapture.mockClear();
     window.scrollTo = vi.fn();
     window.history.pushState(null, '', `/pad/${SESSION_ID}#s=pad_secret`);
     const canvasContext = {
@@ -115,7 +175,7 @@ describe('PadPage', () => {
     );
     Object.defineProperty(HTMLCanvasElement.prototype, 'setPointerCapture', {
       configurable: true,
-      value: vi.fn(),
+      value: pointerCapture,
     });
     Object.defineProperty(HTMLCanvasElement.prototype, 'hasPointerCapture', {
       configurable: true,
@@ -143,24 +203,53 @@ describe('PadPage', () => {
     renderPad();
 
     expect(await screen.findAllByRole('heading', { name: 'Czekam na dokument…' })).toHaveLength(2);
-    expect(screen.getByText('Zeskanowano. Ekran obudzi się przy następnym podpisie.')).toBeVisible();
+    expect(screen.getByText('Ekran obudzi się przy następnym podpisie.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Rozłącz' })).toBeVisible();
+  });
+
+  it('keeps the waiting view static during a background refetch', async () => {
+    let stateRequests = 0;
+    let backgroundStarted: (() => void) | undefined;
+    let finishBackground: (() => void) | undefined;
+    const backgroundStart = new Promise<void>((resolve) => {
+      backgroundStarted = resolve;
+    });
+    const backgroundFinish = new Promise<void>((resolve) => {
+      finishBackground = resolve;
+    });
+    server.use(
+      http.get('*/api/pad-sessions/:sessionId/state', async () => {
+        stateRequests += 1;
+        if (stateRequests > 1) {
+          backgroundStarted?.();
+          await backgroundFinish;
+        }
+        return HttpResponse.json({
+          ok: true,
+          data: { status: 'active', currentRequest: null },
+        });
+      }),
+    );
+
+    const { queryClient } = renderPad();
+
+    expect(await screen.findByText('Ekran obudzi się przy następnym podpisie.')).toBeVisible();
+    const headingCount = screen.getAllByRole('heading', {
+      name: 'Czekam na dokument…',
+    }).length;
+    const refetch = queryClient.refetchQueries();
+    await backgroundStart;
+
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: 'Czekam na dokument…' })).toHaveLength(
+      headingCount,
+    );
+    finishBackground?.();
+    await refetch;
   });
 
   it('renders the drawing state when the desktop requests a signature', async () => {
-    server.use(
-      http.get('*/api/pad-sessions/:sessionId/state', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            status: 'active',
-            currentRequest: {
-              requestId: REQUEST_ID,
-              documentTitle: 'Umowa do podpisu',
-            },
-          },
-        }),
-      ),
-    );
+    useActiveRequest();
 
     renderPad();
 
@@ -170,6 +259,125 @@ describe('PadPage', () => {
     expect(screen.getByRole('button', { name: 'Wyczyść' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Granatowy' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Piórko' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it.each([
+    { mode: 'Piórko', pointerType: 'pen' },
+    { mode: 'Ręka', pointerType: 'pen' },
+    { mode: 'Piórko', pointerType: 'mouse' },
+    { mode: 'Ręka', pointerType: 'mouse' },
+  ] as const)('accepts a $pointerType stroke in $mode mode', async ({ mode, pointerType }) => {
+    useActiveRequest();
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    if (mode === 'Ręka') tap(screen.getByRole('button', { name: 'Ręka' }), 'touch', 40);
+    drawStroke(canvas, pointerType, 41);
+
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
+  });
+
+  it('rejects touch strokes without pointer capture in Piórko mode', async () => {
+    useActiveRequest();
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    drawStroke(canvas, 'touch', 42);
+
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeDisabled();
+    expect(pointerCapture).not.toHaveBeenCalled();
+  });
+
+  it('accepts touch strokes in Ręka mode', async () => {
+    useActiveRequest();
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    tap(screen.getByRole('button', { name: 'Ręka' }), 'touch', 43);
+    drawStroke(canvas, 'touch', 44);
+
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
+  });
+
+  it('rejects touch in Ręka mode while pen priority is active', async () => {
+    useActiveRequest();
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    tap(screen.getByRole('button', { name: 'Ręka' }), 'touch', 45);
+    drawStroke(canvas, 'pen', 46);
+    fireEvent.click(screen.getByRole('button', { name: 'Wyczyść' }));
+    const capturesBeforeTouch = pointerCapture.mock.calls.length;
+    drawStroke(canvas, 'touch', 47);
+
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeDisabled();
+    expect(pointerCapture).toHaveBeenCalledTimes(capturesBeforeTouch);
+  });
+
+  it('lets touch use the mode escape hatch in Piórko mode', async () => {
+    useActiveRequest();
+    renderPad();
+
+    await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    const handMode = screen.getByRole('button', { name: 'Ręka' });
+    tap(handMode, 'touch', 48);
+
+    expect(handMode).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('ignores a touch submit in Piórko mode and accepts it in Ręka mode', async () => {
+    const submissions: unknown[] = [];
+    useActiveRequest();
+    server.use(
+      http.post('*/api/pad-sessions/:sessionId/submit', async ({ request }) => {
+        submissions.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { submitted: true } });
+      }),
+    );
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    drawStroke(canvas, 'pen', 49);
+    const submit = screen.getByRole('button', { name: 'Zatwierdź' });
+    fireEvent.pointerDown(submit, { pointerId: 50, pointerType: 'touch', buttons: 1 });
+    fireEvent.pointerUp(submit, { pointerId: 50, pointerType: 'touch', buttons: 0 });
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    fireEvent.click(submit);
+    expect(submissions).toHaveLength(0);
+
+    tap(screen.getByRole('button', { name: 'Ręka' }), 'touch', 51);
+    tap(submit, 'touch', 52);
+
+    await waitFor(() => expect(submissions).toHaveLength(1));
+  });
+
+  it('lets a pen tap Wyczyść in Piórko mode', async () => {
+    useActiveRequest();
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    drawStroke(canvas, 'pen', 53);
+    tap(screen.getByRole('button', { name: 'Wyczyść' }), 'pen', 54);
+
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeDisabled();
   });
 
   it('keeps a completed stroke when pointer capture is already gone', async () => {
@@ -335,7 +543,7 @@ describe('PadPage', () => {
     });
     fireEvent.pointerDown(canvas, {
       pointerId: 17,
-      pointerType: 'touch',
+      pointerType: 'mouse',
       clientX: 40,
       clientY: 40,
       pressure: 0.5,
@@ -343,7 +551,7 @@ describe('PadPage', () => {
     });
     fireEvent.pointerMove(canvas, {
       pointerId: 17,
-      pointerType: 'touch',
+      pointerType: 'mouse',
       clientX: 120,
       clientY: 90,
       pressure: 0.5,
@@ -351,7 +559,7 @@ describe('PadPage', () => {
     });
     fireEvent.pointerUp(canvas, {
       pointerId: 17,
-      pointerType: 'touch',
+      pointerType: 'mouse',
       clientX: 120,
       clientY: 90,
       pressure: 0,
@@ -361,7 +569,7 @@ describe('PadPage', () => {
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
 
-    expect(await screen.findByText('Zeskanowano. Ekran obudzi się przy następnym podpisie.')).toBeVisible();
+    expect(await screen.findByText('Ekran obudzi się przy następnym podpisie.')).toBeVisible();
     expect(submissions).toMatchObject([
       {
         requestId: REQUEST_ID,
@@ -429,7 +637,7 @@ describe('PadPage', () => {
 
     fireEvent.pointerDown(canvas, {
       pointerId: 19,
-      pointerType: 'touch',
+      pointerType: 'pen',
       clientX: 50,
       clientY: 60,
       pressure: 0.5,
@@ -437,7 +645,7 @@ describe('PadPage', () => {
     });
     fireEvent.pointerMove(canvas, {
       pointerId: 19,
-      pointerType: 'touch',
+      pointerType: 'pen',
       clientX: 125,
       clientY: 92,
       pressure: 0.5,
@@ -445,7 +653,7 @@ describe('PadPage', () => {
     });
     fireEvent.pointerUp(canvas, {
       pointerId: 19,
-      pointerType: 'touch',
+      pointerType: 'pen',
       clientX: 125,
       clientY: 92,
       pressure: 0,
@@ -487,9 +695,31 @@ describe('PadPage', () => {
     );
   });
 
-  it('surfaces missing secrets and pad state errors', async () => {
+  it('joins the signed-in user session without a fragment secret and disconnects on demand', async () => {
+    let secretHeader: string | null = 'not-called';
+    let disconnected = false;
+    server.use(
+      http.get('*/api/pad-sessions/:sessionId/state', ({ request }) => {
+        secretHeader = request.headers.get('x-pad-secret');
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            status: disconnected ? 'closed' : 'active',
+            currentRequest: null,
+          },
+        });
+      }),
+      http.post('*/api/pad-sessions/:sessionId/disconnect', () => {
+        disconnected = true;
+        return HttpResponse.json({ ok: true, data: { closed: true } });
+      }),
+    );
     window.history.pushState(null, '', `/pad/${SESSION_ID}`);
     renderPad();
-    expect(await screen.findByText('Brak sekretu sesji na adresie pada.')).toBeVisible();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Rozłącz' }));
+
+    expect(await screen.findByText('Pad rozłączony')).toBeVisible();
+    expect(secretHeader).toBeNull();
   });
 });

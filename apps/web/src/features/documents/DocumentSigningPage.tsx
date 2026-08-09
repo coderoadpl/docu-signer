@@ -33,7 +33,7 @@ import type { PadSubmittedStrokes } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { SigningShell } from '../../components/layout/SigningShell.js';
 import { StatusView } from '../../components/layout/StatusView.js';
-import { InkSurface, SigningPageSurface } from '../../theme.js';
+import { InkSurface, PadStatusDot, SigningPageSurface } from '../../theme.js';
 import {
   DEFAULT_SIGNING_INK_COLOR,
   DEFAULT_SIGNING_INK_SIZE,
@@ -45,7 +45,7 @@ import {
   createSigningStamp,
   defaultSignaturePlacement,
   defaultSigningGestureMode,
-  documentPointerDrawsInk,
+  pointerDrawsInk,
   fitInkStrokesToPage,
   inkToCanvasOutlines,
   isPalmSizedTouch,
@@ -139,21 +139,23 @@ const BusyButtonProgress = () => (
   <CircularProgress size={18} color="inherit" aria-hidden="true" />
 );
 
-type RemotePadStatus = 'oczekuje' | 'rysuje';
-
 interface RemotePadSession {
   id: string;
-  secret: string;
   url: string;
-  status: RemotePadStatus;
+  lastPolledAt: string | null;
+  pendingRequestId: string | null;
 }
 
 const REMOTE_PAD_POLL_MS = 1200;
 
 const padUrlForSession = (sessionId: string, secret: string): string => {
+  if (!secret) return `${window.location.origin}/pad/${encodeURIComponent(sessionId)}`;
   // WHY: the pad secret lives in the fragment so normal HTTP requests and server logs never receive it.
   return `${window.location.origin}/pad/${encodeURIComponent(sessionId)}#s=${encodeURIComponent(secret)}`;
 };
+
+const remotePadConnected = (lastPolledAt: string | null): boolean =>
+  lastPolledAt !== null && Date.now() - Date.parse(lastPolledAt) < 5000;
 
 const remoteStrokesToInkStrokes = (
   strokes: PadSubmittedStrokes['strokes'],
@@ -539,18 +541,31 @@ export const PadQrDialog = ({
         ) : null}
         {sessionUrl ? (
           <Typography variant="body2" color="text.secondary" align="center">
-            Zeskanuj kod zalogowanym iPhone’em albo iPadem. Ten kod działa tylko dla tej sesji podpisywania.
+            Zeskanuj kod aparatem telefonu lub tabletu (najlepiej tablet z rysikiem).
           </Typography>
         ) : null}
       </Stack>
     </DialogContent>
     <DialogActions>
-      <Button onClick={onClose}>Zamknij</Button>
+      <Button onClick={onClose}>Schowaj kod QR</Button>
       <Button color="error" onClick={onCloseSession} disabled={!sessionUrl}>
-        Zamknij sesję
+        Zakończ całą sesję
       </Button>
     </DialogActions>
   </Dialog>
+);
+
+const RemotePadStatusIndicator = ({ connected }: { connected: boolean }) => (
+  <Stack
+    direction="row"
+    aria-live="polite"
+    sx={{ alignItems: 'center', alignSelf: 'center', gap: 0.75, minHeight: 36, px: 1 }}
+  >
+    <PadStatusDot aria-hidden="true" className={connected ? 'connected' : undefined} />
+    <Typography variant="body2" color={connected ? 'success.main' : 'text.secondary'}>
+      {connected ? 'Pad połączony' : 'Pad: oczekuje'}
+    </Typography>
+  </Stack>
 );
 
 const PageHeader = ({
@@ -759,6 +774,10 @@ export const DocumentSigningPage = ({
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
   const sourceQuery = useQuery(actions.documentFile(documentId, fileId));
+  const activeRemotePadSession = useQuery({
+    ...actions.activePadSession,
+    refetchOnMount: 'always',
+  });
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const inkCanvasRef = useRef<HTMLCanvasElement>(null);
   const fitBoxRef = useRef<HTMLDivElement>(null);
@@ -777,6 +796,22 @@ export const DocumentSigningPage = ({
       stampIndex?: number;
     } | undefined
   >(undefined);
+  const preventActivePlacementTouchMove = useCallback((event: TouchEvent) => {
+    if (placementDragRef.current && event.cancelable) event.preventDefault();
+  }, []);
+  const setInkCanvasRef = useCallback(
+    (node: HTMLCanvasElement | null) => {
+      inkCanvasRef.current?.removeEventListener(
+        'touchmove',
+        preventActivePlacementTouchMove,
+      );
+      inkCanvasRef.current = node;
+      node?.addEventListener('touchmove', preventActivePlacementTouchMove, {
+        passive: false,
+      });
+    },
+    [preventActivePlacementTouchMove],
+  );
   const [pdf, setPdf] = useState<LoadedPdf>();
   const [pdfError, setPdfError] = useState<string>();
   const [pageNumber, setPageNumber] = useState(1);
@@ -790,7 +825,6 @@ export const DocumentSigningPage = ({
   const [placement, setPlacement] = useState(DEFAULT_PLACEMENT);
   const [stamps, setStamps] = useState<SigningStamp[]>([]);
   const [selectedStampIndex, setSelectedStampIndex] = useState<number>();
-  const [placementDragActive, setPlacementDragActive] = useState(false);
   const [massExitConfirming, setMassExitConfirming] = useState(false);
   const [fingerDrawing, setFingerDrawing] = useState(false);
   const [gestureMode, setGestureMode] = useState<SigningGestureMode>(
@@ -815,9 +849,6 @@ export const DocumentSigningPage = ({
   const [remotePadQrDataUrl, setRemotePadQrDataUrl] = useState<string>();
   const [remotePadError, setRemotePadError] = useState<string>();
   const consumingRemotePadRef = useRef(false);
-  const closedRemotePadIdsRef = useRef<Set<string>>(new Set());
-  const remotePadSessionIdRef = useRef<string | undefined>(undefined);
-  const closeRemotePadMutateRef = useRef(closeRemotePadSessionMutation.mutate);
 
   const queueTargets = signingQueueFromSearch(signingSearch);
   const massMode = signingSearch.tryb === 'masowe';
@@ -833,19 +864,23 @@ export const DocumentSigningPage = ({
   const sequenceTotal = signingSearch.razem ?? 0;
   const listSearch = documentsSearchFromSigningSearch(signingSearch);
 
-  const closeRemotePadSession = useCallback(
-    (sessionId = remotePadSessionIdRef.current) => {
-      if (!sessionId || closedRemotePadIdsRef.current.has(sessionId)) return;
-      closedRemotePadIdsRef.current.add(sessionId);
-      closeRemotePadMutateRef.current(sessionId);
-      setRemotePadSession((current) => (current?.id === sessionId ? undefined : current));
-      setRemotePadQrDataUrl(undefined);
-    },
-    [],
-  );
+  const closeRemotePadSession = async () => {
+    if (!remotePadSession) return;
+    try {
+      await closeRemotePadSessionMutation.mutateAsync(remotePadSession.id);
+    } catch (error) {
+      setRemotePadError(
+        error instanceof Error ? error.message : 'Nie udało się zakończyć sesji pada.',
+      );
+      return;
+    }
+    setRemotePadSession(undefined);
+    setRemotePadQrDataUrl(undefined);
+    setRemotePadQrOpen(false);
+    await queryClient.invalidateQueries(actions.activePadSessionInvalidates());
+  };
 
   const close = () => {
-    closeRemotePadSession();
     void navigate({
       to: '/app/documents/$id',
       params: { id: documentId },
@@ -863,8 +898,19 @@ export const DocumentSigningPage = ({
   }, [listSearch, massStateValid, navigate]);
 
   useEffect(() => {
-    if (massComplete) closeRemotePadSession();
-  }, [closeRemotePadSession, massComplete]);
+    const active = activeRemotePadSession.data?.session;
+    if (!active) return;
+    setRemotePadSession((current) =>
+      current?.id === active.id
+        ? { ...current, lastPolledAt: active.lastPolledAt }
+        : {
+            id: active.id,
+            url: padUrlForSession(active.id, ''),
+            lastPolledAt: active.lastPolledAt,
+            pendingRequestId: null,
+          },
+    );
+  }, [activeRemotePadSession.data?.session]);
 
   const openRemotePadQr = () => {
     setRemotePadQrOpen(true);
@@ -874,7 +920,13 @@ export const DocumentSigningPage = ({
       .mutateAsync(undefined)
       .then(({ session, secret }) => {
         const url = padUrlForSession(session.id, secret);
-        setRemotePadSession({ id: session.id, secret, url, status: 'oczekuje' });
+        setRemotePadSession({
+          id: session.id,
+          url,
+          lastPolledAt: session.lastPolledAt,
+          pendingRequestId: null,
+        });
+        void queryClient.invalidateQueries(actions.activePadSessionInvalidates());
       })
       .catch((error: unknown) => {
         setRemotePadError(error instanceof Error ? error.message : 'Nie udało się utworzyć sesji pada.');
@@ -903,27 +955,7 @@ export const DocumentSigningPage = ({
     };
   }, [remotePadSession?.url]);
 
-  useEffect(() => {
-    remotePadSessionIdRef.current = remotePadSession?.id;
-  }, [remotePadSession?.id]);
-
-  useEffect(() => {
-    closeRemotePadMutateRef.current = closeRemotePadSessionMutation.mutate;
-  }, [closeRemotePadSessionMutation.mutate]);
-
-  useEffect(
-    () => () => {
-      const sessionId = remotePadSessionIdRef.current;
-      if (sessionId && !closedRemotePadIdsRef.current.has(sessionId)) {
-        closedRemotePadIdsRef.current.add(sessionId);
-        closeRemotePadMutateRef.current(sessionId);
-      }
-    },
-    [],
-  );
-
   const returnToList = () => {
-    closeRemotePadSession();
     setSignaturePadOpen(false);
     void navigate({
       to: '/app/documents',
@@ -955,7 +987,6 @@ export const DocumentSigningPage = ({
   const activeInkSize = selectedStamp?.inkSize ?? DEFAULT_SIGNING_INK_SIZE;
   const stampTouchActionLocked =
     placing ||
-    placementDragActive ||
     signingStampsForPage(stamps, pageIndex).length > 0;
   const pageReady = Boolean(
     metrics && metricsPageNumber === pageNumber && !pageRendering,
@@ -983,7 +1014,6 @@ export const DocumentSigningPage = ({
     setPlacement(DEFAULT_PLACEMENT);
     setStamps([]);
     setSelectedStampIndex(undefined);
-    setPlacementDragActive(false);
     setMassExitConfirming(false);
     setSignaturePadOpen(false);
     setCommitError(undefined);
@@ -994,18 +1024,6 @@ export const DocumentSigningPage = ({
     lastPenSeenAtRef.current = undefined;
     placementDragRef.current = undefined;
   }, [documentId, fileId]);
-
-  useEffect(() => {
-    const canvas = inkCanvasRef.current;
-    if (!canvas || !placementDragActive) return;
-    const preventTouchMove = (event: TouchEvent) => {
-      if (event.cancelable) event.preventDefault();
-    };
-    canvas.addEventListener('touchmove', preventTouchMove, { passive: false });
-    return () => {
-      canvas.removeEventListener('touchmove', preventTouchMove);
-    };
-  }, [placementDragActive]);
 
   useEffect(() => {
     if (!sourceQuery.data || !signable) return;
@@ -1207,8 +1225,12 @@ export const DocumentSigningPage = ({
       consumingRemotePadRef.current = true;
       void consumeRemotePadStrokes
         .mutateAsync(sessionId)
-        .then(({ submittedStrokes }) => {
+        .then(({ lastPolledAt, submittedStrokes }) => {
+          setRemotePadSession((current) =>
+            current?.id === sessionId ? { ...current, lastPolledAt } : current,
+          );
           if (!submittedStrokes) return;
+          if (submittedStrokes.requestId !== remotePadSession.pendingRequestId) return;
           const materialized = materializePadStrokes(
             remoteStrokesToInkStrokes(submittedStrokes.strokes),
             submittedStrokes.sourceSize,
@@ -1216,7 +1238,7 @@ export const DocumentSigningPage = ({
           );
           if (!materialized) return;
           setRemotePadSession((current) =>
-            current?.id === sessionId ? { ...current, status: 'oczekuje' } : current,
+            current?.id === sessionId ? { ...current, pendingRequestId: null } : current,
           );
         })
         .catch((error: unknown) => {
@@ -1227,7 +1249,12 @@ export const DocumentSigningPage = ({
         });
     }, REMOTE_PAD_POLL_MS);
     return () => window.clearInterval(interval);
-  }, [consumeRemotePadStrokes, materializePadStrokes, remotePadSession?.id]);
+  }, [
+    consumeRemotePadStrokes,
+    materializePadStrokes,
+    remotePadSession?.id,
+    remotePadSession?.pendingRequestId,
+  ]);
 
   if (massComplete) {
     return (
@@ -1325,8 +1352,8 @@ export const DocumentSigningPage = ({
     setActiveStroke(undefined);
   };
 
-  const pointerDrawsInk = (event: ReactPointerEvent<HTMLCanvasElement>) =>
-    documentPointerDrawsInk({
+  const eventDrawsInk = (event: ReactPointerEvent<HTMLCanvasElement>) =>
+    pointerDrawsInk({
       fingerDrawing,
       mode: gestureMode,
       penPriority: touchIgnoredForPenPriority(event),
@@ -1352,7 +1379,6 @@ export const DocumentSigningPage = ({
     }
     if (placementDragRef.current?.pointerId === event.pointerId) {
       placementDragRef.current = undefined;
-      setPlacementDragActive(false);
       return;
     }
     if (activePointerRef.current !== event.pointerId) return;
@@ -1405,17 +1431,23 @@ export const DocumentSigningPage = ({
     if (!remotePadSession) return;
     setRemotePadError(undefined);
     try {
-      await requestRemotePadSignature.mutateAsync({
+      const { request } = await requestRemotePadSignature.mutateAsync({
         sessionId: remotePadSession.id,
         input: { documentTitle: documentQuery.data.document.title },
       });
       setRemotePadSession((current) =>
-        current?.id === remotePadSession.id ? { ...current, status: 'rysuje' } : current,
+        current?.id === remotePadSession.id
+          ? { ...current, pendingRequestId: request.requestId }
+          : current,
       );
     } catch (error) {
       setRemotePadError(error instanceof Error ? error.message : 'Nie udało się poprosić pada o podpis.');
     }
   };
+
+  const isRemotePadConnected = remotePadConnected(
+    remotePadSession?.lastPolledAt ?? null,
+  );
 
   const stampAllPages = () => {
     if (!pageReady || !strokes.length || !pdf) return;
@@ -1673,7 +1705,11 @@ export const DocumentSigningPage = ({
               <Button
                 variant="outlined"
                 onClick={openRemotePadQr}
-                disabled={committing || createRemotePadSession.isPending}
+                disabled={
+                  committing ||
+                  createRemotePadSession.isPending ||
+                  activeRemotePadSession.isPending
+                }
                 startIcon={createRemotePadSession.isPending ? <BusyButtonProgress /> : undefined}
                 sx={buttonTouchSx}
               >
@@ -1687,18 +1723,14 @@ export const DocumentSigningPage = ({
                     disabled={
                       signingPadBlocked ||
                       requestRemotePadSignature.isPending ||
-                      remotePadSession.status === 'rysuje'
+                      remotePadSession.pendingRequestId !== null
                     }
                     startIcon={requestRemotePadSignature.isPending ? <BusyButtonProgress /> : undefined}
                     sx={buttonTouchSx}
                   >
                     Poproś pad o podpis
                   </Button>
-                  <Chip
-                    size="small"
-                    variant="outlined"
-                    label={`Pad: ${remotePadSession.status}`}
-                  />
+                  <RemotePadStatusIndicator connected={isRemotePadConnected} />
                 </>
               ) : null}
               <ToggleButtonGroup
@@ -1896,7 +1928,11 @@ export const DocumentSigningPage = ({
                 <Button
                   variant="outlined"
                   onClick={openRemotePadQr}
-                  disabled={committing || createRemotePadSession.isPending}
+                  disabled={
+                    committing ||
+                    createRemotePadSession.isPending ||
+                    activeRemotePadSession.isPending
+                  }
                   startIcon={createRemotePadSession.isPending ? <BusyButtonProgress /> : undefined}
                   sx={buttonTouchSx}
                 >
@@ -1909,7 +1945,7 @@ export const DocumentSigningPage = ({
                     disabled={
                       signingPadBlocked ||
                       requestRemotePadSignature.isPending ||
-                      remotePadSession.status === 'rysuje'
+                      remotePadSession.pendingRequestId !== null
                     }
                     startIcon={requestRemotePadSignature.isPending ? <BusyButtonProgress /> : undefined}
                     sx={buttonTouchSx}
@@ -1918,7 +1954,7 @@ export const DocumentSigningPage = ({
                   </Button>
                 ) : null}
                 {remotePadSession ? (
-                  <Chip size="small" variant="outlined" label={`Pad: ${remotePadSession.status}`} />
+                  <RemotePadStatusIndicator connected={isRemotePadConnected} />
                 ) : null}
                 <Button
                   variant="contained"
@@ -1998,7 +2034,7 @@ export const DocumentSigningPage = ({
             }}
           />
           <InkSurface
-            ref={inkCanvasRef}
+            ref={setInkCanvasRef}
             role="application"
             aria-label="Powierzchnia do rysowania podpisu"
             aria-busy={!pageReady}
@@ -2015,7 +2051,7 @@ export const DocumentSigningPage = ({
                   : 'pan-x pan-y pinch-zoom',
             }}
             onPointerDown={(event) => {
-              if (!pageReady || !metrics || committing) return;
+              if (committing) return;
               if (event.pointerType === 'pen') {
                 activePenPointerRef.current = event.pointerId;
                 lastPenSeenAtRef.current = event.timeStamp;
@@ -2047,7 +2083,6 @@ export const DocumentSigningPage = ({
                   placement: hit.stamp.placement,
                   stampIndex: hit.stampIndex,
                 };
-                setPlacementDragActive(true);
                 event.currentTarget.setPointerCapture(event.pointerId);
                 event.preventDefault();
                 return;
@@ -2063,14 +2098,17 @@ export const DocumentSigningPage = ({
                   clientY: event.clientY,
                   placement,
                 };
-                setPlacementDragActive(true);
                 event.currentTarget.setPointerCapture(event.pointerId);
                 event.preventDefault();
                 return;
               }
+              // WHY: only new ink needs a rendered page — gating the drag
+              // branches above on it silently drops drags that start during a
+              // re-fit render (any resize, rotation or toolbar reflow).
+              if (!pageReady || !metrics) return;
               if (massMode) return;
               if (gestureMode === 'pan') return;
-              if (!pointerDrawsInk(event)) return;
+              if (!eventDrawsInk(event)) return;
               const stroke = {
                 points,
                 simulatePressure: pointerEventUsesSimulatedPressure(
@@ -2092,7 +2130,6 @@ export const DocumentSigningPage = ({
               if (gestureMode === 'draw' && touchIgnoredForPenPriority(event)) {
                 if (placementDragRef.current?.pointerId === event.pointerId) {
                   placementDragRef.current = undefined;
-                  setPlacementDragActive(false);
                 }
                 cancelActiveTouchStroke();
                 event.preventDefault();
@@ -2143,7 +2180,7 @@ export const DocumentSigningPage = ({
         open={remotePadQrOpen}
         loading={createRemotePadSession.isPending}
         onClose={() => setRemotePadQrOpen(false)}
-        onCloseSession={() => closeRemotePadSession()}
+        onCloseSession={() => void closeRemotePadSession()}
         {...(remotePadError === undefined ? {} : { error: remotePadError })}
         {...(remotePadQrDataUrl === undefined ? {} : { qrDataUrl: remotePadQrDataUrl })}
         {...(remotePadSession?.url === undefined ? {} : { sessionUrl: remotePadSession.url })}

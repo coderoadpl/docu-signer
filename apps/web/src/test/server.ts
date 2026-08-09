@@ -21,6 +21,9 @@ export const server = setupServer(
   http.get('*/api/me/preferences/:key', () =>
     HttpResponse.json({ ok: true, data: { preference: null } }),
   ),
+  http.get('*/api/pad-sessions/active', () =>
+    HttpResponse.json({ ok: true, data: { session: null } }),
+  ),
   // SettingsPage's PasskeySection reads the passkey roster on mount; a default
   // empty list keeps every page-level test that isn't about passkeys quiet. A
   // passkey-focused test overrides this with its own `server.use(...)`.

@@ -100,6 +100,14 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/pad-sessions',
     });
+    expect(API_ROUTES.padSessionActive).toEqual({
+      method: 'GET',
+      path: '/api/pad-sessions/active',
+    });
+    expect(API_ROUTES.padSessionJoin).toEqual({
+      method: 'POST',
+      path: '/api/pad-sessions/join',
+    });
     expect(API_ROUTES.padSessionState).toEqual({
       method: 'GET',
       path: '/api/pad-sessions/:sessionId/state',
@@ -119,6 +127,10 @@ describe('API route contract', () => {
     expect(API_ROUTES.padSessionClose).toEqual({
       method: 'POST',
       path: '/api/pad-sessions/:sessionId/close',
+    });
+    expect(API_ROUTES.padSessionDisconnect).toEqual({
+      method: 'POST',
+      path: '/api/pad-sessions/:sessionId/disconnect',
     });
   });
 
@@ -150,6 +162,7 @@ describe('API route contract', () => {
           status: 'active',
           createdAt: '2026-08-04T10:00:00.000Z',
           expiresAt: '2026-08-04T14:00:00.000Z',
+          lastPolledAt: null,
           currentRequest: null,
         },
       }).success,
@@ -159,7 +172,10 @@ describe('API route contract', () => {
     expect(padSessionRequestOutputSchema.safeParse({ request }).success).toBe(true);
     expect(padSessionSubmitInputSchema.safeParse(strokes).success).toBe(true);
     expect(padSessionSubmitOutputSchema.safeParse({ submitted: true }).success).toBe(true);
-    expect(padSessionConsumeOutputSchema.safeParse({ submittedStrokes: strokes }).success).toBe(true);
+    expect(
+      padSessionConsumeOutputSchema.safeParse({ submittedStrokes: strokes, lastPolledAt: null })
+        .success,
+    ).toBe(true);
     expect(
       padSessionSubmitInputSchema.safeParse({
         ...strokes,

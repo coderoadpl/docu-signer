@@ -2,6 +2,8 @@ import { context, trace } from '@opentelemetry/api';
 
 import { createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
 import {
+  activePadSessionQuery,
+  activePadSessionInvalidates,
   changePasswordMutation,
   configQuery,
   approveDocumentMutation,
@@ -15,6 +17,7 @@ import {
   deleteDocumentFileMutation,
   deleteDocumentMutation,
   deleteSavedSearchMutation,
+  disconnectPadSessionMutation,
   disableTwoFactorMutation,
   directFileUploadMutation,
   documentFileQuery,
@@ -27,6 +30,7 @@ import {
   meInvalidates,
   meQuery,
   moveDocumentFileMutation,
+  joinOwnPadSessionMutation,
   passkeysInvalidates,
   passkeysQuery,
   registerPasskeyMutation,
@@ -97,12 +101,16 @@ export const actions = {
   exportDocuments: exportDocumentsMutation(apiClient),
   documentsInvalidates,
   createPadSession: createPadSessionMutation(apiClient),
+  activePadSession: activePadSessionQuery(apiClient),
+  activePadSessionInvalidates,
+  joinOwnPadSession: joinOwnPadSessionMutation(apiClient),
   padSessionState: (sessionId: string, secret: string) =>
     padSessionStateQuery(apiClient, sessionId, secret),
   requestPadSignature: requestPadSignatureMutation(apiClient),
   submitPadStrokes: submitPadStrokesMutation(apiClient),
   consumePadStrokes: consumePadStrokesMutation(apiClient),
   closePadSession: closePadSessionMutation(apiClient),
+  disconnectPadSession: disconnectPadSessionMutation(apiClient),
   padSessionInvalidates,
   signUp: signUpMutation(authClient),
   signIn: signInMutation(authClient),

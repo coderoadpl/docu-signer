@@ -12,6 +12,7 @@ import {
   Button,
   CircularProgress,
   Paper,
+  SvgIcon,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
@@ -29,6 +30,8 @@ import {
   DEFAULT_SIGNING_INK_COLOR,
   SIGNING_INK_COLORS,
   inkToCanvasOutlines,
+  penPriorityActive,
+  pointerDrawsInk,
   pointerEventToInkPoints,
   pointerEventUsesSimulatedPressure,
   signingInkColorById,
@@ -41,11 +44,28 @@ import {
 const DEFAULT_PLACEMENT = { offsetX: 0, offsetY: 0, scale: 1 };
 const POLL_MS = 1200;
 
+type PadInputMode = 'pen' | 'hand';
+
 const selectionLockSx = {
   WebkitTouchCallout: 'none',
   WebkitUserSelect: 'none',
   userSelect: 'none',
 } as const;
+
+const PenIcon = () => (
+  <SvgIcon fontSize="small">
+    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm17.71-10.04a.996.996 0 0 0 0-1.41l-2.5-2.5a.996.996 0 0 0-1.41 0l-1.96 1.96 3.75 3.75 2.12-1.8Z" />
+  </SvgIcon>
+);
+
+const HandIcon = () => (
+  <SvgIcon fontSize="small">
+    <path d="M18 11V6a2 2 0 0 0-4 0v4h-1V4a2 2 0 0 0-4 0v6H8V5a2 2 0 0 0-4 0v9.5l-1.2-1.2a2 2 0 0 0-2.8 2.8l5.7 5.7A4 4 0 0 0 8.5 23H16a6 6 0 0 0 6-6v-6a2 2 0 0 0-4 0Z" />
+  </SvgIcon>
+);
+
+const modeSwitchContains = (target: EventTarget): boolean =>
+  target instanceof Element && target.closest('[data-pad-mode-switch]') !== null;
 
 const releasePointerCapture = (element: HTMLCanvasElement, pointerId: number) => {
   if (typeof element.releasePointerCapture !== 'function') return;
@@ -142,6 +162,10 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentStrokeRef = useRef<InkStroke | undefined>(undefined);
   const activePointerRef = useRef<number | undefined>(undefined);
+  const activePointerTypeRef = useRef<string | undefined>(undefined);
+  const activePenPointerRef = useRef<number | undefined>(undefined);
+  const lastPenSeenAtRef = useRef<number | undefined>(undefined);
+  const suppressNextTouchClickRef = useRef(false);
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
   const [metrics, setMetrics] = useState<CanvasPdfMetrics>();
   const [strokes, setStrokes] = useState<InkStroke[]>([]);
@@ -149,16 +173,18 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
   const [inkColorId, setInkColorId] = useState<SigningInkColorId>(
     DEFAULT_SIGNING_INK_COLOR.id,
   );
+  const [inputMode, setInputMode] = useState<PadInputMode>('pen');
   const [submittedRequestId, setSubmittedRequestId] = useState<string>();
   const [requestCount, setRequestCount] = useState(0);
   const lastRequestIdRef = useRef<string | undefined>(undefined);
   const me = useQuery(actions.me);
   const state = useQuery({
     ...actions.padSessionState(sessionId, secret),
-    enabled: Boolean(secret) && Boolean(me.data?.tenant),
+    enabled: Boolean(me.data?.tenant),
     refetchInterval: POLL_MS,
   });
   const submit = useMutation(actions.submitPadStrokes);
+  const disconnect = useMutation(actions.disconnectPadSession);
   const inkColor = signingInkColorById(inkColorId);
   const request = state.data?.currentRequest ?? null;
   const drawingRequest =
@@ -216,6 +242,9 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     setActiveStroke(undefined);
     currentStrokeRef.current = undefined;
     activePointerRef.current = undefined;
+    activePointerTypeRef.current = undefined;
+    activePenPointerRef.current = undefined;
+    lastPenSeenAtRef.current = undefined;
   }, [request]);
 
   const pointsForEvent = (event: ReactPointerEvent<HTMLCanvasElement>) =>
@@ -232,13 +261,46 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     ),
   });
 
+  const touchIgnoredForPenPriority = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ) =>
+    event.pointerType === 'touch' &&
+    penPriorityActive({
+      activePenPointerId: activePenPointerRef.current,
+      lastPenSeenAt: lastPenSeenAtRef.current,
+      now: event.timeStamp,
+    });
+
+  const eventDrawsInk = (event: ReactPointerEvent<HTMLCanvasElement>) =>
+    pointerDrawsInk({
+      fingerDrawing: inputMode === 'hand',
+      mode: 'draw',
+      penPriority: touchIgnoredForPenPriority(event),
+      pointer: { pointerType: event.pointerType },
+    });
+
+  const cancelActiveTouchStroke = (canvas: HTMLCanvasElement) => {
+    if (activePointerTypeRef.current !== 'touch') return;
+    const pointerId = activePointerRef.current;
+    if (pointerId !== undefined) releasePointerCapture(canvas, pointerId);
+    currentStrokeRef.current = undefined;
+    activePointerRef.current = undefined;
+    activePointerTypeRef.current = undefined;
+    setActiveStroke(undefined);
+  };
+
   const finishPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (activePenPointerRef.current === event.pointerId) {
+      activePenPointerRef.current = undefined;
+      lastPenSeenAtRef.current = event.timeStamp;
+    }
     if (activePointerRef.current !== event.pointerId) return;
     releasePointerCapture(event.currentTarget, event.pointerId);
     const stroke = currentStrokeRef.current;
     if (stroke?.points.length) setStrokes((current) => [...current, stroke]);
     currentStrokeRef.current = undefined;
     activePointerRef.current = undefined;
+    activePointerTypeRef.current = undefined;
     setActiveStroke(undefined);
     event.preventDefault();
   };
@@ -248,6 +310,21 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     setActiveStroke(undefined);
     currentStrokeRef.current = undefined;
     activePointerRef.current = undefined;
+    activePointerTypeRef.current = undefined;
+  };
+
+  const suppressTouchPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (inputMode !== 'pen' || event.pointerType !== 'touch') {
+      suppressNextTouchClickRef.current = false;
+      return;
+    }
+    if (modeSwitchContains(event.target)) {
+      suppressNextTouchClickRef.current = false;
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    suppressNextTouchClickRef.current = true;
   };
 
   const submitInk = async () => {
@@ -274,13 +351,14 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     await queryClient.invalidateQueries(actions.padSessionInvalidates(sessionId));
   };
 
-  if (!secret) {
-    return (
-      <PadFrame>
-        <StatusView state={{ kind: 'error', message: 'Brak sekretu sesji na adresie pada.' }} />
-      </PadFrame>
-    );
-  }
+  const disconnectPad = async () => {
+    try {
+      await disconnect.mutateAsync({ sessionId, secret });
+      await queryClient.invalidateQueries(actions.padSessionInvalidates(sessionId));
+    } catch {
+      return;
+    }
+  };
 
   if (me.isPending) {
     return (
@@ -298,6 +376,14 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     );
   }
 
+  if (state.isPending) {
+    return (
+      <PadFrame>
+        <StatusView state={{ kind: 'loading', label: 'Ładowanie pada…' }} />
+      </PadFrame>
+    );
+  }
+
   if (state.isError) {
     return (
       <PadFrame>
@@ -306,16 +392,41 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     );
   }
 
+  if (state.data.status === 'closed') {
+    return (
+      <PadFrame>
+        <StatusView state={{ kind: 'empty', title: 'Pad rozłączony' }} />
+      </PadFrame>
+    );
+  }
+
   return (
     <Box
+      onPointerDownCapture={suppressTouchPointer}
+      onPointerUpCapture={suppressTouchPointer}
+      onClickCapture={(event) => {
+        const touchClick =
+          'pointerType' in event.nativeEvent &&
+          event.nativeEvent.pointerType === 'touch';
+        if (
+          inputMode !== 'pen' ||
+          modeSwitchContains(event.target) ||
+          (!touchClick && !suppressNextTouchClickRef.current)
+        ) {
+          return;
+        }
+        suppressNextTouchClickRef.current = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       sx={{
-        ...selectionLockSx,
+        ...(inputMode === 'pen' ? selectionLockSx : {}),
         position: 'fixed',
         inset: 0,
         display: 'flex',
         flexDirection: 'column',
         touchAction: 'none',
-        '& *': selectionLockSx,
+        ...(inputMode === 'pen' ? { '& *': selectionLockSx } : {}),
       }}
     >
       <Paper square sx={{ px: 2, py: 1.25 }}>
@@ -331,26 +442,56 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
               Dokument {requestCount || 1}
             </Typography>
           </Box>
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            value={inkColorId}
-            onChange={(_, selected: SigningInkColorId | null) => {
-              if (selected) setInkColorId(selected);
-            }}
-            aria-label="Kolor tuszu pada"
-          >
-            {SIGNING_INK_COLORS.map((color) => (
-              <ToggleButton
-                key={color.id}
-                value={color.id}
-                disabled={!drawingRequest || submit.isPending}
-                aria-label={color.label}
+          <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={inkColorId}
+              onChange={(_, selected: SigningInkColorId | null) => {
+                if (selected) setInkColorId(selected);
+              }}
+              aria-label="Kolor tuszu pada"
+            >
+              {SIGNING_INK_COLORS.map((color) => (
+                <ToggleButton
+                  key={color.id}
+                  value={color.id}
+                  disabled={!drawingRequest || submit.isPending}
+                  aria-label={color.label}
+                >
+                  {color.label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+            <Box data-pad-mode-switch>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={inputMode}
+                onChange={(_, selected: PadInputMode | null) => {
+                  if (!selected) return;
+                  if (selected === 'pen' && canvasRef.current) {
+                    cancelActiveTouchStroke(canvasRef.current);
+                  }
+                  setInputMode(selected);
+                }}
+                aria-label="Tryb wejścia pada"
               >
-                {color.label}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
+                <ToggleButton value="pen" aria-label="Piórko">
+                  <Stack component="span" direction="row" sx={{ alignItems: 'center', gap: 0.75 }}>
+                    <PenIcon />
+                    Piórko
+                  </Stack>
+                </ToggleButton>
+                <ToggleButton value="hand" aria-label="Ręka">
+                  <Stack component="span" direction="row" sx={{ alignItems: 'center', gap: 0.75 }}>
+                    <HandIcon />
+                    Ręka
+                  </Stack>
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+          </Stack>
         </Stack>
       </Paper>
       <Box sx={{ position: 'relative', flex: '1 1 auto', minHeight: 0 }}>
@@ -365,11 +506,19 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
               px: 2,
             }}
           >
-            {state.isFetching ? <CircularProgress size={28} /> : null}
             <Typography variant="h1">Czekam na dokument…</Typography>
             <Typography variant="body2" color="text.secondary">
-              Zeskanowano. Ekran obudzi się przy następnym podpisie.
+              Ekran obudzi się przy następnym podpisie.
             </Typography>
+            {disconnect.isError ? <Alert severity="error">{disconnect.error.message}</Alert> : null}
+            <Button
+              color="error"
+              variant="outlined"
+              disabled={disconnect.isPending}
+              onClick={() => void disconnectPad()}
+            >
+              Rozłącz
+            </Button>
           </Stack>
         ) : null}
         <InkSurface
@@ -386,15 +535,34 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
           }}
           onPointerDown={(event) => {
             if (!drawingRequest || submit.isPending) return;
+            if (event.pointerType === 'pen') {
+              activePenPointerRef.current = event.pointerId;
+              lastPenSeenAtRef.current = event.timeStamp;
+              cancelActiveTouchStroke(event.currentTarget);
+            }
+            if (activePointerRef.current !== undefined) return;
+            if (!eventDrawsInk(event)) {
+              if (event.pointerType === 'touch') event.preventDefault();
+              return;
+            }
             const stroke = strokeForEvent(event);
             if (!stroke.points.length) return;
             activePointerRef.current = event.pointerId;
+            activePointerTypeRef.current = event.pointerType;
             currentStrokeRef.current = stroke;
             setActiveStroke(stroke);
             event.currentTarget.setPointerCapture(event.pointerId);
             event.preventDefault();
           }}
           onPointerMove={(event) => {
+            if (event.pointerType === 'pen') {
+              lastPenSeenAtRef.current = event.timeStamp;
+            }
+            if (touchIgnoredForPenPriority(event)) {
+              cancelActiveTouchStroke(event.currentTarget);
+              event.preventDefault();
+              return;
+            }
             if (activePointerRef.current !== event.pointerId) return;
             const current = currentStrokeRef.current;
             if (!current) return;
