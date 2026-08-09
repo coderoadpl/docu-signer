@@ -69,5 +69,5 @@ each.
   verticals they drove; the README quickstart is now convention, not enforced.
 - `scripts/backup.ts` is a sanctioned standalone composition site because the CI cron backup runs without the server.
 - `.github/workflows/backup.yml` lives under foundation-owned workflows for the repo-owned backup cron.
-- The api-token resource consciously stops before the web binding/route steps of the 12-step chain: the Konto tokens section and the Szkice filter ship in the follow-up UI package; until then tokens and approval are CLI-first.
+- The user-preference resource consciously skips the CLI step of the 12-step chain: column preferences are a web-view concern with no CLI surface to configure.
 - API token `lastUsedAt` renders in Konto > Tokeny API despite the no-storage-timestamps rule: token hygiene is that security surface's purpose (agent decision 2026-08-02; owner may veto).
