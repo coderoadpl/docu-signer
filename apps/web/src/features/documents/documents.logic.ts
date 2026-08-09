@@ -34,6 +34,8 @@ export interface DocumentFormValues {
   title: string;
   docType: DocumentType;
   documentDate: string;
+  periodStart: string;
+  periodEnd: string;
   person: string;
   tags: string;
 }
@@ -41,7 +43,9 @@ export interface DocumentFormValues {
 export const emptyDocumentForm = (): DocumentFormValues => ({
   title: '',
   docType: 'umowa-uod',
-  documentDate: new Date().toISOString().slice(0, 10),
+  documentDate: '',
+  periodStart: '',
+  periodEnd: '',
   person: '',
   tags: '',
 });
@@ -52,12 +56,30 @@ export const toDocumentInput = (
   title: values.title.trim(),
   docType: values.docType,
   documentDate: values.documentDate,
+  periodStart: values.periodStart || null,
+  periodEnd: values.periodEnd || null,
   ...(values.person.trim() ? { person: values.person.trim() } : {}),
   tags: values.tags
     .split(',')
     .map((tag) => tag.trim())
     .filter(Boolean),
 });
+
+export const suggestDocumentDate = (
+  values: DocumentFormValues,
+  changedField: 'periodStart' | 'periodEnd',
+  changedValue: string,
+): DocumentFormValues => {
+  const next = { ...values, [changedField]: changedValue };
+  if (next.documentDate) return next;
+  if (next.docType === 'umowa-uod' && changedField === 'periodStart') {
+    return { ...next, documentDate: changedValue };
+  }
+  if (next.docType === 'protokol' && changedField === 'periodEnd') {
+    return { ...next, documentDate: changedValue };
+  }
+  return next;
+};
 
 export const toDocumentFilter = (values: {
   text: string;

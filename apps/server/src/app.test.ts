@@ -134,6 +134,8 @@ describe('buildApp', () => {
       title: 'Umowa',
       docType: 'umowa-uod',
       documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
       person: null,
       tags: [],
       createdAt: '2026-08-01T00:00:00.000Z',

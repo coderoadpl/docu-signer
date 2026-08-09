@@ -58,6 +58,8 @@ const document = {
   title: 'Umowa z Anną',
   docType: 'umowa-uod',
   documentDate: '2026-07-18',
+  periodStart: '2026-07-01',
+  periodEnd: '2026-07-31',
   person: 'Anna Nowak',
   tags: ['ważne'],
   createdAt: '2026-07-18T10:00:00.000Z',
@@ -139,7 +141,11 @@ describe('DocumentDetailPage', () => {
     await renderPage();
 
     expect(await screen.findByText('oryginal.pdf')).toBeInTheDocument();
+    expect(screen.getByText('Data podpisania: 18.07.2026')).toBeInTheDocument();
+    expect(screen.getByText('Okres: 01.07.2026 - 31.07.2026')).toBeInTheDocument();
     expect(screen.getByText('podpisany-skan.jpg')).toBeInTheDocument();
+    expect(screen.queryByText('19.07.2026')).not.toBeInTheDocument();
+    expect(screen.getByText('1.0 KB')).toBeInTheDocument();
     expect(screen.getAllByText(/Podpisany skan/).length).toBeGreaterThan(0);
     expect(
       screen.getByLabelText('Podgląd: oryginal-podpisany.pdf'),

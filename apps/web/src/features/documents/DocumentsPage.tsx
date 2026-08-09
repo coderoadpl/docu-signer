@@ -332,7 +332,7 @@ export const DocumentsPage = () => {
                     }
                   />
                 </TableCell>
-                <TableCell>Data dokumentu</TableCell>
+                <TableCell>Data podpisania</TableCell>
                 <TableCell>Tytuł</TableCell>
                 <TableCell>Typ</TableCell>
                 <TableCell>Osoba</TableCell>

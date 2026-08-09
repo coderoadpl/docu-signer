@@ -11,6 +11,8 @@ const document: Document = {
   title: 'Łódź — Uchwała!',
   docType: 'uchwala',
   documentDate: '2026-07-18',
+  periodStart: null,
+  periodEnd: null,
   person: null,
   tags: [],
   createdAt: '2026-07-18T10:00:00.000Z',

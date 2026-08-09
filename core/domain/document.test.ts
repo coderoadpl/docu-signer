@@ -15,20 +15,33 @@ describe('document schemas', () => {
         title: '  Agreement  ',
         docType: 'umowa-uod',
         documentDate: '2026-07-27',
+        periodStart: '2026-07-01',
+        periodEnd: '2026-07-31',
       }),
     ).toEqual({
       title: 'Agreement',
       docType: 'umowa-uod',
       documentDate: '2026-07-27',
+      periodStart: '2026-07-01',
+      periodEnd: '2026-07-31',
       tags: [],
     });
   });
 
-  it('rejects inverted dates, unsafe MIME types, oversized files, and bulk overflow', () => {
+  it('rejects inverted dates, inverted periods, unsafe MIME types, oversized files, and bulk overflow', () => {
     expect(
       documentListFilterSchema.safeParse({
         dateFrom: '2026-07-28',
         dateTo: '2026-07-27',
+      }).success,
+    ).toBe(false);
+    expect(
+      createDocumentSchema.safeParse({
+        title: 'Agreement',
+        docType: 'umowa-uod',
+        documentDate: '2026-07-27',
+        periodStart: '2026-08-01',
+        periodEnd: '2026-07-31',
       }).success,
     ).toBe(false);
     expect(

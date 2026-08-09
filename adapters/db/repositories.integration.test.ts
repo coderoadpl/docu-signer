@@ -56,11 +56,15 @@ describe('DocumentRepository', () => {
       title: 'Umowa',
       docType: 'umowa-uod',
       documentDate: '2026-08-01',
+      periodStart: '2026-07-01',
+      periodEnd: '2026-07-31',
       person: 'Jan Kowalski',
       tags: ['podpis'],
     });
 
     expect(created.title).toBe('Umowa');
+    expect(created.periodStart).toBe('2026-07-01');
+    expect(created.periodEnd).toBe('2026-07-31');
     expect(await repository.listByTenant('tenant-a', {})).toHaveLength(1);
     expect(await repository.listByTenant('tenant-b', {})).toEqual([]);
     expect(

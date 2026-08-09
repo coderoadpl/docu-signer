@@ -38,6 +38,8 @@ describe('API client', () => {
             title: 'Umowa',
             docType: 'umowa-uod',
             documentDate: '2026-08-01',
+            periodStart: null,
+            periodEnd: null,
             person: null,
             tags: [],
             createdAt: '2026-08-01T00:00:00.000Z',
@@ -52,6 +54,8 @@ describe('API client', () => {
       title: 'Umowa',
       docType: 'umowa-uod',
       documentDate: '2026-08-01',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
       tags: [],
     });
 
@@ -64,6 +68,8 @@ describe('API client', () => {
         title: 'Umowa',
         docType: 'umowa-uod',
         documentDate: '2026-08-01',
+        periodStart: '2026-08-01',
+        periodEnd: '2026-08-31',
         tags: [],
       }),
     });

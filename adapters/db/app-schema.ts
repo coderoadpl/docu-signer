@@ -149,6 +149,8 @@ export const documents = pgTable(
       enum: ['umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny'],
     }).notNull(),
     documentDate: date('document_date').notNull(),
+    periodStart: date('period_start'),
+    periodEnd: date('period_end'),
     person: text('person'),
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -159,6 +161,10 @@ export const documents = pgTable(
     check(
       'documents_doc_type_check',
       sql`${table.docType} IN ('umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny')`,
+    ),
+    check(
+      'documents_period_order_check',
+      sql`${table.periodStart} IS NULL OR ${table.periodEnd} IS NULL OR ${table.periodStart} <= ${table.periodEnd}`,
     ),
   ],
 );

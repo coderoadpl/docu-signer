@@ -78,6 +78,8 @@ export const createDocument = async (
       id: deps.ids.nextId(),
       tenantId: scope.value,
       ...parsed.data,
+      periodStart: parsed.data.periodStart ?? null,
+      periodEnd: parsed.data.periodEnd ?? null,
       person: parsed.data.person ?? null,
     }),
   );
@@ -130,6 +132,8 @@ export const updateDocument = async (
   if (!parsed.success) return err(validation('Invalid document', parsed.error.flatten()));
   const updated = await deps.documents.update(scope.value, documentId, {
     ...parsed.data,
+    periodStart: parsed.data.periodStart ?? null,
+    periodEnd: parsed.data.periodEnd ?? null,
     person: parsed.data.person ?? null,
   });
   return updated ? ok(updated) : err(notFound('Document not found'));

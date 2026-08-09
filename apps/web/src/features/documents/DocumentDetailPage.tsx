@@ -101,7 +101,7 @@ const FileRow = ({
     <ListItem>
       <ListItemText
         primary={file.fileName}
-        secondary={`${formatFileSize(file.sizeBytes)} · ${formatPolishDate(file.createdAt)}`}
+        secondary={formatFileSize(file.sizeBytes)}
       />
       <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}>
         <Link href={contentUrl} target="_blank" rel="noreferrer">
@@ -334,6 +334,13 @@ export const DocumentDetailPage = ({
 
   const document = documentQuery.data.document;
   const grouped = filesByRole(document.files);
+  const period =
+    document.periodStart || document.periodEnd
+      ? [
+          document.periodStart ? formatPolishDate(document.periodStart) : '—',
+          document.periodEnd ? formatPolishDate(document.periodEnd) : '—',
+        ].join(' - ')
+      : null;
   const upload = async (file: File, role: DocumentFileRole) => {
     setUploadingRole(role);
     setUploadErrors((current) => ({ ...current, [role]: undefined }));
@@ -378,10 +385,13 @@ export const DocumentDetailPage = ({
               label={DOCUMENT_TYPE_LABELS[document.docType]}
             />
           </Stack>
-          <Typography sx={{ mt: 1 }}>
-            {formatPolishDate(document.documentDate)} ·{' '}
-            {document.person ?? 'Bez przypisanej osoby'}
-          </Typography>
+          <Stack sx={{ mt: 1, gap: 0.5 }}>
+            <Typography>
+              Data podpisania: {formatPolishDate(document.documentDate)}
+            </Typography>
+            {period ? <Typography>Okres: {period}</Typography> : null}
+            <Typography>{document.person ?? 'Bez przypisanej osoby'}</Typography>
+          </Stack>
           {document.tags.length ? (
             <Stack
               direction="row"
@@ -439,6 +449,8 @@ export const DocumentDetailPage = ({
           title: document.title,
           docType: document.docType,
           documentDate: document.documentDate,
+          periodStart: document.periodStart ?? '',
+          periodEnd: document.periodEnd ?? '',
           person: document.person ?? '',
           tags: document.tags.join(', '),
         }}

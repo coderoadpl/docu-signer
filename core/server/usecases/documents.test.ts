@@ -60,6 +60,8 @@ const documentRow = (tenantId = 'tenant-acme'): Document => ({
   title: 'Agreement',
   docType: 'umowa-uod',
   documentDate: '2026-07-01',
+  periodStart: null,
+  periodEnd: null,
   person: null,
   tags: ['contract'],
   createdAt: '2026-07-01T10:00:00.000Z',
@@ -208,6 +210,8 @@ const createInput = {
   title: 'Agreement',
   docType: 'umowa-uod' as const,
   documentDate: '2026-07-01',
+  periodStart: null,
+  periodEnd: null,
   tags: ['contract'],
 };
 

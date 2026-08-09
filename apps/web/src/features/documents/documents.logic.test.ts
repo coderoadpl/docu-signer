@@ -5,6 +5,7 @@ import { ApiError } from '#core/client/index.js';
 import {
   filesByRole,
   formatFileSize,
+  suggestDocumentDate,
   toDocumentFilter,
   toDocumentInput,
   uploadErrorMessage,
@@ -17,6 +18,8 @@ describe('document view logic', () => {
         title: '  Uchwała ',
         docType: 'uchwala',
         documentDate: '2026-07-18',
+        periodStart: '2026-07-01',
+        periodEnd: '2026-07-31',
         person: '  Anna ',
         tags: 'zarząd, ważne, ',
       }),
@@ -24,6 +27,8 @@ describe('document view logic', () => {
       title: 'Uchwała',
       docType: 'uchwala',
       documentDate: '2026-07-18',
+      periodStart: '2026-07-01',
+      periodEnd: '2026-07-31',
       person: 'Anna',
       tags: ['zarząd', 'ważne'],
     });
@@ -32,6 +37,8 @@ describe('document view logic', () => {
         title: 'Notatka',
         docType: 'inny',
         documentDate: '2026-07-18',
+        periodStart: '',
+        periodEnd: '',
         person: ' ',
         tags: '',
       }),
@@ -39,8 +46,39 @@ describe('document view logic', () => {
       title: 'Notatka',
       docType: 'inny',
       documentDate: '2026-07-18',
+      periodStart: null,
+      periodEnd: null,
       tags: [],
     });
+  });
+
+  it('suggests a signing date from period fields without overwriting user input', () => {
+    const base = {
+      title: '',
+      docType: 'umowa-uod' as const,
+      documentDate: '',
+      periodStart: '',
+      periodEnd: '',
+      person: '',
+      tags: '',
+    };
+    expect(suggestDocumentDate(base, 'periodStart', '2026-07-01').documentDate).toBe(
+      '2026-07-01',
+    );
+    expect(
+      suggestDocumentDate(
+        { ...base, docType: 'protokol' },
+        'periodEnd',
+        '2026-07-31',
+      ).documentDate,
+    ).toBe('2026-07-31');
+    expect(
+      suggestDocumentDate(
+        { ...base, documentDate: '2026-06-30' },
+        'periodStart',
+        '2026-07-01',
+      ).documentDate,
+    ).toBe('2026-06-30');
   });
 
   it('omits blank filters and groups files by role', () => {

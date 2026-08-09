@@ -24,6 +24,8 @@ const document = {
   title: 'Umowa',
   docType: 'umowa-uod' as const,
   documentDate: '2026-08-01',
+  periodStart: null,
+  periodEnd: null,
   person: null,
   tags: [],
   createdAt: '2026-08-01T00:00:00.000Z',
@@ -126,6 +128,8 @@ describe('document mutation descriptors', () => {
       title: document.title,
       docType: document.docType,
       documentDate: document.documentDate,
+      periodStart: null,
+      periodEnd: null,
     };
 
     const create = createDocumentMutation(api);

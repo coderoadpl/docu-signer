@@ -73,8 +73,8 @@ export default defineConfig({
       //
       // Re-measured 2026-08-01 after merging backup logic with pen signing and
       // the restored document-query, route-contract and identity-resolution
-      // branches. The database-free run is statements 77.67%, branches 86.88%,
-      // functions 78.84%, and lines 77.67%; each floor is that measured value
+      // branches. The database-free run is statements 77.78%, branches 86.73%,
+      // functions 78.45%, and lines 77.78%; each floor is that measured value
       // rounded down.
       thresholds: {
         statements: 77,

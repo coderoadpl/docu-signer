@@ -24,6 +24,8 @@ const document = {
   title: 'Umowa z Anną',
   docType: 'umowa-uod',
   documentDate: '2026-07-18',
+  periodStart: null,
+  periodEnd: null,
   person: 'Anna Nowak',
   tags: ['ważne'],
   createdAt: '2026-07-18T10:00:00.000Z',
@@ -206,12 +208,14 @@ describe('DocumentsPage', () => {
   });
 
   it('creates a document and navigates to its detail', async () => {
+    const create = vi.fn();
     server.use(
       http.get('/api/documents', () =>
         HttpResponse.json({ ok: true, data: { documents: [] } }),
       ),
       http.post('/api/documents', async ({ request }) => {
         const input = documentCreateInputSchema.parse(await request.json());
+        create(input);
         return HttpResponse.json({
           ok: true,
           data: { document: { ...document, ...input } },
@@ -230,11 +234,22 @@ describe('DocumentsPage', () => {
       within(dialog).getByRole('textbox', { name: 'Tytuł' }),
       'Nowy dokument',
     );
+    expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('');
+    await userEvent.click(within(dialog).getByText('Okres'));
+    await userEvent.type(within(dialog).getByLabelText('Od'), '2026-07-01');
+    expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('2026-07-01');
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );
 
     expect(await screen.findByText('Szczegóły dokumentu')).toBeInTheDocument();
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentDate: '2026-07-01',
+        periodStart: '2026-07-01',
+        periodEnd: null,
+      }),
+    );
     expect(router.state.location.pathname).toBe(
       `/app/documents/${DOCUMENT_ID}`,
     );
@@ -261,12 +276,12 @@ describe('DocumentsPage', () => {
     expect(title).toHaveAccessibleDescription('Tytuł jest wymagany');
 
     await userEvent.type(title, 'Nowy dokument');
-    const date = within(dialog).getByLabelText('Data dokumentu');
+    const date = within(dialog).getByLabelText('Data podpisania');
     await userEvent.clear(date);
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );
     expect(date).toHaveFocus();
-    expect(date).toHaveAccessibleDescription('Data dokumentu jest wymagana');
+    expect(date).toHaveAccessibleDescription('Data podpisania jest wymagana');
   });
 });

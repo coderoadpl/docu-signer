@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Button,
   Dialog,
@@ -19,6 +22,7 @@ import { documentTypeSchema } from '#core/domain/index.js';
 import {
   DOCUMENT_TYPE_LABELS,
   emptyDocumentForm,
+  suggestDocumentDate,
   type DocumentFormValues,
 } from './documents.logic.js';
 
@@ -47,6 +51,7 @@ export const DocumentFormDialog = ({
   const [fieldErrors, setFieldErrors] = useState<{
     title?: string;
     documentDate?: string;
+    periodEnd?: string;
   }>({});
   const titleInput = useRef<HTMLInputElement>(null);
   const dateInput = useRef<HTMLInputElement>(null);
@@ -59,8 +64,12 @@ export const DocumentFormDialog = ({
   }, [initialValues, open]);
 
   const field = (name: keyof DocumentFormValues, value: string) => {
-    setValues((current) => ({ ...current, [name]: value }));
-    if (name === 'title' || name === 'documentDate') {
+    setValues((current) =>
+      name === 'periodStart' || name === 'periodEnd'
+        ? suggestDocumentDate(current, name, value)
+        : { ...current, [name]: value },
+    );
+    if (name === 'title' || name === 'documentDate' || name === 'periodEnd') {
       setFieldErrors((current) => ({ ...current, [name]: undefined }));
     }
   };
@@ -71,7 +80,10 @@ export const DocumentFormDialog = ({
       ...(values.title.trim() ? {} : { title: 'Tytuł jest wymagany' }),
       ...(values.documentDate
         ? {}
-        : { documentDate: 'Data dokumentu jest wymagana' }),
+        : { documentDate: 'Data podpisania jest wymagana' }),
+      ...(values.periodStart && values.periodEnd && values.periodStart > values.periodEnd
+        ? { periodEnd: 'Data końcowa nie może być wcześniejsza niż początkowa' }
+        : {}),
     };
     setFieldErrors(errors);
     if (errors.title) {
@@ -82,6 +94,7 @@ export const DocumentFormDialog = ({
       dateInput.current?.focus();
       return;
     }
+    if (errors.periodEnd) return;
     onSubmit(values);
   };
 
@@ -132,7 +145,7 @@ export const DocumentFormDialog = ({
           </FormControl>
           <TextField
             id="document-date"
-            label="Data dokumentu"
+            label="Data podpisania"
             type="date"
             value={values.documentDate}
             onChange={(event) => field('documentDate', event.target.value)}
@@ -149,6 +162,31 @@ export const DocumentFormDialog = ({
               formHelperText: { id: 'document-date-helper-text' },
             }}
           />
+          <Accordion variant="outlined" disableGutters>
+            <AccordionSummary>Okres</AccordionSummary>
+            <AccordionDetails>
+              <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 2 }}>
+                <TextField
+                  label="Od"
+                  type="date"
+                  value={values.periodStart}
+                  onChange={(event) => field('periodStart', event.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  label="Do"
+                  type="date"
+                  value={values.periodEnd}
+                  onChange={(event) => field('periodEnd', event.target.value)}
+                  error={Boolean(fieldErrors.periodEnd)}
+                  helperText={fieldErrors.periodEnd}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ flex: 1 }}
+                />
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
           <TextField
             label="Osoba"
             value={values.person}
