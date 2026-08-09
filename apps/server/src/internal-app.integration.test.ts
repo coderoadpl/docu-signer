@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTenantDomainRepository } from '#adapters/db/repositories.js';
 import { tenantDomains, tenants } from '#adapters/db/schema.js';
 import * as schema from '#adapters/db/schema.js';
+import { closePoolAndDropIntegrationDatabase } from '#adapters/db/test-support/integration-database.js';
 
 import { buildInternalApp } from './internal-app.js';
 
@@ -19,25 +20,6 @@ const itestUrl = (() => {
   url.pathname = `/${ITEST_DB}`;
   return url.toString();
 })();
-
-const closePool = async (pool: pg.Pool): Promise<void> => {
-  const clientCount = pool.totalCount;
-  if (clientCount === 0) {
-    await pool.end();
-    return;
-  }
-
-  let removedClientCount = 0;
-  const clientsClosed = new Promise<void>((resolve) => {
-    pool.on('remove', () => {
-      removedClientCount += 1;
-      if (removedClientCount === clientCount) resolve();
-    });
-  });
-
-  await pool.end();
-  await clientsClosed;
-};
 
 let appPool: pg.Pool;
 let db: ReturnType<typeof drizzleNodePg<typeof schema>>;
@@ -63,7 +45,7 @@ beforeAll(async () => {
   try {
     await migrateNodePg(drizzleNodePg(migrationPool), { migrationsFolder: 'drizzle' });
   } finally {
-    await closePool(migrationPool);
+    await migrationPool.end();
   }
 
   appPool = new pg.Pool({ connectionString: itestUrl });
@@ -82,9 +64,10 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await closePool(appPool);
-  await withAdmin(async (admin) => {
-    await admin.query(`DROP DATABASE IF EXISTS ${ITEST_DB} WITH (FORCE)`);
+  await closePoolAndDropIntegrationDatabase({
+    pool: appPool,
+    adminDatabaseUrl: baseDatabaseUrl,
+    databaseName: ITEST_DB,
   });
 });
 

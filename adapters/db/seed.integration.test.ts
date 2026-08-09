@@ -6,6 +6,8 @@ import { migrate as migrateNodePg } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { closePoolAndDropIntegrationDatabase } from './test-support/integration-database.js';
+
 const ITEST_DB = 'agentproofarch_seed_itest';
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ??
@@ -16,25 +18,6 @@ const seedDatabaseUrl = (() => {
   return url.toString();
 })();
 const tsxBin = join(process.cwd(), 'node_modules/.bin/tsx');
-
-const closePool = async (pool: pg.Pool): Promise<void> => {
-  const clientCount = pool.totalCount;
-  if (clientCount === 0) {
-    await pool.end();
-    return;
-  }
-
-  let removedClientCount = 0;
-  const clientsClosed = new Promise<void>((resolve) => {
-    pool.on('remove', () => {
-      removedClientCount += 1;
-      if (removedClientCount === clientCount) resolve();
-    });
-  });
-
-  await pool.end();
-  await clientsClosed;
-};
 
 const recreateDatabase = async (): Promise<void> => {
   const admin = new pg.Client({ connectionString: baseDatabaseUrl });
@@ -49,17 +32,7 @@ const recreateDatabase = async (): Promise<void> => {
   try {
     await migrateNodePg(drizzleNodePg(migrationPool), { migrationsFolder: 'drizzle' });
   } finally {
-    await closePool(migrationPool);
-  }
-};
-
-const dropDatabase = async (): Promise<void> => {
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  try {
-    await admin.query(`DROP DATABASE IF EXISTS ${ITEST_DB} WITH (FORCE)`);
-  } finally {
-    await admin.end();
+    await migrationPool.end();
   }
 };
 
@@ -80,7 +53,7 @@ const runSeed = (): void => {
   expect(result.status, result.stderr).toBe(0);
 };
 
-const readDataset = async (client: pg.Client) => {
+const readDataset = async (client: pg.Pool) => {
   const users = await client.query(
     'SELECT id, email, name FROM "user" ORDER BY email',
   );
@@ -124,7 +97,7 @@ const readDataset = async (client: pg.Client) => {
   };
 };
 
-const truncateAfter = async (client: pg.Client, stage: string): Promise<void> => {
+const truncateAfter = async (client: pg.Pool, stage: string): Promise<void> => {
   if (stage === 'tenants') {
     await client.query('DELETE FROM tenants');
     return;
@@ -144,17 +117,19 @@ const truncateAfter = async (client: pg.Client, stage: string): Promise<void> =>
   }
 };
 
-let client: pg.Client;
+let client: pg.Pool;
 
 beforeAll(async () => {
   await recreateDatabase();
-  client = new pg.Client({ connectionString: seedDatabaseUrl });
-  await client.connect();
+  client = new pg.Pool({ connectionString: seedDatabaseUrl });
 }, 60_000);
 
 afterAll(async () => {
-  await client.end();
-  await dropDatabase();
+  await closePoolAndDropIntegrationDatabase({
+    pool: client,
+    adminDatabaseUrl: baseDatabaseUrl,
+    databaseName: ITEST_DB,
+  });
 });
 
 describe('seed convergence', () => {

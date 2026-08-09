@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { createAuth, type Auth } from '#adapters/auth/create-auth.js';
 import * as schema from '#adapters/db/schema.js';
+import { closePoolAndDropIntegrationDatabase } from '#adapters/db/test-support/integration-database.js';
 
 const ITEST_DB = 'agentproofarch_twofactor_itest';
 const baseDatabaseUrl =
@@ -16,25 +17,6 @@ const itestUrl = (() => {
   url.pathname = `/${ITEST_DB}`;
   return url.toString();
 })();
-
-const closePool = async (pool: pg.Pool): Promise<void> => {
-  const clientCount = pool.totalCount;
-  if (clientCount === 0) {
-    await pool.end();
-    return;
-  }
-
-  let removedClientCount = 0;
-  const clientsClosed = new Promise<void>((resolve) => {
-    pool.on('remove', () => {
-      removedClientCount += 1;
-      if (removedClientCount === clientCount) resolve();
-    });
-  });
-
-  await pool.end();
-  await clientsClosed;
-};
 
 const BASE_URL = 'http://localhost:47100';
 let auth: Auth;
@@ -77,7 +59,7 @@ beforeAll(async () => {
   try {
     await migrateNodePg(drizzleNodePg(migrationPool), { migrationsFolder: 'drizzle' });
   } finally {
-    await closePool(migrationPool);
+    await migrationPool.end();
   }
   authPool = new pg.Pool({ connectionString: itestUrl });
   auth = createAuth(drizzleNodePg(authPool, { schema }), {
@@ -92,14 +74,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await closePool(authPool);
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  try {
-    await admin.query(`DROP DATABASE IF EXISTS ${ITEST_DB} WITH (FORCE)`);
-  } finally {
-    await admin.end();
-  }
+  await closePoolAndDropIntegrationDatabase({
+    pool: authPool,
+    adminDatabaseUrl: baseDatabaseUrl,
+    databaseName: ITEST_DB,
+  });
 });
 
 const totpEnableSchema = z.object({ totpURI: z.string(), backupCodes: z.array(z.string()) });
