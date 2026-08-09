@@ -184,6 +184,14 @@ beforeEach(() => {
     configurable: true,
     value: vi.fn(),
   });
+  Object.defineProperty(HTMLCanvasElement.prototype, 'hasPointerCapture', {
+    configurable: true,
+    value: vi.fn(() => true),
+  });
+  Object.defineProperty(HTMLCanvasElement.prototype, 'releasePointerCapture', {
+    configurable: true,
+    value: vi.fn(),
+  });
   installReadHandlers();
 });
 
@@ -895,6 +903,22 @@ describe('DocumentSigningPage', () => {
     expect(screen.getByRole('button', { name: 'Zapisz podpisany PDF' })).toBeDisabled();
   });
 
+  it('reopens the signature pad with one tap after canceling it', async () => {
+    await renderPage();
+    await signingCanvas();
+
+    fireEvent.click(await enabledButton('Złóż podpis'));
+    const dialog = await screen.findByRole('dialog', { name: 'Złóż podpis' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Anuluj' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Złóż podpis' })).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(await enabledButton('Złóż podpis'));
+
+    expect(await screen.findByRole('dialog', { name: 'Złóż podpis' })).toBeInTheDocument();
+  });
+
   it('uses the selected navy ink for live canvas strokes', async () => {
     const context = installRecordingCanvasContext();
     await renderPage();
@@ -1155,6 +1179,135 @@ describe('DocumentSigningPage', () => {
     expect(stamp?.placement.offsetY).toBeLessThan(0.1);
     expect(stamp?.placement.offsetX).toBeGreaterThan(-0.2);
     expect(stamp?.placement.offsetY).toBeGreaterThan(-0.2);
+  });
+
+  it('proceeds with one tap after dragging and deselecting a mass-signing stamp', async () => {
+    installUploadHandlers();
+    await renderPage(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+    );
+    await signingCanvas();
+
+    fireEvent.click(await enabledButton('Złóż podpis'));
+    await drawSignaturePadStroke({ pointerId: 46, pointerType: 'pen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
+    expect(await screen.findByText('Wybrany odcisk: strona 1')).toBeInTheDocument();
+
+    const canvas = await signingCanvas();
+    fireEvent.pointerDown(canvas, {
+      pointerId: 47,
+      pointerType: 'touch',
+      clientX: 170,
+      clientY: 260,
+      pressure: 0.5,
+      width: 12,
+      height: 12,
+    });
+    expect(canvas.setPointerCapture).toHaveBeenCalledWith(47);
+    fireEvent.pointerMove(canvas, {
+      pointerId: 47,
+      pointerType: 'touch',
+      clientX: 120,
+      clientY: 210,
+      pressure: 0.5,
+      width: 12,
+      height: 12,
+    });
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 47,
+        pointerType: 'touch',
+        bubbles: true,
+      }),
+    );
+    expect(canvas.releasePointerCapture).toHaveBeenCalledWith(47);
+
+    fireEvent.pointerDown(canvas, {
+      pointerId: 48,
+      pointerType: 'touch',
+      clientX: 20,
+      clientY: 20,
+      pressure: 0.5,
+      width: 12,
+      height: 12,
+    });
+    fireEvent(
+      canvas,
+      new PointerEvent('pointerup', {
+        pointerId: 48,
+        pointerType: 'touch',
+        bubbles: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Wybrany odcisk: strona 1')).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(await enabledButton('Przejdź'));
+
+    await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalledTimes(1));
+  });
+
+  it('shows a busy Przejdź state and ignores extra taps during mass-signing upload', async () => {
+    let releaseUpload: (() => void) | undefined;
+    let uploadRequests = 0;
+    server.use(
+      http.post(
+        `/api/documents/${DOCUMENT_ID}/files/upload-request`,
+        async () => {
+          uploadRequests += 1;
+          await new Promise<void>((resolve) => {
+            releaseUpload = resolve;
+          });
+          return HttpResponse.json({
+            ok: true,
+            data: {
+              upload: {
+                kind: 'server',
+                key: 'signed-key',
+              },
+            },
+          });
+        },
+      ),
+      http.post(`/api/documents/${DOCUMENT_ID}/files/upload`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            file: {
+              ...sourceFile,
+              id: '55555555-5555-4555-8555-555555555555',
+              role: 'signed-digital',
+              fileName: 'oryginal-podpisany.pdf',
+              sizeBytes: 2048,
+              storageKey: 'signed-key',
+            },
+          },
+        }),
+      ),
+    );
+    await renderPage(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+    );
+    await signingCanvas();
+
+    fireEvent.click(await enabledButton('Złóż podpis'));
+    await drawSignaturePadStroke({ pointerId: 49, pointerType: 'pen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Użyj podpisu' }));
+
+    const proceed = await enabledButton('Przejdź');
+    fireEvent.click(proceed);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Zapisywanie…' })).toBeDisabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Zapisywanie…' }));
+    expect(uploadRequests).toBe(1);
+
+    releaseUpload?.();
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Podsumowanie' })).toBeInTheDocument(),
+    );
   });
 
   it('saves multiple mass-signing stamps, consumes the queue and counts the summary', async () => {
