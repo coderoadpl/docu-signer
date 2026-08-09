@@ -1020,16 +1020,16 @@ describe('DocumentSigningPage', () => {
     fireEvent.pointerDown(canvas, {
       pointerId: 14,
       pointerType: 'touch',
-      clientX: 50,
-      clientY: 60,
+      clientX: 154,
+      clientY: 246,
       pressure: 0.5,
     });
     expect(canvas.setPointerCapture).toHaveBeenCalledWith(14);
     fireEvent.pointerMove(canvas, {
       pointerId: 14,
       pointerType: 'touch',
-      clientX: 70,
-      clientY: 90,
+      clientX: 174,
+      clientY: 276,
       pressure: 0.5,
     });
     fireEvent(
@@ -1049,8 +1049,8 @@ describe('DocumentSigningPage', () => {
           expect.objectContaining({
             stamp: expect.objectContaining({
               placement: expect.objectContaining({
-                offsetX: 0.1,
-                offsetY: 0.1,
+                offsetX: expect.closeTo(0.62, 5),
+                offsetY: expect.closeTo(0.72, 5),
               }),
             }),
           }),

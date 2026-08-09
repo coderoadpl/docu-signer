@@ -24,6 +24,11 @@ export interface SignaturePlacement {
   scale: number;
 }
 
+export interface InkSurfaceSize {
+  width: number;
+  height: number;
+}
+
 export interface SigningStamp {
   pageIndex: number;
   strokes: InkStroke[];
@@ -203,7 +208,7 @@ export const smoothStroke = (stroke: InkStroke): SmoothedSegment[] => {
   return segments;
 };
 
-const inkBounds = (strokes: InkStroke[]) => {
+export const inkBounds = (strokes: InkStroke[]) => {
   const points = strokes.flatMap((stroke) => stroke.points);
   const first = points[0];
   if (!first) return undefined;
@@ -293,6 +298,86 @@ export const centeredInkPlacement = (
     scale,
   };
 };
+
+const positiveSize = (size: InkSurfaceSize): boolean =>
+  size.width > 0 && size.height > 0;
+
+export const fitInkStrokesToPage = ({
+  pageSize,
+  sourceSize,
+  strokes,
+  targetPageWidth = 0.25,
+  targetPageHeight = 0.16,
+}: {
+  pageSize: InkSurfaceSize;
+  sourceSize: InkSurfaceSize;
+  strokes: InkStroke[];
+  targetPageWidth?: number;
+  targetPageHeight?: number;
+}): InkStroke[] => {
+  const bounds = inkBounds(strokes);
+  const inkWidth = bounds ? bounds.right - bounds.left : 0;
+  const inkHeight = bounds ? bounds.bottom - bounds.top : 0;
+  if (
+    !bounds ||
+    inkWidth <= 0 ||
+    inkHeight <= 0 ||
+    !positiveSize(sourceSize) ||
+    !positiveSize(pageSize)
+  ) {
+    return cloneStrokes(strokes);
+  }
+
+  const sourceAspect = (inkWidth * sourceSize.width) / (inkHeight * sourceSize.height);
+  const maxCssWidth = pageSize.width * targetPageWidth;
+  const maxCssHeight = pageSize.height * targetPageHeight;
+  const cssWidth = Math.min(maxCssWidth, maxCssHeight * sourceAspect);
+  const cssHeight = cssWidth / sourceAspect;
+  const normalizedWidth = cssWidth / pageSize.width;
+  const normalizedHeight = cssHeight / pageSize.height;
+
+  return strokes.map((stroke) => ({
+    points: stroke.points.map((point) => ({
+      ...point,
+      x: 0.5 + ((point.x - bounds.left) / inkWidth - 0.5) * normalizedWidth,
+      y: 0.5 + ((point.y - bounds.top) / inkHeight - 0.5) * normalizedHeight,
+    })),
+  }));
+};
+
+export const defaultSignaturePlacement = ({
+  previouslySignedSource,
+  strokes,
+}: {
+  previouslySignedSource: boolean;
+  strokes: InkStroke[];
+}): SignaturePlacement => {
+  const bounds = inkBounds(strokes);
+  if (!bounds) return { offsetX: 0, offsetY: 0, scale: 1 };
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  const margin = 0.08;
+  const targetCenterX = previouslySignedSource
+    ? margin + width / 2
+    : 1 - margin - width / 2;
+  const targetCenterY = 1 - margin - height / 2;
+  return {
+    offsetX:
+      clamp(targetCenterX, margin, 1 - margin) - (bounds.left + bounds.right) / 2,
+    offsetY:
+      clamp(targetCenterY, margin, 1 - margin) - (bounds.top + bounds.bottom) / 2,
+    scale: 1,
+  };
+};
+
+export const signedDigitalSourceHint = ({
+  fileName,
+  role,
+}: {
+  fileName: string;
+  role: string;
+}): boolean =>
+  role === 'signed-digital' || /-podpisany(?:-\d+)?\.pdf$/iu.test(fileName.trim());
 
 export const appendSigningStamp = (
   stamps: readonly SigningStamp[],

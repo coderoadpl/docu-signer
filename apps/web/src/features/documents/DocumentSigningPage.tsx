@@ -32,10 +32,11 @@ import {
   DEFAULT_SIGNING_INK_COLOR,
   SIGNING_INK_COLORS,
   appendSigningStamp,
-  centeredInkPlacement,
   createSigningStamp,
+  defaultSignaturePlacement,
   defaultSigningGestureMode,
   documentPointerDrawsInk,
+  fitInkStrokesToPage,
   isPalmSizedTouch,
   placeInkPoint,
   penPriorityActive,
@@ -45,6 +46,7 @@ import {
   signingStampContainsPoint,
   signingStampsForPage,
   signedFileName,
+  signedDigitalSourceHint,
   signingInkColorById,
   smoothStroke,
   stampEveryPage,
@@ -183,7 +185,10 @@ const SignaturePadDialog = ({
   inkColor: ReturnType<typeof signingInkColorById>;
   onCancel: () => void;
   onInkColorChange: (colorId: SigningInkColorId) => void;
-  onUse: (strokes: InkStroke[]) => void;
+  onUse: (
+    strokes: InkStroke[],
+    sourceSize: { width: number; height: number },
+  ) => void;
   open: boolean;
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -346,8 +351,14 @@ const SignaturePadDialog = ({
         <Button onClick={onCancel}>Anuluj</Button>
         <Button
           variant="contained"
-          onClick={() => onUse(strokes)}
-          disabled={!strokes.length}
+          onClick={() => {
+            const bounds = canvasRef.current?.getBoundingClientRect();
+            onUse(strokes, {
+              width: bounds?.width ?? metrics?.cssWidth ?? 1,
+              height: bounds?.height ?? metrics?.cssHeight ?? 1,
+            });
+          }}
+          disabled={!strokes.length || !metrics}
         >
           Użyj podpisu
         </Button>
@@ -440,6 +451,9 @@ export const DocumentSigningPage = ({
     (file) => file.id === fileId,
   );
   const signable = sourceFile ? canSignPdfFile(sourceFile) : false;
+  const previouslySignedSource = sourceFile
+    ? signedDigitalSourceHint(sourceFile)
+    : false;
   const inkColor = signingInkColorById(inkColorId);
   const pageIndex = pageNumber - 1;
   const selectedStamp =
@@ -681,6 +695,12 @@ export const DocumentSigningPage = ({
     setActiveStroke(undefined);
   };
 
+  const defaultPlacementFor = (stampStrokes: InkStroke[]) =>
+    defaultSignaturePlacement({
+      previouslySignedSource,
+      strokes: stampStrokes,
+    });
+
   const draftStamp = (targetPageIndex: number) =>
     createSigningStamp({
       pageIndex: targetPageIndex,
@@ -691,20 +711,36 @@ export const DocumentSigningPage = ({
 
   const stampCurrentPage = () => {
     if (!pageReady || !strokes.length) return;
-    const next = appendSigningStamp(stamps, draftStamp(pageIndex));
+    const next = appendSigningStamp(
+      stamps,
+      createSigningStamp({
+        pageIndex,
+        strokes,
+        placement: defaultPlacementFor(strokes),
+        inkColor,
+      }),
+    );
     setStamps(next);
     setSelectedStampIndex(next.length - 1);
     setPlacing(true);
   };
 
-  const useSignaturePad = (padStrokes: InkStroke[]) => {
-    if (!pageReady || !padStrokes.length) return;
+  const useSignaturePad = (
+    padStrokes: InkStroke[],
+    sourceSize: { width: number; height: number },
+  ) => {
+    if (!pageReady || !metrics || !padStrokes.length) return;
+    const fittedStrokes = fitInkStrokesToPage({
+      strokes: padStrokes,
+      sourceSize,
+      pageSize: { width: metrics.cssWidth, height: metrics.cssHeight },
+    });
     const next = appendSigningStamp(
       stamps,
       createSigningStamp({
         pageIndex,
-        strokes: padStrokes,
-        placement: centeredInkPlacement(padStrokes),
+        strokes: fittedStrokes,
+        placement: defaultPlacementFor(fittedStrokes),
         inkColor,
       }),
     );
@@ -720,7 +756,7 @@ export const DocumentSigningPage = ({
       stamps,
       {
         strokes,
-        placement,
+        placement: defaultPlacementFor(strokes),
         inkColor,
       },
       pdf.numPages,

@@ -5,8 +5,10 @@ import {
   canvasCssPointToPdf,
   centeredInkPlacement,
   createSigningStamp,
+  defaultSignaturePlacement,
   defaultSigningGestureMode,
   documentPointerDrawsInk,
+  fitInkStrokesToPage,
   inkToPdfSegments,
   isPalmSizedTouch,
   placeInkPoint,
@@ -18,6 +20,7 @@ import {
   signingStampContainsPoint,
   signingStampsForPage,
   signedFileName,
+  signedDigitalSourceHint,
   smoothStroke,
   stampEveryPage,
   updateSigningStampPlacement,
@@ -436,6 +439,18 @@ describe('pen signing geometry', () => {
       'umowa-podpisany-3.pdf',
     );
     expect(signedFileName('.pdf')).toBe('dokument-podpisany.pdf');
+    expect(
+      signedDigitalSourceHint({ role: 'source', fileName: 'umowa-podpisany.pdf' }),
+    ).toBe(true);
+    expect(
+      signedDigitalSourceHint({ role: 'source', fileName: 'umowa-podpisany-2.pdf' }),
+    ).toBe(true);
+    expect(
+      signedDigitalSourceHint({ role: 'signed-digital', fileName: 'umowa.pdf' }),
+    ).toBe(true);
+    expect(signedDigitalSourceHint({ role: 'source', fileName: 'umowa.pdf' })).toBe(
+      false,
+    );
   });
 
   it('creates immutable stamp snapshots and groups them by page', () => {
@@ -482,6 +497,74 @@ describe('pen signing geometry', () => {
     expect(placement.scale).toBe(1);
     expect(centeredInkPlacement([])).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     expect(placedInkBounds([], { offsetX: 1, offsetY: 1, scale: 2 })).toBeUndefined();
+  });
+
+  it('fits pad ink to page coordinates without destroying its aspect ratio', () => {
+    const square = fitInkStrokesToPage({
+      strokes: [
+        {
+          points: [
+            { x: 0.2, y: 0.2, pressure: 0.5 },
+            { x: 0.6, y: 0.6, pressure: 0.5 },
+          ],
+        },
+      ],
+      sourceSize: { width: 300, height: 300 },
+      pageSize: { width: 200, height: 300 },
+    });
+    const squareBounds = placedInkBounds(
+      square,
+      defaultSignaturePlacement({ previouslySignedSource: false, strokes: square }),
+    );
+    const squareAspect =
+      (((squareBounds?.right ?? 0) - (squareBounds?.left ?? 0)) * 200) /
+      (((squareBounds?.bottom ?? 0) - (squareBounds?.top ?? 0)) * 300);
+
+    expect(squareAspect).toBeCloseTo(1, 5);
+
+    const wide = fitInkStrokesToPage({
+      strokes: [
+        {
+          points: [
+            { x: 0.1, y: 0.4, pressure: 0.5 },
+            { x: 0.9, y: 0.6, pressure: 0.5 },
+          ],
+        },
+      ],
+      sourceSize: { width: 400, height: 200 },
+      pageSize: { width: 200, height: 300 },
+    });
+    const wideBounds = placedInkBounds(
+      wide,
+      defaultSignaturePlacement({ previouslySignedSource: false, strokes: wide }),
+    );
+    const wideAspect =
+      (((wideBounds?.right ?? 0) - (wideBounds?.left ?? 0)) * 200) /
+      (((wideBounds?.bottom ?? 0) - (wideBounds?.top ?? 0)) * 300);
+
+    expect(wideAspect).toBeCloseTo(8, 5);
+  });
+
+  it('chooses bottom-side default stamp placement by signing round', () => {
+    const stroke: InkStroke = {
+      points: [
+        { x: 0.45, y: 0.45, pressure: 0.5 },
+        { x: 0.55, y: 0.55, pressure: 0.5 },
+      ],
+    };
+    const right = placedInkBounds(
+      [stroke],
+      defaultSignaturePlacement({ previouslySignedSource: false, strokes: [stroke] }),
+    );
+    const left = placedInkBounds(
+      [stroke],
+      defaultSignaturePlacement({ previouslySignedSource: true, strokes: [stroke] }),
+    );
+
+    expect(right?.right).toBeCloseTo(0.92);
+    expect(right?.bottom).toBeCloseTo(0.92);
+    expect(left?.left).toBeCloseTo(0.08);
+    expect(left?.bottom).toBeCloseTo(0.92);
   });
 
   it('stamps every page, updates placement and removes individual stamps', () => {
