@@ -219,12 +219,16 @@ export const padSessions = pgTable(
     status: text('status', { enum: ['active', 'closed'] }).notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
     currentRequest: jsonb('current_request').$type<PadSignatureRequest>(),
     submittedStrokes: jsonb('submitted_strokes').$type<PadSubmittedStrokes>(),
   },
   (table) => [
     index('pad_sessions_tenant_created_idx').on(table.tenantId, table.createdAt),
     index('pad_sessions_tenant_expires_idx').on(table.tenantId, table.expiresAt),
+    uniqueIndex('pad_sessions_tenant_creator_active_uidx')
+      .on(table.tenantId, table.createdBy)
+      .where(sql`${table.status} = 'active'`),
     check('pad_sessions_status_check', sql`${table.status} IN ('active', 'closed')`),
   ],
 );

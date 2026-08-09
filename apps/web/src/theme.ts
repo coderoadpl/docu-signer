@@ -104,6 +104,15 @@ export const createAppTheme = ({
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
+          root: ({ theme }) => ({
+            '&.coarse-pad-action': {
+              '@media (pointer: coarse)': {
+                backgroundColor: theme.palette.primary.main,
+                color: theme.palette.primary.contrastText,
+                '&:hover': { backgroundColor: theme.palette.primary.dark },
+              },
+            },
+          }),
           sizeMedium: { minHeight: '2.75rem', paddingInline: '1.1rem' },
           sizeSmall: { minHeight: '2.25rem' },
         },
@@ -200,6 +209,15 @@ export const Wordmark = styled(CardTitle)({ letterSpacing: '-0.015em' });
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
 export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
+
+export const PadStatusDot = styled('span')(({ theme }) => ({
+  display: 'inline-block',
+  width: 8,
+  height: 8,
+  borderRadius: '50%',
+  backgroundColor: theme.palette.text.disabled,
+  '&.connected': { backgroundColor: theme.palette.success.main },
+}));
 
 export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
 

@@ -12,8 +12,10 @@ import {
   exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
+  padSessionActiveOutputSchema as domainPadSessionActiveOutputSchema,
   padSessionConsumeOutputSchema as domainPadSessionConsumeOutputSchema,
   padSessionCreateOutputSchema as domainPadSessionCreateOutputSchema,
+  padSessionJoinOutputSchema as domainPadSessionJoinOutputSchema,
   padSessionRequestInputSchema as domainPadSessionRequestInputSchema,
   padSessionRequestOutputSchema as domainPadSessionRequestOutputSchema,
   padSessionStateOutputSchema as domainPadSessionStateOutputSchema,
@@ -188,6 +190,10 @@ export const userPreferenceSetOutputSchema = z.object({
 
 export const padSessionCreateOutputSchema = domainPadSessionCreateOutputSchema;
 
+export const padSessionActiveOutputSchema = domainPadSessionActiveOutputSchema;
+
+export const padSessionJoinOutputSchema = domainPadSessionJoinOutputSchema;
+
 export const padSessionStateOutputSchema = domainPadSessionStateOutputSchema;
 
 export const padSessionRequestInputSchema = domainPadSessionRequestInputSchema;
@@ -203,6 +209,10 @@ export const padSessionSubmitOutputSchema = z.object({
 export const padSessionConsumeOutputSchema = domainPadSessionConsumeOutputSchema;
 
 export const padSessionCloseOutputSchema = z.object({
+  closed: z.literal(true),
+});
+
+export const padSessionDisconnectOutputSchema = z.object({
   closed: z.literal(true),
 });
 
@@ -286,11 +296,14 @@ export const API_ROUTES = {
   userPreference: { method: 'GET', path: '/api/me/preferences/:key' },
   userPreferenceSet: { method: 'PUT', path: '/api/me/preferences/:key' },
   padSessionsCreate: { method: 'POST', path: '/api/pad-sessions' },
+  padSessionActive: { method: 'GET', path: '/api/pad-sessions/active' },
+  padSessionJoin: { method: 'POST', path: '/api/pad-sessions/join' },
   padSessionState: { method: 'GET', path: '/api/pad-sessions/:sessionId/state' },
   padSessionRequest: { method: 'POST', path: '/api/pad-sessions/:sessionId/request' },
   padSessionSubmit: { method: 'POST', path: '/api/pad-sessions/:sessionId/submit' },
   padSessionConsume: { method: 'POST', path: '/api/pad-sessions/:sessionId/consume' },
   padSessionClose: { method: 'POST', path: '/api/pad-sessions/:sessionId/close' },
+  padSessionDisconnect: { method: 'POST', path: '/api/pad-sessions/:sessionId/disconnect' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];

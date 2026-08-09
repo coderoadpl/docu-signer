@@ -97,9 +97,19 @@ export interface UserPreferenceRepository {
 
 export interface PadSessionRepository {
   create(
-    input: Omit<PadSession, 'createdAt' | 'currentRequest' | 'submittedStrokes' | 'status'>,
+    input: Omit<
+      PadSession,
+      'createdAt' | 'currentRequest' | 'lastPolledAt' | 'submittedStrokes' | 'status'
+    >,
   ): Promise<PadSession>;
   findById(tenantId: string, sessionId: string): Promise<PadSession | null>;
+  findActiveByUser(tenantId: string, userId: string): Promise<PadSession | null>;
+  renew(
+    tenantId: string,
+    sessionId: string,
+    expiresAt: string,
+    lastPolledAt: string,
+  ): Promise<PadSession | null>;
   requestSignature(
     tenantId: string,
     sessionId: string,

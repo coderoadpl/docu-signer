@@ -366,6 +366,7 @@ describe('DocumentSigningPage', () => {
               status: 'active',
               createdAt: '2026-08-04T10:00:00.000Z',
               expiresAt: '2026-08-04T14:00:00.000Z',
+              lastPolledAt: null,
               currentRequest: null,
             },
           },
@@ -383,11 +384,40 @@ describe('DocumentSigningPage', () => {
     expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
     expect(await screen.findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
     expect(screen.getByText(/Zeskanuj kod/u)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Zamknij sesję' }));
+    expect(screen.getByText('Pad: oczekuje')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Zakończ całą sesję' }));
     await waitFor(() => expect(closed).toBe(1));
   });
 
-  it('closes an active QR pad session when leaving the signing page', async () => {
+  it('discovers a recently polling global pad session as connected', async () => {
+    const lastPolledAt = new Date().toISOString();
+    server.use(
+      http.get('/api/pad-sessions/active', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            session: {
+              id: '55555555-5555-4555-8555-555555555555',
+              tenantId: 'tenant-1',
+              createdBy: 'user-owner',
+              status: 'active',
+              createdAt: lastPolledAt,
+              expiresAt: new Date(Date.now() + 14_400_000).toISOString(),
+              lastPolledAt,
+              currentRequest: null,
+            },
+          },
+        }),
+      ),
+    );
+
+    await renderPage();
+
+    expect(await screen.findByText('Pad połączony')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Poproś pad o podpis' })).toBeVisible();
+  });
+
+  it('keeps the global QR pad session active when leaving the signing page', async () => {
     let closed = 0;
     server.use(
       http.post('/api/pad-sessions', () =>
@@ -402,6 +432,7 @@ describe('DocumentSigningPage', () => {
               status: 'active',
               createdAt: '2026-08-04T10:00:00.000Z',
               expiresAt: '2026-08-04T14:00:00.000Z',
+              lastPolledAt: null,
               currentRequest: null,
             },
           },
@@ -419,7 +450,7 @@ describe('DocumentSigningPage', () => {
     expect(await screen.findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
     unmount();
 
-    await waitFor(() => expect(closed).toBe(1));
+    await waitFor(() => expect(closed).toBe(0));
   });
 
   it('captures pointer strokes and supports undo, pointercancel and clear', async () => {
@@ -1161,6 +1192,7 @@ describe('DocumentSigningPage', () => {
               status: 'active',
               createdAt: '2026-08-04T10:00:00.000Z',
               expiresAt: '2026-08-04T14:00:00.000Z',
+              lastPolledAt: null,
               currentRequest: null,
             },
           },
@@ -1179,7 +1211,7 @@ describe('DocumentSigningPage', () => {
     fireEvent.click(await enabledButton('Pad QR'));
     const qrDialog = await screen.findByRole('dialog', { name: 'Pad QR' });
     expect(await within(qrDialog).findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
-    fireEvent.click(within(qrDialog).getByRole('button', { name: /^Zamknij$/u }));
+    fireEvent.click(within(qrDialog).getByRole('button', { name: 'Schowaj kod QR' }));
     await waitFor(() => expect(qrDialog).not.toBeInTheDocument());
 
     fireEvent.click(await enabledButton('Złóż podpis'));
@@ -1210,7 +1242,7 @@ describe('DocumentSigningPage', () => {
       expect(router.state.location.pathname).toBe('/app/documents'),
     );
     expect(router.state.location.search).toMatchObject({ q: 'umowa' });
-    await waitFor(() => expect(closed).toBe(1));
+    expect(closed).toBe(0);
     expect(pdfMocks.flatten).not.toHaveBeenCalled();
   });
 

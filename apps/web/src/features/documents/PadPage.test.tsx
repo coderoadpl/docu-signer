@@ -119,7 +119,7 @@ describe('PadQrDialog', () => {
 
     expect(screen.getByLabelText('Tworzenie sesji pada')).toBeVisible();
     expect(screen.getByRole('alert')).toHaveTextContent('Nie udało się utworzyć sesji pada.');
-    const closeSessionButton = screen.getByRole('button', { name: 'Zamknij sesję' });
+    const closeSessionButton = screen.getByRole('button', { name: 'Zakończ całą sesję' });
     expect(closeSessionButton).toBeDisabled();
     fireEvent.click(closeSessionButton);
     expect(closeSession).not.toHaveBeenCalled();
@@ -145,9 +145,9 @@ describe('PadQrDialog', () => {
       'data:image/png;base64,abc',
     );
     expect(screen.getByText(/Zeskanuj kod/u)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Zamknij sesję' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zakończ całą sesję' }));
     expect(closeSession).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Zamknij' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Schowaj kod QR' }));
     expect(close).toHaveBeenCalledTimes(1);
   });
 });
@@ -203,7 +203,8 @@ describe('PadPage', () => {
     renderPad();
 
     expect(await screen.findAllByRole('heading', { name: 'Czekam na dokument…' })).toHaveLength(2);
-    expect(screen.getByText('Zeskanowano. Ekran obudzi się przy następnym podpisie.')).toBeVisible();
+    expect(screen.getByText('Ekran obudzi się przy następnym podpisie.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Rozłącz' })).toBeVisible();
   });
 
   it('keeps the waiting view static during a background refetch', async () => {
@@ -232,7 +233,7 @@ describe('PadPage', () => {
 
     const { queryClient } = renderPad();
 
-    expect(await screen.findByText('Zeskanowano. Ekran obudzi się przy następnym podpisie.')).toBeVisible();
+    expect(await screen.findByText('Ekran obudzi się przy następnym podpisie.')).toBeVisible();
     const headingCount = screen.getAllByRole('heading', {
       name: 'Czekam na dokument…',
     }).length;
@@ -568,7 +569,7 @@ describe('PadPage', () => {
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
 
-    expect(await screen.findByText('Zeskanowano. Ekran obudzi się przy następnym podpisie.')).toBeVisible();
+    expect(await screen.findByText('Ekran obudzi się przy następnym podpisie.')).toBeVisible();
     expect(submissions).toMatchObject([
       {
         requestId: REQUEST_ID,
@@ -694,9 +695,31 @@ describe('PadPage', () => {
     );
   });
 
-  it('surfaces missing secrets and pad state errors', async () => {
+  it('joins the signed-in user session without a fragment secret and disconnects on demand', async () => {
+    let secretHeader: string | null = 'not-called';
+    let disconnected = false;
+    server.use(
+      http.get('*/api/pad-sessions/:sessionId/state', ({ request }) => {
+        secretHeader = request.headers.get('x-pad-secret');
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            status: disconnected ? 'closed' : 'active',
+            currentRequest: null,
+          },
+        });
+      }),
+      http.post('*/api/pad-sessions/:sessionId/disconnect', () => {
+        disconnected = true;
+        return HttpResponse.json({ ok: true, data: { closed: true } });
+      }),
+    );
     window.history.pushState(null, '', `/pad/${SESSION_ID}`);
     renderPad();
-    expect(await screen.findByText('Brak sekretu sesji na adresie pada.')).toBeVisible();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Rozłącz' }));
+
+    expect(await screen.findByText('Pad rozłączony')).toBeVisible();
+    expect(secretHeader).toBeNull();
   });
 });

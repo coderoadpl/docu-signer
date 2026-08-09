@@ -1,0 +1,2 @@
+ALTER TABLE "pad_sessions" ADD COLUMN "last_polled_at" timestamp with time zone;--> statement-breakpoint
+CREATE UNIQUE INDEX "pad_sessions_tenant_creator_active_uidx" ON "pad_sessions" USING btree ("tenant_id","created_by") WHERE "pad_sessions"."status" = 'active';

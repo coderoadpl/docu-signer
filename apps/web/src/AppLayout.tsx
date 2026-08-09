@@ -71,6 +71,8 @@ interface ShellProps {
 
 const Shell = ({ tenant = null, email, state }: ShellProps) => {
   const signOut = useSignOut();
+  const joinPad = useMutation(actions.joinOwnPadSession);
+  const navigate = useNavigate();
   const theme = useAppTheme();
 
   const navigation = (
@@ -111,14 +113,36 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
           ) : null
         }
         actions={
-          <Button
-            variant="text"
-            size="small"
-            disabled={signOut.isPending}
-            onClick={() => signOut.mutate()}
-          >
-            Wyloguj się
-          </Button>
+          <>
+            {tenant ? (
+              <Button
+                className="coarse-pad-action"
+                variant="text"
+                size="small"
+                disabled={joinPad.isPending}
+                onClick={() => {
+                  joinPad.mutate(undefined, {
+                    onSuccess: ({ session }) => {
+                      void navigate({
+                        to: '/pad/$sessionId',
+                        params: { sessionId: session.id },
+                      });
+                    },
+                  });
+                }}
+              >
+                Tryb pada
+              </Button>
+            ) : null}
+            <Button
+              variant="text"
+              size="small"
+              disabled={signOut.isPending}
+              onClick={() => signOut.mutate()}
+            >
+              Wyloguj się
+            </Button>
+          </>
         }
         navigation={tenant ? navigation : null}
         {...(state === undefined ? {} : { state })}
