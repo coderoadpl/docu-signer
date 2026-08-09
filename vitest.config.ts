@@ -72,7 +72,7 @@ export default defineConfig({
       // Postgres exists (CI smoke job).
       //
       // Re-measured 2026-08-01 after merging main into the dates-and-teczki
-      // branch. The database-free run is statements 79.73%, branches 86.49%,
+      // branch. The database-free run is statements 79.73%, branches 86.48%,
       // functions 78.54%, and lines 79.73%; each floor is that measured value
       // rounded down.
       thresholds: {
