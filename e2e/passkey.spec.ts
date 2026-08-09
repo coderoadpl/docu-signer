@@ -38,7 +38,9 @@ test('register a passkey in settings, then sign in with it (US-028a)', async ({ 
   await page.goto('/app/settings');
   await page.locator('#passkey-name').fill('E2E Virtual Key');
   await page.getByRole('button', { name: 'Zarejestruj klucz' }).click();
-  await expect(page.getByText('E2E Virtual Key')).toBeVisible();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: 'E2E Virtual Key' }).first(),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Wyloguj się' }).click();
   await page.goto('/login');

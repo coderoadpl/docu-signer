@@ -28,6 +28,8 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    // WHY: this pins the Safari/WebKit pdf.js legacy-build regression
+    // (Map.getOrInsertComputed gap); do not delete it as apparent cleanup.
     {
       name: 'webkit-documents',
       testMatch: /documents\.spec\.ts/u,
@@ -38,7 +40,7 @@ export default defineConfig({
     command: 'tsx scripts/e2e-server.ts',
     env: { ...process.env, VITE_MAGIC_LINK: 'on' },
     url: `${baseURL}/api/health`,
-    reuseExistingServer: !process.env['CI'],
-    timeout: 120_000,
+    reuseExistingServer: false,
+    timeout: 240_000,
   },
 });

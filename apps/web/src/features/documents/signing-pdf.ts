@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // Safari/WebKit lacks Map.getOrInsertComputed, which pdf.js' modern build uses.
 import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 import {
   inkToPdfSegments,
