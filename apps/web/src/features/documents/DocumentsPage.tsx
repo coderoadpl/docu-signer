@@ -72,6 +72,8 @@ import {
   emptyDocumentFilters,
   hasSignedDocumentFile,
   hasDocumentFilter,
+  signingQueueSearch,
+  signingQueueTargets,
   toDocumentFilter,
   toDocumentFilterValues,
   toDocumentInput,
@@ -365,6 +367,10 @@ export const DocumentsPage = () => {
   const selectedDocuments = visibleDocuments.filter((document) =>
     selectedIds.includes(document.id),
   );
+  const signingTargets = useMemo(
+    () => signingQueueTargets(visibleDocuments),
+    [visibleDocuments],
+  );
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
   const visibleColumnIds = columnSettings.order.filter((column) =>
     columnSettings.visible.includes(column),
@@ -399,6 +405,23 @@ export const DocumentsPage = () => {
   const clearFilters = () => {
     setSelectedIds([]);
     void navigateToDocumentsSearch(view, emptyDocumentFilters(), true);
+  };
+
+  const startSigningSequence = () => {
+    const [first, ...remaining] = signingTargets;
+    if (!first) return;
+    void navigate({
+      to: '/app/documents/$id/sign/$fileId',
+      params: { id: first.documentId, fileId: first.fileId },
+      search: {
+        ...currentDocumentsSearch,
+        ...signingQueueSearch({
+          signedCount: 0,
+          targets: remaining,
+          total: signingTargets.length,
+        }),
+      },
+    });
   };
 
   const saveColumnSettings = (settings: DocumentColumnSettings) => {
@@ -640,6 +663,12 @@ export const DocumentsPage = () => {
           <Tab value="timeline" label="Os czasu" />
           <Tab value="trash" label="Kosz" />
         </Tabs>
+      ) : null}
+
+      {search.podpisano !== undefined && search.razem !== undefined ? (
+        <Alert severity="success" sx={{ mt: 3 }}>
+          Podpisano {search.podpisano} z {search.razem}.
+        </Alert>
       ) : null}
 
       {hasDocuments && view === 'list' ? <Paper variant="outlined" sx={{ mt: 3, p: 2.5 }}>
@@ -1053,6 +1082,15 @@ export const DocumentsPage = () => {
         direction="row"
         sx={{ mt: 3, alignItems: 'center', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}
       >
+        {signingTargets.length > 0 ? (
+          <Button
+            variant="contained"
+            disabled={bulkBusy}
+            onClick={startSigningSequence}
+          >
+            Podpisuj kolejno
+          </Button>
+        ) : null}
         <Button
           variant="outlined"
           onClick={(event) => setColumnsAnchor(event.currentTarget)}

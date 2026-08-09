@@ -15,7 +15,10 @@ import { documentCreateInputSchema } from '#core/contract/index.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentsPage } from './DocumentsPage.js';
-import { documentsSearchSchema } from './documents.logic.js';
+import {
+  documentSigningSearchSchema,
+  documentsSearchSchema,
+} from './documents.logic.js';
 
 vi.mock('../../components/ui/PolishDatePicker.js', async () => {
   const React = await import('react');
@@ -105,8 +108,14 @@ const renderPage = async (initialEntry = '/app/documents') => {
     validateSearch: documentsSearchSchema,
     component: () => <div>Szczegóły dokumentu</div>,
   });
+  const signing = createRoute({
+    getParentRoute: () => root,
+    path: '/app/documents/$id/sign/$fileId',
+    validateSearch: documentSigningSearchSchema,
+    component: () => <div>Podpisywanie dokumentu</div>,
+  });
   const router = createRouter({
-    routeTree: root.addChildren([list, detail]),
+    routeTree: root.addChildren([list, detail, signing]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
@@ -563,6 +572,63 @@ describe('DocumentsPage', () => {
     expect(
       screen.getByRole('button', { name: 'Eksportuj zaznaczone (2)' }),
     ).toBeEnabled();
+  });
+
+  it('starts signing visible unsigned source PDFs in order', async () => {
+    const sourceFile = {
+      id: '33333333-3333-4333-8333-333333333333',
+      documentId: DOCUMENT_ID,
+      role: 'source' as const,
+      fileName: 'umowa.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 10,
+      storageKey: 'source',
+      createdAt: '2026-07-18T10:00:00.000Z',
+    };
+    const secondId = '22222222-2222-4222-8222-222222222222';
+    const secondFileId = '44444444-4444-4444-8444-444444444444';
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              { ...document, files: [sourceFile] },
+              {
+                ...document,
+                id: secondId,
+                title: 'Druga umowa',
+                files: [
+                  {
+                    ...sourceFile,
+                    id: secondFileId,
+                    documentId: secondId,
+                    fileName: 'druga.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    const { router } = await renderPage('/app/documents?status=needs-signature&q=umowa');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Podpisuj kolejno' }));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        `/app/documents/${DOCUMENT_ID}/sign/${sourceFile.id}`,
+      ),
+    );
+    expect(router.state.location.search).toMatchObject({
+      q: 'umowa',
+      status: 'needs-signature',
+      kolejka: secondId,
+      pliki: secondFileId,
+      podpisane: 0,
+      razem: 2,
+    });
   });
 
   it('persists column visibility and order and filters from tag chips', async () => {
