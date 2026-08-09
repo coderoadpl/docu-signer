@@ -180,10 +180,11 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
   const me = useQuery(actions.me);
   const state = useQuery({
     ...actions.padSessionState(sessionId, secret),
-    enabled: Boolean(secret) && Boolean(me.data?.tenant),
+    enabled: Boolean(me.data?.tenant),
     refetchInterval: POLL_MS,
   });
   const submit = useMutation(actions.submitPadStrokes);
+  const disconnect = useMutation(actions.disconnectPadSession);
   const inkColor = signingInkColorById(inkColorId);
   const request = state.data?.currentRequest ?? null;
   const drawingRequest =
@@ -350,13 +351,14 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     await queryClient.invalidateQueries(actions.padSessionInvalidates(sessionId));
   };
 
-  if (!secret) {
-    return (
-      <PadFrame>
-        <StatusView state={{ kind: 'error', message: 'Brak sekretu sesji na adresie pada.' }} />
-      </PadFrame>
-    );
-  }
+  const disconnectPad = async () => {
+    try {
+      await disconnect.mutateAsync({ sessionId, secret });
+      await queryClient.invalidateQueries(actions.padSessionInvalidates(sessionId));
+    } catch {
+      return;
+    }
+  };
 
   if (me.isPending) {
     return (
@@ -386,6 +388,14 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     return (
       <PadFrame>
         <StatusView state={{ kind: 'error', message: state.error.message }} />
+      </PadFrame>
+    );
+  }
+
+  if (state.data.status === 'closed') {
+    return (
+      <PadFrame>
+        <StatusView state={{ kind: 'empty', title: 'Pad rozłączony' }} />
       </PadFrame>
     );
   }
@@ -498,8 +508,17 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
           >
             <Typography variant="h1">Czekam na dokument…</Typography>
             <Typography variant="body2" color="text.secondary">
-              Zeskanowano. Ekran obudzi się przy następnym podpisie.
+              Ekran obudzi się przy następnym podpisie.
             </Typography>
+            {disconnect.isError ? <Alert severity="error">{disconnect.error.message}</Alert> : null}
+            <Button
+              color="error"
+              variant="outlined"
+              disabled={disconnect.isPending}
+              onClick={() => void disconnectPad()}
+            >
+              Rozłącz
+            </Button>
           </Stack>
         ) : null}
         <InkSurface

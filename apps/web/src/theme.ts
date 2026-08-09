@@ -1,5 +1,5 @@
 import { useMemo, type ElementType } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Table, TableCell, Typography } from '@mui/material';
 import { createTheme, styled, type Theme, type ThemeOptions } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 
@@ -104,6 +104,15 @@ export const createAppTheme = ({
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
+          root: ({ theme }) => ({
+            '&.coarse-pad-action': {
+              '@media (pointer: coarse)': {
+                backgroundColor: theme.palette.primary.main,
+                color: theme.palette.primary.contrastText,
+                '&:hover': { backgroundColor: theme.palette.primary.dark },
+              },
+            },
+          }),
           sizeMedium: { minHeight: '2.75rem', paddingInline: '1.1rem' },
           sizeSmall: { minHeight: '2.25rem' },
         },
@@ -201,6 +210,15 @@ export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
 export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
 
+export const PadStatusDot = styled('span')(({ theme }) => ({
+  display: 'inline-block',
+  width: 8,
+  height: 8,
+  borderRadius: '50%',
+  backgroundColor: theme.palette.text.disabled,
+  '&.connected': { backgroundColor: theme.palette.success.main },
+}));
+
 export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
 
 export const FileDropZone = styled(Box)(({ theme }) => ({
@@ -213,6 +231,51 @@ export const FileDropZone = styled(Box)(({ theme }) => ({
 
 export const SigningSurface = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.background.default,
+}));
+
+export const StickyTableCell = styled(TableCell)(({ theme }) => ({
+  backgroundColor: theme.palette.background.paper,
+}));
+
+export const DocumentsTable = styled(Table)(({ theme }) => ({
+  '& tbody[data-document-record]:hover td, & tbody[data-document-record]:hover th': {
+    backgroundColor: theme.palette.action.hover,
+  },
+  '& tbody[data-selected] td, & tbody[data-selected] th': {
+    backgroundColor: theme.palette.action.selected,
+  },
+}));
+
+export const DocumentPeriodTableCell = styled(TableCell)(({ theme }) => ({
+  borderBottom: 0,
+  backgroundColor: theme.palette.background.default,
+}));
+
+export const DocumentPeriodTitle = styled(Typography)({ fontWeight: 600 });
+
+export const DocumentPersonTableCell = styled(TableCell)({ borderBottom: 0 });
+
+export const DocumentRecordPrimaryCell = styled(TableCell)({ borderBottom: 0 });
+
+export const DocumentTitleText = styled(Typography)<AsElement>(({ theme }) => ({
+  display: 'block',
+  overflow: 'hidden',
+  whiteSpace: 'nowrap',
+  textOverflow: 'clip',
+  fontSize: '0.9375rem',
+  fontWeight: 600,
+  color: theme.palette.text.primary,
+}));
+
+export const DocumentMetadataCell = styled(TableCell)(({ theme }) => ({
+  borderTop: 0,
+  fontSize: '0.8125rem',
+  color: theme.palette.text.secondary,
+}));
+
+export const DocumentMetadataText = styled(Typography)(({ theme }) => ({
+  fontSize: '0.8125rem',
+  color: theme.palette.text.secondary,
 }));
 
 export const SigningPageSurface = styled(Box)(({ theme }) => ({

@@ -25,9 +25,12 @@ import {
   healthReadyOutputSchema,
   meOutputSchema,
   PAD_SECRET_HEADER,
+  padSessionActiveOutputSchema,
   padSessionCloseOutputSchema,
   padSessionConsumeOutputSchema,
   padSessionCreateOutputSchema,
+  padSessionDisconnectOutputSchema,
+  padSessionJoinOutputSchema,
   padSessionRequestOutputSchema,
   padSessionStateOutputSchema,
   padSessionSubmitOutputSchema,
@@ -512,6 +515,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  getActivePadSession: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.padSessionActive.method,
+      API_ROUTES.padSessionActive.path,
+      padSessionActiveOutputSchema,
+      undefined,
+      signal,
+    ),
+  joinOwnPadSession: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.padSessionJoin.method,
+      API_ROUTES.padSessionJoin.path,
+      padSessionJoinOutputSchema,
+      {},
+      signal,
+    ),
   getPadState: (sessionId: string, secret: string, signal?: AbortSignal) =>
     request(
       options,
@@ -520,7 +541,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
       padSessionStateOutputSchema,
       undefined,
       signal,
-      { [PAD_SECRET_HEADER]: secret },
+      secret ? { [PAD_SECRET_HEADER]: secret } : undefined,
     ),
   requestPadSignature: (
     sessionId: string,
@@ -548,7 +569,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
       padSessionSubmitOutputSchema,
       input,
       signal,
-      { [PAD_SECRET_HEADER]: secret },
+      secret ? { [PAD_SECRET_HEADER]: secret } : undefined,
     ),
   consumePadStrokes: (sessionId: string, signal?: AbortSignal) =>
     request(
@@ -567,6 +588,16 @@ export const createApiClient = (options: ApiClientOptions) => ({
       padSessionCloseOutputSchema,
       {},
       signal,
+    ),
+  disconnectPadSession: (sessionId: string, secret: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.padSessionDisconnect.method,
+      pathWith(API_ROUTES.padSessionDisconnect.path, { sessionId }),
+      padSessionDisconnectOutputSchema,
+      {},
+      signal,
+      secret ? { [PAD_SECRET_HEADER]: secret } : undefined,
     ),
   documentFileContentUrl: (documentId: string, fileId: string) =>
     `${options.baseUrl}${pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId })}`,

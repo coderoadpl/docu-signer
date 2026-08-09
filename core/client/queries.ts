@@ -131,6 +131,7 @@ const userPreferenceScopes = {
 
 const padSessionScopes = {
   all: () => ['pad-sessions'] as const,
+  active: () => ['pad-sessions', 'active'] as const,
   detail: (sessionId: string) => ['pad-sessions', sessionId] as const,
   state: (sessionId: string) => ['pad-sessions', sessionId, 'state'] as const,
 };
@@ -351,6 +352,22 @@ export const createPadSessionMutation = (api: ApiClient) =>
     call: () => api.createPadSession(),
   });
 
+export const activePadSessionQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: padSessionScopes.active(),
+    call: ({ signal }) => api.getActivePadSession(signal),
+  });
+
+export const activePadSessionInvalidates = () => ({
+  queryKey: padSessionScopes.active(),
+});
+
+export const joinOwnPadSessionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'join'],
+    call: () => api.joinOwnPadSession(),
+  });
+
 export const padSessionStateQuery = (
   api: ApiClient,
   sessionId: string,
@@ -392,6 +409,13 @@ export const closePadSessionMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...padSessionScopes.all(), 'close'],
     call: (sessionId: string) => api.closePadSession(sessionId),
+  });
+
+export const disconnectPadSessionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'disconnect'],
+    call: ({ sessionId, secret }: { sessionId: string; secret: string }) =>
+      api.disconnectPadSession(sessionId, secret),
   });
 
 export const padSessionInvalidates = (sessionId: string) => ({

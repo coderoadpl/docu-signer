@@ -10,13 +10,6 @@ const documentCreateResponseSchema = z.object({
     document: z.object({ id: z.string() }),
   }),
 });
-const padSessionCreateResponseSchema = z.object({
-  ok: z.literal(true),
-  data: z.object({
-    secret: z.string(),
-    session: z.object({ id: z.string() }),
-  }),
-});
 
 const validPdfBuffer = async () => {
   const pdf = await PDFDocument.create();
@@ -430,11 +423,11 @@ test('creates, uploads, previews and exports an archived document', async ({
 
   await page.getByRole('button', { name: '← Dokumenty' }).click();
   await page.getByLabel('Tag').fill('e2e');
-  await page.getByRole('tab', { name: 'Os czasu' }).click();
-  const timeline = page.getByRole('region', { name: 'Os czasu dokumentów' });
+  await page.getByRole('button', { name: 'Oś czasu' }).click();
+  const timeline = page.getByRole('region', { name: 'Oś czasu dokumentów' });
   await expect(timeline.locator('.vis-timeline')).toBeVisible();
   await expect(timeline.locator('.vis-item.doc', { hasText: title })).toBeVisible();
-  await page.getByRole('tab', { name: 'Lista' }).click();
+  await page.getByRole('button', { name: 'Lista' }).click();
   await page.getByRole('button', { name: 'Zapisz teczkę' }).click();
   const savedSearchDialog = page.getByRole('dialog', { name: 'Zapisz teczkę' });
   await savedSearchDialog.getByLabel('Nazwa').fill(`E2E ${stamp}`);
@@ -442,10 +435,9 @@ test('creates, uploads, previews and exports an archived document', async ({
   await savedSearchDialog.getByRole('button', { name: 'Zapisz teczkę' }).click();
   await expect(savedSearchDialog).toBeHidden();
   await page.getByLabel('Tag').fill('');
-  await page.getByRole('tab', { name: 'Teczki' }).click();
-  await page.getByRole('heading', { name: `E2E ${stamp}` }).click();
-  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
-  await page.getByRole('cell', { name: title, exact: true }).click();
+  await page.getByRole('link', { name: `E2E ${stamp}` }).click();
+  await expect(page.getByRole('rowheader', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('rowheader', { name: title, exact: true }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
   const sourceSection = page
@@ -542,7 +534,7 @@ test('moves a document to trash and restores it', async ({ page }) => {
   await deleteDialog.getByRole('button', { name: 'Przenieś do kosza' }).click();
 
   await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
-  await page.getByRole('tab', { name: 'Kosz' }).click();
+  await page.getByRole('link', { name: 'Kosz' }).click();
   const trashRow = page
     .getByRole('row')
     .filter({ has: page.getByRole('cell', { name: title, exact: true }) });
@@ -550,8 +542,8 @@ test('moves a document to trash and restores it', async ({ page }) => {
   await trashRow.getByRole('button', { name: 'Przywróć' }).click();
   await expect(page.getByRole('heading', { name: 'Kosz jest pusty' })).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Lista' }).click();
-  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
+  await expect(page.getByRole('rowheader', { name: title, exact: true })).toBeVisible();
 });
 
 test('keeps draft filters after approving a draft and returning to the list', async ({ page }) => {
@@ -573,8 +565,8 @@ test('keeps draft filters after approving a draft and returning to the list', as
   const created = documentCreateResponseSchema.parse(await response.json());
 
   await page.goto(`/app/documents?szkice=true&q=${encodeURIComponent(title)}`);
-  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
-  await page.getByRole('cell', { name: title, exact: true }).click();
+  await expect(page.getByRole('rowheader', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('rowheader', { name: title, exact: true }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
   await expect(page.getByText('Szkic. Dokument jest widoczny')).toBeVisible();
   let searchParams = new URL(page.url()).searchParams;
@@ -615,11 +607,11 @@ test('keeps draft filters after approving a draft and returning to the list', as
 
   await page.goto(`/app/documents?szkice=true&q=${encodeURIComponent(bulkPrefix)}`);
   const firstRow = page
-    .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: firstBulkTitle, exact: true }) });
+    .getByRole('rowgroup')
+    .filter({ has: page.getByRole('rowheader', { name: firstBulkTitle, exact: true }) });
   const secondRow = page
-    .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: secondBulkTitle, exact: true }) });
+    .getByRole('rowgroup')
+    .filter({ has: page.getByRole('rowheader', { name: secondBulkTitle, exact: true }) });
   await expect(firstRow).toBeVisible();
   await expect(secondRow).toBeVisible();
   await expect(firstRow.getByText('Szkic', { exact: true })).toBeVisible();
@@ -635,11 +627,11 @@ test('keeps draft filters after approving a draft and returning to the list', as
   await page.getByLabel('Szkice').click();
   await page.getByRole('option', { name: 'Wszystkie' }).click();
   const approvedFirstRow = page
-    .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: firstBulkTitle, exact: true }) });
+    .getByRole('rowgroup')
+    .filter({ has: page.getByRole('rowheader', { name: firstBulkTitle, exact: true }) });
   const approvedSecondRow = page
-    .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: secondBulkTitle, exact: true }) });
+    .getByRole('rowgroup')
+    .filter({ has: page.getByRole('rowheader', { name: secondBulkTitle, exact: true }) });
   await expect(approvedFirstRow).toBeVisible();
   await expect(approvedSecondRow).toBeVisible();
   await expect(approvedFirstRow.getByText('Szkic', { exact: true })).toBeHidden();
@@ -723,42 +715,32 @@ test('mass signing can receive a signature from a QR pad browser context', async
   await expect
     .poll(() => new URL(page.url()).searchParams.get('q'))
     .toBe(title);
-  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Masowe podpisywanie' }).click();
+  await expect(page.getByRole('rowheader', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${title}` }).click();
+  await page.getByRole('button', { name: 'Masowe podpisywanie (1)' }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
   await expectReviewPdfFitsViewport(page);
 
-  const createPadResponse = page.waitForResponse(
-    (response) => {
-      const url = new URL(response.url());
-      return url.pathname === '/api/pad-sessions' && response.request().method() === 'POST';
-    },
-  );
   await page.getByRole('button', { name: 'Pad QR' }).click();
   await expect(page.getByRole('dialog', { name: 'Pad QR' })).toBeVisible();
-  const created = padSessionCreateResponseSchema.parse(await (await createPadResponse).json());
-  const padUrl = new URL(
-    `/pad/${created.data.session.id}#s=${encodeURIComponent(created.data.secret)}`,
-    page.url(),
-  ).toString();
-  await page.getByRole('button', { name: 'Zamknij', exact: true }).click();
+  await page.getByRole('button', { name: 'Schowaj kod QR' }).click();
   await expect(page.getByRole('dialog', { name: 'Pad QR' })).toBeHidden();
 
   const padContext = await browser.newContext();
   try {
     const padPage = await padContext.newPage();
     await signIn(padPage);
-    await padPage.goto(padUrl);
+    await padPage.getByRole('button', { name: 'Tryb pada' }).click();
     await expect(
       padPage.getByRole('heading', { name: 'Czekam na dokument…' }).first(),
     ).toBeVisible();
+    await expect(page.getByText('Pad połączony')).toBeVisible();
 
     const desktopCanvas = page.getByRole('application', {
       name: 'Powierzchnia do rysowania podpisu',
     });
     const before = await canvasInkState(desktopCanvas);
     await page.getByRole('button', { name: 'Poproś pad o podpis' }).click();
-    await expect(page.getByText('Pad: rysuje')).toBeVisible();
     await expect(padPage.getByRole('heading', { name: title })).toBeVisible();
     const padCanvas = padPage.getByRole('application', {
       name: 'Powierzchnia pada do podpisu',
@@ -776,7 +758,7 @@ test('mass signing can receive a signature from a QR pad browser context', async
     await expect(padPage.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
     await padPage.getByRole('button', { name: 'Zatwierdź' }).click();
     await expectCanvasInkGrew(desktopCanvas, before);
-    await expect(page.getByText('Pad: oczekuje')).toBeVisible();
+    await expect(page.getByText('Pad połączony')).toBeVisible();
     await dragSelectedStampLong(page);
     await page.getByRole('button', { name: 'Dalej' }).click();
     await expect(page.getByRole('heading', { name: 'Podsumowanie' })).toBeVisible();
@@ -813,10 +795,13 @@ test('mass signing signs, skips and signs an already signed document', async ({ 
   await expect
     .poll(() => new URL(page.url()).searchParams.get('q'))
     .toBe(titlePrefix);
-  await expect(page.getByRole('cell', { name: firstTitle, exact: true })).toBeVisible();
-  await expect(page.getByRole('cell', { name: secondTitle, exact: true })).toBeVisible();
-  await expect(page.getByRole('cell', { name: thirdTitle, exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Masowe podpisywanie' }).click();
+  await expect(page.getByRole('rowheader', { name: firstTitle, exact: true })).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: secondTitle, exact: true })).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: thirdTitle, exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${firstTitle}` }).click();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${secondTitle}` }).click();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${thirdTitle}` }).click();
+  await page.getByRole('button', { name: 'Masowe podpisywanie (3)' }).click();
 
   await expect(page.getByRole('heading', { name: thirdTitle })).toBeVisible();
   await expectReviewPdfFitsViewport(page);

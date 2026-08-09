@@ -529,7 +529,7 @@ export const DocumentDetailPage = ({
               variant="outlined"
               label={DOCUMENT_TYPE_LABELS[document.docType]}
             />
-            {isDraft ? <Chip color="warning" label="Szkic" /> : null}
+            {isDraft ? <Chip color="warning" variant="outlined" label="Szkic" /> : null}
           </Stack>
           <Stack sx={{ mt: 1.5, gap: 0.5 }}>
             <Typography variant="body2" color="text.secondary">

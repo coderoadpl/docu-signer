@@ -15,6 +15,7 @@ import { documentCreateInputSchema } from '#core/contract/index.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentsPage } from './DocumentsPage.js';
+import { TrashPage } from './TrashPage.js';
 import {
   documentSigningSearchSchema,
   documentsSearchSchema,
@@ -84,7 +85,7 @@ vi.mock('./DocumentTimelineView.js', async () => {
     React.createElement(
       'div',
       {
-        'aria-label': 'Os czasu dokumentów',
+        'aria-label': 'Oś czasu dokumentów',
         'data-date-from': dateFrom,
         'data-date-to': dateTo,
         role: 'region',
@@ -191,8 +192,13 @@ const renderPage = async (initialEntry = '/app/documents') => {
     validateSearch: documentSigningSearchSchema,
     component: () => <div>Podpisywanie dokumentu</div>,
   });
+  const trash = createRoute({
+    getParentRoute: () => root,
+    path: '/app/kosz',
+    component: TrashPage,
+  });
   const router = createRouter({
-    routeTree: root.addChildren([list, detail, signing]),
+    routeTree: root.addChildren([list, detail, signing, trash]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
@@ -236,7 +242,9 @@ describe('DocumentsPage', () => {
     );
     await renderPage();
 
-    expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
+    expect(
+      await screen.findByRole('rowheader', { name: 'Umowa z Anną' }),
+    ).toBeInTheDocument();
     vi.useFakeTimers();
     const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
     fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
@@ -257,7 +265,9 @@ describe('DocumentsPage', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     vi.useRealTimers();
-    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
+    expect(
+      await screen.findByRole('rowheader', { name: 'Protokół odbioru' }),
+    ).toBeInTheDocument();
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
   });
 
@@ -413,19 +423,19 @@ describe('DocumentsPage', () => {
     );
   });
 
-  it('restores non-list tabs from deep links', async () => {
+  it('restores the timeline view from deep links', async () => {
     server.use(
       http.get('/api/documents', () =>
         HttpResponse.json({ ok: true, data: { documents: [document] } }),
       ),
     );
-    await renderPage('/app/documents?tab=os-czasu&tag=ważne');
+    await renderPage('/app/documents?widok=os-czasu&tag=ważne');
 
     expect(
-      await screen.findByRole('tab', { name: 'Os czasu', selected: true }),
+      await screen.findByRole('button', { name: 'Oś czasu', pressed: true }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole('region', { name: 'Os czasu dokumentów' }),
+      await screen.findByRole('region', { name: 'Oś czasu dokumentów' }),
     ).toBeInTheDocument();
     expect(dateField(window.document.body, 'Od')).toBeInTheDocument();
     expect(dateField(window.document.body, 'Do')).toBeInTheDocument();
@@ -479,9 +489,9 @@ describe('DocumentsPage', () => {
         HttpResponse.json({ ok: true, data: { documents: [january, march, noPerson] } }),
       ),
     );
-    const { router } = await renderPage('/app/documents?tab=os-czasu');
+    const { router } = await renderPage('/app/documents?widok=os-czasu');
 
-    const timeline = await screen.findByRole('region', { name: 'Os czasu dokumentów' });
+    const timeline = await screen.findByRole('region', { name: 'Oś czasu dokumentów' });
     expect(within(timeline).getByRole('button', { name: 'Styczniowa umowa' })).toBeInTheDocument();
     expect(within(timeline).getByRole('button', { name: 'Jednorazowa notatka' })).toBeInTheDocument();
 
@@ -493,7 +503,7 @@ describe('DocumentsPage', () => {
         '/app/documents/33333333-3333-4333-8333-333333333333',
       ),
     );
-    expect(router.state.location.search).toMatchObject({ tab: 'os-czasu' });
+    expect(router.state.location.search).toMatchObject({ widok: 'os-czasu' });
   });
 
   it('keeps the draft-filtered list after a detail roundtrip', async () => {
@@ -717,7 +727,7 @@ describe('DocumentsPage', () => {
     expect(await screen.findByText('Zatwierdzono 2, błędów 0.')).toBeInTheDocument();
   });
 
-  it('starts mass signing visible PDFs in canonical grouped order', async () => {
+  it('starts mass signing selected PDFs in canonical grouped order', async () => {
     const baseFile = {
       id: '33333333-3333-4333-8333-333333333333',
       documentId: DOCUMENT_ID,
@@ -798,7 +808,19 @@ describe('DocumentsPage', () => {
     );
     const { router } = await renderPage('/app/documents?q=masowe');
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Masowe podpisywanie' }));
+    const massSigningButton = await screen.findByRole('button', {
+      name: 'Masowe podpisywanie (0)',
+    });
+    expect(massSigningButton).toBeDisabled();
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Podpisana umowa' })[0] ??
+        screen.getByLabelText('Zaznacz dokument: Podpisana umowa'),
+    );
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Protokół' })[0] ??
+        screen.getByLabelText('Zaznacz dokument: Protokół'),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Masowe podpisywanie (2)' }));
 
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(
@@ -808,15 +830,15 @@ describe('DocumentsPage', () => {
     expect(router.state.location.search).toMatchObject({
       q: 'masowe',
       tryb: 'masowe',
-      kolejka: `${protocolId},${billId}`,
-      pliki: '99999999-9999-4999-8999-999999999999,ffffffff-ffff-4fff-8fff-ffffffffffff',
+      kolejka: protocolId,
+      pliki: '99999999-9999-4999-8999-999999999999',
       podpisane: 0,
       pominiete: 0,
-      razem: 3,
+      razem: 2,
     });
   });
 
-  it('persists column visibility and order and filters from tag chips', async () => {
+  it('preserves known columns from legacy preferences and filters from tag chips', async () => {
     const seen = vi.fn();
     const saved = vi.fn();
     server.use(
@@ -870,7 +892,6 @@ describe('DocumentsPage', () => {
       expect(saved).toHaveBeenCalledWith({
         value: {
           order: [
-            'title',
             'tags',
             'files',
             'documentDate',
@@ -880,19 +901,18 @@ describe('DocumentsPage', () => {
             'signatureStatus',
             'draft',
           ],
-          visible: ['title', 'tags', 'files'],
+          visible: ['tags', 'files'],
         },
       }),
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Przesuń w górę: Tagi' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Przesuń w dół: Tagi' }));
     await waitFor(() =>
       expect(saved).toHaveBeenLastCalledWith({
         value: {
           order: [
-            'tags',
-            'title',
             'files',
+            'tags',
             'documentDate',
             'docType',
             'person',
@@ -900,7 +920,7 @@ describe('DocumentsPage', () => {
             'signatureStatus',
             'draft',
           ],
-          visible: ['title', 'tags', 'files'],
+          visible: ['tags', 'files'],
         },
       }),
     );
@@ -1088,76 +1108,6 @@ describe('DocumentsPage', () => {
     );
   });
 
-  it('applies teczki presets', async () => {
-    const user = userEvent.setup();
-    const seen = vi.fn();
-    server.use(
-      http.get('/api/documents', ({ request }) => {
-        const params = new URL(request.url).searchParams;
-        seen(Object.fromEntries(params.entries()));
-        return HttpResponse.json({
-          ok: true,
-          data: {
-            documents: params.get('tag') === 'odbiór'
-              ? [protocolDocument]
-              : [document, protocolDocument],
-          },
-        });
-      }),
-      http.get('/api/saved-searches', () =>
-        HttpResponse.json({ ok: true, data: { savedSearches: [savedSearch] } }),
-      ),
-    );
-    const { router } = await renderPage();
-
-    await screen.findAllByText('Umowa z Anną');
-    await user.click(screen.getByRole('tab', { name: 'Teczki' }));
-    expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
-    expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane · Szkice: razem z zatwierdzonymi')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('heading', { name: 'Odbiór' }));
-    expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
-    await waitFor(() =>
-      expect(seen).toHaveBeenCalledWith({
-        tag: 'odbiór',
-        signatureStatus: 'signed',
-        draft: 'all',
-      }),
-    );
-    expect(router.state.location.search).toMatchObject({
-      tag: 'odbiór',
-      status: 'signed',
-      szkice: 'all',
-    });
-  });
-
-  it('deletes teczki presets', async () => {
-    const savedDelete = vi.fn();
-    let savedSearches: Array<typeof savedSearch> = [savedSearch];
-    server.use(
-      http.get('/api/documents', () =>
-        HttpResponse.json({ ok: true, data: { documents: [document] } }),
-      ),
-      http.get('/api/saved-searches', () =>
-        HttpResponse.json({ ok: true, data: { savedSearches } }),
-      ),
-      http.delete('/api/saved-searches/:id', ({ params }) => {
-        savedDelete(params.id);
-        savedSearches = [];
-        return HttpResponse.json({ ok: true, data: { deleted: true } });
-      }),
-    );
-    await renderPage('/app/documents?tab=teczki');
-
-    expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));
-    expect(screen.getByRole('button', { name: 'Potwierdź' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Potwierdź' }));
-    await waitFor(() =>
-      expect(savedDelete).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333'),
-    );
-  });
-
   it('lists trash and restores a trashed document', async () => {
     const restore = vi.fn();
     let trash = [trashedDocument];
@@ -1177,9 +1127,8 @@ describe('DocumentsPage', () => {
         });
       }),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     expect(await screen.findAllByText('Usunięta uchwała')).toHaveLength(2);
     expect(screen.getAllByText('Uchwała').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Piotr Zieliński').length).toBeGreaterThan(0);
@@ -1208,9 +1157,8 @@ describe('DocumentsPage', () => {
         return HttpResponse.json({ ok: true, data: { deleted: true } });
       }),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     await screen.findAllByText('Usunięta uchwała');
     await userEvent.click(screen.getAllByRole('button', { name: 'Usuń trwale' }).at(0) ?? screen.getByText('Usuń trwale'));
     const dialog = await screen.findByRole('dialog', { name: 'Usunąć trwale?' });
@@ -1247,9 +1195,8 @@ describe('DocumentsPage', () => {
         return HttpResponse.json({ ok: true, data: { deleted: true } });
       }),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     expect(await screen.findAllByText('Usunięta uchwała')).toHaveLength(2);
     expect(await screen.findAllByText('Usunięty rachunek')).toHaveLength(2);
     await userEvent.click(screen.getByRole('button', { name: 'Opróżnij kosz' }));
@@ -1304,9 +1251,8 @@ describe('DocumentsPage', () => {
         return HttpResponse.json({ ok: true, data: { deleted: true } });
       }),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     await screen.findAllByText('Usunięta uchwała');
     await userEvent.click(screen.getAllByRole('button', { name: 'Przywróć' }).at(0) ?? screen.getByText('Przywróć'));
     expect(await screen.findByText('Nie udało się przywrócić')).toBeInTheDocument();
@@ -1331,9 +1277,8 @@ describe('DocumentsPage', () => {
         HttpResponse.json({ ok: true, data: { documents: [] } }),
       ),
     );
-    await renderPage();
+    await renderPage('/app/kosz');
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Kosz' }));
     expect(await screen.findByRole('heading', { name: 'Kosz jest pusty' })).toBeInTheDocument();
     expect(screen.getByText('Kosz jest pusty. Kosz nigdy nie opróżnia się sam.')).toBeInTheDocument();
   });

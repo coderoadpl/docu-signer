@@ -164,7 +164,7 @@ export const DocumentTimelineView = ({
           <ToggleButton value="all">Wszystko</ToggleButton>
         </ToggleButtonGroup>
       </Box>
-      <Box ref={containerRef} role="region" aria-label="Os czasu dokumentów" sx={{ minHeight: 180 }} />
+      <Box ref={containerRef} role="region" aria-label="Oś czasu dokumentów" sx={{ minHeight: 180 }} />
     </Paper>
   );
 };

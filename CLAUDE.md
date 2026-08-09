@@ -16,7 +16,8 @@ upstream doctrine, and prefer simplicity + a delta line over new ADRs.
   knip (dead files + dependency hygiene; unused exports/types stay advisory
   during the PRD build-out — see `knip.jsonc`) +
   doc-lint (docs↔config enforcer coverage, injected count tokens, env-schema ⊆
-  `.env.example`, dead relative links) + vitest with `--coverage` — the
+  `.env.example`, server↔Vercel CSP sync, dead relative links) + vitest with
+  `--coverage` — the
   **static** gate; coverage thresholds are a ratchet floor (measured minimum
   rounded down, per-metric) enforced here, so a coverage regression fails
   `pnpm run check`.
@@ -96,9 +97,11 @@ rejected.)
   them, and hand-sign any source PDF in a full-screen pen/touch/mouse flow.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
   replaces the source or persists a reusable signature. A desktop signing
-  session can create a QR remote pad at `/pad/{sessionId}`; the pad requires a
-  normal login plus the session secret from the URL fragment and defaults to a
-  touch-locked Piórko mode with an explicit Ręka mode for finger drawing.
+  user has one global remote pad session shared by every signing surface at
+  `/pad/{sessionId}`; the pad requires a normal login plus either the session
+  secret from the URL fragment (QR) or same-user identity (`/pad` join), and
+  defaults to a touch-locked Piórko mode with an explicit Ręka mode for finger
+  drawing.
 - Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
   timestamps (`createdAt`, `updatedAt`) never render in UI or exports. Two
   carve-outs: `deletedAt` records a user action and renders as `Usunięto:` in

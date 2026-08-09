@@ -227,9 +227,9 @@ no-access state. `/app` redirects to `/app/documents`; the archive lives there,
 and personal authentication controls live at `/app/settings`. Unknown routes
 render a Polish not-found view inside the shell.
 Bare `/` redirects to `/app`. `/pad/{sessionId}` is a standalone authenticated
-signing-pad route outside the archive shell: it requires the normal session plus
-the pad secret from the URL fragment, then polls the tenant-scoped pad session
-API without rendering document archive navigation.
+signing-pad route outside the archive shell: it joins the user's global session
+through a URL-fragment secret or same-user identity, then polls the tenant-scoped
+pad session API without rendering document archive navigation.
 
 State rules:
 

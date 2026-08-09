@@ -72,10 +72,13 @@ const baseDeps = (): AppDeps => ({
       ...input,
       status: 'active',
       createdAt: '2026-08-02T00:00:00.000Z',
+      lastPolledAt: null,
       currentRequest: null,
       submittedStrokes: null,
     }),
     findById: async () => null,
+    findActiveByUser: async () => null,
+    renew: async () => null,
     requestSignature: async () => null,
     submitStrokes: async () => null,
     consumeStrokes: async () => null,
@@ -324,6 +327,7 @@ describe('buildApp', () => {
       status: 'active' as const,
       createdAt: '2026-08-04T10:00:00.000Z',
       expiresAt: '2099-08-04T14:00:00.000Z',
+      lastPolledAt: null,
       currentRequest: null,
       submittedStrokes: null,
     };
@@ -340,6 +344,11 @@ describe('buildApp', () => {
         return currentPadSession;
       },
       findById: async () => currentPadSession,
+      findActiveByUser: async () => currentPadSession,
+      renew: async (_tenantId, _sessionId, expiresAt, lastPolledAt) => {
+        currentPadSession = { ...currentPadSession, expiresAt, lastPolledAt };
+        return currentPadSession;
+      },
       requestSignature: async (_tenantId, _sessionId, request) => {
         currentPadSession = {
           ...currentPadSession,
@@ -373,6 +382,23 @@ describe('buildApp', () => {
     await expect(created.json()).resolves.toMatchObject({
       ok: true,
       data: { secret: 'pad_secret' },
+    });
+
+    const active = await app.request(API_ROUTES.padSessionActive.path, {
+      headers: tenantHeader,
+    });
+    await expect(active.json()).resolves.toMatchObject({
+      ok: true,
+      data: { session: { createdBy: user.userId } },
+    });
+
+    const joined = await app.request(API_ROUTES.padSessionJoin.path, {
+      method: API_ROUTES.padSessionJoin.method,
+      headers: tenantHeader,
+    });
+    await expect(joined.json()).resolves.toMatchObject({
+      ok: true,
+      data: { session: { createdBy: user.userId } },
     });
 
     const state = await app.request(
@@ -422,7 +448,7 @@ describe('buildApp', () => {
     );
     await expect(consumed.json()).resolves.toMatchObject({
       ok: true,
-      data: { submittedStrokes: { requestId } },
+      data: { submittedStrokes: { requestId }, lastPolledAt: expect.any(String) },
     });
 
     const closed = await app.request(
@@ -430,6 +456,18 @@ describe('buildApp', () => {
       { method: API_ROUTES.padSessionClose.method, headers: tenantHeader },
     );
     await expect(closed.json()).resolves.toMatchObject({
+      ok: true,
+      data: { closed: true },
+    });
+
+    const disconnected = await app.request(
+      API_ROUTES.padSessionDisconnect.path.replace(':sessionId', padSession.id),
+      {
+        method: API_ROUTES.padSessionDisconnect.method,
+        headers: { ...tenantHeader, [PAD_SECRET_HEADER]: 'pad_secret' },
+      },
+    );
+    await expect(disconnected.json()).resolves.toMatchObject({
       ok: true,
       data: { closed: true },
     });
