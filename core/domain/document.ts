@@ -44,6 +44,7 @@ const documentFieldsSchema = z.object({
   periodEnd: z.iso.date().nullable(),
   person: z.string().nullable(),
   tags: z.array(z.string()),
+  draft: z.boolean().default(false),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   deletedAt: z.iso.datetime().nullable().default(null),
@@ -87,10 +88,9 @@ const createDocumentFieldsSchema = z.object({
   tags: z.array(z.string().trim().min(1)).default([]),
 });
 
-export const createDocumentSchema = createDocumentFieldsSchema.refine(
-  periodIsOrdered,
-  'periodStart must not be after periodEnd',
-);
+export const createDocumentSchema = createDocumentFieldsSchema
+  .extend({ draft: z.boolean().optional() })
+  .refine(periodIsOrdered, 'periodStart must not be after periodEnd');
 
 export type CreateDocument = z.input<typeof createDocumentSchema>;
 
@@ -100,6 +100,10 @@ export const updateDocumentSchema = createDocumentFieldsSchema.refine(
 );
 
 export type UpdateDocument = z.input<typeof updateDocumentSchema>;
+
+export const approveDocumentSchema = z.object({
+  approved: z.literal(true),
+});
 
 const documentListFilterSchemaOf = () =>
   z
@@ -111,6 +115,7 @@ const documentListFilterSchemaOf = () =>
       dateFrom: z.iso.date().optional(),
       dateTo: z.iso.date().optional(),
       signatureStatus: documentSignatureStatusSchema.optional(),
+      draft: z.enum(['true', 'false', 'all']).optional(),
     })
     .refine(
       (value) => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo,
@@ -127,6 +132,7 @@ export interface DocumentListFilter {
   dateFrom?: string | undefined;
   dateTo?: string | undefined;
   signatureStatus?: DocumentSignatureStatus | undefined;
+  draft?: 'true' | 'false' | 'all' | undefined;
 }
 
 export const savedSearchFilterSchema = documentListFilterSchemaOf();

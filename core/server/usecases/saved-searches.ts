@@ -23,7 +23,7 @@ export const listSavedSearches = async (
   ctx: Ctx,
   deps: SavedSearchDeps,
 ): Promise<Result<SavedSearch[], AppError>> => {
-  const scope = authorizeTenant(ctx, 'document:read');
+  const scope = authorizeTenant(ctx, 'saved-search:manage');
   if (!scope.ok) return scope;
   return ok(await deps.savedSearches.listByTenant(scope.value));
 };
@@ -33,7 +33,7 @@ export const createSavedSearch = async (
   input: CreateSavedSearch,
   deps: SavedSearchDeps,
 ): Promise<Result<SavedSearch, AppError>> => {
-  const scope = authorizeTenant(ctx, 'document:write');
+  const scope = authorizeTenant(ctx, 'saved-search:manage');
   if (!scope.ok) return scope;
   const parsed = createSavedSearchSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid saved search', parsed.error.flatten()));
@@ -51,7 +51,7 @@ export const deleteSavedSearch = async (
   savedSearchId: string,
   deps: SavedSearchDeps,
 ): Promise<Result<void, AppError>> => {
-  const scope = authorizeTenant(ctx, 'document:write');
+  const scope = authorizeTenant(ctx, 'saved-search:manage');
   if (!scope.ok) return scope;
   const deleted = await deps.savedSearches.delete(scope.value, savedSearchId);
   return deleted ? ok(undefined) : err(notFound('Saved search not found'));

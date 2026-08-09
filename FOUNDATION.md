@@ -69,3 +69,4 @@ each.
   verticals they drove; the README quickstart is now convention, not enforced.
 - `scripts/backup.ts` is a sanctioned standalone composition site because the CI cron backup runs without the server.
 - `.github/workflows/backup.yml` lives under foundation-owned workflows for the repo-owned backup cron.
+- The api-token resource consciously stops before the web binding/route steps of the 12-step chain: the Konto tokens section and the Szkice filter ship in the follow-up UI package; until then tokens and approval are CLI-first.

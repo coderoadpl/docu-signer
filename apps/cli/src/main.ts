@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { createCliAuthAdapter, followMagicLink } from '#adapters/auth/client-adapter.js';
 import type { AuthClientPort } from '#core/client/index.js';
 import { createApiClient, type ApiClient } from '#core/client/index.js';
-import { documentCreateInputSchema } from '#core/contract/index.js';
+import { apiTokenCreateInputSchema, documentCreateInputSchema } from '#core/contract/index.js';
 import {
   canonicalSlugSchema,
   err,
@@ -33,7 +33,8 @@ import { emit } from './output.js';
 const program = new Command('podpisy')
   .description('Reference client for the podpisy API — the agent feedback loop')
   .option('--json', 'machine-readable JSON output', false)
-  .option('--api-url <url>', 'API base URL (overrides config)');
+  .option('--api-url <url>', 'API base URL (overrides config)')
+  .option('--token <value>', 'API token for this command (overrides APP_CLI_TOKEN and stored session)');
 
 // Own Commander's parse failures (unknown command, missing option/argument, bad
 // option) instead of letting it process.exit(1) with plain-text stderr: throw so
@@ -89,12 +90,17 @@ const passwordResetArgsSchema = z.object({ email: z.string().trim().min(1) });
 const globalOptionsSchema = z.object({
   json: z.boolean(),
   apiUrl: z.url('--api-url must be a valid URL').optional(),
+  token: z.string().min(1).optional(),
 });
 const cliEnvSchema = z.object({
   APP_CLI_API_URL: z.url('APP_CLI_API_URL must be a valid URL').optional(),
+  APP_CLI_TOKEN: z.string().min(1).optional(),
 });
 const originUseArgsSchema = z.object({
   url: z.url('origin URL must be a valid URL'),
+});
+const tokenListFilterSchema = z.object({
+  draft: z.enum(['true', 'false', 'all']).optional(),
 });
 
 /**
@@ -130,10 +136,11 @@ const cliCtx = (): CliCtx => {
     ...(globals.apiUrl === undefined ? {} : { apiUrl: globals.apiUrl }),
   });
   const { apiUrl, origin, originSource, profile } = resolved;
+  const apiBearer = globals.token ?? env.APP_CLI_TOKEN ?? profile.token;
   const api = createApiClient({
     baseUrl: apiUrl,
     headers: () => ({
-      ...(profile.token ? { authorization: `Bearer ${profile.token}` } : {}),
+      ...(apiBearer ? { authorization: `Bearer ${apiBearer}` } : {}),
     }),
   });
   const auth = createCliAuthAdapter(
@@ -393,7 +400,7 @@ document.command('list').description('List documents').action(async () => {
       : data.documents
           .map(
             (row) =>
-              `- ${row.documentDate}\t${row.title}\t${row.docType}\t(${row.id.slice(0, 8)})`,
+              `- ${row.documentDate}\t${row.draft ? 'DRAFT\t' : ''}${row.title}\t${row.docType}\t(${row.id.slice(0, 8)})`,
           )
           .join('\n'),
   );
@@ -414,6 +421,26 @@ document.command('trash-list').description('List soft-deleted documents').action
 });
 
 document
+  .command('search')
+  .description('List documents with filters')
+  .option('--draft <draft>', 'true|false|all')
+  .action(async (options: { draft?: string }) => {
+    const ctx = cliCtx();
+    const filter = parseArgs(tokenListFilterSchema, options, ctx.json);
+    if (filter === undefined) return;
+    emit(await ctx.api.listDocuments(filter), ctx.json, (data) =>
+      data.documents.length === 0
+        ? 'no documents'
+        : data.documents
+            .map(
+              (row) =>
+                `- ${row.documentDate}\t${row.draft ? 'DRAFT\t' : ''}${row.title}\t${row.docType}\t(${row.id.slice(0, 8)})`,
+            )
+            .join('\n'),
+    );
+  });
+
+document
   .command('show <id>')
   .description('Show a document and its attachments')
   .action(async (id: string) => {
@@ -422,7 +449,7 @@ document
       const files = data.document.files
         .map((file) => `  - ${file.role}\t${file.fileName}\t(${file.id.slice(0, 8)})`)
         .join('\n');
-      return `${data.document.documentDate}\t${data.document.title}\n${files || '  no files'}`;
+      return `${data.document.documentDate}\t${data.document.draft ? 'DRAFT\t' : ''}${data.document.title}\n${files || '  no files'}`;
     });
   });
 
@@ -435,6 +462,7 @@ document
   .option('--period-end <date>', 'period end (YYYY-MM-DD)')
   .option('--person <person>', 'person')
   .option('--tag <tag...>', 'tags')
+  .option('--draft', 'create as a draft awaiting owner approval', false)
   .action(
     async (
       titleWords: string[],
@@ -445,6 +473,7 @@ document
         periodEnd?: string;
         person?: string;
         tag?: string[];
+        draft: boolean;
       },
     ) => {
       const ctx = cliCtx();
@@ -458,15 +487,26 @@ document
           ...(options.periodEnd === undefined ? {} : { periodEnd: options.periodEnd }),
           ...(options.person === undefined ? {} : { person: options.person }),
           tags: options.tag ?? [],
+          ...(options.draft ? { draft: true } : {}),
         },
         ctx.json,
       );
       if (input === undefined) return;
       emit(await ctx.api.createDocument(input), ctx.json, (data) =>
-        `added: ${data.document.title} (${data.document.id})`,
+        `added: ${data.document.draft ? 'draft ' : ''}${data.document.title} (${data.document.id})`,
       );
     },
   );
+
+document
+  .command('approve <id>')
+  .description('Approve a draft document')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    emit(await ctx.api.approveDocument(id), ctx.json, (data) =>
+      `approved: ${data.document.title} (${data.document.id})`,
+    );
+  });
 
 document
   .command('upload <id> <path>')
@@ -556,6 +596,47 @@ document
     }
     emit(await ctx.api.purgeDocument(id), ctx.json, () => `purged: ${id}`);
   });
+
+const collectScope = (value: string, previous: string[]): string[] => [...previous, value];
+
+const token = program.command('token').description('Manage personal API tokens');
+
+token
+  .command('create')
+  .description('Create a scoped API token; the value is shown once')
+  .requiredOption('--name <name>')
+  .requiredOption('--scope <scope>', 'read|write|write:draft; repeat for multiple scopes', collectScope, [])
+  .action(async (options: { name: string; scope: string[] }) => {
+    const ctx = cliCtx();
+    const input = parseArgs(
+      apiTokenCreateInputSchema,
+      { name: options.name, scopes: options.scope },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(await ctx.api.createApiToken(input), ctx.json, (data) =>
+      `created: ${data.apiToken.name} (${data.apiToken.id})\nvalue: ${data.value}`,
+    );
+  });
+
+token.command('list').description('List personal API tokens').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.listApiTokens(), ctx.json, (data) =>
+    data.apiTokens.length === 0
+      ? 'no API tokens'
+      : data.apiTokens
+          .map((apiToken) => {
+            const state = apiToken.revokedAt ? 'revoked' : 'active';
+            return `- ${apiToken.name}\t${apiToken.scopes.join(',')}\t${state}\t(${apiToken.id})`;
+          })
+          .join('\n'),
+  );
+});
+
+token.command('revoke <id>').description('Revoke a personal API token').action(async (id: string) => {
+  const ctx = cliCtx();
+  emit(await ctx.api.revokeApiToken(id), ctx.json, () => `revoked: ${id}`);
+});
 
 const publicCmd = program
   .command('public')

@@ -33,6 +33,20 @@ const acmeVersion = tenantContentVersion(acme);
 const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   auth,
   authPort: { getAuthenticatedUser: async () => null },
+  apiTokens: {
+    create: async () => {
+      throw new Error('not implemented');
+    },
+    listByUser: async () => [],
+    findActiveByHash: async () => null,
+    markUsed: async () => {},
+    revoke: async () => false,
+  },
+  apiTokenSecrets: {
+    generate: () => 'pat_test',
+    hash: (value) => value,
+    matchesHash: (value, tokenHash) => value === tokenHash,
+  },
   documents: {
     listByTenant: async () => [],
     listDeletedByTenant: async () => [],
@@ -46,6 +60,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
       throw new Error('not implemented');
     },
     update: async () => null,
+    approve: async () => null,
     delete: async () => false,
     restore: async () => null,
     purge: async () => false,

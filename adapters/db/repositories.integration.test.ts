@@ -4,9 +4,10 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDocumentRepository } from './documents-repository.js';
+import { createApiTokenRepository } from './api-tokens-repository.js';
 import { createTenantAccessReader } from './repositories.js';
 import { createSavedSearchRepository } from './saved-searches-repository.js';
-import { tenantAdmins, tenants } from './schema.js';
+import { tenantAdmins, tenants, user } from './schema.js';
 import * as schema from './schema.js';
 import { closePoolAndDropIntegrationDatabase } from './test-support/integration-database.js';
 
@@ -37,6 +38,10 @@ beforeAll(async () => {
   await db.insert(tenantAdmins).values([
     { id: 'grant-owner', tenantId: 'tenant-a', userId: 'user-owner', role: 'owner' },
     { id: 'grant-admin', tenantId: 'tenant-b', userId: 'user-admin', role: 'admin' },
+  ]);
+  await db.insert(user).values([
+    { id: 'user-owner', email: 'owner@example.com', name: 'Owner' },
+    { id: 'user-admin', email: 'admin@example.com', name: 'Admin' },
   ]);
 });
 
@@ -74,6 +79,29 @@ describe('DocumentRepository', () => {
     expect(
       await repository.findById('tenant-b', '11111111-1111-4111-8111-111111111111'),
     ).toBeNull();
+
+    const draft = await repository.create({
+      id: '19191919-1919-4191-8191-191919191919',
+      tenantId: 'tenant-a',
+      title: 'Szkic',
+      docType: 'inny',
+      documentDate: '2026-08-02',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: ['draft'],
+      draft: true,
+    });
+    expect(draft.draft).toBe(true);
+    expect(await repository.listByTenant('tenant-a', {})).toHaveLength(1);
+    await expect(repository.listByTenant('tenant-a', { draft: 'true' })).resolves.toMatchObject([
+      { title: 'Szkic', draft: true },
+    ]);
+    await expect(repository.listByTenant('tenant-a', { draft: 'all' })).resolves.toHaveLength(2);
+    await expect(repository.approve('tenant-a', draft.id)).resolves.toMatchObject({
+      draft: false,
+    });
+    await expect(repository.listByTenant('tenant-a', { draft: 'true' })).resolves.toEqual([]);
   });
 
   it('keeps attachment lookup tenant-scoped', async () => {
@@ -186,7 +214,7 @@ describe('DocumentRepository', () => {
 
   it('soft-deletes, restores and purges documents while active reads exclude trash', async () => {
     const repository = createDocumentRepository(db);
-    const id = '19191919-1919-4191-8191-191919191919';
+    const id = '29292929-2929-4292-8292-292929292929';
     const fileId = '20202020-2020-4202-8202-202020202020';
     await repository.create({
       id,
@@ -238,6 +266,40 @@ describe('DocumentRepository', () => {
     await expect(repository.purge('tenant-a', id)).resolves.toBe(false);
     await expect(repository.findAnyById('tenant-a', id)).resolves.toBeNull();
     await expect(repository.listFilesIncludingDeleted('tenant-a', id)).resolves.toEqual([]);
+  });
+});
+
+describe('ApiTokenRepository', () => {
+  it('round-trips tokens without hashes in list responses and resolves only active hashes', async () => {
+    const repository = createApiTokenRepository(db);
+    const created = await repository.create({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      userId: 'user-owner',
+      name: 'Importer',
+      tokenHash: 'hash-secret',
+      scopes: ['read', 'write:draft'],
+    });
+
+    expect(created).toMatchObject({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      name: 'Importer',
+      scopes: ['read', 'write:draft'],
+    });
+    await expect(repository.listByUser('user-owner')).resolves.toMatchObject([
+      { id: created.id, name: 'Importer' },
+    ]);
+    expect(JSON.stringify(await repository.listByUser('user-owner'))).not.toContain('hash-secret');
+    await expect(repository.findActiveByHash('hash-secret')).resolves.toMatchObject({
+      token: { id: created.id, tokenHash: 'hash-secret' },
+      user: { userId: 'user-owner', email: 'owner@example.com' },
+    });
+    await repository.markUsed(created.id);
+    await expect(repository.listByUser('user-owner')).resolves.toMatchObject([
+      { id: created.id, lastUsedAt: expect.any(String) },
+    ]);
+    await expect(repository.revoke('user-admin', created.id)).resolves.toBe(false);
+    await expect(repository.revoke('user-owner', created.id)).resolves.toBe(true);
+    await expect(repository.findActiveByHash('hash-secret')).resolves.toBeNull();
   });
 });
 

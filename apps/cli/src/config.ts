@@ -53,6 +53,7 @@ export type CliOriginSource = 'flag' | 'env' | 'repo' | 'stored';
 
 interface CliEnv {
   APP_CLI_API_URL?: string | undefined;
+  APP_CLI_TOKEN?: string | undefined;
 }
 
 export interface ResolveCliConfigInput {

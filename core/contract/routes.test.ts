@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   API_PATHS,
   API_ROUTES,
+  apiTokenCreateInputSchema,
+  apiTokenCreateOutputSchema,
   documentCreateInputSchema,
   documentGetOutputSchema,
   documentListInputSchema,
@@ -23,7 +25,7 @@ import {
 } from './routes.js';
 
 describe('API route contract', () => {
-  it('contains health, identity, document, and saved search routes only', () => {
+  it('contains health, identity, document, saved search, and API token routes', () => {
     expect(Object.keys(API_PATHS).sort()).toEqual([
       'config',
       'documents',
@@ -53,6 +55,10 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/documents/:documentId/files/:fileId/move',
     });
+    expect(API_ROUTES.documentApprove).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/approve',
+    });
     expect(API_ROUTES.savedSearches).toEqual({
       method: 'GET',
       path: '/api/saved-searches',
@@ -60,6 +66,14 @@ describe('API route contract', () => {
     expect(API_ROUTES.savedSearchDelete).toEqual({
       method: 'DELETE',
       path: '/api/saved-searches/:savedSearchId',
+    });
+    expect(API_ROUTES.apiTokensCreate).toEqual({
+      method: 'POST',
+      path: '/api/api-tokens',
+    });
+    expect(API_ROUTES.apiTokenRevoke).toEqual({
+      method: 'POST',
+      path: '/api/api-tokens/:apiTokenId/revoke',
     });
   });
 
@@ -154,6 +168,8 @@ describe('API route contract', () => {
     expect(
       documentListInputSchema.safeParse({ signatureStatus: 'needs-signature' }).success,
     ).toBe(true);
+    expect(documentListInputSchema.safeParse({ draft: 'all' }).success).toBe(true);
+    expect(documentListInputSchema.safeParse({ draft: true }).success).toBe(false);
     expect(
       documentListInputSchema.safeParse({ signatureStatus: 'unknown' }).success,
     ).toBe(false);
@@ -176,6 +192,37 @@ describe('API route contract', () => {
         title: 'Umowa',
         docType: 'umowa-uod',
         documentDate: '01-08-2026',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates API token inputs and never accepts hashes in outputs', () => {
+    expect(
+      apiTokenCreateInputSchema.safeParse({
+        name: 'Importer',
+        scopes: ['read', 'write:draft'],
+      }).success,
+    ).toBe(true);
+    expect(
+      apiTokenCreateInputSchema.safeParse({ name: '', scopes: ['read'] }).success,
+    ).toBe(false);
+    expect(
+      apiTokenCreateInputSchema.safeParse({ name: 'Bad', scopes: ['write:draft', 'write:draft'] })
+        .success,
+    ).toBe(false);
+    expect(
+      apiTokenCreateOutputSchema.safeParse({
+        apiToken: {
+          id: '11111111-1111-4111-8111-111111111111',
+          userId: 'user-1',
+          name: 'Importer',
+          scopes: ['write:draft'],
+          createdAt: '2026-08-02T00:00:00.000Z',
+          lastUsedAt: null,
+          revokedAt: null,
+          tokenHash: 'secret',
+        },
+        value: 'pat_secret',
       }).success,
     ).toBe(false);
   });

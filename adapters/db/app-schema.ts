@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import type { SavedSearchFilter } from '#core/domain/index.js';
+import { user } from './auth-schema.js';
 
 const LEGACY_BOARD_IDS = ['personal', 'team'] as const;
 
@@ -155,6 +156,7 @@ export const documents = pgTable(
     periodEnd: date('period_end'),
     person: text('person'),
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
+    draft: boolean('draft').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -168,6 +170,31 @@ export const documents = pgTable(
     check(
       'documents_period_order_check',
       sql`${table.periodStart} IS NULL OR ${table.periodEnd} IS NULL OR ${table.periodStart} <= ${table.periodEnd}`,
+    ),
+  ],
+);
+
+export const apiTokens = pgTable(
+  'api_tokens',
+  {
+    id: uuid('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    scopes: jsonb('scopes').$type<string[]>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('api_tokens_user_created_idx').on(table.userId, table.createdAt),
+    uniqueIndex('api_tokens_token_hash_uidx').on(table.tokenHash),
+    check('api_tokens_name_length_check', sql`length(${table.name}) BETWEEN 1 AND 120`),
+    check(
+      'api_tokens_scopes_check',
+      sql`${table.scopes} <@ '["read", "write", "write:draft"]'::jsonb AND jsonb_array_length(${table.scopes}) BETWEEN 1 AND 3`,
     ),
   ],
 );

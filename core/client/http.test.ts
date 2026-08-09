@@ -141,6 +141,114 @@ describe('API client', () => {
     expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
+  it('calls approve and API token routes through the contract', async () => {
+    const token = {
+      id: '22222222-2222-4222-8222-222222222222',
+      userId: 'user-1',
+      name: 'Importer',
+      scopes: ['write:draft'],
+      createdAt: '2026-08-02T00:00:00.000Z',
+      lastUsedAt: null,
+      revokedAt: null,
+    };
+    const document = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-default',
+      title: 'Umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      draft: false,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/approve')) return json({ ok: true, data: { document } });
+      if (url.endsWith('/api/api-tokens') && init?.method === 'GET') {
+        return json({ ok: true, data: { apiTokens: [token] } });
+      }
+      if (url.endsWith('/api/api-tokens') && init?.method === 'POST') {
+        return json({ ok: true, data: { apiToken: token, value: 'pat_secret' } });
+      }
+      return json({ ok: true, data: { revoked: true } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await api.approveDocument(document.id);
+    await api.listApiTokens();
+    await api.createApiToken({ name: 'Importer', scopes: ['write:draft'] });
+    await api.revokeApiToken(token.id);
+
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(`/api/documents/${document.id}/approve`);
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+    expect(String(fetchImpl.mock.calls[1]?.[0])).toBe('/api/api-tokens');
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' });
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ name: 'Importer', scopes: ['write:draft'] }),
+    });
+    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(`/api/api-tokens/${token.id}/revoke`);
+  });
+
+  it('calls public tenant routes and builds file URLs', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input) =>
+      String(input).includes('/v/')
+        ? json({
+            ok: true,
+            data: {
+              slug: 'default',
+              displayName: 'Archive',
+              contentVersion: 'v1',
+              hero: null,
+              sections: [],
+            },
+          })
+        : json({ ok: true, data: { slug: 'default', contentVersion: 'v1' } }),
+    );
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+
+    await api.publicTenantDiscovery('default');
+    await api.publicTenantProfile('default', 'v1');
+
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      'https://archive.example/api/public/tenants/default',
+    );
+    expect(String(fetchImpl.mock.calls[1]?.[0])).toBe(
+      'https://archive.example/api/public/tenants/default/v/v1',
+    );
+    expect(api.documentFileContentUrl('doc 1', 'file 1')).toBe(
+      'https://archive.example/api/documents/doc%201/files/file%201/content',
+    );
+    expect(api.documentFileExportUrl('doc 1', 'file 1')).toBe(
+      'https://archive.example/api/documents/doc%201/files/file%201/export',
+    );
+  });
+
+  it('downloads a single exported document file', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      new Response('pdf', {
+        status: 200,
+        headers: {
+          'content-type': 'application/pdf',
+          'content-disposition': 'attachment; filename="plik.pdf"',
+        },
+      }),
+    );
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(api.exportDocumentFile('doc', 'file')).resolves.toMatchObject({
+      ok: true,
+      value: { contentType: 'application/pdf', fileName: 'plik.pdf' },
+    });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      '/api/documents/doc/files/file/export',
+    );
+  });
+
   it('normalizes network, envelope, and contract failures', async () => {
     const network = createApiClient({
       baseUrl: '',
