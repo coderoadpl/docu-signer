@@ -115,7 +115,7 @@ export const buildApp = (deps: AppDeps) => {
         styleSrc: ["'self'", "'unsafe-inline'"],
         connectSrc: ["'self'", 'https://vercel.com'],
         imgSrc: ["'self'", 'data:'],
-        objectSrc: ["'self'"], // WHY: same-origin PDF previews are embedded with <object>.
+        objectSrc: ["'none'"],
         baseUri: ["'self'"],
         frameAncestors: ["'none'"],
       },
