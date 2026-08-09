@@ -73,6 +73,45 @@ export const inventoriesMatch = (
   });
 };
 
+const directDatabaseUrlError = 'NEON_DATABASE_URL_UNPOOLED must be a direct PostgreSQL connection string';
+
+const requiredUrlPart = (value: string): string => {
+  if (value.length === 0) throw new Error(directDatabaseUrlError);
+  return decodeURIComponent(value);
+};
+
+export interface PgDatabaseEnv extends Record<string, string> {
+  readonly PGHOST: string;
+  readonly PGPORT: string;
+  readonly PGDATABASE: string;
+  readonly PGUSER: string;
+  readonly PGPASSWORD: string;
+}
+
+export const pgEnvFromDatabaseUrl = (databaseUrl: string): PgDatabaseEnv => {
+  const url = new URL(databaseUrl);
+  if (!url.protocol.startsWith('postgres') || url.hostname.includes('-pooler')) {
+    throw new Error(directDatabaseUrlError);
+  }
+  const databaseName = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+  const env: PgDatabaseEnv = {
+    PGHOST: requiredUrlPart(url.hostname),
+    PGPORT: url.port.length === 0 ? '5432' : url.port,
+    PGDATABASE: requiredUrlPart(databaseName),
+    PGUSER: requiredUrlPart(url.username),
+    PGPASSWORD: requiredUrlPart(url.password),
+  };
+  if (url.searchParams.has('sslmode')) {
+    const sslmode = url.searchParams.get('sslmode');
+    if (sslmode !== null) env['PGSSLMODE'] = sslmode;
+  }
+  if (url.searchParams.has('channel_binding')) {
+    const channelBinding = url.searchParams.get('channel_binding');
+    if (channelBinding !== null) env['PGCHANNELBINDING'] = channelBinding;
+  }
+  return env;
+};
+
 const ARCHIVE_PATTERN =
   /^docu-signer-backup-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z\.zip$/;
 
