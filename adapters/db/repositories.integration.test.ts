@@ -7,6 +7,7 @@ import { createDocumentRepository } from './documents-repository.js';
 import { createApiTokenRepository } from './api-tokens-repository.js';
 import { createTenantAccessReader } from './repositories.js';
 import { createSavedSearchRepository } from './saved-searches-repository.js';
+import { createUserPreferenceRepository } from './user-preferences-repository.js';
 import { tenantAdmins, tenants, user } from './schema.js';
 import * as schema from './schema.js';
 import { closePoolAndDropIntegrationDatabase } from './test-support/integration-database.js';
@@ -300,6 +301,37 @@ describe('ApiTokenRepository', () => {
     await expect(repository.revoke('user-admin', created.id)).resolves.toBe(false);
     await expect(repository.revoke('user-owner', created.id)).resolves.toBe(true);
     await expect(repository.findActiveByHash('hash-secret')).resolves.toBeNull();
+  });
+});
+
+describe('UserPreferenceRepository', () => {
+  it('upserts preferences by user and key', async () => {
+    const repository = createUserPreferenceRepository(db);
+
+    await expect(repository.get('user-owner', 'documents.columns')).resolves.toBeNull();
+    await expect(
+      repository.set('user-owner', 'documents.columns', {
+        order: ['title'],
+        visible: ['title'],
+      }),
+    ).resolves.toMatchObject({
+      userId: 'user-owner',
+      key: 'documents.columns',
+      value: { order: ['title'], visible: ['title'] },
+      updatedAt: expect.any(String),
+    });
+    await expect(repository.get('user-admin', 'documents.columns')).resolves.toBeNull();
+    await expect(
+      repository.set('user-owner', 'documents.columns', {
+        order: ['documentDate', 'title'],
+        visible: ['documentDate'],
+      }),
+    ).resolves.toMatchObject({
+      value: { order: ['documentDate', 'title'], visible: ['documentDate'] },
+    });
+    await expect(repository.get('user-owner', 'documents.columns')).resolves.toMatchObject({
+      value: { order: ['documentDate', 'title'], visible: ['documentDate'] },
+    });
   });
 });
 

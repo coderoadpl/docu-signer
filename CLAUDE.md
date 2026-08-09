@@ -96,11 +96,15 @@ rejected.)
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
   replaces the source or persists a reusable signature.
 - Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
-  timestamps (`createdAt`, `updatedAt`) never render in UI or exports. One
-  carve-out (owner decision 2026-08-02): `deletedAt` records a user action and
-  renders as `Usunięto:` in the Kosz surfaces only — nowhere else.
-- Konto: personal passkeys and two-factor authentication. Removed upstream
-  verticals stay removed.
+  timestamps (`createdAt`, `updatedAt`) never render in UI or exports. Two
+  carve-outs: `deletedAt` records a user action and renders as `Usunięto:` in
+  the Kosz surfaces only (owner decision 2026-08-02); API token `lastUsedAt` is
+  a system-written security-audit timestamp and renders as `Ostatnio użyty:` in
+  Konto > Tokeny API only — token hygiene is that surface's purpose, and it is
+  an account-security surface, not a document surface (agent decision
+  2026-08-02, recorded in FOUNDATION.md).
+- Konto: personal passkeys, API tokens and two-factor authentication. Removed
+  upstream verticals stay removed.
 
 ## Layer rules (enforced, but know them anyway)
 

@@ -4,7 +4,11 @@ import { createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js'
 import {
   changePasswordMutation,
   configQuery,
+  approveDocumentMutation,
+  apiTokensInvalidates,
+  apiTokensQuery,
   createApiClient,
+  createApiTokenMutation,
   createDocumentMutation,
   createSavedSearchMutation,
   deleteDocumentFileMutation,
@@ -26,6 +30,7 @@ import {
   passkeysQuery,
   registerPasskeyMutation,
   removePasskeyMutation,
+  revokeApiTokenMutation,
   purgeDocumentMutation,
   requestFileUploadMutation,
   requestMagicLinkMutation,
@@ -39,8 +44,11 @@ import {
   signInSocialMutation,
   signOutMutation,
   signUpMutation,
+  setUserPreferenceMutation,
   updateDocumentMutation,
   uploadDocumentFileMutation,
+  userPreferenceInvalidates,
+  userPreferenceQuery,
   verifyTotpMutation,
   trashedDocumentsQuery,
 } from '#core/client/index.js';
@@ -67,6 +75,7 @@ export const actions = {
     documentFileQuery(apiClient, documentId, fileId),
   createDocument: createDocumentMutation(apiClient),
   updateDocument: updateDocumentMutation(apiClient),
+  approveDocument: approveDocumentMutation(apiClient),
   deleteDocument: deleteDocumentMutation(apiClient),
   restoreDocument: restoreDocumentMutation(apiClient),
   purgeDocument: purgeDocumentMutation(apiClient),
@@ -96,6 +105,19 @@ export const actions = {
   registerPasskey: registerPasskeyMutation(authClient),
   removePasskey: removePasskeyMutation(authClient),
   signInPasskey: signInPasskeyMutation(authClient),
+};
+
+export const apiTokenActions = {
+  apiTokens: apiTokensQuery(apiClient),
+  createApiToken: createApiTokenMutation(apiClient),
+  revokeApiToken: revokeApiTokenMutation(apiClient),
+  apiTokensInvalidates,
+};
+
+export const preferenceActions = {
+  userPreference: (key: string) => userPreferenceQuery(apiClient, key),
+  setUserPreference: setUserPreferenceMutation(apiClient),
+  userPreferenceInvalidates,
 };
 
 export const savedSearchActions = {

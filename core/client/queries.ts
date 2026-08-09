@@ -10,6 +10,7 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
+  CreateApiToken,
   CreateSavedSearch,
   CreateDocument,
   DocumentListFilter,
@@ -17,6 +18,7 @@ import type {
   FileUploadRequest,
   FinalizeFileUpload,
   MoveDocumentFile,
+  SetUserPreference,
   UpdateDocument,
 } from '#core/domain/index.js';
 
@@ -116,6 +118,16 @@ const savedSearchScopes = {
   lists: () => ['saved-searches', 'list'] as const,
 };
 
+const apiTokenScopes = {
+  all: () => ['api-tokens'] as const,
+  lists: () => ['api-tokens', 'list'] as const,
+};
+
+const userPreferenceScopes = {
+  all: () => ['user-preferences'] as const,
+  detail: (key: string) => ['user-preferences', key] as const,
+};
+
 const authScopes = {
   all: () => ['auth'] as const,
 };
@@ -182,6 +194,12 @@ export const updateDocumentMutation = (api: ApiClient) =>
     mutationKey: [...documentsScopes.all(), 'update'],
     call: ({ documentId, input }: { documentId: string; input: UpdateDocument }) =>
       api.updateDocument(documentId, input),
+  });
+
+export const approveDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'approve'],
+    call: (documentId: string) => api.approveDocument(documentId),
   });
 
 export const deleteDocumentMutation = (api: ApiClient) =>
@@ -282,6 +300,43 @@ export const deleteSavedSearchMutation = (api: ApiClient) =>
   });
 
 export const savedSearchesInvalidates = () => ({ queryKey: savedSearchScopes.all() });
+
+export const apiTokensQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: apiTokenScopes.lists(),
+    call: ({ signal }) => api.listApiTokens(signal),
+  });
+
+export const createApiTokenMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...apiTokenScopes.all(), 'create'],
+    call: (input: CreateApiToken) => api.createApiToken(input),
+  });
+
+export const revokeApiTokenMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...apiTokenScopes.all(), 'revoke'],
+    call: (apiTokenId: string) => api.revokeApiToken(apiTokenId),
+  });
+
+export const apiTokensInvalidates = () => ({ queryKey: apiTokenScopes.all() });
+
+export const userPreferenceQuery = (api: ApiClient, key: string) =>
+  defineQuery({
+    queryKey: userPreferenceScopes.detail(key),
+    call: ({ signal }) => api.getUserPreference(key, signal),
+  });
+
+export const setUserPreferenceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...userPreferenceScopes.all(), 'set'],
+    call: ({ key, input }: { key: string; input: SetUserPreference }) =>
+      api.setUserPreference(key, input),
+  });
+
+export const userPreferenceInvalidates = (key: string) => ({
+  queryKey: userPreferenceScopes.detail(key),
+});
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any

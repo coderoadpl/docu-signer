@@ -20,6 +20,7 @@ import {
 
 import { documentTypeSchema } from '#core/domain/index.js';
 
+import { PolishDatePicker } from '../../components/ui/PolishDatePicker.js';
 import {
   DOCUMENT_TYPE_LABELS,
   emptyDocumentForm,
@@ -163,45 +164,34 @@ export const DocumentFormDialog = ({
               ))}
             </Select>
           </FormControl>
-          <TextField
+          <PolishDatePicker
             id="document-date"
             label="Data podpisania"
-            type="date"
             value={values.documentDate}
-            onChange={(event) => field('documentDate', event.target.value)}
+            onChange={(value) => field('documentDate', value)}
+            required
             error={Boolean(fieldErrors.documentDate)}
             helperText={fieldErrors.documentDate}
             inputRef={dateInput}
-            slotProps={{
-              inputLabel: { shrink: true },
-              htmlInput: {
-                'aria-describedby': fieldErrors.documentDate
-                  ? 'document-date-helper-text'
-                  : undefined,
-              },
-              formHelperText: { id: 'document-date-helper-text' },
-            }}
+            describedBy={fieldErrors.documentDate ? 'document-date-helper-text' : undefined}
           />
           <Accordion variant="outlined" disableGutters>
             <AccordionSummary>Okres</AccordionSummary>
             <AccordionDetails>
               <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 2 }}>
-                <TextField
+                <PolishDatePicker
                   label="Od"
-                  type="date"
                   value={values.periodStart}
-                  onChange={(event) => field('periodStart', event.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
+                  onChange={(value) => field('periodStart', value)}
                   sx={{ flex: 1 }}
                 />
-                <TextField
+                <PolishDatePicker
                   label="Do"
-                  type="date"
                   value={values.periodEnd}
-                  onChange={(event) => field('periodEnd', event.target.value)}
+                  onChange={(value) => field('periodEnd', value)}
                   error={Boolean(fieldErrors.periodEnd)}
                   helperText={fieldErrors.periodEnd}
-                  slotProps={{ inputLabel: { shrink: true } }}
+                  describedBy={fieldErrors.periodEnd ? 'document-period-end-helper-text' : undefined}
                   sx={{ flex: 1 }}
                 />
               </Stack>

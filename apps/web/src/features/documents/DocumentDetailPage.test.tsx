@@ -407,6 +407,32 @@ describe('DocumentDetailPage', () => {
     expect(screen.getAllByText('Brak plików w tej sekcji.')).toHaveLength(4);
   });
 
+  it('approves a draft document from the banner action', async () => {
+    const approve = vi.fn();
+    let currentDocument = { ...document, draft: true };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document: currentDocument } }),
+      ),
+      http.post(`/api/documents/${DOCUMENT_ID}/approve`, () => {
+        approve();
+        currentDocument = { ...document, draft: false };
+        return HttpResponse.json({ ok: true, data: { document: currentDocument } });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByText('Szkic')).toBeInTheDocument();
+    expect(screen.getByText(/czeka na zatwierdzenie/u)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Zatwierdź' }));
+
+    await waitFor(() => expect(approve).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.queryByText(/czeka na zatwierdzenie/u)).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('button', { name: 'Zatwierdź' })).not.toBeInTheDocument();
+  });
+
   it('renders a trashed document as read-only with restore and purge actions', async () => {
     const restore = vi.fn();
     const purge = vi.fn();

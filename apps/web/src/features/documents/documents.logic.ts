@@ -57,6 +57,7 @@ export interface DocumentFilterValues {
   dateFrom: string;
   dateTo: string;
   signatureStatus: DocumentSignatureStatus | '';
+  draft: 'false' | 'true' | 'all';
 }
 
 export const emptyDocumentFilters = (): DocumentFilterValues => ({
@@ -67,6 +68,7 @@ export const emptyDocumentFilters = (): DocumentFilterValues => ({
   dateFrom: '',
   dateTo: '',
   signatureStatus: '',
+  draft: 'false',
 });
 
 export const emptyDocumentForm = (): DocumentFormValues => ({
@@ -115,6 +117,7 @@ export const toDocumentFilter = (values: {
   dateFrom: string;
   dateTo: string;
   signatureStatus: DocumentSignatureStatus | '';
+  draft: 'false' | 'true' | 'all';
 }): DocumentListFilter => ({
   ...(values.text.trim() ? { text: values.text.trim() } : {}),
   ...(values.docType ? { docType: values.docType } : {}),
@@ -123,6 +126,7 @@ export const toDocumentFilter = (values: {
   ...(values.dateFrom ? { dateFrom: values.dateFrom } : {}),
   ...(values.dateTo ? { dateTo: values.dateTo } : {}),
   ...(values.signatureStatus ? { signatureStatus: values.signatureStatus } : {}),
+  ...(values.draft === 'false' ? {} : { draft: values.draft }),
 });
 
 export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilterValues => ({
@@ -133,6 +137,7 @@ export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilte
   dateFrom: filter.dateFrom ?? '',
   dateTo: filter.dateTo ?? '',
   signatureStatus: filter.signatureStatus ?? '',
+  draft: filter.draft ?? 'false',
 });
 
 export const hasDocumentFilter = (filter: DocumentListFilter): boolean =>
@@ -149,6 +154,8 @@ export const documentFilterSummary = (filter: SavedSearchFilter): string => {
     filter.signatureStatus
       ? `Status podpisu: ${SIGNATURE_STATUS_LABELS[filter.signatureStatus]}`
       : '',
+    filter.draft === 'true' ? 'Szkice: tylko szkice' : '',
+    filter.draft === 'all' ? 'Szkice: razem z zatwierdzonymi' : '',
   ].filter(Boolean);
   return parts.length ? parts.join(' · ') : 'Wszystkie dokumenty';
 };

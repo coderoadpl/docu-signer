@@ -16,6 +16,8 @@ import {
   finalizeFileUploadInputSchema,
   savedSearchCreateInputSchema,
   serverUploadMetadataSchema,
+  userPreferenceKeyInputSchema,
+  userPreferenceSetInputSchema,
 } from '#core/contract/index.js';
 import {
   err,
@@ -39,6 +41,7 @@ import {
   getDocument,
   getFileContent,
   getFileExport,
+  getUserPreference,
   listDocuments,
   listApiTokens,
   listTrashedDocuments,
@@ -52,6 +55,7 @@ import {
   revokeApiToken,
   requestFileUpload,
   serverUpload,
+  setUserPreference,
   updateDocument,
   type Ctx,
 } from '#core/server/index.js';
@@ -257,6 +261,34 @@ export const buildApp = (deps: AppDeps) => {
             : null,
       }),
     );
+  });
+
+  app.get(API_ROUTES.userPreference.path, async (c) => {
+    const parsed = userPreferenceKeyInputSchema.safeParse(c.req.param('key'));
+    if (!parsed.success) {
+      return respond(err(validation('Invalid preference key', parsed.error.flatten())));
+    }
+    const result = await getUserPreference(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result.ok ? ok({ preference: result.value }) : result);
+  });
+
+  app.put(API_ROUTES.userPreferenceSet.path, async (c) => {
+    const parsedKey = userPreferenceKeyInputSchema.safeParse(c.req.param('key'));
+    if (!parsedKey.success) {
+      return respond(err(validation('Invalid preference key', parsedKey.error.flatten())));
+    }
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsedBody = userPreferenceSetInputSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return respond(err(validation('Invalid preference value', parsedBody.error.flatten())));
+    }
+    const result = await setUserPreference(
+      ctxOf(c.get('identity')),
+      parsedKey.data,
+      parsedBody.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ preference: result.value }) : result);
   });
 
   app.get(API_PATHS.documents, async (c) => {

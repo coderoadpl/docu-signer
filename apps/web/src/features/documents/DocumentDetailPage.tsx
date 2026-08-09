@@ -381,6 +381,12 @@ export const DocumentDetailPage = ({
       await queryClient.invalidateQueries(actions.documentsInvalidates());
     },
   });
+  const approveDocument = useMutation({
+    ...actions.approveDocument,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+    },
+  });
   const deleteDocument = useMutation({
     ...actions.deleteDocument,
     onSuccess: async () => {
@@ -452,6 +458,7 @@ export const DocumentDetailPage = ({
 
   const document = documentQuery.data.document;
   const isTrashed = document.deletedAt !== null;
+  const isDraft = document.draft;
   const grouped = filesByRole(document.files);
   const personOptions = uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]);
   const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
@@ -510,6 +517,7 @@ export const DocumentDetailPage = ({
               variant="outlined"
               label={DOCUMENT_TYPE_LABELS[document.docType]}
             />
+            {isDraft ? <Chip color="warning" label="Szkic" /> : null}
           </Stack>
           <Stack sx={{ mt: 1.5, gap: 0.5 }}>
             <Typography variant="body2" color="text.secondary">
@@ -556,6 +564,15 @@ export const DocumentDetailPage = ({
             </>
           ) : (
             <>
+              {isDraft ? (
+                <Button
+                  variant="contained"
+                  disabled={approveDocument.isPending}
+                  onClick={() => approveDocument.mutate(documentId)}
+                >
+                  Zatwierdź
+                </Button>
+              ) : null}
               <Button variant="contained" onClick={() => setEditOpen(true)}>
                 Edytuj
               </Button>
@@ -572,6 +589,16 @@ export const DocumentDetailPage = ({
           W koszu. Dokument można przywrócić albo usunąć trwale. Podgląd,
           pobieranie, podpisywanie, edycja, eksport i wgrywanie plików są
           wyłączone.
+        </Alert>
+      ) : null}
+      {!isTrashed && isDraft ? (
+        <Alert severity="info" sx={{ mt: 3 }}>
+          Szkic. Dokument jest widoczny w filtrze szkiców i czeka na zatwierdzenie.
+        </Alert>
+      ) : null}
+      {approveDocument.isError ? (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {approveDocument.error.message}
         </Alert>
       ) : null}
       {restoreDocument.isError ? (

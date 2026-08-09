@@ -16,6 +16,7 @@ import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
 import { createLocalFsStorage } from '#adapters/storage/local-fs.js';
 import { createVercelBlobStorage } from '#adapters/storage/vercel-blob.js';
+import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import type {
   AuthPort,
   ApiTokenRepository,
@@ -29,6 +30,7 @@ import type {
   TenantAccessReader,
   TenantDomainRepository,
   TenantRepository,
+  UserPreferenceRepository,
 } from '#core/server/index.js';
 
 import type { Env } from './env.js';
@@ -40,6 +42,7 @@ export interface AppDeps {
   apiTokenSecrets: ApiTokenSecretPort;
   documents: DocumentRepository;
   savedSearches: SavedSearchRepository;
+  userPreferences: UserPreferenceRepository;
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
@@ -163,6 +166,7 @@ export const createDeps = (env: Env): AppDeps => {
     apiTokenSecrets: createApiTokenSecrets(),
     documents: createDocumentRepository(db),
     savedSearches: createSavedSearchRepository(db),
+    userPreferences: createUserPreferenceRepository(db),
     storage,
     tenantDomains,
     email,

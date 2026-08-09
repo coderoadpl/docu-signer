@@ -32,6 +32,8 @@ import {
   savedSearchCreateOutputSchema,
   savedSearchDeleteOutputSchema,
   savedSearchListOutputSchema,
+  userPreferenceGetOutputSchema,
+  userPreferenceSetOutputSchema,
   type HttpMethod,
   type ReadMethod,
   type WriteMethod,
@@ -50,6 +52,7 @@ import {
   type FinalizeFileUpload,
   type MoveDocumentFile,
   type Result,
+  type SetUserPreference,
   type UpdateDocument,
 } from '#core/domain/index.js';
 
@@ -470,6 +473,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       pathWith(API_ROUTES.apiTokenRevoke.path, { apiTokenId }),
       apiTokenRevokeOutputSchema,
       {},
+      signal,
+    ),
+  getUserPreference: (key: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.userPreference.method,
+      pathWith(API_ROUTES.userPreference.path, { key }),
+      userPreferenceGetOutputSchema,
+      undefined,
+      signal,
+    ),
+  setUserPreference: (key: string, input: SetUserPreference, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.userPreferenceSet.method,
+      pathWith(API_ROUTES.userPreferenceSet.path, { key }),
+      userPreferenceSetOutputSchema,
+      input,
       signal,
     ),
   documentFileContentUrl: (documentId: string, fileId: string) =>

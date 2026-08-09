@@ -633,8 +633,9 @@ accepts human input while only one canonical form is ever persisted or resolved.
 answers *which* tenant and *whether* the caller has archive access; authorization answers
 *what* they may do there, and the two are separate steps. The capability model
 lives in `core/domain/authorization.ts`: a closed `Capability` union containing
-`document:read`, `document:write`, `document:approve`, `api-token:manage` and
-`saved-search:manage`, and a pure `decide(identity, capability)` predicate over
+`document:read`, `document:write`, `document:approve`, `api-token:manage`,
+`saved-search:manage` and `user-preference:manage`, and a pure
+`decide(identity, capability)` predicate over
 **owner**, **admin** and **visitor**. The policy is a
 `Record<Capability, Principal[]>` grant table: a capability names exactly the
 principals that hold it and **nothing is granted by wildcard** — a principal
@@ -647,6 +648,7 @@ absent from a capability's list is denied.
 | `document:approve`    | allow | allow | deny                  |
 | `api-token:manage`    | allow | allow | deny                  |
 | `saved-search:manage` | allow | allow | deny                  |
+| `user-preference:manage` | allow | allow | deny               |
 
 Personal API tokens resolve from `Authorization: Bearer pat_...` before session
 auth. A valid token becomes the owning user's identity plus an `apiToken` scope
@@ -655,7 +657,8 @@ intersects the token scopes. `read` grants only document list/show/file/export
 reads. `write` grants document write operations except document/file deletion
 and approval. `write:draft` grants document writes only where the operation creates
 or targets a draft document. Token management, account/auth identity, saved
-search management, approval and all deletes are session-only.
+search management, user-preference management, approval and all deletes are
+session-only.
 
 **One line per use-case.** Every tenant-scoped use-case runs the predicate — via
 the `authorize` / `authorizeTenant` helpers in `core/server` — as its first

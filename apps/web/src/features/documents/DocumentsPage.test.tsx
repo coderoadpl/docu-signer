@@ -62,6 +62,20 @@ const renderPage = async () => {
   return { router, ...renderWithProviders(<RouterProvider router={router} />) };
 };
 
+const dateField = (container: HTMLElement, name: string) =>
+  within(container).getByRole('group', { name: new RegExp(name, 'u') });
+
+const pasteDate = async (field: HTMLElement, value: string) => {
+  await userEvent.click(field);
+  await userEvent.paste(value);
+  await waitFor(() => expect(field).toHaveTextContent(value));
+};
+
+const clearDateWithButton = async (field: HTMLElement) => {
+  await userEvent.click(within(field).getByRole('button', { name: 'Wyczyść' }));
+  await waitFor(() => expect(field).toHaveTextContent('DD.MM.YYYY'));
+};
+
 describe('DocumentsPage', () => {
   it('renders server-filtered documents', async () => {
     const seen = vi.fn();
@@ -111,14 +125,23 @@ describe('DocumentsPage', () => {
         },
       ],
     };
+    const draft = {
+      ...document,
+      id: '55555555-5555-4555-8555-555555555555',
+      title: 'Szkic importu',
+      draft: true,
+    };
     server.use(
       http.get('/api/documents', ({ request }) => {
         const params = new URL(request.url).searchParams;
         seen(Object.fromEntries(params.entries()));
+        if (params.get('draft') === 'true') {
+          return HttpResponse.json({ ok: true, data: { documents: [draft] } });
+        }
         if (params.get('signatureStatus') === 'signed') {
           return HttpResponse.json({ ok: true, data: { documents: [signed] } });
         }
-        return HttpResponse.json({ ok: true, data: { documents: [document, signed] } });
+        return HttpResponse.json({ ok: true, data: { documents: [document, signed, draft] } });
       }),
     );
     await renderPage();
@@ -149,6 +172,19 @@ describe('DocumentsPage', () => {
         person: 'Anna Nowak',
         tag: 'podpisane',
         signatureStatus: 'signed',
+      }),
+    );
+
+    await userEvent.click(screen.getByLabelText('Szkice'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Tylko szkice' }));
+    expect((await screen.findAllByText('Szkic importu')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Szkic').length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        person: 'Anna Nowak',
+        tag: 'podpisane',
+        signatureStatus: 'signed',
+        draft: 'true',
       }),
     );
   });
@@ -231,7 +267,7 @@ describe('DocumentsPage', () => {
     );
 
     expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
-    expect(requests).toHaveBeenCalledTimes(2);
+    expect(requests).toHaveBeenCalledTimes(3);
   });
 
   it('enables bulk export as documents are selected', async () => {
@@ -279,6 +315,182 @@ describe('DocumentsPage', () => {
     ).toBeEnabled();
   });
 
+  it('persists column visibility and order and filters from tag chips', async () => {
+    const seen = vi.fn();
+    const saved = vi.fn();
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen(Object.fromEntries(params.entries()));
+        return HttpResponse.json({ ok: true, data: { documents: [document] } });
+      }),
+      http.get('/api/me/preferences/documents.columns', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            preference: {
+              userId: 'user-1',
+              key: 'documents.columns',
+              value: {
+                order: ['title', 'tags', 'files'],
+                visible: ['title', 'tags'],
+              },
+              updatedAt: '2026-08-02T10:00:00.000Z',
+            },
+          },
+        }),
+      ),
+      http.put('/api/me/preferences/documents.columns', async ({ request }) => {
+        const body = await request.json();
+        saved(body);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            preference: {
+              userId: 'user-1',
+              key: 'documents.columns',
+              value: typeof body === 'object' && body && 'value' in body ? body.value : null,
+              updatedAt: '2026-08-02T10:05:00.000Z',
+            },
+          },
+        });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByRole('columnheader', { name: 'Tagi' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Data podpisania' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText('ważne'));
+    await waitFor(() => expect(seen).toHaveBeenCalledWith({ tag: 'ważne' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Kolumny' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Pliki' }));
+    await waitFor(() =>
+      expect(saved).toHaveBeenCalledWith({
+        value: {
+          order: [
+            'title',
+            'tags',
+            'files',
+            'documentDate',
+            'docType',
+            'person',
+            'period',
+            'signatureStatus',
+            'draft',
+          ],
+          visible: ['title', 'tags', 'files'],
+        },
+      }),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Przesuń w górę: Tagi' }));
+    await waitFor(() =>
+      expect(saved).toHaveBeenLastCalledWith({
+        value: {
+          order: [
+            'tags',
+            'title',
+            'files',
+            'documentDate',
+            'docType',
+            'person',
+            'period',
+            'signatureStatus',
+            'draft',
+          ],
+          visible: ['title', 'tags', 'files'],
+        },
+      }),
+    );
+  });
+
+  it('shows bulk progress and summarizes partial failures', async () => {
+    const updates = vi.fn();
+    const releaseFirst: { current: (() => void) | null } = { current: null };
+    const firstUpdate = new Promise<void>((resolve) => {
+      releaseFirst.current = resolve;
+    });
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              document,
+              {
+                ...document,
+                id: '22222222-2222-4222-8222-222222222222',
+                title: 'Uchwała zarządu',
+              },
+            ],
+          },
+        }),
+      ),
+      http.patch('/api/documents/:id', async ({ params, request }) => {
+        updates(params.id, await request.json());
+        if (params.id === DOCUMENT_ID) {
+          await firstUpdate;
+          return HttpResponse.json({ ok: true, data: { document } });
+        }
+        return HttpResponse.json(
+          { ok: false, error: { code: 'internal', message: 'Błąd zapisu' } },
+          { status: 500 },
+        );
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Uchwała zarządu');
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Umowa z Anną' }).at(0) ??
+        screen.getByLabelText('Zaznacz dokument: Umowa z Anną'),
+    );
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Uchwała zarządu' }).at(0) ??
+        screen.getByLabelText('Zaznacz dokument: Uchwała zarządu'),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Ustaw osobę' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ustaw osobę' });
+    expect(within(dialog).getByText('Nadpiszesz osobę w 2 dokumentach.')).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole('combobox', { name: 'Osoba' }), 'Jan Kowalski');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Zastosuj' }));
+
+    expect(await screen.findByLabelText('Postęp operacji zbiorczej')).toBeInTheDocument();
+    if (!releaseFirst.current) throw new Error('Missing pending update release');
+    releaseFirst.current();
+    expect(
+      await screen.findByText('Operacje zbiorcze: 1 zmieniono, 1 błędów.'),
+    ).toBeInTheDocument();
+    expect(updates).toHaveBeenCalledWith(
+      DOCUMENT_ID,
+      expect.objectContaining({ person: 'Jan Kowalski' }),
+    );
+  });
+
+  it('opens the row overflow menu and moves a document to trash', async () => {
+    const remove = vi.fn();
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+      http.delete('/api/documents/:id', ({ params }) => {
+        remove(params.id);
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Więcej akcji dla dokumentu Umowa z Anną' }),
+    );
+    expect(screen.getByRole('menuitem', { name: 'Otwórz' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Do kosza' }));
+
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(DOCUMENT_ID));
+  });
+
   it('saves, applies and deletes teczki presets', async () => {
     const seen = vi.fn();
     const savedCreate = vi.fn();
@@ -287,7 +499,7 @@ describe('DocumentsPage', () => {
       id: '33333333-3333-4333-8333-333333333333',
       tenantId: 'tenant-1',
       name: 'Odbiór',
-      filter: { tag: 'odbiór', signatureStatus: 'signed' },
+      filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
       createdAt: '2026-08-01T00:00:00.000Z',
     };
     let savedSearches: Array<typeof savedSearch> = [];
@@ -340,10 +552,12 @@ describe('DocumentsPage', () => {
     });
     await userEvent.click(screen.getByLabelText('Status podpisu'));
     await userEvent.click(await screen.findByRole('option', { name: 'Podpisane' }));
+    await userEvent.click(screen.getByLabelText('Szkice'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Wszystkie' }));
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz teczkę' }));
     const dialog = await screen.findByRole('dialog', { name: 'Zapisz teczkę' });
     expect(
-      within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane'),
+      within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane · Szkice: razem z zatwierdzonymi'),
     ).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Nazwa'), {
       target: { value: 'Odbiór' },
@@ -353,7 +567,7 @@ describe('DocumentsPage', () => {
     await waitFor(() =>
       expect(savedCreate).toHaveBeenCalledWith({
         name: 'Odbiór',
-        filter: { tag: 'odbiór', signatureStatus: 'signed' },
+        filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
       }),
     );
     await waitFor(() =>
@@ -364,7 +578,7 @@ describe('DocumentsPage', () => {
     });
     await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
     expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
-    expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane')).toBeInTheDocument();
+    expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane · Szkice: razem z zatwierdzonymi')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('heading', { name: 'Odbiór' }));
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
@@ -372,6 +586,7 @@ describe('DocumentsPage', () => {
       expect(seen).toHaveBeenCalledWith({
         tag: 'odbiór',
         signatureStatus: 'signed',
+        draft: 'all',
       }),
     );
 
@@ -590,12 +805,23 @@ describe('DocumentsPage', () => {
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Tytuł' }), {
       target: { value: 'Nowy dokument' },
     });
-    expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('');
+    expect(dateField(dialog, 'Data podpisania')).toHaveTextContent('DD.MM.YYYY');
     await userEvent.click(within(dialog).getByText('Okres'));
-    fireEvent.change(within(dialog).getByLabelText('Od'), {
-      target: { value: '2026-07-01' },
-    });
-    expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('2026-07-01');
+    const periodStart = dateField(dialog, 'Od');
+    const periodEnd = dateField(dialog, 'Do');
+    await pasteDate(periodStart, '01.07.2026');
+    expect(dateField(dialog, 'Data podpisania')).toHaveTextContent('01.07.2026');
+    await pasteDate(periodEnd, '30.06.2026');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
+    );
+    expect(
+      within(dialog).getByText(
+        'Data końcowa nie może być wcześniejsza niż początkowa',
+      ),
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+    await clearDateWithButton(periodEnd);
     fireEvent.change(within(dialog).getByRole('combobox', { name: 'Osoba' }), {
       target: { value: 'Anna Nowak' },
     });
@@ -645,12 +871,10 @@ describe('DocumentsPage', () => {
     expect(title).toHaveAccessibleDescription('Tytuł jest wymagany');
 
     fireEvent.change(title, { target: { value: 'Nowy dokument' } });
-    const date = within(dialog).getByLabelText('Data podpisania');
-    fireEvent.change(date, { target: { value: '' } });
+    const date = dateField(dialog, 'Data podpisania');
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );
-    expect(date).toHaveFocus();
     expect(date).toHaveAccessibleDescription('Data podpisania jest wymagana');
   });
 });
