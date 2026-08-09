@@ -4,6 +4,16 @@ export interface InkPoint {
   pressure: number;
 }
 
+interface PointerInkSample {
+  clientX: number;
+  clientY: number;
+  pressure: number;
+}
+
+export interface PointerInkEvent extends PointerInkSample {
+  getCoalescedEvents?: () => readonly PointerInkSample[];
+}
+
 export interface InkStroke {
   points: InkPoint[];
 }
@@ -34,6 +44,8 @@ export interface PdfInkSegment {
   path: string;
   width: number;
 }
+
+export type SigningGestureMode = 'draw' | 'pan';
 
 export type SigningInkColorId = 'black' | 'navy';
 
@@ -68,11 +80,13 @@ export const DEFAULT_SIGNING_INK_COLOR = SIGNING_INK_COLORS[0];
 export const signingInkColorById = (id: SigningInkColorId): SigningInkColor =>
   SIGNING_INK_COLORS.find((color) => color.id === id) ?? DEFAULT_SIGNING_INK_COLOR;
 
-interface SmoothedSegment {
+export interface SmoothedSegment {
   start: InkPoint;
   control: InkPoint;
   end: InkPoint;
 }
+
+const SIGNING_PEN_PRIORITY_MS = 500;
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
   Math.min(maximum, Math.max(minimum, value));
@@ -102,6 +116,75 @@ export const pointerToInkPoint = (
     y: clamp((clientY - bounds.top) / bounds.height, 0, 1),
     pressure: pressure > 0 ? clamp(pressure, 0.1, 1) : 0.5,
   };
+};
+
+export const pointerEventToInkPoints = (
+  event: PointerInkEvent,
+  bounds: { left: number; top: number; width: number; height: number },
+): InkPoint[] => {
+  const coalesced = event.getCoalescedEvents?.() ?? [];
+  const samples = coalesced.length > 0 ? coalesced : [event];
+  return samples.map((sample) =>
+    pointerToInkPoint(sample.clientX, sample.clientY, sample.pressure, bounds),
+  );
+};
+
+export const defaultSigningGestureMode = ({
+  coarsePointer,
+  maxTouchPoints,
+}: {
+  coarsePointer: boolean;
+  maxTouchPoints: number;
+}): SigningGestureMode =>
+  coarsePointer || maxTouchPoints > 0 ? 'pan' : 'draw';
+
+export const isPalmSizedTouch = ({
+  height,
+  pointerType,
+  width,
+}: {
+  height: number;
+  pointerType: string;
+  width: number;
+}): boolean =>
+  pointerType === 'touch' &&
+  (width >= 45 || height >= 45 || width * height >= 1400);
+
+export const penPriorityActive = ({
+  activePenPointerId,
+  lastPenSeenAt,
+  now,
+}: {
+  activePenPointerId: number | undefined;
+  lastPenSeenAt: number | undefined;
+  now: number;
+}): boolean =>
+  activePenPointerId !== undefined ||
+  (lastPenSeenAt !== undefined &&
+    now >= lastPenSeenAt &&
+    now - lastPenSeenAt <= SIGNING_PEN_PRIORITY_MS);
+
+export const documentPointerDrawsInk = ({
+  fingerDrawing,
+  mode,
+  penPriority,
+  pointer,
+}: {
+  fingerDrawing: boolean;
+  mode: SigningGestureMode;
+  penPriority: boolean;
+  pointer: {
+    height: number;
+    pointerType: string;
+    width: number;
+  };
+}): boolean => {
+  if (mode !== 'draw') return false;
+  if (pointer.pointerType === 'pen') return true;
+  if (pointer.pointerType === 'touch') {
+    return fingerDrawing && !penPriority && !isPalmSizedTouch(pointer);
+  }
+  return true;
 };
 
 export const smoothStroke = (stroke: InkStroke): SmoothedSegment[] => {
@@ -199,6 +282,19 @@ export const createSigningStamp = ({
   inkColor,
   placement: { ...placement },
 });
+
+export const centeredInkPlacement = (
+  strokes: InkStroke[],
+  scale = 1,
+): SignaturePlacement => {
+  const bounds = inkBounds(strokes);
+  if (!bounds) return { offsetX: 0, offsetY: 0, scale };
+  return {
+    offsetX: 0.5 - (bounds.left + bounds.right) / 2,
+    offsetY: 0.5 - (bounds.top + bounds.bottom) / 2,
+    scale,
+  };
+};
 
 export const appendSigningStamp = (
   stamps: readonly SigningStamp[],

@@ -3,9 +3,16 @@ import { describe, expect, it } from 'vitest';
 import {
   appendSigningStamp,
   canvasCssPointToPdf,
+  centeredInkPlacement,
   createSigningStamp,
+  defaultSigningGestureMode,
+  documentPointerDrawsInk,
   inkToPdfSegments,
+  isPalmSizedTouch,
   placeInkPoint,
+  penPriorityActive,
+  placedInkBounds,
+  pointerEventToInkPoints,
   removeSigningStamp,
   pointerToInkPoint,
   signingStampContainsPoint,
@@ -91,6 +98,194 @@ describe('pen signing geometry', () => {
     expect(smoothStroke({ points: [] })).toEqual([]);
   });
 
+  it('uses the same quadratic curve geometry for PDF paths', () => {
+    const segments = inkToPdfSegments(
+      [
+        {
+          points: [
+            { x: 0, y: 0, pressure: 0.2 },
+            { x: 0.5, y: 0.6, pressure: 0.6 },
+            { x: 1, y: 0.2, pressure: 1 },
+          ],
+        },
+      ],
+      { offsetX: 0, offsetY: 0, scale: 1 },
+      {
+        cssWidth: 100,
+        cssHeight: 100,
+        backingWidth: 100,
+        backingHeight: 100,
+        devicePixelRatio: 1,
+        viewportTransform: [1, 0, 0, -1, 0, 100],
+      },
+    );
+
+    expect(segments.map((segment) => segment.path)).toEqual([
+      'M 0 -100 Q 50 -40 75 -60',
+      'M 75 -60 Q 100 -80 100 -80',
+    ]);
+  });
+
+  it('expands coalesced pointer samples into normalized ink points', () => {
+    expect(
+      pointerEventToInkPoints(
+        {
+          clientX: 0,
+          clientY: 0,
+          pressure: 0.1,
+          getCoalescedEvents: () => [
+            { clientX: 10, clientY: 20, pressure: 0.2 },
+            { clientX: 30, clientY: 60, pressure: 0.6 },
+          ],
+        },
+        { left: 0, top: 0, width: 100, height: 200 },
+      ),
+    ).toEqual([
+      { x: 0.1, y: 0.1, pressure: 0.2 },
+      { x: 0.3, y: 0.3, pressure: 0.6 },
+    ]);
+  });
+
+  it('falls back to the pointer event when coalesced samples are absent or empty', () => {
+    const bounds = { left: 10, top: 20, width: 100, height: 200 };
+
+    expect(
+      pointerEventToInkPoints(
+        { clientX: 60, clientY: 120, pressure: 0.4 },
+        bounds,
+      ),
+    ).toEqual([{ x: 0.5, y: 0.5, pressure: 0.4 }]);
+    expect(
+      pointerEventToInkPoints(
+        {
+          clientX: 110,
+          clientY: 220,
+          pressure: 0.6,
+          getCoalescedEvents: () => [],
+        },
+        bounds,
+      ),
+    ).toEqual([{ x: 1, y: 1, pressure: 0.6 }]);
+  });
+
+  it('defines deterministic document gesture and palm rejection rules', () => {
+    expect(
+      defaultSigningGestureMode({ coarsePointer: true, maxTouchPoints: 0 }),
+    ).toBe('pan');
+    expect(
+      defaultSigningGestureMode({ coarsePointer: false, maxTouchPoints: 2 }),
+    ).toBe('pan');
+    expect(
+      defaultSigningGestureMode({ coarsePointer: false, maxTouchPoints: 0 }),
+    ).toBe('draw');
+    expect(
+      penPriorityActive({
+        activePenPointerId: 7,
+        lastPenSeenAt: undefined,
+        now: 0,
+      }),
+    ).toBe(true);
+    expect(
+      penPriorityActive({
+        activePenPointerId: undefined,
+        lastPenSeenAt: undefined,
+        now: 450,
+      }),
+    ).toBe(false);
+    expect(
+      penPriorityActive({
+        activePenPointerId: undefined,
+        lastPenSeenAt: 500,
+        now: 450,
+      }),
+    ).toBe(false);
+    expect(
+      penPriorityActive({
+        activePenPointerId: undefined,
+        lastPenSeenAt: 100,
+        now: 600,
+      }),
+    ).toBe(true);
+    expect(
+      penPriorityActive({
+        activePenPointerId: undefined,
+        lastPenSeenAt: 100,
+        now: 601,
+      }),
+    ).toBe(false);
+    expect(
+      isPalmSizedTouch({ pointerType: 'mouse', width: 80, height: 80 }),
+    ).toBe(false);
+    expect(
+      isPalmSizedTouch({ pointerType: 'touch', width: 44, height: 31 }),
+    ).toBe(false);
+    expect(
+      isPalmSizedTouch({ pointerType: 'touch', width: 45, height: 22 }),
+    ).toBe(true);
+    expect(
+      isPalmSizedTouch({ pointerType: 'touch', width: 12, height: 45 }),
+    ).toBe(true);
+    expect(
+      isPalmSizedTouch({ pointerType: 'touch', width: 35, height: 40 }),
+    ).toBe(true);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'pan',
+        fingerDrawing: true,
+        penPriority: false,
+        pointer: { pointerType: 'pen', width: 1, height: 1 },
+      }),
+    ).toBe(false);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: false,
+        penPriority: false,
+        pointer: { pointerType: 'pen', width: 1, height: 1 },
+      }),
+    ).toBe(true);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: true,
+        penPriority: false,
+        pointer: { pointerType: 'touch', width: 12, height: 12 },
+      }),
+    ).toBe(true);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: false,
+        penPriority: false,
+        pointer: { pointerType: 'touch', width: 12, height: 12 },
+      }),
+    ).toBe(false);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: true,
+        penPriority: true,
+        pointer: { pointerType: 'touch', width: 12, height: 12 },
+      }),
+    ).toBe(false);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: true,
+        penPriority: false,
+        pointer: { pointerType: 'touch', width: 45, height: 12 },
+      }),
+    ).toBe(false);
+    expect(
+      documentPointerDrawsInk({
+        mode: 'draw',
+        fingerDrawing: false,
+        penPriority: false,
+        pointer: { pointerType: 'mouse', width: 1, height: 1 },
+      }),
+    ).toBe(true);
+  });
+
   it('inverts CSS, DPR and the unrotated PDF.js viewport transform', () => {
     const point = canvasCssPointToPdf(
       { x: 100, y: 200 },
@@ -155,6 +350,44 @@ describe('pen signing geometry', () => {
     expect(segments).toHaveLength(1);
     expect(segments[0]?.path).toBe('M 35 -147.5 Q 45 -122.5 45 -122.5');
     expect(segments[0]?.width).toBeCloseTo(3.3333);
+  });
+
+  it('renders one- and two-point strokes as PDF curve segments', () => {
+    const valid = {
+      cssWidth: 100,
+      cssHeight: 100,
+      backingWidth: 100,
+      backingHeight: 100,
+      devicePixelRatio: 1,
+      viewportTransform: [1, 0, 0, -1, 0, 100] as const,
+    };
+
+    expect(
+      inkToPdfSegments(
+        [{ points: [{ x: 0.2, y: 0.3, pressure: 0.5 }] }],
+        { offsetX: 0, offsetY: 0, scale: 1 },
+        valid,
+      ),
+    ).toEqual([
+      {
+        path: 'M 20 -70 Q 20 -70 20.01 -70',
+        width: 2.75,
+      },
+    ]);
+    expect(
+      inkToPdfSegments(
+        [
+          {
+            points: [
+              { x: 0.2, y: 0.3, pressure: 0.2 },
+              { x: 0.4, y: 0.5, pressure: 0.8 },
+            ],
+          },
+        ],
+        { offsetX: 0, offsetY: 0, scale: 1 },
+        valid,
+      )[0]?.path,
+    ).toBe('M 20 -70 Q 40 -50 40 -50');
   });
 
   it('rejects invalid canvas transforms and derives an obvious filename', () => {
@@ -234,6 +467,23 @@ describe('pen signing geometry', () => {
     ]);
   });
 
+  it('centers pad ink when converting it into a stamp placement', () => {
+    const placement = centeredInkPlacement([
+      {
+        points: [
+          { x: 0.1, y: 0.2, pressure: 0.5 },
+          { x: 0.5, y: 0.4, pressure: 0.5 },
+        ],
+      },
+    ]);
+
+    expect(placement.offsetX).toBeCloseTo(0.2);
+    expect(placement.offsetY).toBeCloseTo(0.2);
+    expect(placement.scale).toBe(1);
+    expect(centeredInkPlacement([])).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
+    expect(placedInkBounds([], { offsetX: 1, offsetY: 1, scale: 2 })).toBeUndefined();
+  });
+
   it('stamps every page, updates placement and removes individual stamps', () => {
     const stroke: InkStroke = {
       points: [
@@ -292,5 +542,11 @@ describe('pen signing geometry', () => {
     expect(signingStampContainsPoint(stamp, { x: 0.55, y: 0.35 })).toBe(true);
     expect(signingStampContainsPoint(stamp, { x: 0.51, y: 0.29 })).toBe(true);
     expect(signingStampContainsPoint(stamp, { x: 0.8, y: 0.8 })).toBe(false);
+    expect(
+      signingStampContainsPoint(
+        { ...stamp, strokes: [] },
+        { x: 0.55, y: 0.35 },
+      ),
+    ).toBe(false);
   });
 });

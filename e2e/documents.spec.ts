@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
@@ -11,13 +11,11 @@ const validPdfBuffer = async () => {
   return Buffer.from(await pdf.save());
 };
 
-const drawOnSigningSurface = async (
+const drawOnCanvas = async (
   page: Page,
+  canvas: Locator,
   points: Array<{ x: number; y: number }>,
 ) => {
-  const canvas = page.getByRole('application', {
-    name: 'Powierzchnia do rysowania podpisu',
-  });
   await expect(canvas).toBeVisible();
   const box = await canvas.boundingBox();
   if (!box) throw new Error('Missing signing surface bounds');
@@ -31,6 +29,19 @@ const drawOnSigningSurface = async (
   await page.mouse.up();
 };
 
+const useSignaturePad = async (
+  page: Page,
+  points: Array<{ x: number; y: number }>,
+) => {
+  await page.getByRole('button', { name: 'Złóż podpis' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Złóż podpis' });
+  const canvas = dialog.getByRole('application', {
+    name: 'Powierzchnia do złożenia podpisu',
+  });
+  await drawOnCanvas(page, canvas, points);
+  await dialog.getByRole('button', { name: 'Użyj podpisu' }).click();
+};
+
 const signVisiblePdf = async (page: Page) => {
   await expect(
     page.getByRole('heading', { name: 'Podpisz dokument' }),
@@ -40,22 +51,19 @@ const signVisiblePdf = async (page: Page) => {
   await expect(page.getByRole('button', { name: 'Granatowy' })).toBeVisible();
   await page.getByRole('button', { name: 'Granatowy' }).click();
 
-  await drawOnSigningSurface(page, [
+  await useSignaturePad(page, [
     { x: 0.25, y: 0.18 },
     { x: 0.35, y: 0.12 },
     { x: 0.45, y: 0.2 },
   ]);
-  await page.getByRole('button', { name: 'Przybij na tej stronie' }).click();
   await page.getByRole('button', { name: 'Następna' }).click();
   await expect(page.getByText('Strona 2 z 2')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Wyczyść' }).click();
-  await drawOnSigningSurface(page, [
+  await useSignaturePad(page, [
     { x: 0.25, y: 0.55 },
     { x: 0.45, y: 0.45 },
     { x: 0.65, y: 0.58 },
   ]);
-  await page.getByRole('button', { name: 'Przybij na tej stronie' }).click();
   const save = page.getByRole('button', { name: 'Zapisz podpisany PDF' });
   await expect(save).toBeEnabled();
   await save.click();
