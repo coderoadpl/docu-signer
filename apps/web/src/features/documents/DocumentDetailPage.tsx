@@ -85,14 +85,18 @@ const ConfirmDialog = ({
   open,
   title,
   text,
+  confirmLabel = 'Usuń',
   pending,
+  color = 'error',
   onCancel,
   onConfirm,
 }: {
   open: boolean;
   title: string;
   text: string;
+  confirmLabel?: string;
   pending: boolean;
+  color?: 'primary' | 'error';
   onCancel: () => void;
   onConfirm: () => void;
 }) => (
@@ -107,11 +111,11 @@ const ConfirmDialog = ({
       </Button>
       <Button
         variant="contained"
-        color="error"
+        color={color}
         onClick={onConfirm}
         disabled={pending}
       >
-        Usuń
+        {confirmLabel}
       </Button>
     </DialogActions>
   </Dialog>
@@ -120,12 +124,14 @@ const ConfirmDialog = ({
 const FileRow = ({
   documentId,
   file,
+  readOnly = false,
   onSign,
   onMove,
   onDelete,
 }: {
   documentId: string;
   file: DocumentFile;
+  readOnly?: boolean;
   onSign: (file: DocumentFile) => void;
   onMove: (file: DocumentFile) => void;
   onDelete: (file: DocumentFile) => void;
@@ -166,30 +172,36 @@ const FileRow = ({
         direction="row"
         sx={{ alignItems: 'center', flexShrink: 0, gap: 0.5 }}
       >
-        <Tooltip title="Podgląd" describeChild disableInteractive>
-          <IconButton
-            aria-label={`Podgląd pliku ${file.fileName}`}
-            component="a"
-            href={contentUrl}
-            target="_blank"
-            rel="noreferrer"
-            size="small"
-          >
-            <VisibilityIcon />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Pobierz" describeChild disableInteractive>
-          <IconButton
-            aria-label={`Pobierz plik ${file.fileName}`}
-            component="a"
-            href={contentUrl}
-            download={file.fileName}
-            size="small"
-          >
-            <DownloadIcon />
-          </IconButton>
-        </Tooltip>
-        {canSignPdfFile(file) ? (
+        {readOnly ? (
+          <Chip size="small" variant="outlined" label={FILE_ROLE_LABELS[file.role]} />
+        ) : (
+          <>
+            <Tooltip title="Podgląd" describeChild disableInteractive>
+              <IconButton
+                aria-label={`Podgląd pliku ${file.fileName}`}
+                component="a"
+                href={contentUrl}
+                target="_blank"
+                rel="noreferrer"
+                size="small"
+              >
+                <VisibilityIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Pobierz" describeChild disableInteractive>
+              <IconButton
+                aria-label={`Pobierz plik ${file.fileName}`}
+                component="a"
+                href={contentUrl}
+                download={file.fileName}
+                size="small"
+              >
+                <DownloadIcon />
+              </IconButton>
+            </Tooltip>
+          </>
+        )}
+        {!readOnly && canSignPdfFile(file) ? (
           <Button
             variant="contained"
             size="small"
@@ -198,44 +210,48 @@ const FileRow = ({
             Podpisz
           </Button>
         ) : null}
-        <IconButton
-          aria-label={`Więcej akcji dla pliku ${file.fileName}`}
-          aria-controls={menuAnchor ? `file-actions-${file.id}` : undefined}
-          aria-haspopup="menu"
-          aria-expanded={menuAnchor ? true : undefined}
-          onClick={(event) => setMenuAnchor(event.currentTarget)}
-          size="small"
-          title="Więcej"
-        >
-          <MoreVertIcon />
-        </IconButton>
-        <Menu
-          id={`file-actions-${file.id}`}
-          anchorEl={menuAnchor}
-          open={Boolean(menuAnchor)}
-          onClose={closeMenu}
-          slotProps={{
-            transition: { onExited: handleMenuExited },
-          }}
-        >
-          <MenuItem component="a" href={exportUrl} onClick={closeMenu}>
-            Eksportuj
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              runAfterMenuClose(() => onMove(file));
-            }}
-          >
-            Przenieś do nowego dokumentu
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              runAfterMenuClose(() => onDelete(file));
-            }}
-          >
-            <Typography color="error">Usuń</Typography>
-          </MenuItem>
-        </Menu>
+        {readOnly ? null : (
+          <>
+            <IconButton
+              aria-label={`Więcej akcji dla pliku ${file.fileName}`}
+              aria-controls={menuAnchor ? `file-actions-${file.id}` : undefined}
+              aria-haspopup="menu"
+              aria-expanded={menuAnchor ? true : undefined}
+              onClick={(event) => setMenuAnchor(event.currentTarget)}
+              size="small"
+              title="Więcej"
+            >
+              <MoreVertIcon />
+            </IconButton>
+            <Menu
+              id={`file-actions-${file.id}`}
+              anchorEl={menuAnchor}
+              open={Boolean(menuAnchor)}
+              onClose={closeMenu}
+              slotProps={{
+                transition: { onExited: handleMenuExited },
+              }}
+            >
+              <MenuItem component="a" href={exportUrl} onClick={closeMenu}>
+                Eksportuj
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  runAfterMenuClose(() => onMove(file));
+                }}
+              >
+                Przenieś do nowego dokumentu
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  runAfterMenuClose(() => onDelete(file));
+                }}
+              >
+                <Typography color="error">Usuń</Typography>
+              </MenuItem>
+            </Menu>
+          </>
+        )}
       </Stack>
     </ListItem>
   );
@@ -247,6 +263,7 @@ const RoleFiles = ({
   files,
   uploading,
   uploadError,
+  readOnly = false,
   onUpload,
   onSign,
   onMove,
@@ -257,6 +274,7 @@ const RoleFiles = ({
   files: DocumentFile[];
   uploading: boolean;
   uploadError?: string | undefined;
+  readOnly?: boolean;
   onUpload: (file: File, role: DocumentFileRole) => void;
   onSign: (file: DocumentFile) => void;
   onMove: (file: DocumentFile) => void;
@@ -277,38 +295,42 @@ const RoleFiles = ({
           </Typography>
           {files.length ? <Chip size="small" label={files.length} /> : null}
         </Stack>
-        <Button component="label" variant="outlined" size="small" disabled={uploading}>
-          Wgraj plik
-          <input
-            hidden
-            type="file"
-            accept="application/pdf,image/*"
-            onChange={(event) => {
-              acceptFile(event.target.files?.[0]);
-              event.target.value = '';
-            }}
-          />
-        </Button>
+        {readOnly ? null : (
+          <Button component="label" variant="outlined" size="small" disabled={uploading}>
+            Wgraj plik
+            <input
+              hidden
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={(event) => {
+                acceptFile(event.target.files?.[0]);
+                event.target.value = '';
+              }}
+            />
+          </Button>
+        )}
       </Stack>
-      <FileDropZone
-        onDragOver={(event: DragEvent) => event.preventDefault()}
-        onDrop={(event: DragEvent) => {
-          event.preventDefault();
-          acceptFile(event.dataTransfer.files[0]);
-        }}
-        sx={{ mt: 2, p: 2 }}
-      >
-        <Typography variant="body2">
-          Przeciągnij tutaj plik PDF lub obraz
-        </Typography>
-      </FileDropZone>
-      {uploading ? (
+      {readOnly ? null : (
+        <FileDropZone
+          onDragOver={(event: DragEvent) => event.preventDefault()}
+          onDrop={(event: DragEvent) => {
+            event.preventDefault();
+            acceptFile(event.dataTransfer.files[0]);
+          }}
+          sx={{ mt: 2, p: 2 }}
+        >
+          <Typography variant="body2">
+            Przeciągnij tutaj plik PDF lub obraz
+          </Typography>
+        </FileDropZone>
+      )}
+      {!readOnly && uploading ? (
         <LinearProgress
           aria-label={`Wgrywanie: ${FILE_ROLE_LABELS[role]}`}
           sx={{ mt: 2 }}
         />
       ) : null}
-      {uploadError ? <Alert sx={{ mt: 2 }}>{uploadError}</Alert> : null}
+      {!readOnly && uploadError ? <Alert sx={{ mt: 2 }}>{uploadError}</Alert> : null}
       {files.length ? (
         <List disablePadding sx={{ mt: 1 }}>
           {files.map((file) => (
@@ -316,6 +338,7 @@ const RoleFiles = ({
               key={file.id}
               documentId={documentId}
               file={file}
+              readOnly={readOnly}
               onSign={onSign}
               onMove={onMove}
               onDelete={onDelete}
@@ -342,6 +365,7 @@ export const DocumentDetailPage = ({
   const folderDocuments = useQuery(actions.documents({}));
   const [editOpen, setEditOpen] = useState(false);
   const [deleteDocumentOpen, setDeleteDocumentOpen] = useState(false);
+  const [purgeDocumentOpen, setPurgeDocumentOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<DocumentFile>();
   const [fileToMove, setFileToMove] = useState<DocumentFile>();
   const [moveTitle, setMoveTitle] = useState('');
@@ -359,6 +383,20 @@ export const DocumentDetailPage = ({
   });
   const deleteDocument = useMutation({
     ...actions.deleteDocument,
+    onSuccess: async () => {
+      await navigate({ to: '/app/documents' });
+      queryClient.removeQueries(actions.document(documentId));
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+    },
+  });
+  const restoreDocument = useMutation({
+    ...actions.restoreDocument,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+    },
+  });
+  const purgeDocument = useMutation({
+    ...actions.purgeDocument,
     onSuccess: async () => {
       await navigate({ to: '/app/documents' });
       queryClient.removeQueries(actions.document(documentId));
@@ -413,6 +451,7 @@ export const DocumentDetailPage = ({
   }
 
   const document = documentQuery.data.document;
+  const isTrashed = document.deletedAt !== null;
   const grouped = filesByRole(document.files);
   const personOptions = uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]);
   const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
@@ -485,7 +524,7 @@ export const DocumentDetailPage = ({
               {document.person ?? 'Bez przypisanej osoby'}
             </Typography>
           </Stack>
-          {document.tags.length ? (
+            {document.tags.length ? (
             <Stack
               direction="row"
               sx={{ mt: 1, gap: 1, flexWrap: 'wrap' }}
@@ -497,15 +536,54 @@ export const DocumentDetailPage = ({
           ) : null}
         </Box>
         <Stack direction="row" sx={{ alignItems: 'flex-start', gap: 2 }}>
-          <Button variant="contained" onClick={() => setEditOpen(true)}>
-            Edytuj
-          </Button>
-          <Button variant="outlined" color="error" onClick={() => setDeleteDocumentOpen(true)}>
-            Usuń dokument
-          </Button>
+          {isTrashed ? (
+            <>
+              <Button
+                variant="contained"
+                disabled={restoreDocument.isPending || purgeDocument.isPending}
+                onClick={() => restoreDocument.mutate(documentId)}
+              >
+                Przywróć
+              </Button>
+              <Button
+                variant="outlined"
+                color="error"
+                disabled={restoreDocument.isPending || purgeDocument.isPending}
+                onClick={() => setPurgeDocumentOpen(true)}
+              >
+                Usuń trwale
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="contained" onClick={() => setEditOpen(true)}>
+                Edytuj
+              </Button>
+              <Button variant="outlined" color="error" onClick={() => setDeleteDocumentOpen(true)}>
+                Usuń dokument
+              </Button>
+            </>
+          )}
         </Stack>
       </Stack>
 
+      {isTrashed ? (
+        <Alert severity="warning" sx={{ mt: 3 }}>
+          W koszu. Dokument można przywrócić albo usunąć trwale. Podgląd,
+          pobieranie, podpisywanie, edycja, eksport i wgrywanie plików są
+          wyłączone.
+        </Alert>
+      ) : null}
+      {restoreDocument.isError ? (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {restoreDocument.error.message}
+        </Alert>
+      ) : null}
+      {purgeDocument.isError ? (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {purgeDocument.error.message}
+        </Alert>
+      ) : null}
       <Divider sx={{ my: 4 }} />
       <Typography variant="h2" component="h2" sx={{ mb: 3 }}>
         Pliki
@@ -519,6 +597,7 @@ export const DocumentDetailPage = ({
             files={grouped[role]}
             uploading={uploadingRole === role}
             uploadError={uploadErrors[role]}
+            readOnly={isTrashed}
             onUpload={(file, selectedRole) =>
               void upload(file, selectedRole)
             }
@@ -561,11 +640,21 @@ export const DocumentDetailPage = ({
       />
       <ConfirmDialog
         open={deleteDocumentOpen}
-        title="Usunąć dokument?"
-        text="Dokument i wszystkie jego pliki zostaną trwale usunięte."
+        title="Przenieść dokument do kosza?"
+        text="Dokument trafi do kosza. Możesz go później przywrócić."
+        confirmLabel="Przenieś do kosza"
         pending={deleteDocument.isPending}
         onCancel={() => setDeleteDocumentOpen(false)}
         onConfirm={() => deleteDocument.mutate(documentId)}
+      />
+      <ConfirmDialog
+        open={purgeDocumentOpen}
+        title="Usunąć trwale?"
+        text={`Dokument „${document.title}” i wszystkie jego pliki zostaną trwale usunięte z magazynu blob. Tej operacji nie można cofnąć.`}
+        confirmLabel="Usuń trwale"
+        pending={purgeDocument.isPending}
+        onCancel={() => setPurgeDocumentOpen(false)}
+        onConfirm={() => purgeDocument.mutate(documentId)}
       />
       <ConfirmDialog
         open={Boolean(fileToDelete)}

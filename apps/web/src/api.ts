@@ -26,12 +26,14 @@ import {
   passkeysQuery,
   registerPasskeyMutation,
   removePasskeyMutation,
+  purgeDocumentMutation,
   requestFileUploadMutation,
   requestMagicLinkMutation,
   savedSearchesInvalidates,
   savedSearchesQuery,
   requestPasswordResetMutation,
   resetPasswordMutation,
+  restoreDocumentMutation,
   signInMutation,
   signInPasskeyMutation,
   signInSocialMutation,
@@ -40,6 +42,7 @@ import {
   updateDocumentMutation,
   uploadDocumentFileMutation,
   verifyTotpMutation,
+  trashedDocumentsQuery,
 } from '#core/client/index.js';
 
 const traceparent = (): string | undefined => {
@@ -58,12 +61,15 @@ export const actions = {
   meInvalidates,
   documents: (filter: Parameters<typeof documentsQuery>[1]) =>
     documentsQuery(apiClient, filter),
+  trashedDocuments: trashedDocumentsQuery(apiClient),
   document: (documentId: string) => documentQuery(apiClient, documentId),
   documentFile: (documentId: string, fileId: string) =>
     documentFileQuery(apiClient, documentId, fileId),
   createDocument: createDocumentMutation(apiClient),
   updateDocument: updateDocumentMutation(apiClient),
   deleteDocument: deleteDocumentMutation(apiClient),
+  restoreDocument: restoreDocumentMutation(apiClient),
+  purgeDocument: purgeDocumentMutation(apiClient),
   requestFileUpload: requestFileUploadMutation(apiClient),
   finalizeFileUpload: finalizeFileUploadMutation(apiClient),
   uploadDocumentFile: uploadDocumentFileMutation(apiClient),
