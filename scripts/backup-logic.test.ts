@@ -6,6 +6,7 @@ import {
   inventoriesMatch,
   monthlyTransferGuard,
   parseArchiveName,
+  pgEnvFromDatabaseUrl,
   selectRetention,
   type BlobInventoryItem,
   type BlobManifestItem,
@@ -62,6 +63,61 @@ describe('backup manifest diffing', () => {
       inventoriesMatch(left, [inventory('a', 'changed', 1), inventory('b', '2', 2)]),
     ).toBe(false);
     expect(inventoriesMatch(left, left.slice(0, 1))).toBe(false);
+  });
+});
+
+describe('backup PostgreSQL env decomposition', () => {
+  it('decomposes a full Neon-style direct database URL', () => {
+    expect(
+      pgEnvFromDatabaseUrl(
+        'postgresql://neondb_owner:secret-pass@ep-autumn-haze-a1b2c3.us-east-2.aws.neon.tech:5432/neondb?sslmode=require&channel_binding=require',
+      ),
+    ).toEqual({
+      PGHOST: 'ep-autumn-haze-a1b2c3.us-east-2.aws.neon.tech',
+      PGPORT: '5432',
+      PGDATABASE: 'neondb',
+      PGUSER: 'neondb_owner',
+      PGPASSWORD: 'secret-pass',
+      PGSSLMODE: 'require',
+      PGCHANNELBINDING: 'require',
+    });
+  });
+
+  it('decodes percent-encoded database credentials', () => {
+    expect(
+      pgEnvFromDatabaseUrl('postgresql://backup%2Buser:p%40ss%2Fword%3Aone@db.example.test/app'),
+    ).toMatchObject({
+      PGUSER: 'backup+user',
+      PGPASSWORD: 'p@ss/word:one',
+    });
+  });
+
+  it('defaults the port and omits absent optional libpq parameters', () => {
+    const env = pgEnvFromDatabaseUrl('postgresql://agentproofarch:agentproofarch@localhost/app');
+
+    expect(env).toMatchObject({
+      PGHOST: 'localhost',
+      PGPORT: '5432',
+      PGDATABASE: 'app',
+      PGUSER: 'agentproofarch',
+      PGPASSWORD: 'agentproofarch',
+    });
+    expect(env).not.toHaveProperty('PGSSLMODE');
+    expect(env).not.toHaveProperty('PGCHANNELBINDING');
+  });
+
+  it('rejects non-direct or incomplete database URLs', () => {
+    for (const databaseUrl of [
+      'mysql://user:pass@localhost/app',
+      'postgresql://user:pass@ep-autumn-haze-pooler.us-east-2.aws.neon.tech/app',
+      'postgresql://user:pass@localhost',
+      'postgresql://:pass@localhost/app',
+      'postgresql://user@localhost/app',
+    ]) {
+      expect(() => pgEnvFromDatabaseUrl(databaseUrl)).toThrow(
+        'NEON_DATABASE_URL_UNPOOLED must be a direct PostgreSQL connection string',
+      );
+    }
   });
 });
 
