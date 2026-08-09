@@ -32,7 +32,9 @@ import {
   monthlyTransferGuard,
   parseArchiveName,
   pgEnvFromDatabaseUrl,
+  renderBackupIndex,
   selectRetention,
+  type BackupIndexRow,
   type BlobInventoryItem,
   type BlobManifestItem,
   type MonthlyTransferState,
@@ -81,6 +83,18 @@ const backupMetadataSchema = z.object({
 });
 
 type BackupMetadata = z.infer<typeof backupMetadataSchema>;
+
+const backupIndexRowSchema = z.object({
+  documentId: z.uuid(),
+  documentTitle: z.string(),
+  docType: z.string(),
+  person: z.string().nullable(),
+  role: z.string(),
+  fileName: z.string(),
+  contentType: z.string(),
+  sizeBytes: z.number().int().nonnegative(),
+  pathname: z.string().min(1),
+});
 
 const serviceAccountSchema = z.object({
   client_email: z.email(),
@@ -679,6 +693,40 @@ const dumpDatabase = async (databaseUrl: string, target: string): Promise<void> 
   );
 };
 
+export const readBackupIndexRows = async (databaseUrl: string): Promise<readonly BackupIndexRow[]> => {
+  const output = await captureCommand(
+    'psql',
+    [
+      '--no-psqlrc',
+      '--tuples-only',
+      '--no-align',
+      '--set=ON_ERROR_STOP=1',
+      '--command',
+      `SELECT COALESCE(
+  jsonb_agg(
+    jsonb_build_object(
+      'documentId', d.id::text,
+      'documentTitle', d.title,
+      'docType', d.doc_type,
+      'person', d.person,
+      'role', f.role,
+      'fileName', f.file_name,
+      'contentType', f.content_type,
+      'sizeBytes', f.size_bytes,
+      'pathname', f.storage_key
+    )
+    ORDER BY lower(d.title), d.title, d.id::text, f.role, f.file_name, f.id::text
+  ),
+  '[]'::jsonb
+)::text
+FROM documents d
+JOIN document_files f ON f.document_id = d.id`,
+    ],
+    pgCommandOptions(databaseUrl),
+  );
+  return z.array(backupIndexRowSchema).parse(JSON.parse(output.trim()));
+};
+
 interface PreviousBackup {
   readonly manifest: readonly BlobManifestItem[];
   readonly metadata: BackupMetadata;
@@ -804,7 +852,7 @@ const restoreText = `Docu Signer backup format ${FORMAT_VERSION}
 2. Create an empty Neon database on the same or a newer PostgreSQL major version. Restore with:
    psql "$TARGET_DATABASE_URL_UNPOOLED" -v ON_ERROR_STOP=1 -f database.sql
 3. Create an empty private Vercel Blob store. For every manifest entry upload blobs/<pathname> with put(pathname, stream, { access: 'private', addRandomSuffix: false, contentType }).
-4. Verify every restored document_files.storage_key exists and matches the manifest size, content type, and SHA-256.
+4. Use INDEX.txt to identify document files during triage. Verify every restored document_files.storage_key exists and matches the manifest size, content type, and SHA-256.
 5. Configure the new database URLs and Blob token, deploy, and smoke-test sign-in, document listing, preview, and download before allowing writes.
 `;
 
@@ -812,9 +860,11 @@ const writeBundleMetadata = async (
   bundleDir: string,
   manifest: readonly BlobManifestItem[],
   metadata: BackupMetadata,
+  indexText: string,
 ): Promise<void> => {
   await writeFile(join(bundleDir, 'blobs-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(join(bundleDir, 'backup.json'), `${JSON.stringify(metadata, null, 2)}\n`);
+  await writeFile(join(bundleDir, 'INDEX.txt'), indexText);
   await writeFile(join(bundleDir, 'RESTORE.txt'), restoreText);
 
   const files = (await listFiles(bundleDir)).filter((path) => path !== 'SHA256SUMS');
@@ -900,19 +950,22 @@ const main = async (): Promise<void> => {
     const databaseSql = join(bundleDir, 'database.sql');
 
     let stableInventory: readonly BlobInventoryItem[] | null = null;
+    let backupIndexRows: readonly BackupIndexRow[] | null = null;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const before = await listAllBlobs(storage);
       await dumpDatabase(env.NEON_DATABASE_URL_UNPOOLED, databaseSql);
+      const indexRows = await readBackupIndexRows(env.NEON_DATABASE_URL_UNPOOLED);
       const after = await listAllBlobs(storage);
       if (inventoriesMatch(before, after)) {
         stableInventory = after;
+        backupIndexRows = indexRows;
         break;
       }
       if (attempt === 1) {
         process.stdout.write('Blob inventory changed during pg_dump; retrying the inventory and dump once.\n');
       }
     }
-    if (!stableInventory) throw new Error('Blob inventory changed during both pg_dump attempts');
+    if (!stableInventory || !backupIndexRows) throw new Error('Blob inventory changed during both pg_dump attempts');
 
     const diff = diffManifest(previous?.manifest ?? [], stableInventory);
     const plannedDownloadBytes = [...diff.newItems, ...diff.changedItems].reduce(
@@ -970,7 +1023,7 @@ const main = async (): Promise<void> => {
       }
     }
 
-    for (const generated of ['blobs-manifest.json', 'backup.json', 'SHA256SUMS', 'RESTORE.txt']) {
+    for (const generated of ['blobs-manifest.json', 'backup.json', 'INDEX.txt', 'SHA256SUMS', 'RESTORE.txt']) {
       await rm(join(bundleDir, generated), { force: true });
     }
     const archiveName = formatArchiveName(startedAt);
@@ -993,7 +1046,7 @@ const main = async (): Promise<void> => {
         monthlyCeilingBytes: transfer.ceilingBytes,
       },
     };
-    await writeBundleMetadata(bundleDir, manifest, metadata);
+    await writeBundleMetadata(bundleDir, manifest, metadata, renderBackupIndex(backupIndexRows, manifest));
 
     const archivePath = join(workDir, archiveName);
     await createZip64(bundleDir, archivePath);

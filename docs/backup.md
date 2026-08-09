@@ -28,6 +28,8 @@ metadata. Do not edit or delete the ledger during a month.
 - `blobs/<pathname>`: every private Vercel Blob at its exact logical pathname.
 - `blobs-manifest.json`: pathname, ETag, size, content type, and SHA-256 for each
   Blob.
+- `INDEX.txt`: human-readable document-to-file-to-`blobs/<pathname>` listing,
+  with Blob objects missing from `document_files.storage_key` under `ORPHANS`.
 - `backup.json`: format and source metadata plus per-run and month-to-date Blob
   download bytes.
 - `SHA256SUMS`: SHA-256 for every other file in the archive.
@@ -90,9 +92,11 @@ Optional repository variables change the guards:
    `put(pathname, stream, { access: 'private', addRandomSuffix: false, contentType, token })`.
    Restoring to an empty store avoids mixing versions; do not overwrite or prune
    a nonempty store without a separately reviewed migration plan.
-4. Query every restored `document_files.storage_key` and confirm that pathname
-   exists in the new store with the manifest size and content type. Download and
-   compare SHA-256 for every object.
+4. Use `INDEX.txt` to map pathnames back to human documents during triage. Query
+   every restored `document_files.storage_key` and confirm that pathname exists
+   in the new store with the manifest size and content type. Download and compare
+   SHA-256 for every object. Investigate every `ORPHANS` entry before deciding
+   whether to re-upload or discard it.
 5. Set the deployment's new `DATABASE_URL`, direct database URL, and Blob-store
    token. Deploy, then smoke-test sign-in, document listing, preview, and
    download. Re-enable user access and writes only after all checks pass.

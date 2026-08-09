@@ -9,6 +9,24 @@ export interface BlobManifestItem extends BlobInventoryItem {
   readonly sha256: string;
 }
 
+export interface BackupIndexBlob {
+  readonly pathname: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+}
+
+export interface BackupIndexRow {
+  readonly documentId: string;
+  readonly documentTitle: string;
+  readonly docType: string;
+  readonly person: string | null;
+  readonly role: string;
+  readonly fileName: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly pathname: string;
+}
+
 export interface ManifestDiff {
   readonly newItems: readonly BlobInventoryItem[];
   readonly changedItems: readonly BlobInventoryItem[];
@@ -255,4 +273,97 @@ export const monthlyTransferGuard = (
     ceilingBytes,
     allowed: projectedBytes <= ceilingBytes,
   };
+};
+
+interface BackupIndexDocument {
+  readonly documentId: string;
+  readonly title: string;
+  readonly docType: string;
+  readonly person: string | null;
+  readonly files: BackupIndexRow[];
+}
+
+const singleLine = (value: string): string => value.replaceAll(/\s+/gu, ' ').trim();
+
+const byTitle = (left: BackupIndexDocument, right: BackupIndexDocument): number =>
+  singleLine(left.title).localeCompare(singleLine(right.title)) ||
+  left.documentId.localeCompare(right.documentId);
+
+const byFile = (left: BackupIndexRow, right: BackupIndexRow): number =>
+  left.role.localeCompare(right.role) ||
+  singleLine(left.fileName).localeCompare(singleLine(right.fileName)) ||
+  left.pathname.localeCompare(right.pathname);
+
+export const renderBackupIndex = (
+  rows: readonly BackupIndexRow[],
+  blobs: readonly BackupIndexBlob[],
+): string => {
+  const blobPathnames = new Set<string>();
+  for (const blob of blobs) {
+    if (blobPathnames.has(blob.pathname)) throw new Error('Duplicate blob pathname in backup index input');
+    blobPathnames.add(blob.pathname);
+  }
+
+  const rowsByDocument = new Map<string, BackupIndexDocument>();
+  const linkedPathnames = new Set<string>();
+  for (const row of rows) {
+    if (!blobPathnames.has(row.pathname)) continue;
+    linkedPathnames.add(row.pathname);
+    const existing = rowsByDocument.get(row.documentId);
+    if (!existing) {
+      rowsByDocument.set(row.documentId, {
+        documentId: row.documentId,
+        title: row.documentTitle,
+        docType: row.docType,
+        person: row.person,
+        files: [row],
+      });
+      continue;
+    }
+    if (
+      existing.title !== row.documentTitle ||
+      existing.docType !== row.docType ||
+      existing.person !== row.person
+    ) {
+      throw new Error('Inconsistent document metadata in backup index input');
+    }
+    existing.files.push(row);
+  }
+
+  const documents = [...rowsByDocument.values()].sort(byTitle);
+  const orphans = blobs
+    .filter((blob) => !linkedPathnames.has(blob.pathname))
+    .map((blob) => `blobs/${blob.pathname}`)
+    .sort((left, right) => left.localeCompare(right));
+
+  const lines = ['Docu Signer backup index', ''];
+  if (documents.length === 0 && orphans.length === 0) {
+    lines.push('No archived blobs.');
+    return `${lines.join('\n')}\n`;
+  }
+
+  if (documents.length > 0) {
+    lines.push('DOCUMENTS');
+    for (const document of documents) {
+      lines.push('', singleLine(document.title), `docType: ${singleLine(document.docType)}`);
+      const person = document.person === null ? '' : singleLine(document.person);
+      if (person.length > 0) lines.push(`person: ${person}`);
+      for (const file of [...document.files].sort(byFile)) {
+        lines.push(
+          `- role: ${singleLine(file.role)}`,
+          `  file: ${singleLine(file.fileName)}`,
+          `  content type: ${singleLine(file.contentType)}`,
+          `  size: ${file.sizeBytes} bytes`,
+          `  ZIP path: blobs/${file.pathname}`,
+        );
+      }
+    }
+  }
+
+  if (orphans.length > 0) {
+    lines.push('', 'ORPHANS');
+    for (const orphan of orphans) lines.push(`- ${orphan}`);
+  }
+
+  return `${lines.join('\n')}\n`;
 };
