@@ -207,11 +207,6 @@ export const tenantDomains = pgTable(
   ],
 );
 
-// C4 backfill executor (§Backfills): one durable checkpoint row per registered
-// backfill, so a cron-driven batch run resumes exactly where the last invocation
-// stopped. NEW table → §Data conventions shape: uuid PK + timestamptz. `name` is
-// the registry key (unique); `cursor` is the opaque resume token the backfill
-// advances; `done` latches when the backfill has processed every row.
 export const backfillCheckpoints = pgTable('backfill_checkpoints', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull().unique(),

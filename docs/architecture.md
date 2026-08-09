@@ -236,13 +236,10 @@ State rules:
   The descriptor object is the seam — TanStack is a vocabulary dependency,
   never wrapped in a port; full usage policy in
   [server-state.md](server-state.md).
-- **Client state**: governed by the island-core model below
-  ([ADR-0005](decisions/0005-client-application-state.md)). Trivial,
-  component-lifetime state stays `useState`/`useReducer` inside a view; React
-  context only for cross-cutting concerns (theme, session). State-library
-  React bindings are banned everywhere in `apps/web` (lint); the chosen
-  rung-2 store package (`@xstate/store`) and `xstate` are confined to
-  island cores ([frontend-lint-plan.md](frontend-lint-plan.md) Phase 5).
+- **Client state**: the shipped archive uses component-lifetime React state and
+  TanStack Query server state. The demo strip removed every island core and its
+  dedicated typecheck; ADR-0005 remains a historical design record, not a claim
+  that Podpisy currently implements that model.
 - **URL state**: path params = resource identity, search params = shareable
   filters; neither is duplicated into component state.
 - **Features are islands** (lint): a feature imports only itself. Features
@@ -262,9 +259,18 @@ State rules:
 
 ### Client application state (island cores)
 
-The full model is decided in
+**Fork status (2026-08-01): the island-core model is not present in the shipped
+application.** The demo strip removed all `features/*/core/**` implementations,
+`tsconfig.islands.json`, the `typecheck:islands` script, and the dedicated
+api-import regression probe. The generic feature-isolation and framework-ban
+lint rules remain, with their rule-presence and framework-import probes, but
+`check` no longer proves a DOM-free island program or a public island factory.
+The remainder of this section records the upstream design for a future named
+trigger; its island-core matrices are not descriptions of current enforcement.
+
+The upstream model is decided in
 [ADR-0005](decisions/0005-client-application-state.md); this section is its
-normative form. Every rule carries an explicit enforcement mini-matrix —
+historical form. Every rule carries an explicit enforcement mini-matrix —
 **TYPE / LINT / TEST / REVIEW+AI** — each cell saying *how*, or `n/a` with a
 reason. A rule without a matrix is prose, and prose decays.
 
@@ -408,27 +414,26 @@ api or query types. Direction stays lawful: a feature may import web-api
 (api.ts), but web-api must not import a feature — the structural-gateway pattern
 in api.ts binds the transport without api.ts reaching into the island. React in
 the browser is one view adapter, not a dependency of the core.
-— **TYPE**: a dedicated program, `tsconfig.islands.json` (lib `ES2023`, **no
-DOM**), typechecks `features/*/core/**` and is wired into `check` as
-`typecheck:islands`; a core referencing `window`/`document`/react types fails it
-— DOM-free is proven by construction, not asserted in prose · **LINT**: the
-`features/*/core/**` react/framework ban PLUS a parent-relative import ban —
-a core cannot import api.ts, a sibling feature or any apps/web path outside its
-own core dir (`no-restricted-imports` patterns), mirrored by dependency-cruiser
-(`island-core-is-portable`) so the boundary holds in both enforcers · **TEST**:
-core unit tests run in plain node (no jsdom), and each island adds one that
-drives the **public factory** with a fake gateway — the whole seam is proven
-node-runnable on every `check`; a config-regression probe fails an api.ts import
-from a core · **REVIEW+AI**: n/a (mechanically covered).
+— **TYPE**: not enforced in this fork; the dedicated no-DOM TypeScript program
+was removed with the island cores · **LINT**: dormant
+`features/*/core/**` framework and parent-relative import restrictions remain in
+ESLint, and dependency-cruiser retains the framework-agnostic mirror · **TEST**:
+config-regression proves the feature-isolation rules remain configured and that
+a React import matching an island-core path fails dependency-cruiser; there is
+no longer an api.ts-import probe or public-factory test · **REVIEW+AI**: any
+future island-core reintroduction must restore evidence for the guarantees it
+claims.
 
-The enforcement matrix, by construct:
+The current enforcement matrix:
 
 | Portability property | How it is guaranteed |
 | --- | --- |
-| Core imports no api.ts / web composition | `no-restricted-imports` parent-relative ban + depcruise `island-core-is-portable` + config-regression probe |
-| Core typechecks without DOM | `tsconfig.islands.json` (no DOM lib) run as `typecheck:islands` in `check` |
-| Public seam runs in plain node | per-island node test over `createXCore(deps)` with a fake gateway (no jsdom) |
-| Composition is a single lawful site | `features/<name>/index.web.ts`; api.ts stays feature-free (structural gateway) |
+| Cross-feature imports are rejected | ESLint boundaries + dependency-cruiser `web-features-are-islands`; config-regression checks the configured rules |
+| A matching core imports no React framework | ESLint restrictions + dependency-cruiser `island-core-is-framework-agnostic`; config-regression feeds a React-import fixture |
+| Core imports no api.ts / web composition | ESLint retains the parent-relative restriction; the dedicated regression probe was removed |
+| Core typechecks without DOM | Not enforced; the no-DOM TypeScript program was removed |
+| Public seam runs in plain node | Not applicable; no island core or public factory ships |
+| Composition is a single lawful site | Not applicable; no `features/<name>/index.web.ts` ships |
 
 **Isomorphic domain rules for guarded transitions.** When transition
 legality is a business rule (WIP limits, an enforced status path), it is
@@ -814,6 +819,11 @@ Auth tables use naive `timestamp` — documented legacy, deliberately **not
 migrated now** (nothing ranges or sorts across zones on them; converting is a
 routine expand→contract package the day a query needs index-backed time
 semantics).
+
+The demo strip deliberately writes no destructive migration. The now-unused
+`members`, `todos`, `cards`, and `backfill_checkpoints` tables therefore remain
+declared in `adapters/db/app-schema.ts` and in migration history; removing them
+is a dedicated destructive-migration follow-up, not part of this surface strip.
 — **TYPE**: n/a (the column type is a schema-file choice; TS sees a string
 either way) · **LINT**: n/a today (a schema-file rule against text timestamp
 columns becomes worth its fixture cost when tables multiply) · **TEST**: n/a
@@ -1079,7 +1089,6 @@ code.
 - `HealthPort`: database ping for the readiness route (`/api/health/ready` and
   the compat `/api/health`); liveness never calls it.
 - `IdGenerator`: injected UUID minting for deterministic use-case tests.
-- `BackfillPort`: retained deploy-backfill checkpoints.
 
 **BUILT** (US-026/US-028a, A1 sub-package 4): the provider auth methods that were
 "normative when triggered" are now wired — this package was the trigger.

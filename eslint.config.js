@@ -194,13 +194,10 @@ const ISLAND_CORE_STORE_REACT_PATTERN = {
   message: ISLAND_CORE_STORE_REACT_MESSAGE,
 };
 
-// Island cores are portable, DOM-free modules — they must not reach out of their
-// own core directory. That bans api.ts (the web composition), a sibling feature
-// and any apps/web path outside the core: those imports drag web wiring into a
-// module that has to typecheck without DOM (tsconfig.islands.json) and run in
-// plain node. Every parent-relative specifier (`../…`) escapes the core, so the
-// whole class is banned; shared contracts come through the `#core/*` alias, and
-// the gateway + bound descriptors are INJECTED in features/<name>/index.web.ts.
+// A future island core must not reach out of its own core directory. That bans
+// api.ts, sibling features, and other web wiring. Every parent-relative
+// specifier (`../…`) escapes the core, so the whole class is banned; shared
+// contracts come through the `#core/*` alias, and dependencies are injected.
 // Without this the `web-features`→`web-api` boundary (element-type granularity)
 // would silently re-permit a core importing api.ts (ADR-0005 §Pure-TS cores).
 const ISLAND_CORE_PORTABILITY_MESSAGE =

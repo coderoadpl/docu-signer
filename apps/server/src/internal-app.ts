@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 
-import { runBackfillBatch, type BackfillPort, type TenantDomainRepository } from '#core/server/index.js';
+import type { TenantDomainRepository } from '#core/server/index.js';
 
 /**
  * The internal control-plane app, mounted ONLY by the self-host entry
@@ -14,13 +14,9 @@ import { runBackfillBatch, type BackfillPort, type TenantDomainRepository } from
  * Surfaces:
  *   - `GET /internal/domain-check` — Caddy's `on_demand_tls { ask }` before
  *     issuing a certificate: 200 only for a verified `tenant_domains` row.
- *   - `POST /internal/backfills/:name` — one batch of a registered backfill
- *     (§Backfills, C4). Cron-driven; each call processes a bounded page and
- *     persists a checkpoint, so repeated calls drive it to completion.
  */
 export const buildInternalApp = (deps: {
   tenantDomains: TenantDomainRepository;
-  backfills: BackfillPort;
 }) => {
   const app = new Hono();
 
@@ -31,23 +27,5 @@ export const buildInternalApp = (deps: {
     return match ? c.text('ok', 200) : c.text('unknown domain', 404);
   });
 
-  app.post('/internal/backfills/:name', async (c) => {
-    const result = await runBackfillBatch(c.req.param('name'), parseLimit(c.req.query('limit')), {
-      backfills: deps.backfills,
-    });
-    if (result.ok) return c.json(result.value, 200);
-    return c.json(
-      { error: result.error.code, message: result.error.message },
-      result.error.code === 'not_found' ? 404 : 500,
-    );
-  });
-
   return app;
-};
-
-/** Batch size per invocation: default 100, capped at 1000, floored at 1. */
-export const parseLimit = (raw: string | undefined): number => {
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1) return 100;
-  return Math.min(parsed, 1000);
 };

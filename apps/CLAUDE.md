@@ -29,8 +29,8 @@ logic lives here.
 
 - Routes are thin: parse the request against the contract, call one use-case,
   map the `Result` to a response. No business rules in a route or a component.
-- Web features are islands — a feature's `core/` is pure TS (events in,
-  selectors out); UI is presentational; the client is constructed only in
+- Web features remain isolated by the feature-boundary lint rules; this fork
+  currently ships no island cores. The client is constructed only in
   `web/src/api.ts` (see [architecture §Frontend](../docs/architecture.md#frontend-appsweb)).
 - Adding a resource walks the 12-step chain; start with
   `pnpm run new:resource -- <singular-name>` and finish every checklist item

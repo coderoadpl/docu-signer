@@ -63,11 +63,6 @@ const baseDeps = (): AppDeps => ({
   },
   tenantAccess: { findStaffGrant: async () => null },
   health: { pingDatabase: async () => true },
-  backfills: {
-    loadCheckpoint: async () => null,
-    saveCheckpoint: async () => {},
-  },
-  backfillSecret: null,
   ids: { nextId: () => '11111111-1111-4111-8111-111111111111' },
   baseDomain: 'localhost',
   commitSha: 'test-sha',
