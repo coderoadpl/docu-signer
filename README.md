@@ -64,8 +64,8 @@ seed. Use `--api-url` or `APP_CLI_API_URL` to target another origin.
 
 Full command set (<!--count:cli-command-groups-->10<!--/count--> top-level groups):
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
-`origin list|use`, `document list|show|add|upload|export|remove`,
-`public profile`.
+`origin list|use`, `account change-password|request-password-reset`,
+`document list|show|add|upload|export|remove`, `public profile`.
 
 Every command supports `--json` and exits with a code mapped from the error
 taxonomy (`validation`=2, `unauthorized`=3, `forbidden`=4, `not_found`=5,
@@ -126,7 +126,7 @@ Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
 <!--count:integration-tests-->12<!--/count--> integration tests against a real
 Postgres and <!--count:e2e-tests-->12<!--/count--> Playwright test executions
 across <!--count:e2e-specs-->6<!--/count--> spec files: Chromium covers all
-five, and WebKit reruns `documents.spec.ts` to pin the Safari/pdf.js legacy
+six, and WebKit reruns `documents.spec.ts` to pin the Safari/pdf.js legacy
 regression.
 
 ```bash

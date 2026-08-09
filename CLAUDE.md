@@ -60,14 +60,15 @@ rejected.)
 - `pnpm run e2e` = the **browser** gate: Playwright drives real browsers over
   the real stack (isolated `agentproofarch_e2e` DB, `localhost` registered as a
   single-tenant custom domain, `entry.node.ts` serving the built bundle): Chromium
-  covers all five spec files (9 tests), and WebKit reruns `documents.spec.ts` to
-  pin the Safari/pdf.js legacy regression (10 test executions total):
+  covers all six spec files (11 tests), and WebKit reruns `documents.spec.ts` to
+  pin the Safari/pdf.js legacy regression (12 test executions total):
   `app.spec.ts` (login → archive navigation →
   failed-login → cache headers → liveness/readiness → anonymous redirect to login),
   `documents.spec.ts` (create → role uploads → paired preview → export),
   `magic-link.spec.ts` (trusted-user sign-in), `passkey.spec.ts`
-  (registration → passkey sign-in), and `settings.spec.ts` (account security and
-  registration without tenant management). The harness boots the
+  (registration → passkey sign-in), `settings.spec.ts` (account security and
+  registration without tenant management), and `password-reset.spec.ts`
+  (password change + email reset link via Mailpit). The harness boots the
   server with `AUTH_RATE_LIMIT: 'off'` (`scripts/e2e-server.ts`) — the baseline
   is on (including dev), but the specs replay many logins that would otherwise
   trip the limiter and flake the run. It needs a browser and Postgres, so it is
