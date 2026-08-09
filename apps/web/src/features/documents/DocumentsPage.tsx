@@ -136,7 +136,7 @@ const MoreVertIcon = () => (
 );
 
 const DOCUMENT_COLUMNS_KEY = 'documents.columns';
-const TEXT_FILTER_DEBOUNCE_MS = import.meta.env.MODE === 'test' ? 0 : 300;
+const TEXT_FILTER_DEBOUNCE_MS = 300;
 
 const DOCUMENT_COLUMN_IDS = [
   'documentDate',
@@ -381,11 +381,6 @@ export const DocumentsPage = () => {
 
   useEffect(() => {
     if (textFilter === filters.text) return;
-    if (TEXT_FILTER_DEBOUNCE_MS === 0) {
-      setSelectedIds([]);
-      void navigateToDocumentsSearch(view, { ...filters, text: textFilter }, true);
-      return;
-    }
     const timeout = window.setTimeout(() => {
       setSelectedIds([]);
       void navigateToDocumentsSearch(view, { ...filters, text: textFilter }, true);

@@ -5,10 +5,10 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { documentCreateInputSchema } from '#core/contract/index.js';
 
@@ -125,7 +125,10 @@ const clearDateWithButton = async (field: HTMLElement) => {
   await userEvent.click(within(field).getByRole('button', { name: 'Wyczyść' }));
   await waitFor(() => expect(field).toHaveTextContent('DD.MM.YYYY'));
 };
-const DOCUMENTS_PAGE_FLOW_TIMEOUT_MS = 30_000;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('DocumentsPage', () => {
   it('renders server-filtered documents', async () => {
@@ -148,12 +151,54 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+    fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
+      target: { value: 'Proto' },
+    });
     fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
       target: { value: 'Protokół' },
     });
 
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    expect(seen).not.toHaveBeenCalledWith('Proto');
+    expect(seen).not.toHaveBeenCalledWith('Protokół');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(seen).not.toHaveBeenCalledWith('Protokół');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    vi.useRealTimers();
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
+  });
+
+  it('cancels a pending text-filter debounce on unmount', async () => {
+    const seen = vi.fn();
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        seen(new URL(request.url).searchParams.get('text'));
+        return HttpResponse.json({ ok: true, data: { documents: [document] } });
+      }),
+    );
+    const { unmount } = await renderPage();
+
+    expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+    fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {
+      target: { value: 'Protokół' },
+    });
+
+    unmount();
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(seen).not.toHaveBeenCalledWith('Protokół');
   });
 
   it('filters by person and tag autocomplete suggestions and signature status', async () => {
@@ -238,7 +283,7 @@ describe('DocumentsPage', () => {
         draft: 'true',
       }),
     );
-  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
+  });
 
   it('restores filter controls from a deep link', async () => {
     const seen = vi.fn();
@@ -443,7 +488,7 @@ describe('DocumentsPage', () => {
     expect(screen.queryByText('Dodaj pierwszy dokument do archiwum.')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Wyczyść filtry' }));
     expect((await screen.findAllByText('Umowa z Anną')).length).toBeGreaterThan(0);
-  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
+  });
 
   it('surfaces a failed documents query and retries it', async () => {
     const requests = vi.fn();
@@ -608,7 +653,7 @@ describe('DocumentsPage', () => {
         },
       }),
     );
-  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
+  });
 
   it('shows bulk progress and summarizes partial failures', async () => {
     const updates = vi.fn();
@@ -671,7 +716,7 @@ describe('DocumentsPage', () => {
       DOCUMENT_ID,
       expect.objectContaining({ person: 'Jan Kowalski' }),
     );
-  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
+  });
 
   it('opens the row overflow menu and moves a document to trash', async () => {
     const remove = vi.fn();
@@ -793,7 +838,7 @@ describe('DocumentsPage', () => {
       status: 'signed',
       szkice: 'all',
     });
-  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
+  });
 
   it('deletes teczki presets', async () => {
     const savedDelete = vi.fn();
@@ -1078,7 +1123,7 @@ describe('DocumentsPage', () => {
     expect(router.state.location.pathname).toBe(
       `/app/documents/${DOCUMENT_ID}`,
     );
-  }, DOCUMENTS_PAGE_FLOW_TIMEOUT_MS);
+  });
 
   it('shows Polish inline validation and focuses the first invalid field', async () => {
     server.use(
