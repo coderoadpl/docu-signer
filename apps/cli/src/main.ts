@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { Command, CommanderError } from 'commander';
 import { z } from 'zod';
@@ -13,6 +14,7 @@ import {
   err,
   internal,
   ok,
+  unauthorized,
   validation,
 } from '#core/domain/index.js';
 
@@ -65,7 +67,14 @@ const registerArgsSchema = z.object({
 const loginArgsSchema = z.object({
   email: z.string().trim().min(1),
   password: z.string().min(1),
+  code: z.string().trim().min(1).optional(),
 });
+type LoginInput = z.output<typeof loginArgsSchema>;
+interface LoginActionCtx {
+  auth: Pick<AuthClientPort, 'signIn' | 'verifyTotp'>;
+  json: boolean;
+  saveToken: (token: string) => void;
+}
 const magicLinkArgsSchema = z.object({ email: z.string().trim().min(1) });
 
 // Merged global options (Commander parses them onto the root program). They flow
@@ -148,6 +157,42 @@ const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   );
 };
 
+export const runLoginAction = async (ctx: LoginActionCtx, input: LoginInput): Promise<void> => {
+  const result = await ctx.auth.signIn(input);
+  if (!result.ok) {
+    emit(result, ctx.json, () => '');
+    return;
+  }
+  if (result.value.twoFactorRequired === true) {
+    if (input.code === undefined) {
+      emit(
+        err(unauthorized('Two-factor authentication required. Pass --code with the current code from your authenticator app.')),
+        ctx.json,
+        () => '',
+      );
+      return;
+    }
+    const verified = await ctx.auth.verifyTotp({ code: input.code });
+    if (!verified.ok) {
+      emit(verified, ctx.json, () => '');
+      return;
+    }
+    if (!verified.value.token) {
+      emit(err(internal('Server did not return a session token')), ctx.json, () => '');
+      return;
+    }
+    ctx.saveToken(verified.value.token);
+    emit(verified, ctx.json, () => `signed in as ${input.email}`);
+    return;
+  }
+  if (!result.value.token) {
+    emit(err(internal('Server did not return a session token')), ctx.json, () => '');
+    return;
+  }
+  ctx.saveToken(result.value.token);
+  emit(result, ctx.json, () => `signed in as ${input.email}`);
+};
+
 program.command('health').description('API and database status').action(async () => {
   const ctx = cliCtx();
   emit(
@@ -179,19 +224,16 @@ program
   .description('Sign in and store the session token')
   .requiredOption('--email <email>')
   .requiredOption('--password <password>')
-  .action(async (options: { email: string; password: string }) => {
+  .option('--code <totp>', 'current TOTP code from your authenticator app')
+  .action(async (options: { email: string; password: string; code?: string }) => {
     const ctx = cliCtx();
     const input = parseArgs(loginArgsSchema, options, ctx.json);
     if (input === undefined) return;
-    const result = await ctx.auth.signIn(input);
-    if (result.ok) {
-      if (!result.value.token) {
-        emit(err(internal('Server did not return a session token')), ctx.json, () => '');
-        return;
-      }
-      saveActiveProfile(ctx, { token: result.value.token });
-    }
-    emit(result, ctx.json, () => `signed in as ${input.email}`);
+    await runLoginAction({
+      auth: ctx.auth,
+      json: ctx.json,
+      saveToken: (token) => saveActiveProfile(ctx, { token }),
+    }, input);
   });
 
 program
@@ -436,22 +478,25 @@ publicCmd
     );
   });
 
-const wantsJson = process.argv.includes('--json');
-try {
-  await program.parseAsync(process.argv);
-} catch (error) {
-  if (error instanceof CliBail) {
-    // cliCtx already emitted the validation envelope and set the exit code.
-  } else if (error instanceof CommanderError) {
-    // Commander parse failure surfaced via exitOverride. exitCode 0 = help/version
-    // whose text is already on stdout; anything else is a real parse failure that
-    // must become one validation envelope with the taxonomy exit code.
-    if (error.exitCode !== 0) {
-      emit(err(validation(error.message.replace(/^error:\s*/i, ''))), wantsJson, () => '');
+const isMain = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  const wantsJson = process.argv.includes('--json');
+  try {
+    await program.parseAsync(process.argv);
+  } catch (error) {
+    if (error instanceof CliBail) {
+      // cliCtx already emitted the validation envelope and set the exit code.
+    } else if (error instanceof CommanderError) {
+      // Commander parse failure surfaced via exitOverride. exitCode 0 = help/version
+      // whose text is already on stdout; anything else is a real parse failure that
+      // must become one validation envelope with the taxonomy exit code.
+      if (error.exitCode !== 0) {
+        emit(err(validation(error.message.replace(/^error:\s*/i, ''))), wantsJson, () => '');
+      }
+    } else if (error instanceof Error && error.message.startsWith('podpisy:')) {
+      emit(err(internal(error.message)), wantsJson, () => '');
+    } else {
+      throw error;
     }
-  } else if (error instanceof Error && error.message.startsWith('podpisy:')) {
-    emit(err(internal(error.message)), wantsJson, () => '');
-  } else {
-    throw error;
   }
 }

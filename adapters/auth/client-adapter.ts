@@ -3,7 +3,7 @@ import { magicLinkClient, twoFactorClient } from 'better-auth/client/plugins';
 import { passkeyClient } from '@better-auth/passkey/client';
 import { z } from 'zod';
 
-import type { AuthClientPort, PasskeyInfo } from '#core/client/index.js';
+import type { AuthClientPort, AuthSessionResult, PasskeyInfo } from '#core/client/index.js';
 import { appError, err, ok, type AppError, type Result } from '#core/domain/index.js';
 
 type SignInInput = Parameters<AuthClientPort['signIn']>[0];
@@ -129,7 +129,18 @@ export const followMagicLink = async (url: string): Promise<Result<{ token: stri
 
 const socialUrlSchema = z.object({ url: z.string().optional(), redirect: z.boolean().optional() });
 const totpEnableSchema = z.object({ totpURI: z.string(), backupCodes: z.array(z.string()) });
-const tokenSchema = z.object({ token: z.string().nullable() });
+const authSessionSchema = z.object({
+  token: z.string().nullable().optional(),
+  twoFactorRedirect: z.boolean().optional(),
+});
+
+const authSessionResult = (payload: unknown, token: string | null): AuthSessionResult => {
+  const parsed = authSessionSchema.safeParse(payload);
+  return {
+    token: token ?? (parsed.success ? (parsed.data.token ?? null) : null),
+    ...(parsed.success && parsed.data.twoFactorRedirect === true ? { twoFactorRequired: true } : {}),
+  };
+};
 
 /** Better Auth implementation of the client-side auth port. */
 export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort => {
@@ -147,7 +158,8 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
     signIn: async ({ email, password }) => {
       const token = null;
       const response = await client.signIn.email({ email, password });
-      return toResult({ token }, response.error);
+      if (response.error) return toResult({ token }, response.error);
+      return ok(authSessionResult(response.data, token));
     },
     signOut: async () => toResult(undefined, (await client.signOut()).error),
     requestMagicLink: async ({ email, callbackURL }) => {
@@ -167,7 +179,11 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
       if (!parsed.success) return err(appError('internal', 'Two-factor enable returned an unexpected shape'));
       return ok(parsed.data);
     },
-    verifyTotp: async ({ code }) => toResult(undefined, (await client.twoFactor.verifyTotp({ code })).error),
+    verifyTotp: async ({ code }) => {
+      const response = await client.twoFactor.verifyTotp({ code });
+      if (response.error) return toResult({ token: null }, response.error);
+      return ok(authSessionResult(response.data, null));
+    },
     disableTwoFactor: async ({ password }) => toResult(undefined, (await client.twoFactor.disable({ password })).error),
     registerPasskey: async ({ name }) => toResult(undefined, (await client.passkey.addPasskey({ name })).error),
     listPasskeys: async () => {
@@ -190,7 +206,24 @@ export const createCliAuthAdapter = (
   onToken: (token: string) => void,
   token: () => string | null = () => null,
 ): AuthClientPort => {
-  const postWithSession = async (path: string, body: unknown, onSuccessToken = false): Promise<Result<unknown, AppError>> => {
+  let twoFactorCookie: string | null = null;
+
+  const cookieHeader = (setCookie: string[]): string | null => {
+    const cookies = setCookie
+      .map((cookie) => {
+        const [nameValue = ''] = cookie.split(';');
+        return nameValue;
+      })
+      .filter((cookie) => cookie.length > 0);
+    return cookies.length === 0 ? null : cookies.join('; ');
+  };
+
+  const postWithSession = async (
+    path: string,
+    body: unknown,
+    cookie: string | null = null,
+    includeBearer = false,
+  ): Promise<Result<{ payload: unknown; token: string | null; cookie: string | null }, AppError>> => {
     let response: Response;
     try {
       response = await fetch(new URL(path, baseUrl), {
@@ -198,7 +231,8 @@ export const createCliAuthAdapter = (
         headers: {
           'content-type': 'application/json',
           origin: baseUrl,
-          ...(token() ? { authorization: `Bearer ${token()}` } : {}),
+          ...(includeBearer && token() ? { authorization: `Bearer ${token()}` } : {}),
+          ...(cookie ? { cookie } : {}),
         },
         body: JSON.stringify(body),
         credentials: 'include',
@@ -206,31 +240,29 @@ export const createCliAuthAdapter = (
     } catch (cause) {
       return err(appError('internal', `Network error calling ${path}: ${String(cause)}`));
     }
-    if (!response.ok) return toResult(null, await readAuthError(response));
-    if (onSuccessToken) {
-      const emitted = response.headers.get('set-auth-token');
-      if (emitted) onToken(emitted);
-      return ok({ token: emitted });
-    }
+    if (!response.ok) return toResult({ payload: null, token: null, cookie: null }, await readAuthError(response));
+    const emitted = response.headers.get('set-auth-token');
+    if (emitted) onToken(emitted);
+    const nextCookie = cookieHeader(response.headers.getSetCookie());
     try {
-      return ok(await response.json());
+      return ok({ payload: await response.json(), token: emitted, cookie: nextCookie });
     } catch {
-      return ok(null);
+      return ok({ payload: null, token: emitted, cookie: nextCookie });
     }
   };
 
   return {
     signUp: async (input) => {
-      const result = await postWithSession('/api/auth/sign-up/email', input, true);
+      const result = await postWithSession('/api/auth/sign-up/email', input);
       if (!result.ok) return result;
-      const emitted = tokenSchema.safeParse(result.value);
-      return ok({ token: emitted.success ? emitted.data.token : null });
+      return ok(authSessionResult(result.value.payload, result.value.token));
     },
     signIn: async (input) => {
-      const result = await postWithSession('/api/auth/sign-in/email', input, true);
+      const result = await postWithSession('/api/auth/sign-in/email', input);
       if (!result.ok) return result;
-      const emitted = tokenSchema.safeParse(result.value);
-      return ok({ token: emitted.success ? emitted.data.token : null });
+      const session = authSessionResult(result.value.payload, result.value.token);
+      twoFactorCookie = session.twoFactorRequired === true ? result.value.cookie : null;
+      return ok(session);
     },
     // Revoke the session server-side (bearer token), not just locally: the CLI
     // authenticates by token, so sign-out must reach Better Auth or the session
@@ -259,8 +291,10 @@ export const createCliAuthAdapter = (
       return ok(parsed.data);
     },
     verifyTotp: async ({ code }) => {
-      const result = await postCliAuth(baseUrl, '/api/auth/two-factor/verify-totp', { code }, token());
-      return result.ok ? ok(undefined) : result;
+      const result = await postWithSession('/api/auth/two-factor/verify-totp', { code }, twoFactorCookie);
+      if (!result.ok) return result;
+      twoFactorCookie = null;
+      return ok(authSessionResult(result.value.payload, result.value.token));
     },
     disableTwoFactor: async ({ password }) => {
       const result = await postCliAuth(baseUrl, '/api/auth/two-factor/disable', { password }, token());
