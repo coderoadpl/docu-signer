@@ -16,7 +16,8 @@ upstream doctrine, and prefer simplicity + a delta line over new ADRs.
   knip (dead files + dependency hygiene; unused exports/types stay advisory
   during the PRD build-out — see `knip.jsonc`) +
   doc-lint (docs↔config enforcer coverage, injected count tokens, env-schema ⊆
-  `.env.example`, dead relative links) + vitest with `--coverage` — the
+  `.env.example`, server↔Vercel CSP sync, dead relative links) + vitest with
+  `--coverage` — the
   **static** gate; coverage thresholds are a ratchet floor (measured minimum
   rounded down, per-metric) enforced here, so a coverage regression fails
   `pnpm run check`.
