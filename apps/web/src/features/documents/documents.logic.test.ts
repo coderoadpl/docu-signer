@@ -18,6 +18,8 @@ import {
   groupDocumentsForTimeline,
   hasDocumentFilter,
   hasSignedDocumentFile,
+  massSigningQueueTargets,
+  newestSignablePdfFile,
   signingQueueFromSearch,
   signingQueueSearch,
   signingQueueTargets,
@@ -274,6 +276,91 @@ describe('document view logic', () => {
         status: 'needs-signature',
       }),
     ).toEqual({ q: 'umowa', tag: 'ważne', status: 'needs-signature' });
+  });
+
+  it('builds the mass-signing queue from canonical order and newest signable PDFs', () => {
+    const sourceFile = {
+      id: '33333333-3333-4333-8333-333333333333',
+      documentId: '11111111-1111-4111-8111-111111111111',
+      role: 'source' as const,
+      fileName: 'source.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 10,
+      storageKey: 'source',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const oldSignedFile = {
+      ...sourceFile,
+      id: '44444444-4444-4444-8444-444444444444',
+      role: 'signed-digital' as const,
+      fileName: 'source-podpisany.pdf',
+      createdAt: '2026-02-01T00:00:00.000Z',
+    };
+    const newestSignedFile = {
+      ...sourceFile,
+      id: '55555555-5555-4555-8555-555555555555',
+      role: 'signed-digital' as const,
+      fileName: 'source-podpisany-2.pdf',
+      createdAt: '2026-03-01T00:00:00.000Z',
+    };
+    const protocol = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-1',
+      title: 'Protokół',
+      docType: 'protokol' as const,
+      documentDate: '2026-05-10',
+      periodStart: '2026-05-01',
+      periodEnd: '2026-05-31',
+      person: 'Anna',
+      tags: [],
+      draft: false,
+      deletedAt: null,
+      createdAt: '2026-05-10T00:00:00.000Z',
+      updatedAt: '2026-05-10T00:00:00.000Z',
+      files: [sourceFile, oldSignedFile, newestSignedFile],
+    };
+    const bill = {
+      ...protocol,
+      id: '22222222-2222-4222-8222-222222222222',
+      title: 'Rachunek',
+      docType: 'rachunek' as const,
+      files: [
+        {
+          ...sourceFile,
+          id: '66666666-6666-4666-8666-666666666666',
+          documentId: '22222222-2222-4222-8222-222222222222',
+        },
+      ],
+    };
+    const future = {
+      ...protocol,
+      id: '77777777-7777-4777-8777-777777777777',
+      title: 'Przyszły',
+      docType: 'umowa-uod' as const,
+      documentDate: '2026-06-10',
+      periodStart: null,
+      periodEnd: null,
+      files: [
+        {
+          ...sourceFile,
+          id: '88888888-8888-4888-8888-888888888888',
+          documentId: '77777777-7777-4777-8777-777777777777',
+        },
+      ],
+    };
+
+    expect(newestSignablePdfFile(protocol)?.id).toBe(newestSignedFile.id);
+    expect(massSigningQueueTargets([future, bill, protocol])).toEqual([
+      { documentId: protocol.id, fileId: newestSignedFile.id },
+      {
+        documentId: bill.id,
+        fileId: '66666666-6666-4666-8666-666666666666',
+      },
+      {
+        documentId: future.id,
+        fileId: '88888888-8888-4888-8888-888888888888',
+      },
+    ]);
   });
 
   it('groups filtered documents by canonical period, person and type order', () => {

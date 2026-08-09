@@ -8,11 +8,13 @@ export const SigningShell = ({
   controls,
   children,
   footer,
+  fitMain,
 }: {
   header: ReactNode;
   controls: ReactNode;
   children: ReactNode;
   footer: ReactNode;
+  fitMain?: boolean;
 }) => (
   <SigningSurface
     sx={{
@@ -41,8 +43,15 @@ export const SigningShell = ({
       sx={{
         flex: '1 1 auto',
         minHeight: 0,
-        overflow: 'auto',
+        overflow: fitMain ? 'hidden' : 'auto',
         p: { xs: 1, md: 2 },
+        ...(fitMain
+          ? {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }
+          : {}),
       }}
     >
       {children}

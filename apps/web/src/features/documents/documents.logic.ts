@@ -105,13 +105,20 @@ const queueParamSchema = z
   .min(1)
   .optional()
   .catch(undefined);
+const trueParamSchema = z.preprocess(
+  (value: unknown) => (value === true || value === 'true' ? true : undefined),
+  z.literal(true).optional(),
+).catch(undefined);
 
 export const documentSigningSearchSchema = z.preprocess(
   (value) => (typeof value === 'object' && value !== null ? value : {}),
   documentsSearchInputSchema.extend({
     kolejka: queueParamSchema,
     pliki: queueParamSchema,
+    tryb: z.enum(['masowe']).optional().catch(undefined),
+    pominiete: z.coerce.number().int().nonnegative().optional().catch(undefined),
     podpisane: z.coerce.number().int().nonnegative().optional().catch(undefined),
+    koniec: trueParamSchema,
   }),
 );
 
@@ -427,6 +434,35 @@ export const signingQueueTargets = (
     return file ? [{ documentId: document.id, fileId: file.id }] : [];
   });
 
+const newestFileFirst = (
+  left: Pick<DocumentFile, 'createdAt'>,
+  right: Pick<DocumentFile, 'createdAt'>,
+): number => right.createdAt.localeCompare(left.createdAt);
+
+export const newestSignablePdfFile = (
+  document: Pick<DocumentWithFiles, 'files'>,
+): DocumentFile | undefined => {
+  const signableFiles = document.files.filter(canSignPdfFile);
+  const signedDigital = signableFiles
+    .filter((file) => file.role === 'signed-digital')
+    .sort(newestFileFirst);
+  const source = signableFiles
+    .filter((file) => file.role === 'source')
+    .sort(newestFileFirst);
+  return signedDigital[0] ?? source[0];
+};
+
+export const massSigningQueueTargets = (
+  documents: DocumentWithFiles[],
+): SigningQueueTarget[] =>
+  groupDocumentsCanonically(documents)
+    .flatMap((periodGroup) => periodGroup.people)
+    .flatMap((personGroup) => personGroup.documents)
+    .flatMap((document) => {
+      const file = newestSignablePdfFile(document);
+      return file ? [{ documentId: document.id, fileId: file.id }] : [];
+    });
+
 export const signingQueueSearch = ({
   signedCount,
   targets,
@@ -444,6 +480,25 @@ export const signingQueueSearch = ({
     : {}),
   podpisane: signedCount,
   razem: total,
+});
+
+export const massSigningQueueSearch = ({
+  signedCount,
+  skippedCount,
+  targets,
+  total,
+}: {
+  signedCount: number;
+  skippedCount: number;
+  targets: SigningQueueTarget[];
+  total: number;
+}): Pick<
+  DocumentSigningSearchParams,
+  'tryb' | 'kolejka' | 'pliki' | 'podpisane' | 'pominiete' | 'razem'
+> => ({
+  tryb: 'masowe',
+  ...signingQueueSearch({ signedCount, targets, total }),
+  pominiete: skippedCount,
 });
 
 export const signingQueueFromSearch = (

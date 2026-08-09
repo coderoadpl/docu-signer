@@ -684,6 +684,105 @@ describe('DocumentsPage', () => {
     });
   });
 
+  it('starts mass signing visible PDFs in canonical grouped order', async () => {
+    const baseFile = {
+      id: '33333333-3333-4333-8333-333333333333',
+      documentId: DOCUMENT_ID,
+      role: 'source' as const,
+      fileName: 'umowa.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 10,
+      storageKey: 'source',
+      createdAt: '2026-07-18T10:00:00.000Z',
+    };
+    const protocolId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const billId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const signedId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const signedFileId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              {
+                ...document,
+                id: signedId,
+                title: 'Podpisana umowa',
+                docType: 'umowa-uod',
+                periodStart: '2026-05-01',
+                periodEnd: '2026-05-31',
+                files: [
+                  {
+                    ...baseFile,
+                    id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+                    documentId: signedId,
+                  },
+                  {
+                    ...baseFile,
+                    id: signedFileId,
+                    documentId: signedId,
+                    role: 'signed-digital' as const,
+                    fileName: 'umowa-podpisany.pdf',
+                    createdAt: '2026-07-20T10:00:00.000Z',
+                  },
+                ],
+              },
+              {
+                ...document,
+                id: billId,
+                title: 'Rachunek',
+                docType: 'rachunek',
+                periodStart: '2026-05-01',
+                periodEnd: '2026-05-31',
+                files: [
+                  {
+                    ...baseFile,
+                    id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+                    documentId: billId,
+                  },
+                ],
+              },
+              {
+                ...document,
+                id: protocolId,
+                title: 'Protokół',
+                docType: 'protokol',
+                periodStart: '2026-05-01',
+                periodEnd: '2026-05-31',
+                files: [
+                  {
+                    ...baseFile,
+                    id: '99999999-9999-4999-8999-999999999999',
+                    documentId: protocolId,
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    const { router } = await renderPage('/app/documents?q=masowe');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Masowe podpisywanie' }));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        '/app/documents/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sign/99999999-9999-4999-8999-999999999999',
+      ),
+    );
+    expect(router.state.location.search).toMatchObject({
+      q: 'masowe',
+      tryb: 'masowe',
+      kolejka: `${billId},${signedId}`,
+      pliki: `ffffffff-ffff-4fff-8fff-ffffffffffff,${signedFileId}`,
+      podpisane: 0,
+      pominiete: 0,
+      razem: 3,
+    });
+  });
+
   it('persists column visibility and order and filters from tag chips', async () => {
     const seen = vi.fn();
     const saved = vi.fn();

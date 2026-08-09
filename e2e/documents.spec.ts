@@ -173,10 +173,17 @@ const createSignableDocument = async (page: Page, title: string, sourceName: str
   await expect(page.getByText('Strona 1 z 2')).toBeVisible();
 };
 
-const createSourceDocument = async (page: Page, title: string, sourceName: string) => {
+const createSourceDocument = async (
+  page: Page,
+  title: string,
+  sourceName: string,
+  docType = 'Umowa UoD',
+) => {
   await page.getByRole('button', { name: 'Dodaj dokument' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Dodaj dokument' });
   await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
+  await dialog.getByLabel('Typ').click();
+  await page.getByRole('option', { name: docType }).click();
   await dialog.getByLabel('Osoba').fill('Jan Kowalski');
   await enterPolishDate(dialog, 'Data podpisania', '01.01.2026');
   await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
@@ -255,6 +262,34 @@ const signVisiblePdf = async (page: Page) => {
   const save = page.getByRole('button', { name: 'Zapisz podpisany PDF' });
   await expect(save).toBeEnabled();
   await save.click();
+};
+
+const expectReviewPdfFitsViewport = async (page: Page) => {
+  const canvas = page.getByLabel(/Strona \d+ dokumentu PDF/u);
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  const viewport = page.viewportSize();
+  if (!box || !viewport) throw new Error('Missing PDF review bounds');
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
+};
+
+const placeMassSignature = async (
+  page: Page,
+  points: Array<{ x: number; y: number }>,
+) => {
+  await page.getByRole('button', { name: 'Złóż podpis' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Złóż podpis' });
+  const canvas = dialog.getByRole('application', {
+    name: 'Powierzchnia do złożenia podpisu',
+  });
+  const before = await canvasInkState(canvas);
+  await drawOnCanvas(page, canvas, points);
+  await expectCanvasInkGrew(canvas, before);
+  await dialog.getByRole('button', { name: 'Użyj podpisu' }).click();
+  await expect(dialog).toBeHidden();
 };
 
 const signIn = async (page: Page) => {
@@ -554,4 +589,70 @@ test('signs unsigned documents one after another', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
   await expect(page.getByText('Podpisano 2 z 2.')).toBeVisible();
+});
+
+test('mass signing signs, skips and signs an already signed document', async ({ page }) => {
+  const stamp = Date.now();
+  const titlePrefix = `Masowe e2e ${stamp}`;
+  const firstTitle = `${titlePrefix} protokół`;
+  const secondTitle = `${titlePrefix} rachunek`;
+  const thirdTitle = `${titlePrefix} umowa`;
+
+  await signIn(page);
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
+  await createSourceDocument(page, firstTitle, `masowe-a-${stamp}.pdf`, 'Protokół');
+  await page.getByRole('button', { name: '← Dokumenty' }).click();
+  await createSourceDocument(page, secondTitle, `masowe-b-${stamp}.pdf`, 'Rachunek');
+  await page.getByRole('button', { name: '← Dokumenty' }).click();
+  await createSourceDocument(page, thirdTitle, `masowe-c-${stamp}.pdf`, 'Umowa UoD');
+
+  const sourceSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Źródło/ }) });
+  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
+  await signVisiblePdf(page);
+  await expect(page.getByRole('heading', { name: thirdTitle })).toBeVisible();
+  await page.getByRole('button', { name: '← Dokumenty' }).click();
+
+  await page.getByLabel('Szukaj po tytule').fill(titlePrefix);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('q'))
+    .toBe(titlePrefix);
+  await expect(page.getByRole('cell', { name: firstTitle, exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: secondTitle, exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: thirdTitle, exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Masowe podpisywanie' }).click();
+
+  await expect(page.getByRole('heading', { name: firstTitle })).toBeVisible();
+  await expectReviewPdfFitsViewport(page);
+  await placeMassSignature(page, [
+    { x: 0.2, y: 0.42 },
+    { x: 0.36, y: 0.3 },
+    { x: 0.52, y: 0.45 },
+  ]);
+  await placeMassSignature(page, [
+    { x: 0.24, y: 0.62 },
+    { x: 0.44, y: 0.48 },
+    { x: 0.68, y: 0.6 },
+  ]);
+  await page.getByRole('button', { name: 'Przejdź' }).click();
+
+  await expect(page.getByRole('heading', { name: secondTitle })).toBeVisible();
+  await expectReviewPdfFitsViewport(page);
+  await page.getByRole('button', { name: 'Przejdź' }).click();
+
+  await expect(page.getByRole('heading', { name: thirdTitle })).toBeVisible();
+  await expectReviewPdfFitsViewport(page);
+  await placeMassSignature(page, [
+    { x: 0.18, y: 0.5 },
+    { x: 0.42, y: 0.36 },
+    { x: 0.66, y: 0.52 },
+  ]);
+  await page.getByRole('button', { name: 'Przejdź' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Podsumowanie' })).toBeVisible();
+  await expect(page.getByText('Podpisano 2')).toBeVisible();
+  await expect(page.getByText('Pominięto 1')).toBeVisible();
+  await page.getByRole('button', { name: 'Wróć do listy' }).click();
+  await expect(page.getByLabel('Szukaj po tytule')).toHaveValue(titlePrefix);
 });

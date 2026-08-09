@@ -9,6 +9,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -59,8 +60,10 @@ import {
   type SigningStamp,
 } from './signing.js';
 import {
+  DOCUMENT_TYPE_LABELS,
   canSignPdfFile,
   documentsSearchFromSigningSearch,
+  massSigningQueueSearch,
   signingQueueFromSearch,
   signingQueueSearch,
   uploadErrorMessage,
@@ -396,6 +399,70 @@ const PageHeader = ({
 
 const EmptyControls = () => <Box />;
 
+const MassReviewHeader = ({
+  document,
+}: {
+  document: {
+    docType: keyof typeof DOCUMENT_TYPE_LABELS;
+    person?: string | null;
+    tags: string[];
+    title: string;
+  };
+}) => (
+  <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1 }}>
+    <Stack
+      direction="row"
+      sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
+    >
+      <Typography variant="h3" component="h1">
+        {document.title}
+      </Typography>
+      <Chip
+        size="small"
+        variant="outlined"
+        label={DOCUMENT_TYPE_LABELS[document.docType]}
+      />
+      {document.person ? <Chip size="small" label={document.person} /> : null}
+      {document.tags.map((tag) => (
+        <Chip key={tag} size="small" label={tag} />
+      ))}
+    </Stack>
+  </Paper>
+);
+
+const MassSummary = ({
+  onReturn,
+  signedCount,
+  skippedCount,
+}: {
+  onReturn: () => void;
+  signedCount: number;
+  skippedCount: number;
+}) => (
+  <SigningShell
+    header={<EmptyControls />}
+    controls={<EmptyControls />}
+    footer={
+      <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1.5 }}>
+        <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
+          <Button variant="contained" onClick={onReturn}>
+            Wróć do listy
+          </Button>
+        </Stack>
+      </Paper>
+    }
+    fitMain
+  >
+    <Stack sx={{ alignItems: 'center', gap: 2 }}>
+      <Typography variant="h1" align="center">Podsumowanie</Typography>
+      <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+        <Chip color="success" label={`Podpisano ${signedCount}`} />
+        <Chip variant="outlined" label={`Pominięto ${skippedCount}`} />
+      </Stack>
+    </Stack>
+  </SigningShell>
+);
+
 export const DocumentSigningPage = ({
   documentId,
   fileId,
@@ -453,8 +520,19 @@ export const DocumentSigningPage = ({
   const [committing, setCommitting] = useState(false);
 
   const queueTargets = signingQueueFromSearch(signingSearch);
+  const massMode = signingSearch.tryb === 'masowe';
+  const massComplete = massMode && signingSearch.koniec === true;
+  const massSkippedCount = signingSearch.pominiete ?? 0;
   const sequenceActive =
-    signingSearch.podpisane !== undefined && signingSearch.razem !== undefined;
+    !massMode &&
+    signingSearch.podpisane !== undefined &&
+    signingSearch.razem !== undefined;
+  const massStateValid =
+    !massMode ||
+    (signingSearch.podpisane !== undefined &&
+      signingSearch.pominiete !== undefined &&
+      signingSearch.razem !== undefined &&
+      signingSearch.razem > 0);
   const sequenceSignedCount = signingSearch.podpisane ?? 0;
   const sequenceTotal = signingSearch.razem ?? 0;
   const listSearch = documentsSearchFromSigningSearch(signingSearch);
@@ -464,6 +542,22 @@ export const DocumentSigningPage = ({
       to: '/app/documents/$id',
       params: { id: documentId },
       search: listSearch,
+    });
+
+  useEffect(() => {
+    if (massStateValid) return;
+    void navigate({
+      to: '/app/documents',
+      search: listSearch,
+      replace: true,
+    });
+  }, [listSearch, massStateValid, navigate]);
+
+  const returnToList = () =>
+    void navigate({
+      to: '/app/documents',
+      search: listSearch,
+      replace: true,
     });
 
   const sourceFile = documentQuery.data?.document.files.find(
@@ -482,7 +576,9 @@ export const DocumentSigningPage = ({
     metrics && metricsPageNumber === pageNumber && !pageRendering,
   );
   const canCommit = Boolean(
-    pageReady && !sequenceStepSigned && (stamps.length > 0 || strokes.length > 0),
+    pageReady &&
+      !sequenceStepSigned &&
+      (massMode ? stamps.length > 0 : stamps.length > 0 || strokes.length > 0),
   );
 
   useEffect(() => {
@@ -545,6 +641,10 @@ export const DocumentSigningPage = ({
         if (!current) return;
         inkCanvas.width = pdfCanvas.width;
         inkCanvas.height = pdfCanvas.height;
+        if (massMode) {
+          pdfCanvas.style.width = 'auto';
+          pdfCanvas.style.height = 'auto';
+        }
         setMetrics(renderedMetrics);
         setMetricsPageNumber(pageNumber);
         setPageRendering(false);
@@ -557,7 +657,7 @@ export const DocumentSigningPage = ({
     return () => {
       current = false;
     };
-  }, [pageNumber, pdf]);
+  }, [massMode, pageNumber, pdf]);
 
   useEffect(() => {
     const canvas = inkCanvasRef.current;
@@ -605,6 +705,29 @@ export const DocumentSigningPage = ({
       setSelectedStampIndex(undefined);
     }
   }, [pageIndex, selectedStampIndex, stamps]);
+
+  if (massComplete) {
+    return (
+      <MassSummary
+        signedCount={sequenceSignedCount}
+        skippedCount={massSkippedCount}
+        onReturn={returnToList}
+      />
+    );
+  }
+
+  if (!massStateValid) {
+    return (
+      <SigningShell
+        header={<EmptyControls />}
+        controls={<EmptyControls />}
+        footer={<EmptyControls />}
+        fitMain
+      >
+        <StatusView state={{ kind: 'loading', label: 'Powrót do listy…' }} />
+      </SigningShell>
+    );
+  }
 
   if (documentQuery.isPending || sourceQuery.isPending) {
     return (
@@ -846,30 +969,74 @@ export const DocumentSigningPage = ({
     });
   };
 
+  const advanceMassSigning = ({
+    signedCount,
+    skippedCount,
+  }: {
+    signedCount: number;
+    skippedCount: number;
+  }) => {
+    const [next, ...remaining] = queueTargets;
+    if (next) {
+      void navigate({
+        to: '/app/documents/$id/sign/$fileId',
+        params: { id: next.documentId, fileId: next.fileId },
+        search: {
+          ...listSearch,
+          ...massSigningQueueSearch({
+            signedCount,
+            skippedCount,
+            targets: remaining,
+            total: sequenceTotal,
+          }),
+        },
+        replace: true,
+      });
+      return;
+    }
+    void navigate({
+      to: '/app/documents/$id/sign/$fileId',
+      params: { id: documentId, fileId },
+      search: {
+        ...listSearch,
+        tryb: 'masowe',
+        koniec: true,
+        podpisane: signedCount,
+        pominiete: skippedCount,
+        razem: sequenceTotal,
+      },
+      replace: true,
+    });
+  };
+
+  const saveSignedPdf = async () => {
+    const signedBytes = await flattenSignedPdf(
+      sourceQuery.data.bytes,
+      await flattenedStamps(),
+    );
+    const output = new File(
+      [bytesAsArrayBuffer(signedBytes)],
+      signedFileName(sourceFile.fileName),
+      { type: 'application/pdf' },
+    );
+    await uploadDocumentFile(output, 'signed-digital', {
+      request: (input) =>
+        requestUpload.mutateAsync({ documentId, input }),
+      direct: (input) => directUpload.mutateAsync(input),
+      finalize: (input) =>
+        finalizeUpload.mutateAsync({ documentId, input }),
+      server: (input) =>
+        serverUpload.mutateAsync({ documentId, input }),
+    });
+    await queryClient.invalidateQueries(actions.documentsInvalidates());
+  };
+
   const commit = async () => {
     if (!canCommit) return;
     setCommitting(true);
     setCommitError(undefined);
     try {
-      const signedBytes = await flattenSignedPdf(
-        sourceQuery.data.bytes,
-        await flattenedStamps(),
-      );
-      const output = new File(
-        [bytesAsArrayBuffer(signedBytes)],
-        signedFileName(sourceFile.fileName),
-        { type: 'application/pdf' },
-      );
-      await uploadDocumentFile(output, 'signed-digital', {
-        request: (input) =>
-          requestUpload.mutateAsync({ documentId, input }),
-        direct: (input) => directUpload.mutateAsync(input),
-        finalize: (input) =>
-          finalizeUpload.mutateAsync({ documentId, input }),
-        server: (input) =>
-          serverUpload.mutateAsync({ documentId, input }),
-      });
-      await queryClient.invalidateQueries(actions.documentsInvalidates());
+      await saveSignedPdf();
       if (sequenceActive) {
         setSequenceStepSigned(true);
         return;
@@ -887,11 +1054,74 @@ export const DocumentSigningPage = ({
     }
   };
 
+  const proceedMassSigning = async () => {
+    if (committing) return;
+    if (stamps.length === 0) {
+      advanceMassSigning({
+        signedCount: sequenceSignedCount,
+        skippedCount: massSkippedCount + 1,
+      });
+      return;
+    }
+    if (!canCommit) return;
+    setCommitting(true);
+    setCommitError(undefined);
+    try {
+      await saveSignedPdf();
+      advanceMassSigning({
+        signedCount: sequenceSignedCount + 1,
+        skippedCount: massSkippedCount,
+      });
+    } catch (error) {
+      setCommitError(uploadErrorMessage(error));
+    } finally {
+      setCommitting(false);
+    }
+  };
+
   return (
     <SigningShell
-      header={<PageHeader fileName={sourceFile.fileName} onClose={close} />}
+      header={
+        massMode ? (
+          <MassReviewHeader document={documentQuery.data.document} />
+        ) : (
+          <PageHeader fileName={sourceFile.fileName} onClose={close} />
+        )
+      }
       controls={
-        <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1 }}>
+        massMode ? (
+          pdf && pdf.numPages > 1 ? (
+            <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 0.75 }}>
+              <Stack
+                direction="row"
+                sx={{ alignItems: 'center', justifyContent: 'center', gap: 1 }}
+              >
+                <Button
+                  size="small"
+                  onClick={() => setPageNumber((page) => Math.max(1, page - 1))}
+                  disabled={pageNumber === 1 || pageRendering || committing}
+                >
+                  Poprzednia
+                </Button>
+                <Typography variant="body2" aria-live="polite">
+                  Strona {pageNumber} z {pdf.numPages}
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={() =>
+                    setPageNumber((page) => Math.min(pdf.numPages, page + 1))
+                  }
+                  disabled={pageNumber === pdf.numPages || pageRendering || committing}
+                >
+                  Następna
+                </Button>
+              </Stack>
+            </Paper>
+          ) : (
+            <EmptyControls />
+          )
+        ) : (
+          <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1 }}>
           <Stack
             direction="row"
             sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
@@ -1051,9 +1281,39 @@ export const DocumentSigningPage = ({
             </Typography>
           )}
         </Paper>
+        )
       }
       footer={
-        <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1.5 }}>
+        massMode ? (
+          <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1.5 }}>
+            {commitError ? <Alert severity="error" sx={{ mb: 1 }}>{commitError}</Alert> : null}
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 1.5 }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                Dokument {Math.min(sequenceSignedCount + massSkippedCount + 1, sequenceTotal)} z {sequenceTotal}
+              </Typography>
+              <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 1 }}>
+                <Button
+                  variant="contained"
+                  onClick={() => setSignaturePadOpen(true)}
+                  disabled={!pageReady || committing}
+                >
+                  Złóż podpis
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={() => void proceedMassSigning()}
+                  disabled={committing || (stamps.length > 0 && !canCommit)}
+                >
+                  {committing ? 'Zapisywanie…' : 'Przejdź'}
+                </Button>
+              </Stack>
+            </Stack>
+          </Paper>
+        ) : (
+          <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1.5 }}>
           {commitError ? <Alert severity="error" sx={{ mb: 1 }}>{commitError}</Alert> : null}
           {sequenceStepSigned ? (
             <Alert severity="success" sx={{ mb: 1 }}>
@@ -1088,17 +1348,31 @@ export const DocumentSigningPage = ({
             )}
           </Stack>
         </Paper>
+        )
       }
+      fitMain={massMode}
     >
       {pdfError ? <Alert severity="error" sx={{ mb: 2 }}>{pdfError}</Alert> : null}
       {pageRendering ? <LinearProgress aria-label="Renderowanie strony PDF" /> : null}
       <SigningPageSurface
-        sx={{ position: 'relative', width: 'fit-content', maxWidth: '100%', mx: 'auto' }}
+        sx={{
+          position: 'relative',
+          width: 'fit-content',
+          maxWidth: '100%',
+          maxHeight: massMode ? '100%' : undefined,
+          height: massMode ? '100%' : undefined,
+          mx: 'auto',
+        }}
       >
         <canvas
           ref={pdfCanvasRef}
           aria-label={`Strona ${pageNumber} dokumentu PDF`}
-          style={{ display: 'block', maxWidth: '100%', height: 'auto' }}
+          style={{
+            display: 'block',
+            maxHeight: massMode ? '100%' : undefined,
+            maxWidth: '100%',
+            height: 'auto',
+          }}
         />
         <InkSurface
           ref={inkCanvasRef}
@@ -1167,6 +1441,7 @@ export const DocumentSigningPage = ({
               event.preventDefault();
               return;
             }
+            if (massMode) return;
             if (gestureMode === 'pan') return;
             if (!pointerDrawsInk(event)) return;
             const stroke = { points };
