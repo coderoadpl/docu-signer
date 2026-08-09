@@ -253,6 +253,10 @@ describe('document view logic', () => {
       podpisane: 1,
       razem: 2,
     });
+    expect(signingQueueSearch({ signedCount: 0, targets: [], total: 0 })).toEqual({
+      podpisane: 0,
+      razem: 0,
+    });
     expect(signingQueueFromSearch(search)).toEqual([targets[1]]);
     expect(
       signingQueueFromSearch({
@@ -416,6 +420,14 @@ describe('document view logic', () => {
   });
 
   it('builds a deterministic timeline x scale and month ticks', () => {
+    const emptyScale = createTimelineScale([], 120);
+    expect(emptyScale).toMatchObject({
+      start: '1970-01-01',
+      end: '1970-01-01',
+      width: 120,
+    });
+    expect(emptyScale.x('2026-01-01')).toBe(0);
+
     const scale = createTimelineScale(
       [
         { start: '2026-01-15', end: '2026-01-31' },

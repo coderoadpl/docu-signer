@@ -9,6 +9,7 @@ const integrationEnabled = process.env['VITEST_INTEGRATION'] === '1';
 
 export default defineConfig({
   test: {
+    fileParallelism: false,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json-summary'],

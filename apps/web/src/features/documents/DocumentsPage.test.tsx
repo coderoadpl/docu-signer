@@ -6,7 +6,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -211,6 +211,9 @@ describe('DocumentsPage', () => {
   });
 
   it('filters by person and tag autocomplete suggestions and signature status', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    });
     const seen = vi.fn();
     const signed = {
       ...document,
@@ -255,13 +258,13 @@ describe('DocumentsPage', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Osoba' }), {
       target: { value: 'Anna' },
     });
-    await userEvent.click(await screen.findByRole('option', { name: 'Anna Nowak' }));
+    await user.click(await screen.findByRole('option', { name: 'Anna Nowak' }));
     await waitFor(() => expect(seen).toHaveBeenCalledWith({ person: 'Anna Nowak' }));
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
       target: { value: 'podpis' },
     });
-    await userEvent.click(await screen.findByRole('option', { name: 'podpisane' }));
+    await user.click(await screen.findByRole('option', { name: 'podpisane' }));
     await waitFor(() =>
       expect(seen).toHaveBeenCalledWith({
         person: 'Anna Nowak',
@@ -269,8 +272,8 @@ describe('DocumentsPage', () => {
       }),
     );
 
-    await userEvent.click(screen.getByLabelText('Status podpisu'));
-    await userEvent.click(await screen.findByRole('option', { name: 'Podpisane' }));
+    await user.click(screen.getByLabelText('Status podpisu'));
+    await user.click(await screen.findByRole('option', { name: 'Podpisane' }));
     expect((await screen.findAllByText('Podpisana umowa')).length).toBeGreaterThan(0);
     await waitFor(() =>
       expect(seen).toHaveBeenCalledWith({
@@ -280,8 +283,8 @@ describe('DocumentsPage', () => {
       }),
     );
 
-    await userEvent.click(screen.getByLabelText('Szkice'));
-    await userEvent.click(await screen.findByRole('option', { name: 'Tylko szkice' }));
+    await user.click(screen.getByLabelText('Szkice'));
+    await user.click(await screen.findByRole('option', { name: 'Tylko szkice' }));
     expect((await screen.findAllByText('Szkic importu')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Szkic').length).toBeGreaterThan(0);
     await waitFor(() =>

@@ -537,6 +537,9 @@ test('signs unsigned documents one after another', async ({ page }) => {
   await page.getByRole('button', { name: '← Dokumenty' }).click();
 
   await page.getByLabel('Szukaj po tytule').fill(titlePrefix);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('q'))
+    .toBe(titlePrefix);
   await expect(page.getByRole('cell', { name: `${titlePrefix} A`, exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: `${titlePrefix} B`, exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Podpisuj kolejno' }).click();
