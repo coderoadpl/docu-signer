@@ -116,7 +116,7 @@ jobs:
       # (it drives the CLI, never a browser). Needs both a browser and Postgres,
       # so it stays out of `pnpm run check`; the e2e server boots entry.node.ts
       # against an isolated agentproofarch_e2e database and serves this bundle.
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm run e2e
 
   # NON-REQUIRED (ADR-0008): this fork has no ruleset or required-check arming

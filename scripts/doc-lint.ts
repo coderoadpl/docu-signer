@@ -209,12 +209,29 @@ const filesIn = (rel: string, suffix: string): string[] => {
 const countDecls = (files: readonly string[]): number =>
   files.reduce((total, file) => total + (readFileSync(file, 'utf8').match(TEST_DECL)?.length ?? 0), 0);
 
+const countMatches = (source: string, pattern: RegExp): number => [...source.matchAll(pattern)].length;
+
 const defaultRunTestFiles = (): string[] =>
   ['core', 'adapters', 'apps', 'scripts', 'config-regression', 'eslint-plugin-agentproofarch']
     .flatMap((root) => (existsSync(join(repoRoot, root)) ? walkTestFiles(join(repoRoot, root)) : []))
     .filter((file) => !file.endsWith('.integration.test.ts'));
 
 const e2eSpecFiles = (): string[] => filesIn('e2e', '.spec.ts');
+const e2eTestExecutions = (): number => {
+  const files = e2eSpecFiles();
+  const configSource = readFileSync(join(repoRoot, 'playwright.config.ts'), 'utf8');
+  const chromiumProjects = countMatches(configSource, /\bname:\s*'chromium'/g);
+  const webkitDocumentsProjects = countMatches(
+    configSource,
+    /\bname:\s*'webkit-documents'[\s\S]*?\btestMatch:\s*\/documents\\\.spec\\\.ts\/u/g,
+  );
+
+  return (
+    Math.max(chromiumProjects, 1) * countDecls(files) +
+    webkitDocumentsProjects *
+      countDecls(files.filter((file) => basename(file) === 'documents.spec.ts'))
+  );
+};
 const integrationFiles = (): string[] =>
   ['adapters', 'apps']
     .flatMap((root) => (existsSync(join(repoRoot, root)) ? walkTestFiles(join(repoRoot, root)) : []))
@@ -231,7 +248,7 @@ const cliCommandGroups = (): number => {
 const COUNTERS: Record<string, () => number> = {
   'test-files': () => defaultRunTestFiles().length,
   'e2e-specs': () => e2eSpecFiles().length,
-  'e2e-tests': () => countDecls(e2eSpecFiles()),
+  'e2e-tests': e2eTestExecutions,
   'integration-tests': () => countDecls(integrationFiles()),
   'config-regression': () => countDecls(configRegressionFiles()),
   'cli-command-groups': cliCommandGroups,
