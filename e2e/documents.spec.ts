@@ -29,6 +29,92 @@ const drawOnCanvas = async (
   await page.mouse.up();
 };
 
+const canvasInkState = async (canvas: Locator) =>
+  canvas.evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) {
+      throw new Error('Expected a canvas');
+    }
+    const context = element.getContext('2d');
+    if (!context) throw new Error('Missing canvas context');
+    const data = context.getImageData(0, 0, element.width, element.height).data;
+    let pixels = 0;
+    for (let index = 3; index < data.length; index += 4) {
+      const alpha = data[index];
+      if (alpha !== undefined && alpha > 0) pixels += 1;
+    }
+    return {
+      pixels,
+      width: element.width,
+      height: element.height,
+      bounds: element.getBoundingClientRect().toJSON(),
+    };
+  });
+
+const expectCanvasInkGrew = async (
+  canvas: Locator,
+  before: Awaited<ReturnType<typeof canvasInkState>>,
+) => {
+  await expect
+    .poll(async () => (await canvasInkState(canvas)).pixels)
+    .toBeGreaterThan(before.pixels);
+};
+
+const dispatchPointerStroke = async ({
+  canvas,
+  pointerType,
+  points,
+}: {
+  canvas: Locator;
+  pointerType: 'pen' | 'touch';
+  points: Array<{ x: number; y: number }>;
+}) => {
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('Missing signature pad bounds');
+  const [first, ...rest] = points.map((point) => ({
+    x: box.x + box.width * point.x,
+    y: box.y + box.height * point.y,
+  }));
+  const last = rest.at(-1) ?? first;
+  if (!first || !last) throw new Error('Signature pad stroke needs points');
+  const pointerId = pointerType === 'pen' ? 901 : 902;
+  await canvas.dispatchEvent('pointerdown', {
+    bubbles: true,
+    pointerId,
+    pointerType,
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: first.x,
+    clientY: first.y,
+    pressure: pointerType === 'pen' ? 0.45 : 0.5,
+  });
+  for (const point of rest) {
+    await canvas.dispatchEvent('pointermove', {
+      bubbles: true,
+      pointerId,
+      pointerType,
+      isPrimary: true,
+      button: 0,
+      buttons: 1,
+      clientX: point.x,
+      clientY: point.y,
+      pressure: pointerType === 'pen' ? 0.7 : 0.5,
+    });
+  }
+  await canvas.dispatchEvent('pointerup', {
+    bubbles: true,
+    pointerId,
+    pointerType,
+    isPrimary: true,
+    button: 0,
+    buttons: 0,
+    clientX: last.x,
+    clientY: last.y,
+    pressure: 0,
+  });
+};
+
 const useSignaturePad = async (
   page: Page,
   points: Array<{ x: number; y: number }>,
@@ -38,8 +124,66 @@ const useSignaturePad = async (
   const canvas = dialog.getByRole('application', {
     name: 'Powierzchnia do złożenia podpisu',
   });
+  const before = await canvasInkState(canvas);
   await drawOnCanvas(page, canvas, points);
+  await expectCanvasInkGrew(canvas, before);
   await dialog.getByRole('button', { name: 'Użyj podpisu' }).click();
+};
+
+const createSignableDocument = async (page: Page, title: string, sourceName: string) => {
+  await page.goto('/login');
+  await page.locator('#login-email').fill(DEMO_EMAIL);
+  await page.locator('#login-password').fill(DEMO_PASSWORD);
+  await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
+
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
+  await page.getByRole('button', { name: 'Dodaj dokument' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Dodaj dokument' });
+  await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
+  await dialog.getByLabel('Osoba').fill('Jan Kowalski');
+  await dialog.getByLabel('Data podpisania').fill('2026-01-01');
+  await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
+
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  const sourceSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Źródło/ }) });
+  await sourceSection.locator('input[type="file"]').setInputFiles({
+    name: sourceName,
+    mimeType: 'application/pdf',
+    buffer: await validPdfBuffer(),
+  });
+  await expect(sourceSection.getByText(sourceName)).toBeVisible();
+  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
+  await expect(page.getByRole('heading', { name: 'Podpisz dokument' })).toBeVisible();
+  await expect(page.getByText('Strona 1 z 2')).toBeVisible();
+};
+
+const placeSignaturePadStroke = async ({
+  page,
+  pointerType,
+  points,
+}: {
+  page: Page;
+  pointerType: 'pen' | 'touch';
+  points: Array<{ x: number; y: number }>;
+}) => {
+  const pageCanvas = page.getByRole('application', {
+    name: 'Powierzchnia do rysowania podpisu',
+  });
+  const pageBefore = await canvasInkState(pageCanvas);
+  await page.getByRole('button', { name: 'Złóż podpis' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Złóż podpis' });
+  const padCanvas = dialog.getByRole('application', {
+    name: 'Powierzchnia do złożenia podpisu',
+  });
+  const padBefore = await canvasInkState(padCanvas);
+  await dispatchPointerStroke({ canvas: padCanvas, pointerType, points });
+  await expectCanvasInkGrew(padCanvas, padBefore);
+  await expect(dialog.getByRole('button', { name: 'Użyj podpisu' })).toBeEnabled();
+  await dialog.getByRole('button', { name: 'Użyj podpisu' }).click();
+  await expect(dialog).toBeHidden();
+  await expectCanvasInkGrew(pageCanvas, pageBefore);
 };
 
 const signVisiblePdf = async (page: Page) => {
@@ -226,4 +370,55 @@ test('moves a document to trash and restores it', async ({ page }) => {
 
   await page.getByRole('tab', { name: 'Lista' }).click();
   await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+});
+
+test.describe('signature pad dialog', () => {
+  test.use({ contextOptions: { reducedMotion: 'no-preference' } });
+
+  test('accepts pen and touch pointers and places stamps', async ({ page }) => {
+    const stamp = Date.now();
+    await createSignableDocument(
+      page,
+      `Signature pad e2e ${stamp}`,
+      `signature-pad-${stamp}.pdf`,
+    );
+
+    await placeSignaturePadStroke({
+      page,
+      pointerType: 'pen',
+      points: [
+        { x: 0.18, y: 0.48 },
+        { x: 0.35, y: 0.32 },
+        { x: 0.52, y: 0.52 },
+        { x: 0.72, y: 0.38 },
+      ],
+    });
+    await page.getByRole('button', { name: 'Usuń' }).click();
+    await expect
+      .poll(
+        async () =>
+          (
+            await canvasInkState(
+              page.getByRole('application', {
+                name: 'Powierzchnia do rysowania podpisu',
+              }),
+            )
+          ).pixels,
+      )
+      .toBe(0);
+
+    await placeSignaturePadStroke({
+      page,
+      pointerType: 'touch',
+      points: [
+        { x: 0.2, y: 0.58 },
+        { x: 0.4, y: 0.42 },
+        { x: 0.58, y: 0.62 },
+        { x: 0.78, y: 0.46 },
+      ],
+    });
+    await expect(
+      page.getByRole('button', { name: 'Zapisz podpisany PDF' }),
+    ).toBeEnabled();
+  });
 });
