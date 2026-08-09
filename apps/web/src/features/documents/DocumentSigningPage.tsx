@@ -540,6 +540,8 @@ export const DocumentSigningPage = ({
   const sourceQuery = useQuery(actions.documentFile(documentId, fileId));
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const inkCanvasRef = useRef<HTMLCanvasElement>(null);
+  const fitBoxRef = useRef<HTMLDivElement>(null);
+  const renderChainRef = useRef<Promise<void>>(Promise.resolve());
   const currentStrokeRef = useRef<InkStroke | undefined>(undefined);
   const activePointerRef = useRef<number | undefined>(undefined);
   const activePointerTypeRef = useRef<string | undefined>(undefined);
@@ -560,6 +562,7 @@ export const DocumentSigningPage = ({
   const [pageRendering, setPageRendering] = useState(false);
   const [metrics, setMetrics] = useState<CanvasPdfMetrics>();
   const [metricsPageNumber, setMetricsPageNumber] = useState<number>();
+  const [massFitBox, setMassFitBox] = useState<{ width: number; height: number }>();
   const [strokes, setStrokes] = useState<InkStroke[]>([]);
   const [activeStroke, setActiveStroke] = useState<InkStroke>();
   const [placing, setPlacing] = useState(false);
@@ -645,6 +648,7 @@ export const DocumentSigningPage = ({
     setPageRendering(false);
     setMetrics(undefined);
     setMetricsPageNumber(undefined);
+    setMassFitBox(undefined);
     setStrokes([]);
     setActiveStroke(undefined);
     setPlacing(false);
@@ -685,35 +689,87 @@ export const DocumentSigningPage = ({
   }, [signable, sourceQuery.data]);
 
   useEffect(() => {
+    if (!massMode) {
+      setMassFitBox(undefined);
+      return;
+    }
+    const element = fitBoxRef.current;
+    if (!element) return;
+    const updateFitBox = () => {
+      const bounds = element.getBoundingClientRect();
+      const next = {
+        width: bounds.width > 0 ? Math.floor(bounds.width) : 0,
+        height: bounds.height > 0 ? Math.floor(bounds.height) : 0,
+      };
+      setMassFitBox((current) =>
+        current?.width === next.width && current.height === next.height
+          ? current
+          : next,
+      );
+    };
+    updateFitBox();
+    const animationFrame = window.requestAnimationFrame(updateFitBox);
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateFitBox);
+      window.addEventListener('orientationchange', updateFitBox);
+      return () => {
+        window.cancelAnimationFrame(animationFrame);
+        window.removeEventListener('resize', updateFitBox);
+        window.removeEventListener('orientationchange', updateFitBox);
+      };
+    }
+    const observer = new ResizeObserver(updateFitBox);
+    observer.observe(element);
+    window.addEventListener('resize', updateFitBox);
+    window.addEventListener('orientationchange', updateFitBox);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      observer.disconnect();
+      window.removeEventListener('resize', updateFitBox);
+      window.removeEventListener('orientationchange', updateFitBox);
+    };
+  }, [massMode, signable, sourceFile, sourceQuery.data]);
+
+  useEffect(() => {
     const pdfCanvas = pdfCanvasRef.current;
     const inkCanvas = inkCanvasRef.current;
     if (!pdf || !pdfCanvas || !inkCanvas) return;
+    if (massMode && !massFitBox) return;
     let current = true;
-    setPageRendering(true);
-    setMetrics(undefined);
-    setMetricsPageNumber(undefined);
-    void renderSourcePage(pdf, pageNumber, pdfCanvas)
-      .then((renderedMetrics) => {
+    const renderJob = renderChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
         if (!current) return;
-        inkCanvas.width = pdfCanvas.width;
-        inkCanvas.height = pdfCanvas.height;
-        if (massMode) {
-          pdfCanvas.style.width = 'auto';
-          pdfCanvas.style.height = 'auto';
+        setPageRendering(true);
+        setMetrics(undefined);
+        setMetricsPageNumber(undefined);
+        try {
+          const renderedMetrics = await renderSourcePage(
+            pdf,
+            pageNumber,
+            pdfCanvas,
+            massMode ? massFitBox : undefined,
+          );
+          if (!current) return;
+          inkCanvas.width = pdfCanvas.width;
+          inkCanvas.height = pdfCanvas.height;
+          setMetrics(renderedMetrics);
+          setMetricsPageNumber(pageNumber);
+          setPageRendering(false);
+        } catch (error: unknown) {
+          if (!current) return;
+          setPdfError(`Nie udało się wyświetlić strony: ${String(error)}`);
+          setPageRendering(false);
         }
-        setMetrics(renderedMetrics);
-        setMetricsPageNumber(pageNumber);
-        setPageRendering(false);
-      })
-      .catch((error: unknown) => {
-        if (!current) return;
-        setPdfError(`Nie udało się wyświetlić strony: ${String(error)}`);
-        setPageRendering(false);
       });
+    renderChainRef.current = renderJob.then(
+      () => undefined,
+      () => undefined,
+    );
     return () => {
       current = false;
     };
-  }, [massMode, pageNumber, pdf]);
+  }, [massFitBox, massMode, pageNumber, pdf]);
 
   useEffect(() => {
     const canvas = inkCanvasRef.current;
@@ -1352,148 +1408,165 @@ export const DocumentSigningPage = ({
     >
       {pdfError ? <Alert severity="error" sx={{ mb: 2 }}>{pdfError}</Alert> : null}
       {pageRendering ? <LinearProgress aria-label="Renderowanie strony PDF" /> : null}
-      <SigningPageSurface
+      <Box
+        ref={fitBoxRef}
         sx={{
-          position: 'relative',
-          width: 'fit-content',
-          maxWidth: '100%',
-          maxHeight: massMode ? '100%' : undefined,
-          mx: 'auto',
+          width: '100%',
+          flex: massMode ? '1 1 auto' : undefined,
+          alignSelf: massMode ? 'stretch' : undefined,
+          height: massMode ? '100%' : undefined,
+          display: massMode ? 'flex' : 'block',
+          alignItems: massMode ? 'center' : undefined,
+          justifyContent: massMode ? 'center' : undefined,
         }}
       >
-        <canvas
-          ref={pdfCanvasRef}
-          aria-label={`Strona ${pageNumber} dokumentu PDF`}
-          style={{
-            display: 'block',
-            maxHeight: massMode ? '100%' : undefined,
-            maxWidth: '100%',
-            height: 'auto',
-          }}
-        />
-        <InkSurface
-          ref={inkCanvasRef}
-          role="application"
-          aria-label="Powierzchnia do rysowania podpisu"
-          aria-busy={!pageReady}
-          tabIndex={0}
+        <SigningPageSurface
           sx={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            cursor: gestureMode === 'draw' ? 'crosshair' : 'grab',
-            touchAction:
-              gestureMode === 'draw' ? 'none' : 'pan-x pan-y pinch-zoom',
+            position: 'relative',
+            width: 'fit-content',
+            maxWidth: '100%',
+            maxHeight: massMode ? '100%' : undefined,
+            mx: 'auto',
           }}
-          onPointerDown={(event) => {
-            if (!pageReady || !metrics || committing) return;
-            if (event.pointerType === 'pen') {
-              activePenPointerRef.current = event.pointerId;
-              lastPenSeenAtRef.current = event.timeStamp;
-              cancelActiveTouchStroke();
-            }
-            const ignoreTouch =
-              gestureMode === 'draw' &&
-              event.pointerType === 'touch' &&
-              touchIgnoredForPenPriority(event);
-            if (ignoreTouch) {
-              event.preventDefault();
-              return;
-            }
-            const points = pointerPoints(event);
-            const point = points[0];
-            if (!point) return;
-            const hit = pointerStartsPlacementDrag(event)
-              ? signingStampsForPage(stamps, pageIndex)
-                  .slice()
-                  .reverse()
-                  .find(({ stamp }) => signingStampContainsPoint(stamp, point))
-              : undefined;
-            if (hit) {
-              setSelectedStampIndex(hit.stampIndex);
-              placementDragRef.current = {
-                pointerId: event.pointerId,
-                clientX: event.clientX,
-                clientY: event.clientY,
-                placement: hit.stamp.placement,
-                stampIndex: hit.stampIndex,
-              };
-              event.currentTarget.setPointerCapture(event.pointerId);
-              event.preventDefault();
-              return;
-            }
-            if (placing) {
-              setSelectedStampIndex(undefined);
-              if (!pointerStartsPlacementDrag(event)) return;
-              if (!strokes.length) return;
-              if (!signingStampContainsPoint(draftStamp(pageIndex), point)) return;
-              placementDragRef.current = {
-                pointerId: event.pointerId,
-                clientX: event.clientX,
-                clientY: event.clientY,
-                placement,
-              };
-              event.currentTarget.setPointerCapture(event.pointerId);
-              event.preventDefault();
-              return;
-            }
-            if (massMode) return;
-            if (gestureMode === 'pan') return;
-            if (!pointerDrawsInk(event)) return;
-            const stroke = { points };
-            activePointerRef.current = event.pointerId;
-            activePointerTypeRef.current = event.pointerType;
-            currentStrokeRef.current = stroke;
-            setActiveStroke(stroke);
-            event.currentTarget.setPointerCapture(event.pointerId);
-            event.preventDefault();
-          }}
-          onPointerMove={(event) => {
-            if (event.pointerType === 'pen') {
-              lastPenSeenAtRef.current = event.timeStamp;
-            }
-            if (gestureMode === 'draw' && touchIgnoredForPenPriority(event)) {
-              if (placementDragRef.current?.pointerId === event.pointerId) {
-                placementDragRef.current = undefined;
+        >
+          <canvas
+            ref={pdfCanvasRef}
+            aria-label={`Strona ${pageNumber} dokumentu PDF`}
+            style={{
+              display: 'block',
+              maxHeight: massMode ? '100%' : undefined,
+              maxWidth: '100%',
+              height: 'auto',
+            }}
+          />
+          <InkSurface
+            ref={inkCanvasRef}
+            role="application"
+            aria-label="Powierzchnia do rysowania podpisu"
+            aria-busy={!pageReady}
+            tabIndex={0}
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              cursor: gestureMode === 'draw' ? 'crosshair' : 'grab',
+              touchAction:
+                gestureMode === 'draw' ? 'none' : 'pan-x pan-y pinch-zoom',
+            }}
+            onPointerDown={(event) => {
+              if (!pageReady || !metrics || committing) return;
+              if (event.pointerType === 'pen') {
+                activePenPointerRef.current = event.pointerId;
+                lastPenSeenAtRef.current = event.timeStamp;
+                cancelActiveTouchStroke();
               }
-              cancelActiveTouchStroke();
-              event.preventDefault();
-              return;
-            }
-            const drag = placementDragRef.current;
-            if (drag?.pointerId === event.pointerId) {
-              const bounds = event.currentTarget.getBoundingClientRect();
-              if (bounds.width > 0 && bounds.height > 0) {
-                const next = {
-                  ...drag.placement,
-                  offsetX: drag.placement.offsetX + (event.clientX - drag.clientX) / bounds.width,
-                  offsetY: drag.placement.offsetY + (event.clientY - drag.clientY) / bounds.height,
+              const ignoreTouch =
+                gestureMode === 'draw' &&
+                event.pointerType === 'touch' &&
+                touchIgnoredForPenPriority(event);
+              if (ignoreTouch) {
+                event.preventDefault();
+                return;
+              }
+              const points = pointerPoints(event);
+              const point = points[0];
+              if (!point) return;
+              const hit = pointerStartsPlacementDrag(event)
+                ? signingStampsForPage(stamps, pageIndex)
+                    .slice()
+                    .reverse()
+                    .find(({ stamp }) => signingStampContainsPoint(stamp, point))
+                : undefined;
+              if (hit) {
+                setSelectedStampIndex(hit.stampIndex);
+                placementDragRef.current = {
+                  pointerId: event.pointerId,
+                  clientX: event.clientX,
+                  clientY: event.clientY,
+                  placement: hit.stamp.placement,
+                  stampIndex: hit.stampIndex,
                 };
-                if (drag.stampIndex === undefined) {
-                  setPlacement(clampSignaturePlacementToPage(strokes, next));
-                } else {
-                  const stampIndex = drag.stampIndex;
-                  setStamps((current) =>
-                    updateSigningStampPlacement(current, stampIndex, next),
-                  );
-                }
+                event.currentTarget.setPointerCapture(event.pointerId);
+                event.preventDefault();
+                return;
               }
+              if (placing) {
+                setSelectedStampIndex(undefined);
+                if (!pointerStartsPlacementDrag(event)) return;
+                if (!strokes.length) return;
+                if (!signingStampContainsPoint(draftStamp(pageIndex), point)) return;
+                placementDragRef.current = {
+                  pointerId: event.pointerId,
+                  clientX: event.clientX,
+                  clientY: event.clientY,
+                  placement,
+                };
+                event.currentTarget.setPointerCapture(event.pointerId);
+                event.preventDefault();
+                return;
+              }
+              if (massMode) return;
+              if (gestureMode === 'pan') return;
+              if (!pointerDrawsInk(event)) return;
+              const stroke = { points };
+              activePointerRef.current = event.pointerId;
+              activePointerTypeRef.current = event.pointerType;
+              currentStrokeRef.current = stroke;
+              setActiveStroke(stroke);
+              event.currentTarget.setPointerCapture(event.pointerId);
               event.preventDefault();
-              return;
-            }
-            if (activePointerRef.current !== event.pointerId) return;
-            const current = currentStrokeRef.current;
-            if (!current) return;
-            const next = { points: [...current.points, ...pointerPoints(event)] };
-            currentStrokeRef.current = next;
-            setActiveStroke(next);
-            event.preventDefault();
-          }}
-          onPointerUp={finishPointer}
-          onPointerCancel={finishPointer}
-        />
-      </SigningPageSurface>
+            }}
+            onPointerMove={(event) => {
+              if (event.pointerType === 'pen') {
+                lastPenSeenAtRef.current = event.timeStamp;
+              }
+              if (gestureMode === 'draw' && touchIgnoredForPenPriority(event)) {
+                if (placementDragRef.current?.pointerId === event.pointerId) {
+                  placementDragRef.current = undefined;
+                }
+                cancelActiveTouchStroke();
+                event.preventDefault();
+                return;
+              }
+              const drag = placementDragRef.current;
+              if (drag?.pointerId === event.pointerId) {
+                const bounds = event.currentTarget.getBoundingClientRect();
+                if (bounds.width > 0 && bounds.height > 0) {
+                  const next = {
+                    ...drag.placement,
+                    offsetX:
+                      drag.placement.offsetX +
+                      (event.clientX - drag.clientX) / bounds.width,
+                    offsetY:
+                      drag.placement.offsetY +
+                      (event.clientY - drag.clientY) / bounds.height,
+                  };
+                  if (drag.stampIndex === undefined) {
+                    setPlacement(clampSignaturePlacementToPage(strokes, next));
+                  } else {
+                    const stampIndex = drag.stampIndex;
+                    setStamps((current) =>
+                      updateSigningStampPlacement(current, stampIndex, next),
+                    );
+                  }
+                }
+                event.preventDefault();
+                return;
+              }
+              if (activePointerRef.current !== event.pointerId) return;
+              const current = currentStrokeRef.current;
+              if (!current) return;
+              const next = { points: [...current.points, ...pointerPoints(event)] };
+              currentStrokeRef.current = next;
+              setActiveStroke(next);
+              event.preventDefault();
+            }}
+            onPointerUp={finishPointer}
+            onPointerCancel={finishPointer}
+          />
+        </SigningPageSurface>
+      </Box>
       <SignaturePadDialog
         open={signaturePadOpen}
         inkColorId={inkColorId}

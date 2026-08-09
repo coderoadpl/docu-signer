@@ -14,7 +14,7 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentSigningPage } from './DocumentSigningPage.js';
 import { documentSigningSearchSchema, documentsSearchSchema } from './documents.logic.js';
-import type { SigningStampWithMetrics } from './signing-pdf.js';
+import { renderSourcePage, type SigningStampWithMetrics } from './signing-pdf.js';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const SOURCE_ID = '22222222-2222-4222-8222-222222222222';
@@ -175,6 +175,7 @@ const installUploadHandlers = () => {
 beforeEach(() => {
   pdfMocks.flatten.mockClear();
   pdfMocks.destroy.mockClear();
+  vi.mocked(renderSourcePage).mockClear();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue(
     new DOMRect(0, 0, 200, 300),
@@ -1016,6 +1017,68 @@ describe('DocumentSigningPage', () => {
     expect(screen.getByText('Podpisano 0')).toBeInTheDocument();
     expect(screen.getByText('Pominięto 1')).toBeInTheDocument();
     expect(pdfMocks.flatten).not.toHaveBeenCalled();
+  });
+
+  it('renders the mass-signing PDF with the measured wizard fit box', async () => {
+    const elementBounds = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue(new DOMRect(0, 0, 640, 480));
+    try {
+      await renderPage(
+        `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+      );
+      await signingCanvas();
+
+      await waitFor(() =>
+        expect(vi.mocked(renderSourcePage)).toHaveBeenCalledWith(
+          expect.anything(),
+          1,
+          expect.any(HTMLCanvasElement),
+          { width: 640, height: 480 },
+        ),
+      );
+      const renderCount = vi.mocked(renderSourcePage).mock.calls.length;
+      fireEvent(window, new Event('resize'));
+      await waitFor(() =>
+        expect(vi.mocked(renderSourcePage)).toHaveBeenCalledTimes(renderCount),
+      );
+    } finally {
+      elementBounds.mockRestore();
+    }
+  });
+
+  it('observes the mass-signing fit box when ResizeObserver is available', async () => {
+    const originalResizeObserver = window.ResizeObserver;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    class ResizeObserverStub {
+      observe = observe;
+      disconnect = disconnect;
+      unobserve = vi.fn();
+    }
+    const elementBounds = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue(new DOMRect(0, 0, 640, 480));
+    Object.defineProperty(window, 'ResizeObserver', {
+      configurable: true,
+      value: ResizeObserverStub,
+    });
+    try {
+      const { unmount } = await renderPage(
+        `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+      );
+      await signingCanvas();
+
+      expect(observe).toHaveBeenCalled();
+      unmount();
+      expect(disconnect).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'ResizeObserver', {
+        configurable: true,
+        value: originalResizeObserver,
+      });
+      elementBounds.mockRestore();
+    }
   });
 
   it('removes the selected mass-signing stamp before proceeding and skips the document', async () => {
