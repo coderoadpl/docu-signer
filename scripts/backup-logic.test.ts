@@ -7,7 +7,10 @@ import {
   monthlyTransferGuard,
   parseArchiveName,
   pgEnvFromDatabaseUrl,
+  renderBackupIndex,
   selectRetention,
+  type BackupIndexBlob,
+  type BackupIndexRow,
   type BlobInventoryItem,
   type BlobManifestItem,
 } from './backup-logic.js';
@@ -28,6 +31,30 @@ const manifest = (
   sizeBytes,
   contentType: 'application/pdf',
   sha256: 'a'.repeat(64),
+});
+
+const indexRow = (
+  documentId: string,
+  documentTitle: string,
+  pathname: string,
+  fileName: string,
+  role = 'source',
+): BackupIndexRow => ({
+  documentId,
+  documentTitle,
+  docType: 'umowa-uod',
+  person: 'Jan Kowalski',
+  role,
+  fileName,
+  contentType: 'application/pdf',
+  sizeBytes: 1234,
+  pathname,
+});
+
+const indexBlob = (pathname: string): BackupIndexBlob => ({
+  pathname,
+  contentType: 'application/pdf',
+  sizeBytes: 1234,
 });
 
 describe('backup manifest diffing', () => {
@@ -208,5 +235,111 @@ describe('backup archive names', () => {
     expect(parseArchiveName('backup-2026-08-01.zip')).toBeNull();
     expect(parseArchiveName('docu-signer-backup-2026-02-30T01-17-00Z.zip')).toBeNull();
     expect(parseArchiveName('docu-signer-backup-2026-08-01T25-17-00Z.zip')).toBeNull();
+  });
+});
+
+describe('backup index rendering', () => {
+  it('groups archived files under their documents', () => {
+    expect(
+      renderBackupIndex(
+        [
+          indexRow('doc-a', 'Umowa A', 'documents/default/doc-a/source', 'umowa-a.pdf'),
+          indexRow('doc-a', 'Umowa A', 'documents/default/doc-a/signed', 'umowa-a-signed.pdf', 'signed-digital'),
+        ],
+        [
+          indexBlob('documents/default/doc-a/source'),
+          indexBlob('documents/default/doc-a/signed'),
+        ],
+      ),
+    ).toBe(`Docu Signer backup index
+
+DOCUMENTS
+
+Umowa A
+docType: umowa-uod
+person: Jan Kowalski
+- role: signed-digital
+  file: umowa-a-signed.pdf
+  content type: application/pdf
+  size: 1234 bytes
+  ZIP path: blobs/documents/default/doc-a/signed
+- role: source
+  file: umowa-a.pdf
+  content type: application/pdf
+  size: 1234 bytes
+  ZIP path: blobs/documents/default/doc-a/source
+`);
+  });
+
+  it('sorts documents by title', () => {
+    expect(
+      renderBackupIndex(
+        [
+          indexRow('doc-z', 'Zezwolenie', 'documents/default/doc-z/source', 'z.pdf'),
+          indexRow('doc-a', 'Akt', 'documents/default/doc-a/source', 'a.pdf'),
+        ],
+        [
+          indexBlob('documents/default/doc-z/source'),
+          indexBlob('documents/default/doc-a/source'),
+        ],
+      ),
+    ).toBe(`Docu Signer backup index
+
+DOCUMENTS
+
+Akt
+docType: umowa-uod
+person: Jan Kowalski
+- role: source
+  file: a.pdf
+  content type: application/pdf
+  size: 1234 bytes
+  ZIP path: blobs/documents/default/doc-a/source
+
+Zezwolenie
+docType: umowa-uod
+person: Jan Kowalski
+- role: source
+  file: z.pdf
+  content type: application/pdf
+  size: 1234 bytes
+  ZIP path: blobs/documents/default/doc-z/source
+`);
+  });
+
+  it('places blobs without database rows in the orphan section', () => {
+    expect(
+      renderBackupIndex(
+        [indexRow('doc-a', 'Umowa A', 'documents/default/doc-a/source', 'umowa-a.pdf')],
+        [
+          indexBlob('documents/default/doc-a/source'),
+          indexBlob('documents/default/orphan-b'),
+          indexBlob('documents/default/orphan-a'),
+        ],
+      ),
+    ).toBe(`Docu Signer backup index
+
+DOCUMENTS
+
+Umowa A
+docType: umowa-uod
+person: Jan Kowalski
+- role: source
+  file: umowa-a.pdf
+  content type: application/pdf
+  size: 1234 bytes
+  ZIP path: blobs/documents/default/doc-a/source
+
+ORPHANS
+- blobs/documents/default/orphan-a
+- blobs/documents/default/orphan-b
+`);
+  });
+
+  it('renders an empty archive plainly', () => {
+    expect(renderBackupIndex([], [])).toBe(`Docu Signer backup index
+
+No archived blobs.
+`);
   });
 });

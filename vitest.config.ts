@@ -135,7 +135,11 @@ export default defineConfig({
               test: {
                 name: 'integration',
                 environment: 'node',
-                include: ['adapters/**/*.integration.test.ts', 'apps/**/*.integration.test.ts'],
+                include: [
+                  'adapters/**/*.integration.test.ts',
+                  'apps/**/*.integration.test.ts',
+                  'scripts/**/*.integration.test.ts',
+                ],
               },
             },
           ]
