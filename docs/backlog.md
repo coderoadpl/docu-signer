@@ -105,8 +105,8 @@ enterprise customer questionnaire)
 ## Open owner decisions (not deferred — awaiting answers)
 
 Tracked in the DECIDE queue: B5 (agent operating envelope), C1 (transactions
-doctrine on neon-http), C3 (invariant placement), C4 (backfill executor),
-F2 (concurrent-change protocol); plus the provider/secret choices blocking
+doctrine on neon-http), C3 (invariant placement), and F2 (concurrent-change
+protocol); plus the provider/secret choices blocking
 A1-S4 (magic-link email provider, social OAuth credentials) and A1-S5
 (`VERCEL_TOKEN` for US-020 — the adapter is built and offline-tested; the token
 is what remains, and only the live verification depends on it).

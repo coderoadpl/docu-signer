@@ -4,4 +4,3 @@ export * from './authorize.js';
 export * from './usecases/resolve-identity.js';
 export * from './usecases/documents.js';
 export * from './usecases/public.js';
-export * from './usecases/backfills.js';

@@ -118,15 +118,15 @@ are deliberately **not** synonyms.
 
 | Term | Meaning |
 |---|---|
-| **Domain (business subdomain)** | A business subdomain of the product ("tasks", "billing"). Its frontend incarnation is a feature; one subdomain may have several islands (a list and a board over the same tasks are two islands over one subdomain). |
+| **Domain (business subdomain)** | A business subdomain of the product ("documents", "authentication"). Its frontend incarnation is a feature, which may contain several views or routes. |
 | **`core/domain`** | The shared language layer: entities, zod schemas, domain rules, the error taxonomy. Pure, isomorphic, and there is exactly **one** — it is the "domain" of hexagonal/ports-and-adapters, the vocabulary every vertical slice speaks. |
 | **Feature** | `apps/web/src/features/<name>/` — the vertical slice of a subdomain in the UI. |
 | **Island** | The same feature, seen from its isolation guarantees: features are islands because lint forbids them to import each other. One word names the thing, the other names its property — "feature (island)". |
-| **View** | A React component inside a feature; renders UI and talks exclusively to its own island's core. |
-| **Island core** | `features/<name>/core/` — a pure TS module: events in, selectors out, machine inside. |
-| **Machine** | The state implementation inside an island core, on a three-rung ladder: rung 1 — descriptor re-exports; rung 2 — island store (`@xstate/store`); rung 3 — statechart (XState), derived from a `core/domain` transition table. |
+| **View** | A React component inside a feature; renders bound server actions and component-lifetime UI state. |
+| **Island core (historical)** | The upstream `features/<name>/core/` pure-TS state seam. Podpisy does not ship one; the historical model is recorded below. |
+| **Machine (historical)** | The state implementation behind an upstream island core. Podpisy currently uses React component state instead. |
 | **Descriptors** | The typed query/mutation definitions produced by `core/client` factories (server state, TanStack) — see [server-state.md](server-state.md). |
-| **Bus** | Typed, closed unions of client-only, ephemeral signals **between island cores**; views never see it. |
+| **Bus (historical)** | The upstream typed signal channel between island cores. No client event bus ships in Podpisy. |
 
 ## Frontend (apps/web)
 
@@ -144,8 +144,9 @@ apps/web/src/
   AppLayout.tsx     the stateful shell composition (ADR-0011): auth guard and
                     product navigation — renders components/layout/AppShell
   routes/           route components — thin: parse params, render a feature
-  features/<name>/  feature folders (islands): core/ — the island core (events
-                    in, selectors out) — plus views, hooks, <Name>.logic.ts
+  features/         auth/, documents/, settings/, system/: React pages and
+                    components, with pure *.logic.ts helpers where needed;
+                    no feature core layer ships
   components/ui/    design-system primitives → theme, lib only (no core, no features)
   components/layout/ page skeletons: structure only → theme, components/ui, lib
                     (no core, no features, no routes, no api, no TanStack)
@@ -236,35 +237,38 @@ State rules:
   The descriptor object is the seam — TanStack is a vocabulary dependency,
   never wrapped in a port; full usage policy in
   [server-state.md](server-state.md).
-- **Client state**: governed by the island-core model below
-  ([ADR-0005](decisions/0005-client-application-state.md)). Trivial,
-  component-lifetime state stays `useState`/`useReducer` inside a view; React
-  context only for cross-cutting concerns (theme, session). State-library
-  React bindings are banned everywhere in `apps/web` (lint); the chosen
-  rung-2 store package (`@xstate/store`) and `xstate` are confined to
-  island cores ([frontend-lint-plan.md](frontend-lint-plan.md) Phase 5).
+- **Client state**: the shipped archive uses component-lifetime React state and
+  TanStack Query server state. The demo strip removed every island core and its
+  dedicated typecheck; ADR-0005 remains a historical design record, not a claim
+  that Podpisy currently implements that model.
 - **URL state**: path params = resource identity, search params = shareable
   filters; neither is duplicated into component state.
 - **Features are islands** (lint): a feature imports only itself. Features
   coordinate through server state (a command invalidates a scope, other
   features' queries refetch — the cache is the pub/sub, local and instant),
-  through the URL, through a route-level parent, or core-to-core over the
-  typed signal bus (§Client application state) — never by importing each
+  through the URL, or through a route-level parent — never by importing each
   other or sharing client state. Shared code extracts downward
   (`components/ui`, `lib`, `core/client`), never sideways.
 - **No stringly-typed client event bus.** An untyped bus hides coupling from
   the dependency graph — the enforcers go incomplete and control flow becomes
-  slower and less reliable for agents to trace. The sanctioned shape — a closed union of typed
-  events in one module (like `ErrorCode`) that both sides import — was
-  reserved "at first proven need"; ADR-0005 declares that need proven and
-  defines the bus channel below. Two features that constantly coordinate are
-  still one feature.
+  slower and less reliable for agents to trace. Podpisy ships no client event
+  bus; introducing one requires a named trigger and matching enforcement. Two
+  features that constantly coordinate are still one feature.
 
-### Client application state (island cores)
+### Historical upstream client application state (island cores)
 
-The full model is decided in
+**Fork status (2026-08-01): the island-core model is not present in the shipped
+application.** The demo strip removed all `features/*/core/**` implementations,
+`tsconfig.islands.json`, the `typecheck:islands` script, and the dedicated
+api-import regression probe. The generic feature-isolation and framework-ban
+lint rules remain, with their rule-presence and framework-import probes, but
+`check` no longer proves a DOM-free island program or a public island factory.
+The remainder of this section records the upstream design for a future named
+trigger; its island-core matrices are not descriptions of current enforcement.
+
+The upstream model is decided in
 [ADR-0005](decisions/0005-client-application-state.md); this section is its
-normative form. Every rule carries an explicit enforcement mini-matrix —
+historical form. Every rule carries an explicit enforcement mini-matrix —
 **TYPE / LINT / TEST / REVIEW+AI** — each cell saying *how*, or `n/a` with a
 reason. A rule without a matrix is prose, and prose decays.
 
@@ -408,27 +412,26 @@ api or query types. Direction stays lawful: a feature may import web-api
 (api.ts), but web-api must not import a feature — the structural-gateway pattern
 in api.ts binds the transport without api.ts reaching into the island. React in
 the browser is one view adapter, not a dependency of the core.
-— **TYPE**: a dedicated program, `tsconfig.islands.json` (lib `ES2023`, **no
-DOM**), typechecks `features/*/core/**` and is wired into `check` as
-`typecheck:islands`; a core referencing `window`/`document`/react types fails it
-— DOM-free is proven by construction, not asserted in prose · **LINT**: the
-`features/*/core/**` react/framework ban PLUS a parent-relative import ban —
-a core cannot import api.ts, a sibling feature or any apps/web path outside its
-own core dir (`no-restricted-imports` patterns), mirrored by dependency-cruiser
-(`island-core-is-portable`) so the boundary holds in both enforcers · **TEST**:
-core unit tests run in plain node (no jsdom), and each island adds one that
-drives the **public factory** with a fake gateway — the whole seam is proven
-node-runnable on every `check`; a config-regression probe fails an api.ts import
-from a core · **REVIEW+AI**: n/a (mechanically covered).
+— **TYPE**: not enforced in this fork; the dedicated no-DOM TypeScript program
+was removed with the island cores · **LINT**: dormant
+`features/*/core/**` framework and parent-relative import restrictions remain in
+ESLint, and dependency-cruiser retains the framework-agnostic mirror · **TEST**:
+config-regression proves the feature-isolation rules remain configured and that
+a React import matching an island-core path fails dependency-cruiser; there is
+no longer an api.ts-import probe or public-factory test · **REVIEW+AI**: any
+future island-core reintroduction must restore evidence for the guarantees it
+claims.
 
-The enforcement matrix, by construct:
+The current enforcement matrix:
 
 | Portability property | How it is guaranteed |
 | --- | --- |
-| Core imports no api.ts / web composition | `no-restricted-imports` parent-relative ban + depcruise `island-core-is-portable` + config-regression probe |
-| Core typechecks without DOM | `tsconfig.islands.json` (no DOM lib) run as `typecheck:islands` in `check` |
-| Public seam runs in plain node | per-island node test over `createXCore(deps)` with a fake gateway (no jsdom) |
-| Composition is a single lawful site | `features/<name>/index.web.ts`; api.ts stays feature-free (structural gateway) |
+| Cross-feature imports are rejected | ESLint boundaries + dependency-cruiser `web-features-are-islands`; config-regression checks the configured rules |
+| A matching core imports no React framework | ESLint restrictions + dependency-cruiser `island-core-is-framework-agnostic`; config-regression feeds a React-import fixture |
+| Core imports no api.ts / web composition | ESLint retains the parent-relative restriction; the dedicated regression probe was removed |
+| Core typechecks without DOM | Not enforced; the no-DOM TypeScript program was removed |
+| Public seam runs in plain node | Not applicable; no island core or public factory ships |
+| Composition is a single lawful site | Not applicable; no `features/<name>/index.web.ts` ships |
 
 **Isomorphic domain rules for guarded transitions.** When transition
 legality is a business rule (WIP limits, an enforced status path), it is
@@ -814,6 +817,11 @@ Auth tables use naive `timestamp` — documented legacy, deliberately **not
 migrated now** (nothing ranges or sorts across zones on them; converting is a
 routine expand→contract package the day a query needs index-backed time
 semantics).
+
+The demo strip deliberately writes no destructive migration. The now-unused
+`members`, `todos`, `cards`, and `backfill_checkpoints` tables therefore remain
+declared in `adapters/db/app-schema.ts` and in migration history; removing them
+is a dedicated destructive-migration follow-up, not part of this surface strip.
 — **TYPE**: n/a (the column type is a schema-file choice; TS sees a string
 either way) · **LINT**: n/a today (a schema-file rule against text timestamp
 columns becomes worth its fixture cost when tables multiply) · **TEST**: n/a
@@ -1079,7 +1087,6 @@ code.
 - `HealthPort`: database ping for the readiness route (`/api/health/ready` and
   the compat `/api/health`); liveness never calls it.
 - `IdGenerator`: injected UUID minting for deterministic use-case tests.
-- `BackfillPort`: retained deploy-backfill checkpoints.
 
 **BUILT** (US-026/US-028a, A1 sub-package 4): the provider auth methods that were
 "normative when triggered" are now wired — this package was the trigger.

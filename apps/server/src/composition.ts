@@ -8,7 +8,6 @@ import {
   createTenantDomainRepository,
   createTenantRepository,
 } from '#adapters/db/repositories.js';
-import { createBackfillRepository } from '#adapters/db/backfill-repository.js';
 import { createAuth, createAuthPort, type Auth, type GoogleSettings } from '#adapters/auth/create-auth.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
@@ -16,7 +15,6 @@ import { createLocalFsStorage } from '#adapters/storage/local-fs.js';
 import { createVercelBlobStorage } from '#adapters/storage/vercel-blob.js';
 import type {
   AuthPort,
-  BackfillPort,
   DocumentRepository,
   EmailPort,
   HealthPort,
@@ -46,14 +44,6 @@ export interface AppDeps {
   tenants: TenantRepository;
   tenantAccess: TenantAccessReader;
   health: HealthPort;
-  /** C4 batch backfill executor substrate (§Backfills). */
-  backfills: BackfillPort;
-  /**
-   * The shared secret gating the public backfill route on Vercel (no private
-   * INTERNAL_PORT there); null → the public route does not mount. Self-host runs
-   * the same executor on the network-isolated internal app instead.
-   */
-  backfillSecret: string | null;
   ids: IdGenerator;
   baseDomain: string;
   /** Build attestation surfaced by the health routes; 'unknown' outside a deploy. */
@@ -156,8 +146,6 @@ export const createDeps = (env: Env): AppDeps => {
     tenants: createTenantRepository(db),
     tenantAccess: createTenantAccessReader(db),
     health: createHealthPort(db),
-    backfills: createBackfillRepository(db),
-    backfillSecret: env.INTERNAL_BACKFILL_SECRET ?? null,
     ids: { nextId: () => randomUUID() },
     baseDomain: env.APP_BASE_DOMAIN,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',

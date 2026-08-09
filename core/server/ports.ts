@@ -101,15 +101,3 @@ export interface EmailPort {
 export interface IdGenerator {
   nextId(): string;
 }
-
-export interface BackfillCheckpoint {
-  readonly name: string;
-  readonly cursor: string | null;
-  readonly processed: number;
-  readonly done: boolean;
-}
-
-export interface BackfillPort {
-  loadCheckpoint(name: string): Promise<BackfillCheckpoint | null>;
-  saveCheckpoint(checkpoint: BackfillCheckpoint): Promise<void>;
-}

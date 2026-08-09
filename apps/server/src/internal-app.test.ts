@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import type { TenantDomain } from '#core/domain/index.js';
-import type { BackfillPort, TenantDomainRepository } from '#core/server/index.js';
+import type { TenantDomainRepository } from '#core/server/index.js';
 
-import { buildInternalApp, parseLimit } from './internal-app.js';
+import { buildInternalApp } from './internal-app.js';
 
 const verified: TenantDomain = {
   id: 'd1',
@@ -13,20 +13,11 @@ const verified: TenantDomain = {
   verified: true,
 };
 
-const noopBackfills: BackfillPort = {
-  loadCheckpoint: async () => null,
-  saveCheckpoint: async () => {},
-};
-
-const deps = (
-  findByDomain: TenantDomainRepository['findByDomain'],
-  backfills: BackfillPort = noopBackfills,
-) => ({
+const deps = (findByDomain: TenantDomainRepository['findByDomain']) => ({
   tenantDomains: {
     findByDomain,
     listVerifiedDomains: async () => [],
   } satisfies TenantDomainRepository,
-  backfills,
 });
 
 describe('internal domain-check endpoint', () => {
@@ -65,24 +56,5 @@ describe('internal domain-check endpoint', () => {
     const app = buildInternalApp(deps(async () => verified));
     expect((await app.request('/api/health')).status).toBe(404);
     expect((await app.request('/')).status).toBe(404);
-  });
-});
-
-describe('internal backfill endpoint', () => {
-  it('answers 404 for an unregistered backfill name', async () => {
-    const app = buildInternalApp(deps(async () => verified));
-    const res = await app.request('/internal/backfills/no-such-backfill', { method: 'POST' });
-    expect(res.status).toBe(404);
-  });
-});
-
-describe('parseLimit', () => {
-  it('defaults to 100 and caps at 1000, flooring invalid input', () => {
-    expect(parseLimit(undefined)).toBe(100);
-    expect(parseLimit('0')).toBe(100);
-    expect(parseLimit('-3')).toBe(100);
-    expect(parseLimit('abc')).toBe(100);
-    expect(parseLimit('50')).toBe(50);
-    expect(parseLimit('99999')).toBe(1000);
   });
 });

@@ -34,15 +34,13 @@ export default defineConfig({
         // depress the database-free ratchet floor below.
         'scripts/e2e-server.ts',
         // Smoke-gate orchestration, same rationale: these boot the real server /
-        // drive a real deploy through the CLI (`pnpm run smoke`, `smoke:remote`,
-        // `quickstart:probe`), so they have no database-free unit surface and are
-        // exercised by the smoke CI job — counting them as 0% would falsely
-        // depress the floor.
+        // drive a real deploy through the CLI (`pnpm run smoke`, `smoke:remote`),
+        // so they have no database-free unit surface and are exercised by the
+        // smoke CI job — counting them as 0% would falsely depress the floor.
         'scripts/smoke.ts',
         'scripts/smoke-cli.ts',
         'scripts/smoke-remote.ts',
         'scripts/server-harness.ts',
-        'scripts/quickstart-probe.ts',
         // Gate-adjacent orchestration too: it shells out to `docker ps` and
         // process.exit()s, so it has no database-free unit surface either.
         'scripts/db-up-preflight.ts',
@@ -69,29 +67,13 @@ export default defineConfig({
       // because they are covered by `test:integration`, which runs where
       // Postgres exists (CI smoke job).
       //
-      // Re-measured 2026-07-20 after the round-1 audit fixes: branch coverage
-      // moved from 91.28 to 90.85 (the CLI-hardening and template commits added
-      // uncovered defensive/validation branches), so the branch floor drops to
-      // 90 to track the new measured minimum. stmts/lines/funcs stay at their
-      // earlier floors (still comfortably met).
-      //
-      // Re-measured 2026-07-21 for FR-8 (staff admin grants): the new
-      // integration-only `staff-repository.ts` (StaffRepository + UserDirectory)
-      // reads 0% in the database-free run like every other repository, adding
-      // uncovered factory/method functions, so measured function coverage fell to
-      // 82.42 — the floor drops to 82 to track it (its real coverage lives in
-      // test:integration). stmts/branches/lines stay at their floors.
-      //
-      // Re-measured 2026-07-21 for the decisions-batch (C1 atomicity, C3 invariant
-      // placement, C4 backfill executor, SES adapter): these add defensive
-      // error-path branches — the SES/backfill adapters and the atomic CTE/DELETE
-      // repository idioms — whose real coverage lives in test:integration and the
-      // smoke/e2e gates, not the database-free run. Measured branch coverage is
-      // 89.82, so the branch floor tracks down to 89. stmts/lines/funcs stay at
-      // their floors (still comfortably met at 81.6/81.6/83.9).
+      // Re-measured 2026-08-01 after the demo-vertical strip removed roughly
+      // 500 tests together with the code they covered. The database-free run is
+      // statements 75.92%, branches 87.41%, functions 76.53%, and lines 75.92%;
+      // each floor is that measured value rounded down.
       thresholds: {
         statements: 75,
-        branches: 86,
+        branches: 87,
         functions: 76,
         lines: 75,
       },
@@ -113,10 +95,6 @@ export default defineConfig({
             'apps/server/**/*.test.tsx',
             'scripts/**/*.test.ts',
             'eslint-plugin-agentproofarch/**/*.test.js',
-            // Island cores are pure TS (architecture.md §Client application
-            // state): their unit tests run here, in plain node — no jsdom —
-            // so TUI portability is exercised on every `check`.
-            'apps/web/src/features/*/core/**/*.test.ts',
           ],
           exclude: [...configDefaults.exclude, '**/*.integration.test.ts'],
         },
@@ -131,7 +109,7 @@ export default defineConfig({
           // flake without masking a genuinely hung test.
           testTimeout: 15_000,
           include: ['apps/web/**/*.test.ts', 'apps/web/**/*.test.tsx'],
-          exclude: [...configDefaults.exclude, 'apps/web/src/features/*/core/**/*.test.ts'],
+          exclude: [...configDefaults.exclude],
           setupFiles: [
             'apps/web/src/test/pointer-events.ts',
             'apps/web/src/test/setup.ts',

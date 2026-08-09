@@ -63,11 +63,6 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   tenants: { findById: async () => null, findBySlug },
   tenantAccess: { findStaffGrant: async () => null },
   health: { pingDatabase: async () => true },
-  backfills: {
-    loadCheckpoint: async () => null,
-    saveCheckpoint: async () => {},
-  },
-  backfillSecret: null,
   ids: { nextId: () => 'test-id' },
   baseDomain: 'localhost',
   commitSha: 'test-sha',

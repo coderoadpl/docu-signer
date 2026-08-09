@@ -104,12 +104,6 @@ export const serverEnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   WEB_DIST_DIR: z.string().default('dist/web'),
-  // C4 backfill executor (§Backfills). On self-host the batch endpoint lives on
-  // the network-isolated INTERNAL_PORT app; on Vercel (no private port) the same
-  // batch runs behind an authenticated route on the public app, gated by this
-  // strong shared secret. Unset → the public backfill route does not mount, so a
-  // deploy without a secret cannot expose it. Min length keeps it un-guessable.
-  INTERNAL_BACKFILL_SECRET: z.string().min(24).optional(),
 });
 
 export type ServerEnvParsed = z.output<typeof serverEnvSchema>;

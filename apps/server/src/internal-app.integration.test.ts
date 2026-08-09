@@ -3,7 +3,6 @@ import { migrate as migrateNodePg } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createBackfillRepository } from '#adapters/db/backfill-repository.js';
 import { createTenantDomainRepository } from '#adapters/db/repositories.js';
 import { tenantDomains, tenants } from '#adapters/db/schema.js';
 import * as schema from '#adapters/db/schema.js';
@@ -64,7 +63,6 @@ beforeAll(async () => {
 
   app = buildInternalApp({
     tenantDomains: createTenantDomainRepository(db),
-    backfills: createBackfillRepository(db),
   });
 }, 60_000);
 
@@ -89,15 +87,5 @@ describe('domain-check endpoint against Postgres', () => {
   it('returns 404 for a domain no tenant has attached', async () => {
     const res = await app.request('/internal/domain-check?domain=ghost.example.com');
     expect(res.status).toBe(404);
-  });
-});
-
-describe('backfill endpoint against Postgres', () => {
-  it('returns 404 for the removed demo backfill', async () => {
-    const res = await app.request('/internal/backfills/members-email-normalize?limit=2', {
-      method: 'POST',
-    });
-    expect(res.status).toBe(404);
-    expect(await res.json()).toMatchObject({ error: 'not_found' });
   });
 });

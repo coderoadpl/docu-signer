@@ -19,7 +19,6 @@ import {
   internal,
   notFound,
   ok,
-  unauthorized,
   unavailable,
   validation,
   type Identity,
@@ -36,7 +35,6 @@ import {
   removeFile,
   resolveIdentity,
   requestFileUpload,
-  runBackfillBatch,
   serverUpload,
   updateDocument,
   type Ctx,
@@ -44,7 +42,6 @@ import {
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
 
 import type { AppDeps } from './composition.js';
-import { parseLimit } from './internal-app.js';
 import { captureServerException } from './observability.js';
 import { cleanExportBytes } from './clean-export.js';
 import {
@@ -136,7 +133,6 @@ export const buildApp = (deps: AppDeps) => {
   );
   for (const route of jsonBodyRoutes) app.use(route.path, jsonBodyLimit);
   app.use(BETTER_AUTH_API_PATH_PATTERN, jsonBodyLimit);
-  app.use('/api/internal/backfills/:name', jsonBodyLimit);
   app.use(API_ROUTES.documentFileServerUpload.path, serverUploadBodyLimit);
 
   app.use('*', telemetryMiddleware);
@@ -183,25 +179,6 @@ export const buildApp = (deps: AppDeps) => {
   // by the pre-auth login/register pages. Flags only, never a secret. Mounted
   // above the `/api/*` tenant middleware so it answers without a session.
   app.get(API_PATHS.config, () => respond(ok({ googleEnabled: deps.googleEnabled })));
-
-  // C4 backfill batch endpoint for the Vercel target (§Backfills). Vercel has no
-  // private INTERNAL_PORT, so the same executor runs on the public app behind a
-  // strong shared-secret header. Mounted ONLY when the secret is configured, so a
-  // deploy without one cannot expose it; self-host runs the identical executor on
-  // the network-isolated internal app instead. Tradeoff: the self-host surface is
-  // unreachable by construction (private network), while the Vercel surface is
-  // reachable but authenticated — a cron carries the secret, an attacker does not.
-  // Placed above the `/api/*` tenant middleware: it is a system op, not tenant-scoped.
-  if (deps.backfillSecret) {
-    const secret = deps.backfillSecret;
-    app.post('/api/internal/backfills/:name', async (c) => {
-      if (c.req.header('x-internal-secret') !== secret) return respond(err(unauthorized()));
-      const result = await runBackfillBatch(c.req.param('name'), parseLimit(c.req.query('limit')), {
-        backfills: deps.backfills,
-      });
-      return respond(result.ok ? ok(result.value) : result);
-    });
-  }
 
   // The public, unauthenticated contract group (US-028, §Public surface). Mounted
   // HERE — before the `/api/*` tenant-resolution middleware below — so a request
