@@ -367,10 +367,7 @@ export const DocumentsPage = () => {
   const selectedDocuments = visibleDocuments.filter((document) =>
     selectedIds.includes(document.id),
   );
-  const signingTargets = useMemo(
-    () => signingQueueTargets(visibleDocuments),
-    [visibleDocuments],
-  );
+  const signingTargets = signingQueueTargets(visibleDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
   const visibleColumnIds = columnSettings.order.filter((column) =>
     columnSettings.visible.includes(column),
