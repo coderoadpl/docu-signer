@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApiClient } from './http.js';
 import {
   createDocumentMutation,
+  documentFileQuery,
   documentQuery,
   documentsInvalidates,
   documentsQuery,
@@ -35,6 +36,13 @@ describe('document query descriptors', () => {
       'documents',
       'detail',
       'document-1',
+    ]);
+    expect(documentFileQuery(api, 'document-1', 'file-1').queryKey).toEqual([
+      'documents',
+      'detail',
+      'document-1',
+      'file',
+      'file-1',
     ]);
   });
 

@@ -72,3 +72,21 @@ export const PreviewImage = styled('img')({
   maxHeight: '32rem',
   objectFit: 'contain',
 });
+
+export const SigningSurface = styled(Box)(({ theme }) => ({
+  backgroundColor: theme.palette.background.default,
+}));
+
+export const SigningPageSurface = styled(Box)(({ theme }) => ({
+  backgroundColor: theme.palette.common.white,
+  boxShadow: theme.shadows[4],
+}));
+
+export const InkSurface = styled('canvas')(({ theme }) => ({
+  touchAction: 'none',
+  cursor: 'crosshair',
+  outline: `1px solid ${theme.palette.divider}`,
+  '&:focus-visible': {
+    outline: `3px solid ${theme.palette.primary.main}`,
+  },
+}));

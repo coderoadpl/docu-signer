@@ -1,0 +1,217 @@
+export interface InkPoint {
+  x: number;
+  y: number;
+  pressure: number;
+}
+
+export interface InkStroke {
+  points: InkPoint[];
+}
+
+export interface SignaturePlacement {
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+}
+
+export interface CanvasPdfMetrics {
+  cssWidth: number;
+  cssHeight: number;
+  backingWidth: number;
+  backingHeight: number;
+  devicePixelRatio: number;
+  viewportTransform: readonly [number, number, number, number, number, number];
+}
+
+export interface PdfInkSegment {
+  path: string;
+  width: number;
+}
+
+interface SmoothedSegment {
+  start: InkPoint;
+  control: InkPoint;
+  end: InkPoint;
+}
+
+const clamp = (value: number, minimum: number, maximum: number): number =>
+  Math.min(maximum, Math.max(minimum, value));
+
+const midpoint = (first: InkPoint, second: InkPoint): InkPoint => ({
+  x: (first.x + second.x) / 2,
+  y: (first.y + second.y) / 2,
+  pressure: (first.pressure + second.pressure) / 2,
+});
+
+export const pointerToInkPoint = (
+  clientX: number,
+  clientY: number,
+  pressure: number,
+  bounds: { left: number; top: number; width: number; height: number },
+): InkPoint => {
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    throw new Error('Ink surface must have positive dimensions');
+  }
+  return {
+    x: clamp((clientX - bounds.left) / bounds.width, 0, 1),
+    y: clamp((clientY - bounds.top) / bounds.height, 0, 1),
+    pressure: pressure > 0 ? clamp(pressure, 0.1, 1) : 0.5,
+  };
+};
+
+export const smoothStroke = (stroke: InkStroke): SmoothedSegment[] => {
+  const first = stroke.points[0];
+  if (!first) return [];
+  if (stroke.points.length === 1) {
+    return [{ start: first, control: first, end: first }];
+  }
+
+  const segments: SmoothedSegment[] = [];
+  let start = first;
+  for (const [index, control] of stroke.points.slice(1).entries()) {
+    const next = stroke.points[index + 2];
+    const end = next ? midpoint(control, next) : control;
+    segments.push({ start, control, end });
+    start = end;
+  }
+  return segments;
+};
+
+const inkBounds = (strokes: InkStroke[]) => {
+  const points = strokes.flatMap((stroke) => stroke.points);
+  const first = points[0];
+  if (!first) return undefined;
+  return points.slice(1).reduce(
+    (bounds, point) => ({
+      left: Math.min(bounds.left, point.x),
+      right: Math.max(bounds.right, point.x),
+      top: Math.min(bounds.top, point.y),
+      bottom: Math.max(bounds.bottom, point.y),
+    }),
+    {
+      left: first.x,
+      right: first.x,
+      top: first.y,
+      bottom: first.y,
+    },
+  );
+};
+
+export const placeInkPoint = (
+  point: InkPoint,
+  strokes: InkStroke[],
+  placement: SignaturePlacement,
+): InkPoint => {
+  const bounds = inkBounds(strokes);
+  if (!bounds) return point;
+  const centerX = (bounds.left + bounds.right) / 2;
+  const centerY = (bounds.top + bounds.bottom) / 2;
+  return {
+    ...point,
+    x: centerX + (point.x - centerX) * placement.scale + placement.offsetX,
+    y: centerY + (point.y - centerY) * placement.scale + placement.offsetY,
+  };
+};
+
+export const canvasCssPointToPdf = (
+  point: Pick<InkPoint, 'x' | 'y'>,
+  metrics: CanvasPdfMetrics,
+): { x: number; y: number } => {
+  if (
+    metrics.cssWidth <= 0 ||
+    metrics.cssHeight <= 0 ||
+    metrics.backingWidth <= 0 ||
+    metrics.backingHeight <= 0 ||
+    metrics.devicePixelRatio <= 0
+  ) {
+    throw new Error('Canvas and pixel-ratio dimensions must be positive');
+  }
+
+  const viewportX =
+    (point.x * metrics.backingWidth) /
+    metrics.cssWidth /
+    metrics.devicePixelRatio;
+  const viewportY =
+    (point.y * metrics.backingHeight) /
+    metrics.cssHeight /
+    metrics.devicePixelRatio;
+  const [a, b, c, d, e, f] = metrics.viewportTransform;
+  const determinant = a * d - b * c;
+  if (determinant === 0) throw new Error('PDF viewport transform is not invertible');
+
+  // PDF.js maps bottom-left PDF user space into a rotated, top-left canvas.
+  // Inverting that exact affine matrix also absorbs CSS scaling and DPR above.
+  return {
+    x: (d * (viewportX - e) - c * (viewportY - f)) / determinant,
+    y: (-b * (viewportX - e) + a * (viewportY - f)) / determinant,
+  };
+};
+
+const cssLengthToPdf = (length: number, metrics: CanvasPdfMetrics): number => {
+  const origin = canvasCssPointToPdf({ x: 0, y: 0 }, metrics);
+  const end = canvasCssPointToPdf({ x: length, y: 0 }, metrics);
+  return Math.hypot(end.x - origin.x, end.y - origin.y);
+};
+
+const svgNumber = (value: number): string => String(Number(value.toFixed(4)));
+
+const segmentPath = (
+  start: { x: number; y: number },
+  control: { x: number; y: number },
+  end: { x: number; y: number },
+): string => {
+  const effectiveEnd =
+    start.x === end.x && start.y === end.y
+      ? { x: end.x + 0.01, y: end.y }
+      : end;
+  // pdf-lib applies the SVG convention (positive Y downward) before emitting
+  // PDF operators, so PDF user-space Y values are negated in the path string.
+  return `M ${svgNumber(start.x)} ${svgNumber(-start.y)} Q ${svgNumber(control.x)} ${svgNumber(-control.y)} ${svgNumber(effectiveEnd.x)} ${svgNumber(-effectiveEnd.y)}`;
+};
+
+const lineWidth = (pressure: number): number => 1.5 + clamp(pressure, 0.1, 1) * 2.5;
+
+export const inkToPdfSegments = (
+  strokes: InkStroke[],
+  placement: SignaturePlacement,
+  metrics: CanvasPdfMetrics,
+): PdfInkSegment[] =>
+  strokes.flatMap((stroke) => {
+    const placedStroke = {
+      points: stroke.points.map((point) => placeInkPoint(point, strokes, placement)),
+    };
+    return smoothStroke(placedStroke).map((segment) => {
+      const start = canvasCssPointToPdf(
+        {
+          x: segment.start.x * metrics.cssWidth,
+          y: segment.start.y * metrics.cssHeight,
+        },
+        metrics,
+      );
+      const control = canvasCssPointToPdf(
+        {
+          x: segment.control.x * metrics.cssWidth,
+          y: segment.control.y * metrics.cssHeight,
+        },
+        metrics,
+      );
+      const end = canvasCssPointToPdf(
+        {
+          x: segment.end.x * metrics.cssWidth,
+          y: segment.end.y * metrics.cssHeight,
+        },
+        metrics,
+      );
+      const pressure =
+        (segment.start.pressure + segment.control.pressure + segment.end.pressure) / 3;
+      return {
+        path: segmentPath(start, control, end),
+        width: cssLengthToPdf(lineWidth(pressure), metrics),
+      };
+    });
+  });
+
+export const signedFileName = (sourceName: string): string => {
+  const stem = sourceName.replace(/\.pdf$/iu, '');
+  return `${stem || 'dokument'}-podpisany.pdf`;
+};

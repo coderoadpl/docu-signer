@@ -132,7 +132,10 @@ export default defineConfig({
           testTimeout: 15_000,
           include: ['apps/web/**/*.test.ts', 'apps/web/**/*.test.tsx'],
           exclude: [...configDefaults.exclude, 'apps/web/src/features/*/core/**/*.test.ts'],
-          setupFiles: ['apps/web/src/test/setup.ts'],
+          setupFiles: [
+            'apps/web/src/test/pointer-events.ts',
+            'apps/web/src/test/setup.ts',
+          ],
         },
       },
       {

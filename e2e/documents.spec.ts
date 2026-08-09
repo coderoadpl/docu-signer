@@ -47,6 +47,19 @@ test('creates, uploads, previews and exports an archived document', async ({
   });
   await expect(sourceSection.getByText(sourceName)).toBeVisible();
 
+  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Podpisz dokument' }),
+  ).toBeVisible();
+  await expect(page.getByText('Strona 1 z 1')).toBeVisible();
+  await expect(
+    page.getByRole('application', {
+      name: 'Powierzchnia do rysowania podpisu',
+    }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Zamknij' }).click();
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
   const scanSection = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: /Podpisany skan/ }) });

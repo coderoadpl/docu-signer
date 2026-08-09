@@ -142,6 +142,7 @@ describe('DocumentDetailPage', () => {
       'href',
       `/api/documents/${DOCUMENT_ID}/files/${SOURCE_ID}/export`,
     );
+    expect(screen.getAllByRole('button', { name: 'Podpisz' })).toHaveLength(1);
 
     const deleteButton = screen
       .getAllByRole('button', { name: 'Usuń' })
