@@ -69,6 +69,38 @@ vi.mock('../../components/ui/PolishDatePicker.js', async () => {
   return { PolishDatePicker, PolishDatePickerProvider };
 });
 
+vi.mock('./DocumentTimelineView.js', async () => {
+  const React = await import('react');
+  const DocumentTimelineView = ({
+    documents,
+    dateFrom,
+    dateTo,
+    onOpenDocument,
+  }: {
+    documents: Array<{ id: string; title: string }>;
+    dateFrom: string;
+    dateTo: string;
+    onOpenDocument: (documentId: string) => void;
+  }) =>
+    React.createElement(
+      'div',
+      {
+        'aria-label': 'Oś czasu dokumentów',
+        'data-date-from': dateFrom,
+        'data-date-to': dateTo,
+        role: 'region',
+      },
+      documents.map((item) =>
+        React.createElement(
+          'button',
+          { key: item.id, onClick: () => onOpenDocument(item.id), type: 'button' },
+          item.title,
+        ),
+      ),
+    );
+  return { DocumentTimelineView };
+});
+
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 
 const document = {
@@ -402,11 +434,14 @@ describe('DocumentsPage', () => {
     expect(
       await screen.findByRole('button', { name: 'Oś czasu', pressed: true }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Oś czasu dokumentów' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Szukaj po tytule')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('region', { name: 'Oś czasu dokumentów' }),
+    ).toBeInTheDocument();
+    expect(dateField(window.document.body, 'Od')).toBeInTheDocument();
+    expect(dateField(window.document.body, 'Do')).toBeInTheDocument();
   });
 
-  it('renders timeline sections, interval gaps and signature status markers', async () => {
+  it('binds timeline documents and opens a selected document', async () => {
     const signedFile = {
       id: '66666666-6666-4666-8666-666666666666',
       documentId: '22222222-2222-4222-8222-222222222222',
@@ -456,19 +491,12 @@ describe('DocumentsPage', () => {
     );
     const { router } = await renderPage('/app/documents?widok=os-czasu');
 
-    expect(await screen.findByText('Anna Nowak')).toBeInTheDocument();
-    expect(screen.getByText('Bez osoby')).toBeInTheDocument();
-    expect(screen.getAllByTestId('timeline-band-Anna Nowak')).toHaveLength(2);
-    expect(screen.getByTestId('timeline-document-44444444-4444-4444-8444-444444444444')).toBeInTheDocument();
-    expect(
-      screen.getByRole('img', { name: 'Status podpisu Styczniowa umowa: Podpisane' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('img', { name: 'Status podpisu Marcowy protokół: Do podpisania' }),
-    ).toBeInTheDocument();
+    const timeline = await screen.findByRole('region', { name: 'Oś czasu dokumentów' });
+    expect(within(timeline).getByRole('button', { name: 'Styczniowa umowa' })).toBeInTheDocument();
+    expect(within(timeline).getByRole('button', { name: 'Jednorazowa notatka' })).toBeInTheDocument();
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Otwórz dokument Marcowy protokół, Do podpisania' }),
+      within(timeline).getByRole('button', { name: 'Marcowy protokół' }),
     );
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(

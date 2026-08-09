@@ -424,8 +424,9 @@ test('creates, uploads, previews and exports an archived document', async ({
   await page.getByRole('button', { name: '← Dokumenty' }).click();
   await page.getByLabel('Tag').fill('e2e');
   await page.getByRole('button', { name: 'Oś czasu' }).click();
-  await expect(page.getByRole('img', { name: 'Oś czasu dokumentów' })).toBeVisible();
-  await expect(page.getByRole('button', { name: new RegExp(title, 'u') })).toBeVisible();
+  const timeline = page.getByRole('region', { name: 'Oś czasu dokumentów' });
+  await expect(timeline.locator('.vis-timeline')).toBeVisible();
+  await expect(timeline.locator('.vis-item.doc', { hasText: title })).toBeVisible();
   await page.getByRole('button', { name: 'Lista' }).click();
   await page.getByRole('button', { name: 'Zapisz teczkę' }).click();
   const savedSearchDialog = page.getByRole('dialog', { name: 'Zapisz teczkę' });

@@ -1,263 +1,170 @@
-import { type KeyboardEvent, useMemo } from 'react';
-import { Box, Paper } from '@mui/material';
-import { alpha, useTheme, type Theme } from '@mui/material/styles';
-
-import { type DocumentType, type DocumentWithFiles } from '#core/domain/index.js';
-
-import { formatPolishDate } from '../../lib/format-date.js';
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Paper, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { z } from 'zod';
 import {
-  DOCUMENT_TYPE_LABELS,
-  SIGNATURE_STATUS_LABELS,
-  createTimelineScale,
+  DataSet,
+  Timeline,
+  type DataGroup,
+  type DataItem,
+  type TimelineOptions,
+} from 'vis-timeline/standalone';
+import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
+
+import { type DocumentWithFiles } from '#core/domain/index.js';
+
+import {
+  DOCUMENT_TYPE_COLORS,
+  formatVisTimelineMajorLabel,
+  formatVisTimelineMinorLabel,
   groupDocumentsForTimeline,
-  timelineMonthTicks,
+  toVisTimelineData,
+  visTimelineWindowForRange,
+  type VisTimelineRange,
 } from './documents.logic.js';
 
-const LEFT_GUTTER = 148;
-const RIGHT_GUTTER = 28;
-const TOP_GUTTER = 52;
-const GROUP_LABEL_Y = 20;
-const BAND_Y = 28;
-const DOC_START_Y = 58;
-const DOC_ROW_HEIGHT = 30;
-const GROUP_BOTTOM = 20;
-const GROUP_GAP = 18;
+const DEFAULT_RANGE = 'three-months';
+const rangeSchema = z.enum(['three-months', 'year', 'all']);
+const selectPayloadSchema = z.object({ items: z.array(z.union([z.string(), z.number()])) });
 
-const documentColor = (docType: DocumentType, theme: Theme): string => {
-  if (docType === 'umowa-uod') return theme.palette.primary.main;
-  if (docType === 'uchwala') return '#7a5c8f';
-  if (docType === 'protokol') return '#2f855a';
-  if (docType === 'rachunek') return '#b36b1f';
-  return theme.palette.text.secondary;
+const options: TimelineOptions = {
+  stack: true,
+  orientation: 'top',
+  selectable: true,
+  multiselect: false,
+  editable: false,
+  zoomable: true,
+  moveable: true,
+  margin: { item: 6, axis: 12 },
+  zoomMin: 7 * 86_400_000,
+  zoomMax: 5 * 365 * 86_400_000,
+  tooltip: { followMouse: true, overflowMethod: 'cap' },
+  format: {
+    minorLabels: formatVisTimelineMinorLabel,
+    majorLabels: formatVisTimelineMajorLabel,
+  },
 };
 
-const groupHeight = (documentCount: number): number =>
-  DOC_START_Y + Math.max(1, documentCount) * DOC_ROW_HEIGHT + GROUP_BOTTOM;
-
-const clamp = (value: number, max: number): number => Math.max(0, Math.min(max, value));
-
-const diamondPoints = (x: number, y: number, radius: number): string =>
-  `${x},${y - radius} ${x + radius},${y} ${x},${y + radius} ${x - radius},${y}`;
-
-const documentTooltip = (
-  document: {
-    title: string;
-    docType: DocumentType;
-    start: string;
-    end: string;
-    instant: boolean;
-    signed: boolean;
+const timelineSx = {
+  mt: 3,
+  overflow: 'hidden',
+  '& .timeline-controls': { borderBottom: 1, borderColor: 'divider' },
+  '& .vis-timeline': { borderColor: 'divider', fontFamily: 'inherit' },
+  '& .vis-labelset .vis-label': { color: 'text.primary', borderColor: 'divider' },
+  '& .vis-labelset .vis-label .vis-inner': { px: 2, py: 1 },
+  '& .vis-time-axis .vis-text': { color: 'text.secondary', fontSize: 12 },
+  '& .vis-time-axis .vis-grid.vis-minor, & .vis-grid.vis-vertical': { borderColor: 'divider' },
+  '& .vis-panel': { backgroundColor: 'background.paper', borderColor: 'divider' },
+  '& .vis-item.doc': { backgroundColor: 'transparent', borderColor: 'transparent' },
+  '& .vis-item.doc .vis-item-content': {
+    borderRadius: 1,
+    color: 'common.white',
+    fontWeight: 600,
+    px: 1,
+    py: 0.5,
   },
-): string => {
-  const dates = document.instant
-    ? formatPolishDate(document.start)
-    : `${formatPolishDate(document.start)} - ${formatPolishDate(document.end)}`;
-  return `${document.title}\n${DOCUMENT_TYPE_LABELS[document.docType]}\n${dates}\n${
-    SIGNATURE_STATUS_LABELS[document.signed ? 'signed' : 'needs-signature']
-  }`;
+  '& .vis-item.vis-point.doc .vis-item-content': { marginLeft: 0.5 },
+  '& .doc-mark': { display: 'inline-block', fontWeight: 700, marginRight: 0.75 },
+  '& .doc--umowa-uod .vis-item-content': { backgroundColor: DOCUMENT_TYPE_COLORS['umowa-uod'] },
+  '& .doc--uchwala .vis-item-content': { backgroundColor: DOCUMENT_TYPE_COLORS.uchwala },
+  '& .doc--protokol .vis-item-content': { backgroundColor: DOCUMENT_TYPE_COLORS.protokol },
+  '& .doc--rachunek .vis-item-content': { backgroundColor: DOCUMENT_TYPE_COLORS.rachunek },
+  '& .doc--inny .vis-item-content': { backgroundColor: DOCUMENT_TYPE_COLORS.inny },
+  '& .doc--umowa-uod .vis-dot': { borderColor: DOCUMENT_TYPE_COLORS['umowa-uod'] },
+  '& .doc--uchwala .vis-dot': { borderColor: DOCUMENT_TYPE_COLORS.uchwala },
+  '& .doc--protokol .vis-dot': { borderColor: DOCUMENT_TYPE_COLORS.protokol },
+  '& .doc--rachunek .vis-dot': { borderColor: DOCUMENT_TYPE_COLORS.rachunek },
+  '& .doc--inny .vis-dot': { borderColor: DOCUMENT_TYPE_COLORS.inny },
 };
 
 export const DocumentTimelineView = ({
   documents,
+  dateFrom,
+  dateTo,
   onOpenDocument,
 }: {
   documents: DocumentWithFiles[];
+  dateFrom: string;
+  dateTo: string;
   onOpenDocument: (documentId: string) => void;
 }) => {
-  const theme = useTheme();
-  const groups = useMemo(() => groupDocumentsForTimeline(documents), [documents]);
-  const intervals = useMemo(() => groups.flatMap((group) => group.intervals), [groups]);
-  const scale = useMemo(() => createTimelineScale(intervals), [intervals]);
-  const ticks = useMemo(() => timelineMonthTicks(scale), [scale]);
-  const positionedGroups = useMemo(
-    () =>
-      groups.reduce<Array<{ group: (typeof groups)[number]; y: number }>>((items, group) => {
-        const previous = items.at(-1);
-        const y = previous
-          ? previous.y + groupHeight(previous.group.documents.length) + GROUP_GAP
-          : TOP_GUTTER;
-        return [...items, { group, y }];
-      }, []),
-    [groups],
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const timelineRef = useRef<Timeline | null>(null);
+  const itemsRef = useRef<DataSet<DataItem> | null>(null);
+  const groupsRef = useRef<DataSet<DataGroup> | null>(null);
+  const onOpenDocumentRef = useRef(onOpenDocument);
+  const [range, setRange] = useState<VisTimelineRange>(DEFAULT_RANGE);
+  const data = useMemo(
+    () => toVisTimelineData(groupDocumentsForTimeline(documents)),
+    [documents],
   );
-  const contentWidth = LEFT_GUTTER + scale.width + RIGHT_GUTTER;
-  const contentHeight =
-    TOP_GUTTER +
-    groups.reduce((height, group) => height + groupHeight(group.documents.length) + GROUP_GAP, 0);
 
-  const activate = (documentId: string) => onOpenDocument(documentId);
-  const keyActivate = (event: KeyboardEvent<SVGGElement>, documentId: string) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    activate(documentId);
+  useEffect(() => {
+    onOpenDocumentRef.current = onOpenDocument;
+  }, [onOpenDocument]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const items = new DataSet<DataItem>();
+    const groups = new DataSet<DataGroup>();
+    // WHY start/end instead of setWindow: vis-timeline fits the whole data span
+    // on the first data change unless the window was given as an option.
+    const timeline = new Timeline(container, items, groups, {
+      ...options,
+      ...(visTimelineWindowForRange(DEFAULT_RANGE, new Date()) ?? {}),
+    });
+    timeline.on('select', (payload?: unknown) => {
+      const parsed = selectPayloadSchema.safeParse(payload);
+      if (!parsed.success) return;
+      const id = parsed.data.items.at(0);
+      if (id !== undefined) onOpenDocumentRef.current(String(id));
+    });
+    itemsRef.current = items;
+    groupsRef.current = groups;
+    timelineRef.current = timeline;
+    return () => {
+      timeline.destroy();
+      timelineRef.current = null;
+      itemsRef.current = null;
+      groupsRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    groupsRef.current?.clear();
+    groupsRef.current?.add(data.groups);
+    itemsRef.current?.clear();
+    itemsRef.current?.add(data.items);
+  }, [data]);
+
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    if (!timeline || (!dateFrom && !dateTo)) return;
+    const current = timeline.getWindow();
+    timeline.setWindow(dateFrom || current.start, dateTo || current.end, { animation: false });
+  }, [dateFrom, dateTo]);
+
+  const changeRange = (_event: MouseEvent<HTMLElement>, next: unknown) => {
+    const parsed = rangeSchema.safeParse(next);
+    if (!parsed.success) return;
+    setRange(parsed.data);
+    const timeline = timelineRef.current;
+    if (!timeline) return;
+    const nextWindow = visTimelineWindowForRange(parsed.data, new Date());
+    if (nextWindow) timeline.setWindow(nextWindow.start, nextWindow.end, { animation: false });
+    else timeline.fit({ animation: false });
   };
 
   return (
-    <Paper variant="outlined" sx={{ mt: 3, overflow: 'hidden' }}>
-      <Box sx={{ overflowX: 'auto' }}>
-        <Box
-          component="svg"
-          role="img"
-          aria-label="Oś czasu dokumentów"
-          viewBox={`0 0 ${contentWidth} ${contentHeight}`}
-          sx={{
-            display: 'block',
-            minWidth: `${contentWidth}px`,
-            width: '100%',
-            height: `${contentHeight}px`,
-          }}
-          style={{ backgroundColor: theme.palette.background.paper }}
-        >
-          <rect width={contentWidth} height={contentHeight} fill={theme.palette.background.paper} />
-          {ticks.map((tick) => {
-            const x = LEFT_GUTTER + clamp(scale.x(tick.date), scale.width);
-            return (
-              <g key={tick.date}>
-                <line
-                  x1={x}
-                  x2={x}
-                  y1={28}
-                  y2={contentHeight - 8}
-                  stroke={theme.palette.divider}
-                  strokeDasharray="2 6"
-                />
-                <text
-                  x={x + 4}
-                  y={24}
-                  fill={theme.palette.text.secondary}
-                  fontSize="12"
-                >
-                  {tick.label}
-                </text>
-              </g>
-            );
-          })}
-          {positionedGroups.map(({ group, y }) => {
-            return (
-              <g key={group.person} aria-label={`Sekcja osoby ${group.person}`}>
-                <text
-                  x={20}
-                  y={y + GROUP_LABEL_Y}
-                  fill={theme.palette.text.primary}
-                  fontSize="14"
-                  fontWeight="600"
-                >
-                  {group.person}
-                </text>
-                <line
-                  x1={LEFT_GUTTER}
-                  x2={LEFT_GUTTER + scale.width}
-                  y1={y + BAND_Y + 6}
-                  y2={y + BAND_Y + 6}
-                  stroke={theme.palette.divider}
-                />
-                {group.intervals.map((interval) => {
-                  const x = LEFT_GUTTER + scale.x(interval.start);
-                  const width = Math.max(8, scale.x(interval.end) - scale.x(interval.start));
-                  return (
-                    <rect
-                      key={`${group.person}-${interval.start}-${interval.end}`}
-                      data-testid={`timeline-band-${group.person}`}
-                      x={x}
-                      y={y + BAND_Y}
-                      width={width}
-                      height={12}
-                      rx={6}
-                      fill={alpha(theme.palette.primary.main, 0.18)}
-                      stroke={alpha(theme.palette.primary.main, 0.36)}
-                    />
-                  );
-                })}
-                {group.documents.map((document, index) => {
-                  const rowY = y + DOC_START_Y + index * DOC_ROW_HEIGHT;
-                  const startX = LEFT_GUTTER + scale.x(document.start);
-                  const endX = LEFT_GUTTER + scale.x(document.end);
-                  const width = Math.max(12, endX - startX);
-                  const color = documentColor(document.docType, theme);
-                  const markerX = document.instant ? startX + 16 : startX + width + 12;
-                  const label = `Otwórz dokument ${document.title}, ${
-                    SIGNATURE_STATUS_LABELS[document.signed ? 'signed' : 'needs-signature']
-                  }`;
-                  return (
-                    <g
-                      key={document.id}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={label}
-                      onClick={() => activate(document.id)}
-                      onKeyDown={(event) => keyActivate(event, document.id)}
-                      cursor="pointer"
-                    >
-                      <title>{documentTooltip(document)}</title>
-                      {document.instant ? (
-                        <polygon
-                          points={diamondPoints(startX, rowY, 7)}
-                          fill={color}
-                          stroke={theme.palette.background.paper}
-                          strokeWidth={1.5}
-                          data-testid={`timeline-document-${document.id}`}
-                        />
-                      ) : (
-                        <rect
-                          x={startX}
-                          y={rowY - 5}
-                          width={width}
-                          height={10}
-                          rx={5}
-                          fill={color}
-                          data-testid={`timeline-document-${document.id}`}
-                        />
-                      )}
-                      <text
-                        x={markerX + 12}
-                        y={rowY + 4}
-                        fill={theme.palette.text.primary}
-                        fontSize="13"
-                      >
-                        {document.title}
-                      </text>
-                      <g
-                        role="img"
-                        aria-label={`Status podpisu ${document.title}: ${
-                          SIGNATURE_STATUS_LABELS[document.signed ? 'signed' : 'needs-signature']
-                        }`}
-                        data-testid={`timeline-status-${document.id}`}
-                      >
-                        <circle
-                          cx={markerX}
-                          cy={rowY}
-                          r={7}
-                          fill={
-                            document.signed
-                              ? theme.palette.success.main
-                              : theme.palette.background.paper
-                          }
-                          stroke={
-                            document.signed
-                              ? theme.palette.success.main
-                              : theme.palette.text.secondary
-                          }
-                          strokeWidth={1.6}
-                        />
-                        {document.signed ? (
-                          <path
-                            d={`M${markerX - 3.5} ${rowY}l2.2 2.2 4.4-5`}
-                            fill="none"
-                            stroke={theme.palette.success.contrastText}
-                            strokeWidth={1.8}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        ) : null}
-                      </g>
-                    </g>
-                  );
-                })}
-              </g>
-            );
-          })}
-        </Box>
+    <Paper variant="outlined" sx={timelineSx}>
+      <Box className="timeline-controls" sx={{ overflowX: 'auto', p: 1.5 }}>
+        <ToggleButtonGroup exclusive size="small" value={range} onChange={changeRange}>
+          <ToggleButton value="three-months">Poprz.–bież.–nast.</ToggleButton>
+          <ToggleButton value="year">Rok</ToggleButton>
+          <ToggleButton value="all">Wszystko</ToggleButton>
+        </ToggleButtonGroup>
       </Box>
+      <Box ref={containerRef} role="region" aria-label="Oś czasu dokumentów" sx={{ minHeight: 180 }} />
     </Paper>
   );
 };
