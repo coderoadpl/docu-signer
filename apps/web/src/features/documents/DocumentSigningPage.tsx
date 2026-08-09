@@ -45,7 +45,7 @@ import {
   createSigningStamp,
   defaultSignaturePlacement,
   defaultSigningGestureMode,
-  documentPointerDrawsInk,
+  pointerDrawsInk,
   fitInkStrokesToPage,
   inkToCanvasOutlines,
   isPalmSizedTouch,
@@ -1325,8 +1325,8 @@ export const DocumentSigningPage = ({
     setActiveStroke(undefined);
   };
 
-  const pointerDrawsInk = (event: ReactPointerEvent<HTMLCanvasElement>) =>
-    documentPointerDrawsInk({
+  const eventDrawsInk = (event: ReactPointerEvent<HTMLCanvasElement>) =>
+    pointerDrawsInk({
       fingerDrawing,
       mode: gestureMode,
       penPriority: touchIgnoredForPenPriority(event),
@@ -2070,7 +2070,7 @@ export const DocumentSigningPage = ({
               }
               if (massMode) return;
               if (gestureMode === 'pan') return;
-              if (!pointerDrawsInk(event)) return;
+              if (!eventDrawsInk(event)) return;
               const stroke = {
                 points,
                 simulatePressure: pointerEventUsesSimulatedPressure(

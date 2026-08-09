@@ -8,7 +8,7 @@ import {
   createSigningStamp,
   defaultSignaturePlacement,
   defaultSigningGestureMode,
-  documentPointerDrawsInk,
+  pointerDrawsInk,
   fitInkStrokesToPage,
   inkToCanvasOutlines,
   inkToPdfPaths,
@@ -280,7 +280,7 @@ describe('pen signing geometry', () => {
       isPalmSizedTouch({ pointerType: 'touch', width: 35, height: 40 }),
     ).toBe(true);
     expect(
-      documentPointerDrawsInk({
+      pointerDrawsInk({
         mode: 'pan',
         fingerDrawing: true,
         penPriority: false,
@@ -288,7 +288,7 @@ describe('pen signing geometry', () => {
       }),
     ).toBe(false);
     expect(
-      documentPointerDrawsInk({
+      pointerDrawsInk({
         mode: 'draw',
         fingerDrawing: false,
         penPriority: false,
@@ -296,7 +296,7 @@ describe('pen signing geometry', () => {
       }),
     ).toBe(true);
     expect(
-      documentPointerDrawsInk({
+      pointerDrawsInk({
         mode: 'draw',
         fingerDrawing: true,
         penPriority: false,
@@ -304,7 +304,7 @@ describe('pen signing geometry', () => {
       }),
     ).toBe(true);
     expect(
-      documentPointerDrawsInk({
+      pointerDrawsInk({
         mode: 'draw',
         fingerDrawing: false,
         penPriority: false,
@@ -312,7 +312,7 @@ describe('pen signing geometry', () => {
       }),
     ).toBe(false);
     expect(
-      documentPointerDrawsInk({
+      pointerDrawsInk({
         mode: 'draw',
         fingerDrawing: true,
         penPriority: true,
@@ -320,7 +320,7 @@ describe('pen signing geometry', () => {
       }),
     ).toBe(false);
     expect(
-      documentPointerDrawsInk({
+      pointerDrawsInk({
         mode: 'draw',
         fingerDrawing: true,
         penPriority: false,
@@ -328,7 +328,7 @@ describe('pen signing geometry', () => {
       }),
     ).toBe(true);
     expect(
-      documentPointerDrawsInk({
+      pointerDrawsInk({
         mode: 'draw',
         fingerDrawing: false,
         penPriority: false,
