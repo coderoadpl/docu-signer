@@ -101,7 +101,11 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
         }
         meta={
           email ? (
-            <Typography variant="caption" sx={{ display: { xs: 'none', sm: 'block' } }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: { xs: 'none', sm: 'block' } }}
+            >
               {email}
             </Typography>
           ) : null
