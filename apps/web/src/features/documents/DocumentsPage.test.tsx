@@ -627,6 +627,67 @@ describe('DocumentsPage', () => {
     ).toBeEnabled();
   });
 
+  it('disables bulk approve when selected documents contain no drafts', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({ ok: true, data: { documents: [document] } }),
+      ),
+    );
+    await renderPage();
+
+    expect(await screen.findByRole('button', { name: 'Zatwierdź (0)' })).toBeDisabled();
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Umowa z Anną' }).at(0) ??
+        screen.getByLabelText('Zaznacz dokument: Umowa z Anną'),
+    );
+
+    expect(screen.getByRole('button', { name: 'Zatwierdź (0)' })).toBeDisabled();
+  });
+
+  it('bulk approves only selected drafts from a mixed selection', async () => {
+    const approve = vi.fn();
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              document,
+              draftDocument,
+              {
+                ...draftDocument,
+                id: '66666666-6666-4666-8666-666666666666',
+                title: 'Drugi szkic',
+              },
+            ],
+          },
+        }),
+      ),
+      http.post('/api/documents/:id/approve', ({ params }) => {
+        const id = String(params.id);
+        approve(id);
+        return HttpResponse.json({
+          ok: true,
+          data: { document: { ...draftDocument, id, draft: false } },
+        });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Drugi szkic');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
+    const buttons = screen.getAllByRole('button').map((button) => button.textContent ?? '');
+    expect(buttons.indexOf('Zatwierdź (2)')).toBeLessThan(buttons.indexOf('Do kosza (3)'));
+    await userEvent.click(screen.getByRole('button', { name: 'Zatwierdź (2)' }));
+
+    await waitFor(() =>
+      expect(approve).toHaveBeenCalledWith('55555555-5555-4555-8555-555555555555'),
+    );
+    expect(approve).toHaveBeenCalledWith('66666666-6666-4666-8666-666666666666');
+    expect(approve).not.toHaveBeenCalledWith(DOCUMENT_ID);
+    expect(await screen.findByText('Zatwierdzono 2, błędów 0.')).toBeInTheDocument();
+  });
+
   it('starts mass signing visible PDFs in canonical grouped order', async () => {
     const baseFile = {
       id: '33333333-3333-4333-8333-333333333333',
@@ -877,6 +938,49 @@ describe('DocumentsPage', () => {
       DOCUMENT_ID,
       expect.objectContaining({ person: 'Jan Kowalski' }),
     );
+  });
+
+  it('summarizes partial failures while approving selected drafts', async () => {
+    const approve = vi.fn();
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              draftDocument,
+              {
+                ...draftDocument,
+                id: '66666666-6666-4666-8666-666666666666',
+                title: 'Drugi szkic',
+              },
+            ],
+          },
+        }),
+      ),
+      http.post('/api/documents/:id/approve', ({ params }) => {
+        const id = String(params.id);
+        approve(id);
+        if (id === draftDocument.id) {
+          return HttpResponse.json({
+            ok: true,
+            data: { document: { ...draftDocument, draft: false } },
+          });
+        }
+        return HttpResponse.json(
+          { ok: false, error: { code: 'internal', message: 'Błąd zatwierdzania' } },
+          { status: 500 },
+        );
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Drugi szkic');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Zatwierdź (2)' }));
+
+    expect(await screen.findByText('Zatwierdzono 1, błędów 1.')).toBeInTheDocument();
+    expect(approve).toHaveBeenCalledTimes(2);
   });
 
   it('opens the row overflow menu and moves a document to trash', async () => {
