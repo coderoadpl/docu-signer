@@ -8,7 +8,7 @@ import {
   looseEnvelopeSchema,
   TENANT_HEADER,
 } from '#core/contract/index.js';
-import { ok, type Document } from '#core/domain/index.js';
+import { ok, type Document, type DocumentListFilter } from '#core/domain/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
 
 import { buildApp } from './app.js';
@@ -137,6 +137,7 @@ describe('buildApp', () => {
   it('lists only documents from the resolved tenant', async () => {
     const deps = authorizedDeps();
     let seenTenant = '';
+    let seenFilter: DocumentListFilter = {};
     const row: Document = {
       id: '11111111-1111-4111-8111-111111111111',
       tenantId: tenant.id,
@@ -150,16 +151,21 @@ describe('buildApp', () => {
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
     };
-    deps.documents.listByTenant = async (tenantId) => {
+    deps.documents.listByTenant = async (tenantId, filter) => {
       seenTenant = tenantId;
+      seenFilter = filter;
       return [row];
     };
-    const response = await buildApp(deps).request(API_PATHS.documents, {
-      headers: { [TENANT_HEADER]: tenant.slug },
-    });
+    const response = await buildApp(deps).request(
+      `${API_PATHS.documents}?signatureStatus=needs-signature`,
+      {
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
 
     expect(response.status).toBe(200);
     expect(seenTenant).toBe(tenant.id);
+    expect(seenFilter).toEqual({ signatureStatus: 'needs-signature' });
     expect(await response.json()).toMatchObject({
       ok: true,
       data: { documents: [{ title: 'Umowa' }] },
@@ -201,7 +207,7 @@ describe('buildApp', () => {
           id: '11111111-1111-4111-8111-111111111111',
           tenantId,
           name: 'Protokoły',
-          filter: { docType: 'protokol', tag: 'odbiór' },
+          filter: { docType: 'protokol', tag: 'odbiór', signatureStatus: 'signed' },
           createdAt: '2026-08-01T00:00:00.000Z',
         },
       ];

@@ -40,6 +40,7 @@ describe('document schemas', () => {
           person: ' Anna ',
           tag: ' odbiór ',
           dateFrom: '2026-01-01',
+          signatureStatus: 'signed',
         },
       }),
     ).toEqual({
@@ -50,6 +51,7 @@ describe('document schemas', () => {
         person: 'Anna',
         tag: 'odbiór',
         dateFrom: '2026-01-01',
+        signatureStatus: 'signed',
       },
     });
     expect(createSavedSearchSchema.safeParse({ name: '', filter: {} }).success).toBe(false);
@@ -57,6 +59,12 @@ describe('document schemas', () => {
       createSavedSearchSchema.safeParse({
         name: 'Odwrócone daty',
         filter: { dateFrom: '2026-02-01', dateTo: '2026-01-01' },
+      }).success,
+    ).toBe(false);
+    expect(
+      createSavedSearchSchema.safeParse({
+        name: 'Błędny status',
+        filter: { signatureStatus: 'unknown' },
       }).success,
     ).toBe(false);
   });

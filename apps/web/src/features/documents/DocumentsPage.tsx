@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -32,7 +33,12 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { SavedSearch, SavedSearchFilter } from '#core/domain/index.js';
+import {
+  documentSignatureStatusSchema,
+  documentTypeSchema,
+  type SavedSearch,
+  type SavedSearchFilter,
+} from '#core/domain/index.js';
 
 import { actions, savedSearchActions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
@@ -43,12 +49,14 @@ import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   FILE_ROLE_SYMBOLS,
+  SIGNATURE_STATUS_LABELS,
   documentFilterSummary,
   emptyDocumentFilters,
   hasDocumentFilter,
   toDocumentFilter,
   toDocumentFilterValues,
   toDocumentInput,
+  uniqueDocumentPersons,
   uniqueDocumentTags,
   type DocumentFilterValues,
 } from './documents.logic.js';
@@ -133,11 +141,15 @@ export const DocumentsPage = () => {
     },
   });
 
-  const updateFilter = (name: keyof DocumentFilterValues, value: string) =>
+  const updateFilter = <Name extends keyof DocumentFilterValues,>(
+    name: Name,
+    value: DocumentFilterValues[Name],
+  ) =>
     setFilters((current) => ({ ...current, [name]: value }));
   const filtersActive = hasDocumentFilter(documentFilter);
   const visibleDocuments = documents.data?.documents ?? [];
   const allDocuments = folderDocuments.data?.documents ?? visibleDocuments;
+  const personOptions = uniqueDocumentPersons(allDocuments);
   const tagOptions = uniqueDocumentTags(allDocuments);
   const savedSearchItems: SavedSearch[] = savedSearches.data?.savedSearches ?? [];
 
@@ -201,7 +213,10 @@ export const DocumentsPage = () => {
               labelId="filter-document-type"
               label="Typ"
               value={filters.docType}
-              onChange={(event) => updateFilter('docType', event.target.value)}
+              onChange={(event) => {
+                const value = String(event.target.value);
+                updateFilter('docType', value === '' ? '' : documentTypeSchema.parse(value));
+              }}
             >
               <MenuItem value="">Wszystkie</MenuItem>
               {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
@@ -211,18 +226,23 @@ export const DocumentsPage = () => {
               ))}
             </Select>
           </FormControl>
-          <TextField
-            label="Osoba"
+          <Autocomplete
+            freeSolo
+            options={personOptions}
             value={filters.person}
-            onChange={(event) => updateFilter('person', event.target.value)}
+            onChange={(_event, value) => updateFilter('person', value ?? '')}
+            onInputChange={(_event, value) => updateFilter('person', value)}
+            renderInput={(params) => <TextField {...params} label="Osoba" />}
             sx={{ flex: 1 }}
           />
-          <TextField
-            label="Tag"
+          <Autocomplete
+            freeSolo
+            options={tagOptions}
             value={filters.tag}
-            onChange={(event) => updateFilter('tag', event.target.value)}
+            onChange={(_event, value) => updateFilter('tag', value ?? '')}
+            onInputChange={(_event, value) => updateFilter('tag', value)}
+            renderInput={(params) => <TextField {...params} label="Tag" />}
             sx={{ flex: 1 }}
-            slotProps={{ htmlInput: { list: 'document-filter-tag-options' } }}
           />
           <TextField
             label="Od"
@@ -238,6 +258,28 @@ export const DocumentsPage = () => {
             onChange={(event) => updateFilter('dateTo', event.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
           />
+          <FormControl sx={{ minWidth: '11rem', flex: 1 }}>
+            <InputLabel id="filter-signature-status">Status podpisu</InputLabel>
+            <Select
+              labelId="filter-signature-status"
+              label="Status podpisu"
+              value={filters.signatureStatus}
+              onChange={(event) => {
+                const value = String(event.target.value);
+                updateFilter(
+                  'signatureStatus',
+                  value === '' ? '' : documentSignatureStatusSchema.parse(value),
+                );
+              }}
+            >
+              <MenuItem value="">Wszystkie</MenuItem>
+              {Object.entries(SIGNATURE_STATUS_LABELS).map(([value, label]) => (
+                <MenuItem key={value} value={value}>
+                  {label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <Button
             variant="outlined"
             disabled={!filtersActive}
@@ -248,11 +290,6 @@ export const DocumentsPage = () => {
             Zapisz teczkę
           </Button>
         </Stack>
-        <datalist id="document-filter-tag-options">
-          {tagOptions.map((tag) => (
-            <option key={tag} value={tag} />
-          ))}
-        </datalist>
       </Paper> : null}
 
       {archiveHasDocuments && view === 'folders' ? (
@@ -539,6 +576,7 @@ export const DocumentsPage = () => {
         submitLabel="Dodaj dokument"
         pending={createDocument.isPending}
         error={createDocument.error?.message}
+        personOptions={personOptions}
         tagOptions={tagOptions}
         onClose={() => setCreateOpen(false)}
         onSubmit={(values) => createDocument.mutate(toDocumentInput(values))}

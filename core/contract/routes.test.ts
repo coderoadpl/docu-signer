@@ -115,6 +115,12 @@ describe('API route contract', () => {
         .success,
     ).toBe(false);
     expect(
+      documentListInputSchema.safeParse({ signatureStatus: 'needs-signature' }).success,
+    ).toBe(true);
+    expect(
+      documentListInputSchema.safeParse({ signatureStatus: 'unknown' }).success,
+    ).toBe(false);
+    expect(
       documentCreateInputSchema.safeParse({
         title: '   ',
         docType: 'umowa-uod',
@@ -141,11 +147,11 @@ describe('API route contract', () => {
     expect(
       savedSearchCreateInputSchema.parse({
         name: 'Protokoły',
-        filter: { docType: 'protokol', tag: 'odbiór' },
+        filter: { docType: 'protokol', tag: 'odbiór', signatureStatus: 'signed' },
       }),
     ).toEqual({
       name: 'Protokoły',
-      filter: { docType: 'protokol', tag: 'odbiór' },
+      filter: { docType: 'protokol', tag: 'odbiór', signatureStatus: 'signed' },
     });
     expect(
       savedSearchListOutputSchema.safeParse({
@@ -154,7 +160,7 @@ describe('API route contract', () => {
             id: '11111111-1111-4111-8111-111111111111',
             tenantId: 'tenant-default',
             name: 'Protokoły',
-            filter: { docType: 'protokol' },
+            filter: { docType: 'protokol', signatureStatus: 'needs-signature' },
             createdAt: '2026-08-01T00:00:00.000Z',
           },
         ],

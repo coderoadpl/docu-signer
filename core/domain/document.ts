@@ -24,6 +24,10 @@ const documentFileRoleSchema = z.enum([
 
 export type DocumentFileRole = z.infer<typeof documentFileRoleSchema>;
 
+export const documentSignatureStatusSchema = z.enum(['needs-signature', 'signed']);
+
+export type DocumentSignatureStatus = z.infer<typeof documentSignatureStatusSchema>;
+
 const periodIsOrdered = (value: {
   periodStart?: string | null | undefined;
   periodEnd?: string | null | undefined;
@@ -105,6 +109,7 @@ const documentListFilterSchemaOf = () =>
       text: z.string().trim().min(1).optional(),
       dateFrom: z.iso.date().optional(),
       dateTo: z.iso.date().optional(),
+      signatureStatus: documentSignatureStatusSchema.optional(),
     })
     .refine(
       (value) => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo,
@@ -120,6 +125,7 @@ export interface DocumentListFilter {
   text?: string | undefined;
   dateFrom?: string | undefined;
   dateTo?: string | undefined;
+  signatureStatus?: DocumentSignatureStatus | undefined;
 }
 
 export const savedSearchFilterSchema = documentListFilterSchemaOf();

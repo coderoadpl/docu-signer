@@ -4,6 +4,7 @@ import {
   type DocumentFile,
   type DocumentFileRole,
   type DocumentListFilter,
+  type DocumentSignatureStatus,
   type SavedSearchFilter,
   type DocumentType,
   type DocumentWithFiles,
@@ -33,6 +34,11 @@ export const FILE_ROLE_SYMBOLS: Record<DocumentFileRole, string> = {
   other: '•',
 };
 
+export const SIGNATURE_STATUS_LABELS: Record<DocumentSignatureStatus, string> = {
+  'needs-signature': 'Do podpisania',
+  signed: 'Podpisane',
+};
+
 export interface DocumentFormValues {
   title: string;
   docType: DocumentType;
@@ -40,7 +46,7 @@ export interface DocumentFormValues {
   periodStart: string;
   periodEnd: string;
   person: string;
-  tags: string;
+  tags: string[];
 }
 
 export interface DocumentFilterValues {
@@ -50,6 +56,7 @@ export interface DocumentFilterValues {
   tag: string;
   dateFrom: string;
   dateTo: string;
+  signatureStatus: DocumentSignatureStatus | '';
 }
 
 export const emptyDocumentFilters = (): DocumentFilterValues => ({
@@ -59,6 +66,7 @@ export const emptyDocumentFilters = (): DocumentFilterValues => ({
   tag: '',
   dateFrom: '',
   dateTo: '',
+  signatureStatus: '',
 });
 
 export const emptyDocumentForm = (): DocumentFormValues => ({
@@ -68,7 +76,7 @@ export const emptyDocumentForm = (): DocumentFormValues => ({
   periodStart: '',
   periodEnd: '',
   person: '',
-  tags: '',
+  tags: [],
 });
 
 export const toDocumentInput = (
@@ -80,10 +88,7 @@ export const toDocumentInput = (
   periodStart: values.periodStart || null,
   periodEnd: values.periodEnd || null,
   ...(values.person.trim() ? { person: values.person.trim() } : {}),
-  tags: values.tags
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean),
+  tags: Array.from(new Set(values.tags.map((tag) => tag.trim()).filter(Boolean))),
 });
 
 export const suggestDocumentDate = (
@@ -109,6 +114,7 @@ export const toDocumentFilter = (values: {
   tag: string;
   dateFrom: string;
   dateTo: string;
+  signatureStatus: DocumentSignatureStatus | '';
 }): DocumentListFilter => ({
   ...(values.text.trim() ? { text: values.text.trim() } : {}),
   ...(values.docType ? { docType: values.docType } : {}),
@@ -116,6 +122,7 @@ export const toDocumentFilter = (values: {
   ...(values.tag.trim() ? { tag: values.tag.trim() } : {}),
   ...(values.dateFrom ? { dateFrom: values.dateFrom } : {}),
   ...(values.dateTo ? { dateTo: values.dateTo } : {}),
+  ...(values.signatureStatus ? { signatureStatus: values.signatureStatus } : {}),
 });
 
 export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilterValues => ({
@@ -125,6 +132,7 @@ export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilte
   tag: filter.tag ?? '',
   dateFrom: filter.dateFrom ?? '',
   dateTo: filter.dateTo ?? '',
+  signatureStatus: filter.signatureStatus ?? '',
 });
 
 export const hasDocumentFilter = (filter: DocumentListFilter): boolean =>
@@ -138,9 +146,23 @@ export const documentFilterSummary = (filter: SavedSearchFilter): string => {
     filter.tag ? `Tag: ${filter.tag}` : '',
     filter.dateFrom ? `Od: ${formatPolishDate(filter.dateFrom)}` : '',
     filter.dateTo ? `Do: ${formatPolishDate(filter.dateTo)}` : '',
+    filter.signatureStatus
+      ? `Status podpisu: ${SIGNATURE_STATUS_LABELS[filter.signatureStatus]}`
+      : '',
   ].filter(Boolean);
   return parts.length ? parts.join(' · ') : 'Wszystkie dokumenty';
 };
+
+export const uniqueDocumentPersons = (
+  documents: Array<Pick<DocumentWithFiles, 'person'>>,
+): string[] =>
+  Array.from(
+    new Set(
+      documents
+        .map((document) => document.person?.trim())
+        .filter((person): person is string => Boolean(person)),
+    ),
+  ).sort((left, right) => left.localeCompare(right, 'pl'));
 
 export const uniqueDocumentTags = (
   documents: Array<Pick<DocumentWithFiles, 'tags'>>,

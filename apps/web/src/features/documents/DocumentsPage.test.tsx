@@ -83,6 +83,64 @@ describe('DocumentsPage', () => {
     await waitFor(() => expect(seen).toHaveBeenCalledWith('Protokół'));
   });
 
+  it('filters by person and tag autocomplete suggestions and signature status', async () => {
+    const seen = vi.fn();
+    const signed = {
+      ...document,
+      id: '22222222-2222-4222-8222-222222222222',
+      title: 'Podpisana umowa',
+      tags: ['podpisane'],
+      files: [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          documentId: '22222222-2222-4222-8222-222222222222',
+          role: 'signed-digital',
+          fileName: 'podpis.pdf',
+          contentType: 'application/pdf',
+          sizeBytes: 3,
+          storageKey: 'documents/tenant/doc/file',
+          createdAt: '2026-07-18T10:00:00.000Z',
+        },
+      ],
+    };
+    server.use(
+      http.get('/api/documents', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen(Object.fromEntries(params.entries()));
+        if (params.get('signatureStatus') === 'signed') {
+          return HttpResponse.json({ ok: true, data: { documents: [signed] } });
+        }
+        return HttpResponse.json({ ok: true, data: { documents: [document, signed] } });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
+    await userEvent.click(screen.getByLabelText('Osoba'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Anna Nowak' }));
+    await waitFor(() => expect(seen).toHaveBeenCalledWith({ person: 'Anna Nowak' }));
+
+    await userEvent.click(screen.getByLabelText('Tag'));
+    await userEvent.click(await screen.findByRole('option', { name: 'podpisane' }));
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        person: 'Anna Nowak',
+        tag: 'podpisane',
+      }),
+    );
+
+    await userEvent.click(screen.getByLabelText('Status podpisu'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Podpisane' }));
+    expect((await screen.findAllByText('Podpisana umowa')).length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        person: 'Anna Nowak',
+        tag: 'podpisane',
+        signatureStatus: 'signed',
+      }),
+    );
+  });
+
   it('shows one dominant create action and no tools for an empty archive', async () => {
     server.use(
       http.get('/api/documents', () =>
@@ -215,7 +273,7 @@ describe('DocumentsPage', () => {
       id: '33333333-3333-4333-8333-333333333333',
       tenantId: 'tenant-1',
       name: 'Odbiór',
-      filter: { tag: 'odbiór' },
+      filter: { tag: 'odbiór', signatureStatus: 'signed' },
       createdAt: '2026-08-01T00:00:00.000Z',
     };
     let savedSearches: Array<typeof savedSearch> = [];
@@ -264,23 +322,35 @@ describe('DocumentsPage', () => {
     await screen.findAllByText('Umowa z Anną');
     expect(screen.getByLabelText('Tag')).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText('Tag'), 'odbiór');
+    await userEvent.click(screen.getByLabelText('Status podpisu'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Podpisane' }));
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz teczkę' }));
     const dialog = await screen.findByRole('dialog', { name: 'Zapisz teczkę' });
-    expect(within(dialog).getByText('Tag: odbiór')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane'),
+    ).toBeInTheDocument();
     await userEvent.type(within(dialog).getByLabelText('Nazwa'), 'Odbiór');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Zapisz teczkę' }));
 
     await waitFor(() =>
-      expect(savedCreate).toHaveBeenCalledWith({ name: 'Odbiór', filter: { tag: 'odbiór' } }),
+      expect(savedCreate).toHaveBeenCalledWith({
+        name: 'Odbiór',
+        filter: { tag: 'odbiór', signatureStatus: 'signed' },
+      }),
     );
     await userEvent.clear(screen.getByLabelText('Tag'));
     await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
     expect(await screen.findByRole('heading', { name: 'Odbiór' })).toBeInTheDocument();
-    expect(screen.getByText('Tag: odbiór')).toBeInTheDocument();
+    expect(screen.getByText('Tag: odbiór · Status podpisu: Podpisane')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('heading', { name: 'Odbiór' }));
     expect((await screen.findAllByText('Protokół odbioru')).length).toBeGreaterThan(0);
-    await waitFor(() => expect(seen).toHaveBeenCalledWith({ tag: 'odbiór' }));
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        tag: 'odbiór',
+        signatureStatus: 'signed',
+      }),
+    );
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Teczki' }));
     await userEvent.click(screen.getByRole('button', { name: 'Usuń' }));
@@ -322,6 +392,16 @@ describe('DocumentsPage', () => {
     await userEvent.click(within(dialog).getByText('Okres'));
     await userEvent.type(within(dialog).getByLabelText('Od'), '2026-07-01');
     expect(within(dialog).getByLabelText('Data podpisania')).toHaveValue('2026-07-01');
+    await userEvent.type(
+      within(dialog).getByRole('combobox', { name: 'Osoba' }),
+      'Anna Nowak',
+    );
+    await userEvent.type(
+      within(dialog).getByRole('combobox', { name: 'Tagi' }),
+      'zarząd,ważne{Enter}',
+    );
+    expect(within(dialog).getByText('zarząd')).toBeInTheDocument();
+    expect(within(dialog).getByText('ważne')).toBeInTheDocument();
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Dodaj dokument' }),
     );
@@ -332,6 +412,8 @@ describe('DocumentsPage', () => {
         documentDate: '2026-07-01',
         periodStart: '2026-07-01',
         periodEnd: null,
+        person: 'Anna Nowak',
+        tags: ['zarząd', 'ważne'],
       }),
     );
     expect(router.state.location.pathname).toBe(

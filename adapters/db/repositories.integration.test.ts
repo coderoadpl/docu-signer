@@ -97,6 +97,92 @@ describe('DocumentRepository', () => {
       ),
     ).toBeNull();
   });
+
+  it('filters signature status through document file roles', async () => {
+    const repository = createDocumentRepository(db);
+    await repository.create({
+      id: '12121212-1212-4121-8121-121212121212',
+      tenantId: 'tenant-a',
+      title: 'Do podpisania',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-03',
+      periodStart: null,
+      periodEnd: null,
+      person: 'Anna Nowak',
+      tags: ['status-filter'],
+    });
+    await repository.create({
+      id: '13131313-1313-4131-8131-131313131313',
+      tenantId: 'tenant-a',
+      title: 'Podpisany',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-02',
+      periodStart: null,
+      periodEnd: null,
+      person: 'Anna Nowak',
+      tags: ['status-filter'],
+    });
+    await repository.create({
+      id: '14141414-1414-4141-8141-141414141414',
+      tenantId: 'tenant-a',
+      title: 'Bez źródła',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
+      person: 'Anna Nowak',
+      tags: ['status-filter'],
+    });
+    await repository.createFile('tenant-a', {
+      id: '15151515-1515-4151-8151-151515151515',
+      documentId: '12121212-1212-4121-8121-121212121212',
+      role: 'source',
+      fileName: 'do-podpisania.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-a/status/needs/source',
+    });
+    await repository.createFile('tenant-a', {
+      id: '16161616-1616-4161-8161-161616161616',
+      documentId: '13131313-1313-4131-8131-131313131313',
+      role: 'source',
+      fileName: 'podpisany.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-a/status/signed/source',
+    });
+    await repository.createFile('tenant-a', {
+      id: '17171717-1717-4171-8171-171717171717',
+      documentId: '13131313-1313-4131-8131-131313131313',
+      role: 'signed-digital',
+      fileName: 'podpisany-signed.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-a/status/signed/digital',
+    });
+    await repository.createFile('tenant-a', {
+      id: '18181818-1818-4181-8181-181818181818',
+      documentId: '14141414-1414-4141-8141-141414141414',
+      role: 'other',
+      fileName: 'notatka.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-a/status/other/file',
+    });
+
+    await expect(
+      repository.listByTenant('tenant-a', {
+        tag: 'status-filter',
+        signatureStatus: 'needs-signature',
+      }),
+    ).resolves.toMatchObject([{ title: 'Do podpisania' }]);
+    await expect(
+      repository.listByTenant('tenant-a', {
+        tag: 'status-filter',
+        signatureStatus: 'signed',
+      }),
+    ).resolves.toMatchObject([{ title: 'Podpisany' }]);
+  });
 });
 
 describe('SavedSearchRepository', () => {
@@ -106,12 +192,22 @@ describe('SavedSearchRepository', () => {
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       tenantId: 'tenant-a',
       name: 'Protokoły Anny',
-      filter: { docType: 'protokol', person: 'Anna', tag: 'odbiór' },
+      filter: {
+        docType: 'protokol',
+        person: 'Anna',
+        tag: 'odbiór',
+        signatureStatus: 'signed',
+      },
     });
 
     expect(created).toMatchObject({
       name: 'Protokoły Anny',
-      filter: { docType: 'protokol', person: 'Anna', tag: 'odbiór' },
+      filter: {
+        docType: 'protokol',
+        person: 'Anna',
+        tag: 'odbiór',
+        signatureStatus: 'signed',
+      },
     });
     await repository.create({
       id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',

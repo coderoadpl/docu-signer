@@ -238,6 +238,7 @@ export const buildApp = (deps: AppDeps) => {
       text: c.req.query('text'),
       dateFrom: c.req.query('dateFrom'),
       dateTo: c.req.query('dateTo'),
+      signatureStatus: c.req.query('signatureStatus'),
     });
     if (!parsed.success) {
       return respond(err(validation('Invalid document filters', parsed.error.flatten())));
