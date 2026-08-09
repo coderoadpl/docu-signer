@@ -15,6 +15,7 @@ import {
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { PolishDatePickerProvider } from './components/ui/PolishDatePicker.js';
 import { AppLayout } from './AppLayout.js';
+import { documentSigningSearchSchema } from './features/documents/documents.logic.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
@@ -114,6 +115,7 @@ const documentDetailRoute = createRoute({
 const documentSigningRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: 'documents/$id/sign/$fileId',
+  validateSearch: documentSigningSearchSchema,
   component: DocumentSigningRoute,
 });
 const settingsRoute = createRoute({

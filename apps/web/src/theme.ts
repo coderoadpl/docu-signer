@@ -218,12 +218,18 @@ export const SigningSurface = styled(Box)(({ theme }) => ({
 export const SigningPageSurface = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.common.white,
   boxShadow: theme.shadows[4],
+  WebkitTouchCallout: 'none',
+  WebkitUserSelect: 'none',
+  userSelect: 'none',
 }));
 
 export const InkSurface = styled('canvas')(({ theme }) => ({
   touchAction: 'none',
   cursor: 'crosshair',
   outline: `1px solid ${theme.palette.divider}`,
+  WebkitTouchCallout: 'none',
+  WebkitUserSelect: 'none',
+  userSelect: 'none',
   '&:focus-visible': {
     outline: `3px solid ${theme.palette.primary.main}`,
   },

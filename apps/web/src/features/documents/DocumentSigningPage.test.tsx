@@ -4,6 +4,7 @@ import {
   createRoute,
   createRouter,
   RouterProvider,
+  useParams,
 } from '@tanstack/react-router';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
@@ -12,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentSigningPage } from './DocumentSigningPage.js';
+import { documentSigningSearchSchema, documentsSearchSchema } from './documents.logic.js';
 import type { SigningStampWithMetrics } from './signing-pdf.js';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -86,30 +88,40 @@ const document = {
   files: [sourceFile],
 };
 
-const renderPage = async () => {
+const renderPage = async (
+  initialEntry = `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}`,
+) => {
   const root = createRootRoute();
+  const SigningRouteComponent = () => {
+    const params = useParams({ from: '/app/documents/$id/sign/$fileId' });
+    return <DocumentSigningPage documentId={params.id} fileId={params.fileId} />;
+  };
   const signing = createRoute({
     getParentRoute: () => root,
     path: '/app/documents/$id/sign/$fileId',
-    component: () => (
-      <DocumentSigningPage documentId={DOCUMENT_ID} fileId={SOURCE_ID} />
-    ),
+    validateSearch: documentSigningSearchSchema,
+    component: SigningRouteComponent,
   });
   const detail = createRoute({
     getParentRoute: () => root,
     path: '/app/documents/$id',
+    validateSearch: documentsSearchSchema,
     component: () => <p>Szczegóły dokumentu</p>,
   });
+  const list = createRoute({
+    getParentRoute: () => root,
+    path: '/app/documents',
+    validateSearch: documentsSearchSchema,
+    component: () => <p>Lista dokumentów</p>,
+  });
   const router = createRouter({
-    routeTree: root.addChildren([signing, detail]),
+    routeTree: root.addChildren([signing, detail, list]),
     history: createMemoryHistory({
-      initialEntries: [
-        `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}`,
-      ],
+      initialEntries: [initialEntry],
     }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return { router, ...renderWithProviders(<RouterProvider router={router} />) };
 };
 
 const installReadHandlers = () => {
@@ -991,6 +1003,68 @@ describe('DocumentSigningPage', () => {
     });
   });
 
+  it('advances through a signing queue after saving or skipping', async () => {
+    installUploadHandlers();
+    server.use(
+      http.get('/api/documents/33333333-3333-4333-8333-333333333333', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            document: {
+              ...document,
+              id: '33333333-3333-4333-8333-333333333333',
+              files: [
+                {
+                  ...sourceFile,
+                  id: '44444444-4444-4444-8444-444444444444',
+                  documentId: '33333333-3333-4333-8333-333333333333',
+                },
+              ],
+            },
+          },
+        }),
+      ),
+      http.get(
+        '/api/documents/33333333-3333-4333-8333-333333333333/files/44444444-4444-4444-8444-444444444444/content',
+        () =>
+          new HttpResponse(new Uint8Array([37, 80, 68, 70]), {
+            headers: { 'content-type': 'application/pdf' },
+          }),
+      ),
+    );
+    const { router } = await renderPage(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?q=umowa&kolejka=33333333-3333-4333-8333-333333333333&pliki=44444444-4444-4444-8444-444444444444&podpisane=0&razem=2`,
+    );
+
+    await drawStroke();
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+    await waitFor(() =>
+      expect(screen.getByText('Zapisano podpisany PDF.')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Następny dokument' }));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        '/app/documents/33333333-3333-4333-8333-333333333333/sign/44444444-4444-4444-8444-444444444444',
+      ),
+    );
+    expect(router.state.location.search).toMatchObject({
+      q: 'umowa',
+      podpisane: 1,
+      razem: 2,
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Pomiń' }));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/app/documents'),
+    );
+    expect(router.state.location.search).toMatchObject({
+      q: 'umowa',
+      podpisano: 1,
+      razem: 2,
+    });
+  });
+
   it('adds and removes a placed stamp on the current page', async () => {
     await renderPage();
     await drawStroke();
@@ -1020,16 +1094,16 @@ describe('DocumentSigningPage', () => {
     fireEvent.pointerDown(canvas, {
       pointerId: 14,
       pointerType: 'touch',
-      clientX: 50,
-      clientY: 60,
+      clientX: 154,
+      clientY: 246,
       pressure: 0.5,
     });
     expect(canvas.setPointerCapture).toHaveBeenCalledWith(14);
     fireEvent.pointerMove(canvas, {
       pointerId: 14,
       pointerType: 'touch',
-      clientX: 70,
-      clientY: 90,
+      clientX: 174,
+      clientY: 276,
       pressure: 0.5,
     });
     fireEvent(
@@ -1049,8 +1123,8 @@ describe('DocumentSigningPage', () => {
           expect.objectContaining({
             stamp: expect.objectContaining({
               placement: expect.objectContaining({
-                offsetX: 0.1,
-                offsetY: 0.1,
+                offsetX: expect.closeTo(0.62, 5),
+                offsetY: expect.closeTo(0.72, 5),
               }),
             }),
           }),

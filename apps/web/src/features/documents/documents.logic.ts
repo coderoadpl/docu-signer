@@ -88,6 +88,8 @@ const documentsSearchInputSchema = z.object({
   szkice: draftParamSchema,
   od: dateParamSchema,
   do: dateParamSchema,
+  podpisano: z.coerce.number().int().nonnegative().optional().catch(undefined),
+  razem: z.coerce.number().int().positive().optional().catch(undefined),
 });
 
 export const documentsSearchSchema = z.preprocess(
@@ -96,6 +98,24 @@ export const documentsSearchSchema = z.preprocess(
 );
 
 export type DocumentsSearchParams = z.infer<typeof documentsSearchSchema>;
+
+const queueParamSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .optional()
+  .catch(undefined);
+
+export const documentSigningSearchSchema = z.preprocess(
+  (value) => (typeof value === 'object' && value !== null ? value : {}),
+  documentsSearchInputSchema.extend({
+    kolejka: queueParamSchema,
+    pliki: queueParamSchema,
+    podpisane: z.coerce.number().int().nonnegative().optional().catch(undefined),
+  }),
+);
+
+export type DocumentSigningSearchParams = z.infer<typeof documentSigningSearchSchema>;
 
 export const emptyDocumentFilters = (): DocumentFilterValues => ({
   text: '',
@@ -278,6 +298,71 @@ export const canSignPdfFile = (
 ): boolean =>
   (file.role === 'source' || file.role === 'signed-digital') &&
   file.contentType.toLowerCase() === 'application/pdf';
+
+export interface SigningQueueTarget {
+  documentId: string;
+  fileId: string;
+}
+
+const commaParts = (value: string | undefined): string[] =>
+  value ? value.split(',').map((part) => part.trim()).filter(Boolean) : [];
+
+export const signingQueueTargets = (
+  documents: Array<Pick<DocumentWithFiles, 'id' | 'files'>>,
+): SigningQueueTarget[] =>
+  documents.flatMap((document) => {
+    if (hasSignedDocumentFile(document)) return [];
+    const file = document.files.find(
+      (item) => item.role === 'source' && canSignPdfFile(item),
+    );
+    return file ? [{ documentId: document.id, fileId: file.id }] : [];
+  });
+
+export const signingQueueSearch = ({
+  signedCount,
+  targets,
+  total,
+}: {
+  signedCount: number;
+  targets: SigningQueueTarget[];
+  total: number;
+}): Pick<DocumentSigningSearchParams, 'kolejka' | 'pliki' | 'podpisane' | 'razem'> => ({
+  ...(targets.length > 0
+    ? {
+        kolejka: targets.map((target) => target.documentId).join(','),
+        pliki: targets.map((target) => target.fileId).join(','),
+      }
+    : {}),
+  podpisane: signedCount,
+  razem: total,
+});
+
+export const signingQueueFromSearch = (
+  search: Pick<DocumentSigningSearchParams, 'kolejka' | 'pliki'>,
+): SigningQueueTarget[] => {
+  const documentIds = commaParts(search.kolejka);
+  const fileIds = commaParts(search.pliki);
+  if (documentIds.length === 0 || documentIds.length !== fileIds.length) return [];
+  return documentIds.map((documentId, index) => ({
+    documentId,
+    fileId: fileIds[index] ?? '',
+  })).filter((target) => target.fileId);
+};
+
+export const documentsSearchFromSigningSearch = (
+  search: DocumentSigningSearchParams,
+): DocumentsSearchParams =>
+  documentsSearchSchema.parse({
+    tab: search.tab,
+    q: search.q,
+    typ: search.typ,
+    osoba: search.osoba,
+    tag: search.tag,
+    status: search.status,
+    szkice: search.szkice,
+    od: search.od,
+    do: search.do,
+  });
 
 export interface TimelineInterval {
   start: string;

@@ -173,6 +173,25 @@ const createSignableDocument = async (page: Page, title: string, sourceName: str
   await expect(page.getByText('Strona 1 z 2')).toBeVisible();
 };
 
+const createSourceDocument = async (page: Page, title: string, sourceName: string) => {
+  await page.getByRole('button', { name: 'Dodaj dokument' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Dodaj dokument' });
+  await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
+  await dialog.getByLabel('Osoba').fill('Jan Kowalski');
+  await enterPolishDate(dialog, 'Data podpisania', '01.01.2026');
+  await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  const sourceSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Źródło/ }) });
+  await sourceSection.locator('input[type="file"]').setInputFiles({
+    name: sourceName,
+    mimeType: 'application/pdf',
+    buffer: await validPdfBuffer(),
+  });
+  await expect(sourceSection.getByText(sourceName)).toBeVisible();
+};
+
 const placeSignaturePadStroke = async ({
   page,
   pointerType,
@@ -198,6 +217,17 @@ const placeSignaturePadStroke = async ({
   await dialog.getByRole('button', { name: 'Użyj podpisu' }).click();
   await expect(dialog).toBeHidden();
   await expectCanvasInkGrew(pageCanvas, pageBefore);
+};
+
+const reopenSigningPage = async (page: Page, sourceName: string) => {
+  await page.getByRole('button', { name: 'Zamknij' }).click();
+  const sourceSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Źródło/ }) });
+  await expect(sourceSection.getByText(sourceName)).toBeVisible();
+  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
+  await expect(page.getByRole('heading', { name: 'Podpisz dokument' })).toBeVisible();
+  await expect(page.getByText('Strona 1 z 2')).toBeVisible();
 };
 
 const signVisiblePdf = async (page: Page) => {
@@ -437,10 +467,11 @@ test.describe('signature pad dialog', () => {
 
   test('accepts pen and touch pointers and places stamps', async ({ page }) => {
     const stamp = Date.now();
+    const sourceName = `signature-pad-${stamp}.pdf`;
     await createSignableDocument(
       page,
       `Signature pad e2e ${stamp}`,
-      `signature-pad-${stamp}.pdf`,
+      sourceName,
     );
 
     await placeSignaturePadStroke({
@@ -480,5 +511,47 @@ test.describe('signature pad dialog', () => {
     await expect(
       page.getByRole('button', { name: 'Zapisz podpisany PDF' }),
     ).toBeEnabled();
+
+    await reopenSigningPage(page, sourceName);
+    await placeSignaturePadStroke({
+      page,
+      pointerType: 'pen',
+      points: [
+        { x: 0.28, y: 0.48 },
+        { x: 0.44, y: 0.36 },
+        { x: 0.62, y: 0.5 },
+      ],
+    });
   });
+});
+
+test('signs unsigned documents one after another', async ({ page }) => {
+  const stamp = Date.now();
+  const titlePrefix = `Kolejka e2e ${stamp}`;
+
+  await signIn(page);
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
+  await createSourceDocument(page, `${titlePrefix} A`, `kolejka-a-${stamp}.pdf`);
+  await page.getByRole('button', { name: '← Dokumenty' }).click();
+  await createSourceDocument(page, `${titlePrefix} B`, `kolejka-b-${stamp}.pdf`);
+  await page.getByRole('button', { name: '← Dokumenty' }).click();
+
+  await page.getByLabel('Szukaj po tytule').fill(titlePrefix);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('q'))
+    .toBe(titlePrefix);
+  await expect(page.getByRole('cell', { name: `${titlePrefix} A`, exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: `${titlePrefix} B`, exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Podpisuj kolejno' }).click();
+
+  await signVisiblePdf(page);
+  await expect(page.getByText('Zapisano podpisany PDF.')).toBeVisible();
+  await page.getByRole('button', { name: 'Następny dokument' }).click();
+
+  await signVisiblePdf(page);
+  await expect(page.getByText('Zapisano podpisany PDF.')).toBeVisible();
+  await page.getByRole('button', { name: 'Następny dokument' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
+  await expect(page.getByText('Podpisano 2 z 2.')).toBeVisible();
 });
