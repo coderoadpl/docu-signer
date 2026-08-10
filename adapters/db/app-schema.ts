@@ -18,6 +18,7 @@ import type {
   PadSignatureRequest,
   PadSubmittedStrokes,
   SavedSearchFilter,
+  SignatureRecordPayload,
   UserPreferenceValue,
 } from '#core/domain/index.js';
 import { user } from './auth-schema.js';
@@ -53,6 +54,13 @@ export const tenantAdmins = pgTable(
     check('tenant_admins_role_check', sql`${table.role} IN ('owner', 'admin')`),
   ],
 );
+
+export const tenantSettings = pgTable('tenant_settings', {
+  tenantId: text('tenant_id')
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  storeSignatureRecords: boolean('store_signature_records').notNull().default(true),
+});
 
 // The end-customer aggregate. `members` predates the §Data conventions ruling
 // and is on its GRANDFATHER list (text id + text ISO `created_at`), so — unlike
@@ -256,6 +264,38 @@ export const documentFiles = pgTable(
       sql`${table.role} IN ('source', 'signed-scan', 'signed-digital', 'other')`,
     ),
     check('document_files_size_check', sql`${table.sizeBytes} >= 0 AND ${table.sizeBytes} <= 26214400`),
+  ],
+);
+
+export const signatureRecords = pgTable(
+  'signature_records',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => documentFiles.id, { onDelete: 'cascade' }),
+    signedBy: text('signed_by').notNull(),
+    payload: jsonb('payload').$type<SignatureRecordPayload>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('signature_records_tenant_document_created_idx').on(
+      table.tenantId,
+      table.documentId,
+      table.createdAt,
+      table.id,
+    ),
+    uniqueIndex('signature_records_file_uidx').on(table.fileId),
+    check(
+      'signature_records_payload_check',
+      sql`jsonb_typeof(${table.payload}) = 'array' AND jsonb_array_length(${table.payload}) > 0`,
+    ),
   ],
 );
 

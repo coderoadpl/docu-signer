@@ -9,6 +9,7 @@ import {
   createApiTokenMutation,
   createDocumentMutation,
   createSavedSearchMutation,
+  createSignatureRecordMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
   deleteSavedSearchMutation,
@@ -28,12 +29,17 @@ import {
   revokeApiTokenMutation,
   savedSearchesInvalidates,
   savedSearchesQuery,
+  signatureRecordsInvalidates,
+  signatureRecordsQuery,
   trashedDocumentsQuery,
   updateDocumentMutation,
+  updateTenantSettingsMutation,
   uploadDocumentFileMutation,
   setUserPreferenceMutation,
   userPreferenceInvalidates,
   userPreferenceQuery,
+  tenantSettingsInvalidates,
+  tenantSettingsQuery,
 } from './queries.js';
 import { ok, type Result, type AppError } from '#core/domain/index.js';
 import type { AuthClientPort, AuthSessionResult, PasskeyInfo } from './auth-port.js';
@@ -379,6 +385,73 @@ describe('user preference query descriptors', () => {
         input: { value: { order: ['title'], visible: ['title'] } },
       }),
     ).resolves.toEqual({ preference });
+  });
+});
+
+describe('tenant settings and signature record descriptors', () => {
+  it('executes reads and writes through resource cache scopes', async () => {
+    const record = {
+      id: '55555555-5555-4555-8555-555555555555',
+      tenantId: 'tenant-default',
+      documentId: document.id,
+      fileId: documentFile.id,
+      signedBy: 'user-1',
+      payload: [
+        {
+          strokes: [{ points: [{ x: 0.2, y: 0.3, pressure: 0.8 }] }],
+          pageIndex: 0,
+          placement: { offsetX: 0.1, offsetY: 0.2, scale: 1 },
+          inkColor: 'black' as const,
+          inkSize: 2,
+        },
+      ],
+      createdAt: '2026-08-07T10:00:00.000Z',
+    };
+    const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/tenant-settings')) {
+        return response({
+          settings: {
+            tenantId: 'tenant-default',
+            storeSignatureRecords: init?.method === 'GET',
+          },
+        });
+      }
+      return init?.method === 'GET'
+        ? response({ items: [record], nextCursor: null })
+        : response({ signatureRecord: record });
+    });
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+    const client = newClient();
+
+    expect(tenantSettingsQuery(api).queryKey).toEqual(['tenant-settings']);
+    await expect(client.fetchQuery(tenantSettingsQuery(api))).resolves.toMatchObject({
+      settings: { storeSignatureRecords: true },
+    });
+    await expect(
+      new MutationObserver(client, updateTenantSettingsMutation(api)).mutate({
+        storeSignatureRecords: false,
+      }),
+    ).resolves.toMatchObject({ settings: { storeSignatureRecords: false } });
+    expect(tenantSettingsInvalidates()).toEqual({ queryKey: ['tenant-settings'] });
+
+    expect(signatureRecordsQuery(api, document.id).queryKey).toEqual([
+      'signature-records',
+      document.id,
+    ]);
+    await expect(client.fetchQuery(signatureRecordsQuery(api, document.id))).resolves.toEqual({
+      items: [record],
+      nextCursor: null,
+    });
+    await expect(
+      new MutationObserver(client, createSignatureRecordMutation(api)).mutate({
+        documentId: document.id,
+        input: { fileId: documentFile.id, payload: record.payload },
+      }),
+    ).resolves.toEqual({ signatureRecord: record });
+    expect(signatureRecordsInvalidates(document.id)).toEqual({
+      queryKey: ['signature-records', document.id],
+    });
   });
 });
 

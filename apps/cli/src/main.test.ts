@@ -32,7 +32,8 @@ describe('CLI command surface', () => {
     expect(result.stdout).toContain('health');
     expect(result.stdout).toContain('origin');
     expect(result.stdout).toContain('public');
-    expect(result.stdout).not.toMatch(/^\s+(todo|card|member|staff|tenant|domain)\b/m);
+    expect(result.stdout).toContain('tenant-settings');
+    expect(result.stdout).not.toMatch(/^\s+(todo|card|member|staff|tenant(?!-settings)|domain)\b/m);
     expect(result.stdout).not.toContain('--tenant');
   }, CLI_TEST_TIMEOUT_MS);
 

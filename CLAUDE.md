@@ -71,7 +71,7 @@ rejected.)
   roundtrip; mass signing with a signed-file target),
   `magic-link.spec.ts` (trusted-user sign-in), `passkey.spec.ts`
   (registration → passkey sign-in), `settings.spec.ts` (account security and
-  registration without tenant management), and `password-reset.spec.ts`
+  registration), and `password-reset.spec.ts`
   (password change + email reset link via Mailpit). The harness boots the
   server with `AUTH_RATE_LIMIT: 'off'` (`scripts/e2e-server.ts`) — the baseline
   is on (including dev), but the specs replay many logins that would otherwise
@@ -101,7 +101,8 @@ rejected.)
   `/pad/{sessionId}`; the pad requires a normal login plus either the session
   secret from the URL fragment (QR) or same-user identity (`/pad` join), and
   defaults to a touch-locked Piórko mode with an explicit Ręka mode for finger
-  drawing.
+  drawing. A tenant setting controls whether each signing session also stores
+  its exact stamp data for future re-flattening onto a corrected source.
 - Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
   timestamps (`createdAt`, `updatedAt`) never render in UI or exports. Two
   carve-outs: `deletedAt` records a user action and renders as `Usunięto:` in

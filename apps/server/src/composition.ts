@@ -21,6 +21,8 @@ import { createSmtpEmailPort } from '#adapters/email/smtp.js';
 import { createLocalFsStorage } from '#adapters/storage/local-fs.js';
 import { createVercelBlobStorage } from '#adapters/storage/vercel-blob.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
+import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
+import { createSignatureRecordRepository } from '#adapters/db/signature-records-repository.js';
 import type {
   AuthPort,
   ApiTokenRepository,
@@ -32,10 +34,12 @@ import type {
   PadSessionRepository,
   PadSessionSecretPort,
   SavedSearchRepository,
+  SignatureRecordRepository,
   StoragePort,
   TenantAccessReader,
   TenantDomainRepository,
   TenantRepository,
+  TenantSettingsRepository,
   UserPreferenceRepository,
 } from '#core/server/index.js';
 
@@ -51,6 +55,8 @@ export interface AppDeps {
   padSessionSecrets: PadSessionSecretPort;
   savedSearches: SavedSearchRepository;
   userPreferences: UserPreferenceRepository;
+  tenantSettings: TenantSettingsRepository;
+  signatureRecords: SignatureRecordRepository;
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
@@ -177,6 +183,8 @@ export const createDeps = (env: Env): AppDeps => {
     padSessionSecrets: createPadSessionSecrets(),
     savedSearches: createSavedSearchRepository(db),
     userPreferences: createUserPreferenceRepository(db),
+    tenantSettings: createTenantSettingsRepository(db),
+    signatureRecords: createSignatureRecordRepository(db),
     storage,
     tenantDomains,
     email,

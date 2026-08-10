@@ -12,6 +12,17 @@ const file = {
   arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
 };
 
+const uploadedFile = {
+  id: '11111111-1111-4111-8111-111111111111',
+  documentId: '22222222-2222-4222-8222-222222222222',
+  role: 'source' as const,
+  fileName: 'umowa.pdf',
+  contentType: 'application/pdf',
+  sizeBytes: 3,
+  storageKey: 'documents/t/d/f',
+  createdAt: '2026-08-07T10:00:00.000Z',
+};
+
 describe('uploadDocumentFile', () => {
   it('uploads directly and finalizes the storage key', async () => {
     const transport: UploadTransport = {
@@ -27,8 +38,8 @@ describe('uploadDocumentFile', () => {
         },
       })),
       direct: vi.fn(async () => undefined),
-      finalize: vi.fn(async () => undefined),
-      server: vi.fn(async () => undefined),
+      finalize: vi.fn(async () => ({ file: uploadedFile })),
+      server: vi.fn(async () => ({ file: uploadedFile })),
     };
 
     await uploadDocumentFile(file, 'source', transport);
@@ -55,8 +66,8 @@ describe('uploadDocumentFile', () => {
         upload: { kind: 'server' as const, key: 'documents/t/d/f' },
       })),
       direct: vi.fn(async () => undefined),
-      finalize: vi.fn(async () => undefined),
-      server: vi.fn(async () => undefined),
+      finalize: vi.fn(async () => ({ file: uploadedFile })),
+      server: vi.fn(async () => ({ file: { ...uploadedFile, role: 'signed-scan' as const } })),
     };
 
     await uploadDocumentFile(file, 'signed-scan', transport);
@@ -76,8 +87,8 @@ describe('uploadDocumentFile', () => {
     const transport: UploadTransport = {
       request,
       direct: vi.fn(async () => undefined),
-      finalize: vi.fn(async () => undefined),
-      server: vi.fn(async () => undefined),
+      finalize: vi.fn(async () => ({ file: uploadedFile })),
+      server: vi.fn(async () => ({ file: uploadedFile })),
     };
     await expect(
       uploadDocumentFile(

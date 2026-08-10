@@ -15,6 +15,7 @@ import {
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { PolishDatePickerProvider } from './components/ui/PolishDatePicker.js';
 import { AppLayout } from './AppLayout.js';
+import { AppNoticeSnackbar } from './components/ui/AppNoticeSnackbar.js';
 import { documentSigningSearchSchema } from './features/documents/documents.logic.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
@@ -184,6 +185,7 @@ const AppRoot = () => {
         <PolishDatePickerProvider>
           <QueryClientProvider client={queryClient}>
             <RefreshSnackbar />
+            <AppNoticeSnackbar />
             <RouterProvider router={router} />
             {import.meta.env.DEV ? (
               <Suspense fallback={null}>

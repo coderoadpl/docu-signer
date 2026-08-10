@@ -13,6 +13,8 @@ import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js'
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
+import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
+import { createSignatureRecordRepository } from '#adapters/db/signature-records-repository.js';
 import {
   createHealthPort,
   createTenantAccessReader,
@@ -138,6 +140,8 @@ beforeAll(async () => {
     padSessions: createPadSessionRepository(db),
     padSessionSecrets: createPadSessionSecrets(),
     userPreferences: createUserPreferenceRepository(db),
+    tenantSettings: createTenantSettingsRepository(db),
+    signatureRecords: createSignatureRecordRepository(db),
     savedSearches: {
       listByTenant: async () => [],
       create: async (input) => ({ ...input, createdAt: '2026-08-02T00:00:00.000Z' }),

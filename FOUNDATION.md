@@ -64,7 +64,7 @@ each.
   and top navigation (owner decision 2026-07-27).
 - The shell and system states are Polish-first, including upstream demo surfaces.
 - Upstream demo verticals removed; only documents and account settings remain (owner decision 2026-08-01).
-- Hand-drawn PDF signatures are flattened client-side into new archive files; signature ink is never stored separately (owner decision 2026-08-01).
+- Hand-drawn PDF signatures are flattened client-side into new archive files; optional per-document session records retain stamp data only for future re-flattening and are not reusable signatures, so the no-reusable-signature rule stays intact (owner decision 2026-08-07).
 - The fresh-clone `quickstart:probe` and its CI step were removed with the demo
   verticals they drove; the README quickstart is now convention, not enforced.
 - `scripts/backup.ts` is a sanctioned standalone composition site because the CI cron backup runs without the server.
