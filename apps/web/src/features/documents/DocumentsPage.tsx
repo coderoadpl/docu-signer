@@ -83,6 +83,8 @@ import {
   groupDocumentsCanonically,
   hasSignedDocumentFile,
   hasDocumentFilter,
+  massReviewQueueDocumentIds,
+  massReviewQueueSearch,
   massSigningQueueSearch,
   massSigningQueueTargets,
   toDocumentFilter,
@@ -363,6 +365,7 @@ export const DocumentsPage = () => {
     selectedIds.includes(document.id),
   );
   const selectedDraftDocuments = selectedDocuments.filter((document) => document.draft);
+  const massReviewDocumentIds = massReviewQueueDocumentIds(selectedDocuments);
   const massSigningTargets = massSigningQueueTargets(selectedDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
   const visibleColumnIds = columnSettings.order.filter((column) =>
@@ -410,6 +413,19 @@ export const DocumentsPage = () => {
           targets: remaining,
           total: massSigningTargets.length,
         }),
+      },
+    });
+  };
+
+  const startMassReview = () => {
+    const first = massReviewDocumentIds[0];
+    if (!first) return;
+    void navigate({
+      to: '/app/documents/$id/review',
+      params: { id: first },
+      search: {
+        ...currentDocumentsSearch,
+        ...massReviewQueueSearch(massReviewDocumentIds),
       },
     });
   };
@@ -734,6 +750,13 @@ export const DocumentsPage = () => {
                 onClick={startMassSigning}
               >
                 Masowe podpisywanie ({selectedDocuments.length})
+              </Button>
+              <Button
+                variant="contained"
+                disabled={selectedDocuments.length === 0 || bulkBusy}
+                onClick={startMassReview}
+              >
+                Masowe przeglądanie ({selectedDocuments.length})
               </Button>
               <Button
                 variant="outlined"

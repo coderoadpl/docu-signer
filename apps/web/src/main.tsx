@@ -15,7 +15,10 @@ import {
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { PolishDatePickerProvider } from './components/ui/PolishDatePicker.js';
 import { AppLayout } from './AppLayout.js';
-import { documentSigningSearchSchema } from './features/documents/documents.logic.js';
+import {
+  documentReviewSearchSchema,
+  documentSigningSearchSchema,
+} from './features/documents/documents.logic.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
@@ -52,6 +55,18 @@ const LazyDocumentSigningRoute = lazy(() =>
 const DocumentSigningRoute = () => (
   <Suspense fallback={null}>
     <LazyDocumentSigningRoute />
+  </Suspense>
+);
+
+const LazyDocumentReviewRoute = lazy(() =>
+  import('./routes/document-review.js').then((module) => ({
+    default: module.DocumentReviewRoute,
+  })),
+);
+
+const DocumentReviewRoute = () => (
+  <Suspense fallback={null}>
+    <LazyDocumentReviewRoute />
   </Suspense>
 );
 
@@ -138,6 +153,12 @@ const documentSigningRoute = createRoute({
   validateSearch: documentSigningSearchSchema,
   component: DocumentSigningRoute,
 });
+const documentReviewRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: 'documents/$id/review',
+  validateSearch: documentReviewSearchSchema,
+  component: DocumentReviewRoute,
+});
 const settingsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: 'settings',
@@ -158,6 +179,7 @@ const router = createRouter({
       trashRoute,
       documentDetailRoute,
       documentSigningRoute,
+      documentReviewRoute,
       settingsRoute,
     ]),
   ]),

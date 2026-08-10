@@ -17,6 +17,7 @@ import { server } from '../../test/server.js';
 import { DocumentsPage } from './DocumentsPage.js';
 import { TrashPage } from './TrashPage.js';
 import {
+  documentReviewSearchSchema,
   documentSigningSearchSchema,
   documentsSearchSchema,
 } from './documents.logic.js';
@@ -183,13 +184,19 @@ const renderPage = async (initialEntry = '/app/documents') => {
     validateSearch: documentSigningSearchSchema,
     component: () => <div>Podpisywanie dokumentu</div>,
   });
+  const review = createRoute({
+    getParentRoute: () => root,
+    path: '/app/documents/$id/review',
+    validateSearch: documentReviewSearchSchema,
+    component: () => <div>Przeglądanie dokumentu</div>,
+  });
   const trash = createRoute({
     getParentRoute: () => root,
     path: '/app/kosz',
     component: TrashPage,
   });
   const router = createRouter({
-    routeTree: root.addChildren([list, detail, signing, trash]),
+    routeTree: root.addChildren([list, detail, signing, review, trash]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
@@ -803,6 +810,35 @@ describe('DocumentsPage', () => {
       name: 'Masowe podpisywanie (0)',
     });
     expect(massSigningButton).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Masowe przeglądanie (0)' }),
+    ).toBeDisabled();
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Podpisana umowa' })[0] ??
+        screen.getByLabelText('Zaznacz dokument: Podpisana umowa'),
+    );
+    await userEvent.click(
+      screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Protokół' })[0] ??
+        screen.getByLabelText('Zaznacz dokument: Protokół'),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Masowe przeglądanie (2)' }),
+    ).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Masowe przeglądanie (2)' }));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        `/app/documents/${signedId}/review`,
+      ),
+    );
+    expect(router.state.location.search).toMatchObject({
+      q: 'masowe',
+      kolejka: `${signedId},${protocolId}`,
+    });
+
+    await act(async () => {
+      await router.navigate({ to: '/app/documents', search: { q: 'masowe' } });
+    });
+    await screen.findByRole('rowheader', { name: 'Podpisana umowa' });
     await userEvent.click(
       screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Podpisana umowa' })[0] ??
         screen.getByLabelText('Zaznacz dokument: Podpisana umowa'),
