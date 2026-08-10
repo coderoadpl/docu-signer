@@ -24,6 +24,8 @@ import {
   type FileUploadRequest,
   type FinalizeFileUpload,
   type MoveDocumentFile,
+  type PadCurrentDocument,
+  type PadSessionMode,
   type PadStrokeSubmission,
   type SetUserPreference,
   type SignatureRecord,
@@ -490,7 +492,7 @@ export const sourceUpdateRequestsInvalidates = () => ({
 export const createPadSessionMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...padSessionScopes.all(), 'create'],
-    call: () => api.createPadSession(),
+    call: (mode: PadSessionMode | undefined) => api.createPadSession(mode),
   });
 
 export const activePadSessionQuery = (api: ApiClient) =>
@@ -526,6 +528,18 @@ export const requestPadSignatureMutation = (api: ApiClient) =>
       api.requestPadSignature(sessionId, input),
   });
 
+export const setPadCurrentDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'document'],
+    call: ({
+      document,
+      sessionId,
+    }: {
+      document: PadCurrentDocument;
+      sessionId: string;
+    }) => api.setPadCurrentDocument(sessionId, document),
+  });
+
 export const submitPadStrokesMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...padSessionScopes.all(), 'submit'],
@@ -544,6 +558,13 @@ export const consumePadStrokesMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...padSessionScopes.all(), 'consume'],
     call: (sessionId: string) => api.consumePadStrokes(sessionId),
+  });
+
+export const consumePadSubmissionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'submission', 'consume'],
+    call: ({ sessionId, submissionId }: { sessionId: string; submissionId: string }) =>
+      api.consumePadSubmission(sessionId, submissionId),
   });
 
 export const closePadSessionMutation = (api: ApiClient) =>

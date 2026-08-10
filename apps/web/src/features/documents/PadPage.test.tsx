@@ -265,6 +265,32 @@ describe('PadPage', () => {
     );
   });
 
+  it('keeps the shared canvas live for proactive signatures', async () => {
+    server.use(
+      http.get('*/api/pad-sessions/:sessionId/state', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            mode: 'shared',
+            status: 'active',
+            currentRequest: null,
+            currentDocument: {
+              key: 'document-a:file-a',
+              title: 'Umowa wspólna',
+            },
+          },
+        }),
+      ),
+    );
+
+    renderPad();
+
+    expect(await screen.findByRole('heading', { name: 'Możesz złożyć podpis' })).toBeVisible();
+    expect(screen.getByText('Umowa wspólna')).toBeVisible();
+    expect(screen.getByRole('application', { name: 'Powierzchnia pada do podpisu' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeDisabled();
+  });
+
   it.each([
     { mode: 'Piórko', pointerType: 'pen' },
     { mode: 'Ręka', pointerType: 'pen' },

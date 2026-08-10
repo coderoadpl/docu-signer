@@ -1,9 +1,15 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
 import { PDFDocument } from 'pdf-lib';
 import { z } from 'zod';
 
+import { fetchMagicLink } from '../scripts/mailpit.js';
+
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
 const DEMO_PASSWORD = 'demo1234';
+const MAGIC_EMAIL = 'mag@example.com';
+const MAILPIT_API_URL = 'http://localhost:47980';
+const PRODUCT_PASS_SCREENSHOT_DIR = process.env['PRODUCT_PASS_SCREENSHOT_DIR'];
 const documentCreateResponseSchema = z.object({
   ok: z.literal(true),
   data: z.object({
@@ -430,6 +436,24 @@ const signIn = async (page: Page) => {
   await expect(page.getByRole('link', { name: 'Dokumenty' })).toBeVisible();
 };
 
+const signInWithMagicLink = async (page: Page) => {
+  await page.goto('/login');
+  await page.locator('#login-email').fill(MAGIC_EMAIL);
+  await page.getByRole('button', { name: 'Wyślij link do logowania' }).click();
+  const link = await fetchMagicLink(MAILPIT_API_URL, MAGIC_EMAIL);
+  await page.goto(link);
+  await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
+};
+
+const productPassScreenshot = async (page: Page, fileName: string) => {
+  if (!PRODUCT_PASS_SCREENSHOT_DIR) return;
+  await mkdir(PRODUCT_PASS_SCREENSHOT_DIR, { recursive: true });
+  await page.screenshot({
+    path: `${PRODUCT_PASS_SCREENSHOT_DIR}/${fileName}`,
+    fullPage: false,
+  });
+};
+
 test('creates, uploads, previews and exports an archived document', async ({
   page,
 }) => {
@@ -804,9 +828,14 @@ test.describe('signature pad dialog', () => {
 });
 
 test('mass signing can receive a signature from a QR pad browser context', async ({ browser, page }) => {
+  test.setTimeout(60_000);
   const stamp = Date.now();
   const title = `QR pad e2e ${stamp}`;
   const sourceName = `qr-pad-${stamp}.pdf`;
+
+  if (PRODUCT_PASS_SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
 
   await signIn(page);
   await createDocumentWithFilesViaApi({
@@ -815,7 +844,7 @@ test('mass signing can receive a signature from a QR pad browser context', async
     docType: 'umowa-uod',
     files: [{ fileName: sourceName, role: 'source' }],
   });
-  await page.getByRole('link', { name: 'Dokumenty' }).click();
+  await page.goto('/app/documents');
   await page.getByLabel('Szukaj po tytule').fill(title);
   await expect
     .poll(() => new URL(page.url()).searchParams.get('q'))
@@ -828,47 +857,80 @@ test('mass signing can receive a signature from a QR pad browser context', async
 
   await page.getByRole('button', { name: 'Pad QR' }).click();
   await expect(page.getByRole('dialog', { name: 'Pad QR' })).toBeVisible();
+  await expect(page.getByText('Może dołączyć każde konto organizacji.')).toBeVisible();
+  await productPassScreenshot(page, 'e-qr-modal-shared-copy.png');
   await page.getByRole('button', { name: 'Schowaj kod QR' }).click();
   await expect(page.getByRole('dialog', { name: 'Pad QR' })).toBeHidden();
 
-  const padContext = await browser.newContext();
+  const hostPadPage = await page.context().newPage();
+  const padContext = await browser.newContext({ viewport: { width: 834, height: 720 } });
   try {
-    const padPage = await padContext.newPage();
-    await signIn(padPage);
-    await padPage.getByRole('button', { name: 'Tryb pada' }).click();
+    await hostPadPage.goto('/app');
+    await hostPadPage.getByRole('button', { name: 'Tryb pada' }).click();
+    const guestPadPage = await padContext.newPage();
+    await signInWithMagicLink(guestPadPage);
+    await guestPadPage.getByRole('button', { name: 'Tryb pada' }).click();
+
     await expect(
-      padPage.getByRole('heading', { name: 'Czekam na dokument…' }).first(),
+      hostPadPage.getByRole('heading', { name: 'Możesz złożyć podpis' }),
     ).toBeVisible();
+    await expect(
+      guestPadPage.getByRole('heading', { name: 'Możesz złożyć podpis' }),
+    ).toBeVisible();
+    await expect(guestPadPage.getByText(title)).toBeVisible();
+    await productPassScreenshot(guestPadPage, 'd-pad-shared-live-canvas-834.png');
+    await page.bringToFront();
     await expect(page.getByText('Pad połączony')).toBeVisible();
 
-    const desktopCanvas = page.getByRole('application', {
-      name: 'Powierzchnia do rysowania podpisu',
-    });
-    const before = await canvasInkState(desktopCanvas);
+    const submitFromPad = async (padPage: Page, offset: number) => {
+      const padCanvas = padPage.getByRole('application', {
+        name: 'Powierzchnia pada do podpisu',
+      });
+      await dispatchPointerStroke({
+        canvas: padCanvas,
+        pointerType: 'mouse',
+        points: [
+          { x: 0.18, y: 0.5 + offset },
+          { x: 0.34, y: 0.36 + offset },
+          { x: 0.52, y: 0.56 + offset },
+          { x: 0.74, y: 0.4 + offset },
+        ],
+      });
+      await expect(padPage.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
+      await padPage.getByRole('button', { name: 'Zatwierdź' }).click();
+    };
+
+    await submitFromPad(hostPadPage, 0);
+    await submitFromPad(guestPadPage, 0.02);
+    await page.bringToFront();
     await page.getByRole('button', { name: 'Poproś pad o podpis' }).click();
-    await expect(padPage.getByRole('heading', { name: title })).toBeVisible();
-    const padCanvas = padPage.getByRole('application', {
-      name: 'Powierzchnia pada do podpisu',
+    await guestPadPage.bringToFront();
+    await expect(guestPadPage.getByText('Prośba o podpis')).toBeVisible();
+    await submitFromPad(guestPadPage, -0.02);
+    await page.bringToFront();
+
+    const tray = page.getByRole('button', {
+      name: 'Podpisy: Demo User (1) · Magic Link User (2)',
     });
-    await dispatchPointerStroke({
-      canvas: padCanvas,
-      pointerType: 'mouse',
-      points: [
-        { x: 0.18, y: 0.54 },
-        { x: 0.34, y: 0.38 },
-        { x: 0.52, y: 0.58 },
-        { x: 0.74, y: 0.42 },
-      ],
-    });
-    await expect(padPage.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
-    await padPage.getByRole('button', { name: 'Zatwierdź' }).click();
-    await expectCanvasInkGrew(desktopCanvas, before);
-    await expect(page.getByText('Pad połączony')).toBeVisible();
+    await expect(tray).toBeVisible();
+    await productPassScreenshot(page, 'a-desktop-toolbar-two-account-tray-1440.png');
+    await tray.click();
+    await expect(page.getByText('Podpisy do umieszczenia')).toBeVisible();
+    await productPassScreenshot(page, 'b-tray-popover-open.png');
+
+    await page.getByRole('button', { name: 'Umieść' }).first().click();
+    await expect(page.getByText('Podpis: Demo User')).toBeVisible();
+    await productPassScreenshot(page, 'c-placed-tray-stamp-selected-attribution.png');
     await dragSelectedStampLong(page);
     await page.getByRole('button', { name: 'Dalej' }).click();
+    await expect(
+      page.getByText('W skrzynce są nieumieszczone podpisy dla tego dokumentu.'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Odrzuć i przejdź dalej' }).click();
     await expect(page.getByRole('heading', { name: 'Podsumowanie' })).toBeVisible();
     await expect(page.getByText('Podpisano 1')).toBeVisible();
   } finally {
+    await hostPadPage.close();
     await padContext.close();
   }
 });

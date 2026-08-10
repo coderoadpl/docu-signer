@@ -16,11 +16,14 @@ import {
   finalizeFileUploadSchema,
   padSessionActiveOutputSchema as domainPadSessionActiveOutputSchema,
   padSessionConsumeOutputSchema as domainPadSessionConsumeOutputSchema,
+  padSessionCreateInputSchema as domainPadSessionCreateInputSchema,
   padSessionCreateOutputSchema as domainPadSessionCreateOutputSchema,
+  padSessionDocumentInputSchema as domainPadSessionDocumentInputSchema,
   padSessionJoinOutputSchema as domainPadSessionJoinOutputSchema,
   padSessionRequestInputSchema as domainPadSessionRequestInputSchema,
   padSessionRequestOutputSchema as domainPadSessionRequestOutputSchema,
   padSessionStateOutputSchema as domainPadSessionStateOutputSchema,
+  padSessionSubmissionConsumeOutputSchema as domainPadSessionSubmissionConsumeOutputSchema,
   padStrokeSubmissionSchema as domainPadSessionSubmitInputSchema,
   moveDocumentFileSchema,
   paginationQuerySchema,
@@ -239,6 +242,8 @@ export const sourceUpdateRequestOutputSchema = z.object({
 
 export const padSessionCreateOutputSchema = domainPadSessionCreateOutputSchema;
 
+export const padSessionCreateInputSchema = domainPadSessionCreateInputSchema;
+
 export const padSessionActiveOutputSchema = domainPadSessionActiveOutputSchema;
 
 export const padSessionJoinOutputSchema = domainPadSessionJoinOutputSchema;
@@ -249,6 +254,10 @@ export const padSessionRequestInputSchema = domainPadSessionRequestInputSchema;
 
 export const padSessionRequestOutputSchema = domainPadSessionRequestOutputSchema;
 
+export const padSessionDocumentInputSchema = domainPadSessionDocumentInputSchema;
+
+export const padSessionDocumentOutputSchema = domainPadSessionDocumentInputSchema;
+
 export const padSessionSubmitInputSchema = domainPadSessionSubmitInputSchema;
 
 export const padSessionSubmitOutputSchema = z.object({
@@ -256,6 +265,9 @@ export const padSessionSubmitOutputSchema = z.object({
 });
 
 export const padSessionConsumeOutputSchema = domainPadSessionConsumeOutputSchema;
+
+export const padSessionSubmissionConsumeOutputSchema =
+  domainPadSessionSubmissionConsumeOutputSchema;
 
 export const padSessionCloseOutputSchema = z.object({
   closed: z.literal(true),
@@ -383,8 +395,13 @@ export const API_ROUTES = {
   padSessionJoin: { method: 'POST', path: '/api/pad-sessions/join' },
   padSessionState: { method: 'GET', path: '/api/pad-sessions/:sessionId/state' },
   padSessionRequest: { method: 'POST', path: '/api/pad-sessions/:sessionId/request' },
+  padSessionDocument: { method: 'POST', path: '/api/pad-sessions/:sessionId/document' },
   padSessionSubmit: { method: 'POST', path: '/api/pad-sessions/:sessionId/submit' },
   padSessionConsume: { method: 'POST', path: '/api/pad-sessions/:sessionId/consume' },
+  padSessionSubmissionConsume: {
+    method: 'POST',
+    path: '/api/pad-sessions/:sessionId/submissions/:submissionId/consume',
+  },
   padSessionClose: { method: 'POST', path: '/api/pad-sessions/:sessionId/close' },
   padSessionDisconnect: { method: 'POST', path: '/api/pad-sessions/:sessionId/disconnect' },
 } as const;

@@ -1,3 +1,4 @@
 .vercel
+.pnpm-store/
 .env*
 !.env.example

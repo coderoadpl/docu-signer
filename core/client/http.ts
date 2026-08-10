@@ -29,10 +29,12 @@ import {
   padSessionCloseOutputSchema,
   padSessionConsumeOutputSchema,
   padSessionCreateOutputSchema,
+  padSessionDocumentOutputSchema,
   padSessionDisconnectOutputSchema,
   padSessionJoinOutputSchema,
   padSessionRequestOutputSchema,
   padSessionStateOutputSchema,
+  padSessionSubmissionConsumeOutputSchema,
   padSessionSubmitOutputSchema,
   PUBLIC_API_ROUTES,
   publicTenantDiscoveryOutputSchema,
@@ -68,6 +70,8 @@ import {
   type FileUploadRequest,
   type FinalizeFileUpload,
   type MoveDocumentFile,
+  type PadCurrentDocument,
+  type PadSessionMode,
   type PadStrokeSubmission,
   type Result,
   type SetUserPreference,
@@ -639,13 +643,13 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
-  createPadSession: (signal?: AbortSignal) =>
+  createPadSession: (mode: PadSessionMode = 'private', signal?: AbortSignal) =>
     request(
       options,
       API_ROUTES.padSessionsCreate.method,
       API_ROUTES.padSessionsCreate.path,
       padSessionCreateOutputSchema,
-      {},
+      { mode },
       signal,
     ),
   getActivePadSession: (signal?: AbortSignal) =>
@@ -689,6 +693,19 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  setPadCurrentDocument: (
+    sessionId: string,
+    document: PadCurrentDocument,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.padSessionDocument.method,
+      pathWith(API_ROUTES.padSessionDocument.path, { sessionId }),
+      padSessionDocumentOutputSchema,
+      { document },
+      signal,
+    ),
   submitPadStrokes: (
     sessionId: string,
     secret: string,
@@ -710,6 +727,19 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.padSessionConsume.method,
       pathWith(API_ROUTES.padSessionConsume.path, { sessionId }),
       padSessionConsumeOutputSchema,
+      {},
+      signal,
+    ),
+  consumePadSubmission: (
+    sessionId: string,
+    submissionId: string,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.padSessionSubmissionConsume.method,
+      pathWith(API_ROUTES.padSessionSubmissionConsume.path, { sessionId, submissionId }),
+      padSessionSubmissionConsumeOutputSchema,
       {},
       signal,
     ),

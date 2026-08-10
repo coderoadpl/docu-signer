@@ -15,6 +15,8 @@ import {
   exportDocumentsInputSchema,
   fileUploadRequestInputSchema,
   finalizeFileUploadInputSchema,
+  padSessionCreateInputSchema,
+  padSessionDocumentInputSchema,
   padSessionRequestInputSchema,
   padSessionSubmitInputSchema,
   savedSearchCreateInputSchema,
@@ -50,6 +52,7 @@ import {
   createSourceUpdateRequest,
   closePadSession,
   consumePadStrokes,
+  consumePadSubmission,
   disconnectPadSession,
   decideSourceUpdateRequest,
   cancelSourceUpdateRequest,
@@ -82,6 +85,7 @@ import {
   revokeApiToken,
   requestFileUpload,
   requestPadSignature,
+  setPadCurrentDocument,
   serverUpload,
   setUserPreference,
   submitPadStrokes,
@@ -457,7 +461,16 @@ export const buildApp = (deps: AppDeps) => {
   });
 
   app.post(API_ROUTES.padSessionsCreate.path, async (c) => {
-    const result = await createPadSession(ctxOf(c.get('identity')), deps);
+    const body: unknown = await c.req.json().catch(() => ({}));
+    const parsed = padSessionCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid pad session', parsed.error.flatten())));
+    }
+    const result = await createPadSession(
+      ctxOf(c.get('identity')),
+      deps,
+      parsed.data.mode,
+    );
     return respond(result);
   });
 
@@ -496,6 +509,21 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ request: result.value }) : result);
   });
 
+  app.post(API_ROUTES.padSessionDocument.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = padSessionDocumentInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid pad document', parsed.error.flatten())));
+    }
+    const result = await setPadCurrentDocument(
+      ctxOf(c.get('identity')),
+      c.req.param('sessionId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
   app.post(API_ROUTES.padSessionSubmit.path, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = padSessionSubmitInputSchema.safeParse(body);
@@ -528,6 +556,16 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result);
+  });
+
+  app.post(API_ROUTES.padSessionSubmissionConsume.path, async (c) => {
+    const result = await consumePadSubmission(
+      ctxOf(c.get('identity')),
+      c.req.param('sessionId'),
+      c.req.param('submissionId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ submission: result.value }) : result);
   });
 
   app.post(API_ROUTES.padSessionClose.path, async (c) => {

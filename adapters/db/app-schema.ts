@@ -15,6 +15,8 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import type {
+  PadCurrentDocument,
+  PadQueuedSubmission,
   PadSignatureRequest,
   PadSubmittedStrokes,
   SavedSearchFilter,
@@ -224,11 +226,13 @@ export const padSessions = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     secretHash: text('secret_hash').notNull(),
+    mode: text('mode', { enum: ['private', 'shared'] }).notNull().default('private'),
     status: text('status', { enum: ['active', 'closed'] }).notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
     currentRequest: jsonb('current_request').$type<PadSignatureRequest>(),
+    currentDocument: jsonb('current_document').$type<PadCurrentDocument>(),
     submittedStrokes: jsonb('submitted_strokes').$type<PadSubmittedStrokes>(),
   },
   (table) => [
@@ -238,6 +242,65 @@ export const padSessions = pgTable(
       .on(table.tenantId, table.createdBy)
       .where(sql`${table.status} = 'active'`),
     check('pad_sessions_status_check', sql`${table.status} IN ('active', 'closed')`),
+    check('pad_sessions_mode_check', sql`${table.mode} IN ('private', 'shared')`),
+  ],
+);
+
+export const padSessionParticipants = pgTable(
+  'pad_session_participants',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => padSessions.id, { onDelete: 'cascade' }),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    lastPolledAt: timestamp('last_polled_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('pad_session_participants_session_account_uidx').on(
+      table.sessionId,
+      table.accountId,
+    ),
+    index('pad_session_participants_tenant_session_idx').on(
+      table.tenantId,
+      table.sessionId,
+    ),
+  ],
+);
+
+export const padSessionSubmissions = pgTable(
+  'pad_session_submissions',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => padSessions.id, { onDelete: 'cascade' }),
+    requestId: uuid('request_id'),
+    document: jsonb('document').$type<PadCurrentDocument>().notNull(),
+    strokes: jsonb('strokes').$type<PadQueuedSubmission['strokes']>().notNull(),
+    inkColor: text('ink_color', { enum: ['black', 'navy'] }).notNull(),
+    sourceSize: jsonb('source_size').$type<PadQueuedSubmission['sourceSize']>().notNull(),
+    contributorAccountId: text('contributor_account_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    contributorLabel: text('contributor_label').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('pad_session_submissions_tenant_session_created_idx').on(
+      table.tenantId,
+      table.sessionId,
+      table.createdAt,
+    ),
   ],
 );
 

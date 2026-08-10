@@ -566,6 +566,7 @@ describe('PadSessionRepository', () => {
       tenantId: 'tenant-a',
       createdBy: 'user-owner',
       secretHash: 'hash:pad_secret',
+      mode: 'private',
       expiresAt: '2026-08-04T14:00:00.000Z',
     });
     expect(session).toMatchObject({
@@ -575,6 +576,7 @@ describe('PadSessionRepository', () => {
       status: 'active',
       lastPolledAt: null,
       currentRequest: null,
+      currentDocument: null,
       submittedStrokes: null,
     });
     expect(await repository.findById('tenant-b', session.id)).toBeNull();
@@ -625,6 +627,61 @@ describe('PadSessionRepository', () => {
       submittedStrokes: null,
     });
     await expect(repository.findActiveByUser('tenant-a', 'user-owner')).resolves.toBeNull();
+  });
+
+  it('tracks shared participants and queues document-bound submissions', async () => {
+    const repository = createPadSessionRepository(db);
+    const session = await repository.create({
+      id: 'abababab-abab-4bab-8bab-abababababab',
+      tenantId: 'tenant-a',
+      createdBy: 'user-owner',
+      secretHash: 'hash:shared_secret',
+      mode: 'shared',
+      expiresAt: '2099-08-04T14:00:00.000Z',
+    });
+    await repository.touchParticipant('tenant-a', session.id, {
+      id: 'acacacac-acac-4cac-8cac-acacacacacac',
+      accountId: 'user-owner',
+      label: 'Owner',
+      lastPolledAt: '2026-08-09T10:00:00.000Z',
+    });
+    await expect(repository.listParticipants('tenant-b', session.id)).resolves.toEqual([]);
+    await expect(repository.listParticipants('tenant-a', session.id)).resolves.toEqual([
+      {
+        accountId: 'user-owner',
+        label: 'Owner',
+        lastPolledAt: '2026-08-09T10:00:00.000Z',
+      },
+    ]);
+
+    const submission = {
+      id: 'adadadad-adad-4dad-8dad-adadadadadad',
+      requestId: 'aeaeaeae-aeae-4eae-8eae-aeaeaeaeaeae',
+      document: { key: 'document-a:file-a', title: 'Umowa' },
+      inkColor: 'navy' as const,
+      sourceSize: { width: 834, height: 620 },
+      contributedBy: { accountId: 'user-owner', label: 'Owner' },
+      strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
+      createdAt: '2026-08-09T10:01:00.000Z',
+    };
+    await repository.requestSignature('tenant-a', session.id, {
+      requestId: submission.requestId,
+      documentTitle: 'Umowa',
+    });
+    await repository.enqueueSubmission('tenant-a', session.id, submission);
+    await expect(repository.findById('tenant-a', session.id)).resolves.toMatchObject({
+      currentRequest: null,
+    });
+    await expect(repository.listSubmissions('tenant-b', session.id)).resolves.toEqual([]);
+    await expect(repository.listSubmissions('tenant-a', session.id)).resolves.toEqual([
+      submission,
+    ]);
+    await expect(
+      repository.consumeSubmission('tenant-a', session.id, submission.id),
+    ).resolves.toEqual(submission);
+    await expect(repository.listSubmissions('tenant-a', session.id)).resolves.toEqual([]);
+    await repository.close('tenant-a', session.id);
+    await expect(repository.listParticipants('tenant-a', session.id)).resolves.toEqual([]);
   });
 });
 

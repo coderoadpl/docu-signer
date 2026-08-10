@@ -175,12 +175,13 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
   );
   const [inputMode, setInputMode] = useState<PadInputMode>('pen');
   const [submittedRequestId, setSubmittedRequestId] = useState<string>();
+  const [disconnected, setDisconnected] = useState(false);
   const [requestCount, setRequestCount] = useState(0);
   const lastRequestIdRef = useRef<string | undefined>(undefined);
   const me = useQuery(actions.me);
   const state = useQuery({
     ...actions.padSessionState(sessionId, secret),
-    enabled: Boolean(me.data?.tenant),
+    enabled: Boolean(me.data?.tenant) && !disconnected,
     refetchInterval: POLL_MS,
   });
   const submit = useMutation(actions.submitPadStrokes);
@@ -189,6 +190,11 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
   const request = state.data?.currentRequest ?? null;
   const drawingRequest =
     request && request.requestId !== submittedRequestId ? request : null;
+  const sharedDocument =
+    state.data?.mode === 'shared' ? state.data.currentDocument : null;
+  const drawingEnabled = Boolean(drawingRequest || sharedDocument);
+  const activeDocumentKey = sharedDocument?.key;
+  const lastDocumentKeyRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (authErrorCode(me.error) === 'unauthorized') void navigate({ to: '/login' });
@@ -246,6 +252,16 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     activePenPointerRef.current = undefined;
     lastPenSeenAtRef.current = undefined;
   }, [request]);
+
+  useEffect(() => {
+    if (!activeDocumentKey || lastDocumentKeyRef.current === activeDocumentKey) return;
+    lastDocumentKeyRef.current = activeDocumentKey;
+    setStrokes([]);
+    setActiveStroke(undefined);
+    currentStrokeRef.current = undefined;
+    activePointerRef.current = undefined;
+    activePointerTypeRef.current = undefined;
+  }, [activeDocumentKey]);
 
   const pointsForEvent = (event: ReactPointerEvent<HTMLCanvasElement>) =>
     pointerEventToInkPoints(
@@ -328,13 +344,13 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
   };
 
   const submitInk = async () => {
-    if (!drawingRequest || !metrics || !strokes.length) return;
+    if (!drawingEnabled || !metrics || !strokes.length) return;
     try {
       await submit.mutateAsync({
         sessionId,
         secret,
         input: {
-          requestId: drawingRequest.requestId,
+          ...(drawingRequest ? { requestId: drawingRequest.requestId } : {}),
           strokes,
           inkColor: inkColorId,
           sourceSize: {
@@ -346,7 +362,7 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     } catch {
       return;
     }
-    setSubmittedRequestId(drawingRequest.requestId);
+    if (drawingRequest) setSubmittedRequestId(drawingRequest.requestId);
     clearInk();
     await queryClient.invalidateQueries(actions.padSessionInvalidates(sessionId));
   };
@@ -354,6 +370,7 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
   const disconnectPad = async () => {
     try {
       await disconnect.mutateAsync({ sessionId, secret });
+      setDisconnected(true);
       await queryClient.invalidateQueries(actions.padSessionInvalidates(sessionId));
     } catch {
       return;
@@ -392,7 +409,7 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     );
   }
 
-  if (state.data.status === 'closed') {
+  if (disconnected || state.data.status === 'closed') {
     return (
       <PadFrame>
         <StatusView state={{ kind: 'empty', title: 'Pad rozłączony' }} />
@@ -436,11 +453,18 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
         >
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="h2" noWrap>
-              {drawingRequest?.documentTitle ?? 'Czekam na dokument…'}
+              {sharedDocument
+                ? 'Możesz złożyć podpis'
+                : drawingRequest?.documentTitle ?? 'Czekam na dokument…'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Dokument {requestCount || 1}
+              {sharedDocument?.title ?? `Dokument ${requestCount || 1}`}
             </Typography>
+            {sharedDocument && drawingRequest ? (
+              <Typography variant="caption" color="text.secondary">
+                Prośba o podpis
+              </Typography>
+            ) : null}
           </Box>
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}>
             <ToggleButtonGroup
@@ -456,7 +480,7 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
                 <ToggleButton
                   key={color.id}
                   value={color.id}
-                  disabled={!drawingRequest || submit.isPending}
+                  disabled={!drawingEnabled || submit.isPending}
                   aria-label={color.label}
                 >
                   {color.label}
@@ -495,7 +519,7 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
         </Stack>
       </Paper>
       <Box sx={{ position: 'relative', flex: '1 1 auto', minHeight: 0 }}>
-        {!drawingRequest ? (
+        {!drawingEnabled ? (
           <Stack
             sx={{
               position: 'absolute',
@@ -529,12 +553,12 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
           sx={{
             width: '100%',
             height: '100%',
-            display: drawingRequest ? 'block' : 'none',
+            display: drawingEnabled ? 'block' : 'none',
             touchAction: 'none',
             cursor: 'crosshair',
           }}
           onPointerDown={(event) => {
-            if (!drawingRequest || submit.isPending) return;
+            if (!drawingEnabled || submit.isPending) return;
             if (event.pointerType === 'pen') {
               activePenPointerRef.current = event.pointerId;
               lastPenSeenAtRef.current = event.timeStamp;
@@ -575,7 +599,7 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
           onPointerCancel={finishPointer}
         />
       </Box>
-      {drawingRequest ? (
+      {drawingEnabled ? (
         <Paper square sx={{ px: 2, py: 1.25 }}>
           {submit.isError ? <Alert severity="error" sx={{ mb: 1 }}>{submit.error.message}</Alert> : null}
           <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
