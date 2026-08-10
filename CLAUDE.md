@@ -98,13 +98,16 @@ rejected.)
   A full-screen mass-review queue shows each selected source or newest digital
   signature and supports lightweight metadata editing without signing controls.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
-  replaces the source or persists a reusable signature. A desktop signing
+  replaces the source, and no stored artifact can be applied to a different
+  document (no reusable signature). With the tenant setting on (owner decision
+  2026-08-07, recorded in FOUNDATION.md), each signing session additionally
+  stores its own per-document stamp geometry solely so the SAME document's
+  signatures can be re-flattened onto a corrected source. A desktop signing
   user has one global remote pad session shared by every signing surface at
   `/pad/{sessionId}`; the pad requires a normal login plus either the session
   secret from the URL fragment (QR) or same-user identity (`/pad` join), and
   defaults to a touch-locked Piórko mode with an explicit Ręka mode for finger
-  drawing. A tenant setting controls whether each signing session also stores
-  its exact stamp data for future re-flattening onto a corrected source.
+  drawing.
 - Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
   timestamps (`createdAt`, `updatedAt`) never render in UI or exports. Two
   carve-outs: `deletedAt` records a user action and renders as `Usunięto:` in
