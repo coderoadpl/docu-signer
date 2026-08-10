@@ -20,10 +20,9 @@ on:
     types: [opened, synchronize, ready_for_review]
     branches: [main]
 
-# One in-flight review per PR; a new push cancels the superseded run.
 concurrency:
-  group: ai-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read

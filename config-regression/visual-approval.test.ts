@@ -6,6 +6,7 @@ const workflowsDir = join(import.meta.dirname, '..', '.github', 'workflows');
 const approveVisuals = readFileSync(join(workflowsDir, 'approve-visuals.yml'), 'utf8');
 const visualBaselines = readFileSync(join(workflowsDir, 'visual-baselines.yml'), 'utf8');
 const ci = readFileSync(join(workflowsDir, 'ci.yml'), 'utf8');
+const visual = readFileSync(join(workflowsDir, 'visual.yml'), 'utf8');
 
 const squashed = approveVisuals.replace(/\s+/g, ' ');
 
@@ -57,17 +58,20 @@ describe('visual baseline publisher', () => {
   });
 });
 
-describe('visual-report publisher', () => {
-  it('holds write scopes and checks out only the trusted base commit', () => {
-    const publisher = jobBlock(ci, 'visual-report');
-    expect(publisher).toContain('contents: write');
-    expect(publisher).toContain('pull-requests: write');
-    expect(publisher).toContain('ref: ${{ github.event.pull_request.base.sha }}');
-    expect(publisher).not.toMatch(/ref:.*pull_request\.head/);
-    expect(publisher).not.toContain('github.event.pull_request.head.sha');
+describe('visual attestation workflow', () => {
+  it('runs only on dispatch, the nightly schedule, and pushes to main', () => {
+    const triggerStart = visual.indexOf('\non:\n');
+    const triggerEnd = visual.indexOf('\npermissions:\n');
+
+    expect(visual.slice(triggerStart, triggerEnd)).toBe(
+      "\non:\n  workflow_dispatch:\n  schedule:\n    - cron: '17 3 * * *'\n  push:\n    branches: [main]\n",
+    );
   });
 
-  it('leaves the job that runs pull-request code without elevated permissions', () => {
-    expect(jobBlock(ci, 'visual')).not.toContain('permissions:');
+  it('keeps the renderer read-only and outside the pull-request workflow', () => {
+    expect(visual).toContain('permissions:\n  contents: read');
+    expect(visual).not.toContain('contents: write');
+    expect(ci).not.toContain('\n  visual:\n');
+    expect(ci).not.toContain('\n  visual-report:\n');
   });
 });
