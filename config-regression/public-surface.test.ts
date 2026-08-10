@@ -17,17 +17,15 @@ const stripComments = (source: string): string =>
 
 const publicApp = read('apps', 'server', 'src', 'public-app.ts');
 const publicAppCode = stripComments(publicApp);
-const mainAppCode = stripComments(read('apps', 'server', 'src', 'app.ts'));
 const publicUseCase = read('core', 'server', 'usecases', 'public.ts');
 const documentUseCases = read('core', 'server', 'usecases', 'documents.ts');
-const invitationUseCases = read('core', 'server', 'usecases', 'invitations.ts');
 
 /**
  * The surviving identity-bearing surface a public handler must never reach:
- * tenant-scoped document/invitation use-cases plus identity/authz primitives.
- * The existence probes below prevent deleted names from making this scan vacuous.
+ * every tenant-scoped document use-case plus identity/authorization primitives.
+ * The existence probe below prevents deleted names from making this scan vacuous.
  */
-const TENANT_SCOPED_DOCUMENT_USE_CASES = [
+const TENANT_SCOPED_USE_CASES = [
   'createDocument',
   'listDocuments',
   'getDocument',
@@ -42,17 +40,6 @@ const TENANT_SCOPED_DOCUMENT_USE_CASES = [
   'exportDocuments',
 ];
 
-const TENANT_SCOPED_INVITATION_USE_CASES = [
-  'createInvitation',
-  'listInvitations',
-  'revokeInvitation',
-];
-
-const TENANT_SCOPED_USE_CASES = [
-  ...TENANT_SCOPED_DOCUMENT_USE_CASES,
-  ...TENANT_SCOPED_INVITATION_USE_CASES,
-];
-
 const IDENTITY_BEARING = [
   ...TENANT_SCOPED_USE_CASES,
   'resolveIdentity',
@@ -61,12 +48,9 @@ const IDENTITY_BEARING = [
 ];
 
 describe('public routes sit before identity resolution and never authorize (US-028 AC)', () => {
-  it('guards the complete surviving tenant-scoped document and invitation surfaces', () => {
-    for (const name of TENANT_SCOPED_DOCUMENT_USE_CASES) {
+  it('guards the complete surviving tenant-scoped document surface', () => {
+    for (const name of TENANT_SCOPED_USE_CASES) {
       expect(documentUseCases).toMatch(new RegExp(`export const ${name}\\b`));
-    }
-    for (const name of TENANT_SCOPED_INVITATION_USE_CASES) {
-      expect(invitationUseCases).toMatch(new RegExp(`export const ${name}\\b`));
     }
   });
 
@@ -77,30 +61,19 @@ describe('public routes sit before identity resolution and never authorize (US-0
     expect(reached).toEqual([]);
   });
 
-  it('the public handler calls only the dedicated identity-free use-cases', () => {
-    for (const name of ['getPublicTenantProfile', 'getInvitation', 'acceptInvitation']) {
-      expect(publicAppCode).toMatch(new RegExp(`await ${name}\\(`));
-    }
+  it('the public handler calls the dedicated public use-case', () => {
+    expect(publicAppCode).toMatch(/\bgetPublicTenantProfile\b/);
   });
 
-  it('the public use-cases take no `ctx: Ctx` (they carry no identity)', () => {
+  it('the public use-case takes no `ctx: Ctx` (it carries no identity)', () => {
     expect(publicUseCase).not.toMatch(/ctx:\s*Ctx/);
     expect(publicUseCase).toMatch(/getPublicTenantProfile\s*=\s*async\s*\(\s*\n?\s*input:/);
-    expect(invitationUseCases).toMatch(/getInvitation\s*=\s*async\s*\(\s*\n?\s*token:/);
-    expect(invitationUseCases).toMatch(/acceptInvitation\s*=\s*async\s*\(\s*\n?\s*token:/);
-  });
-
-  it('owns both invitation routes instead of bypassing public-app', () => {
-    expect(publicAppCode).toMatch(/app\.get\(PUBLIC_API_ROUTES\.invitation\.path/);
-    expect(publicAppCode).toMatch(/app\.post\(PUBLIC_API_ROUTES\.invitationAccept\.path/);
-    expect(mainAppCode).not.toMatch(/PUBLIC_API_ROUTES\.invitation/);
   });
 });
 
 describe('CORS is opened on the public group only (§Security baseline)', () => {
   it('the public app mounts hono/cors', () => {
     expect(publicApp).toMatch(/hono\/cors/);
-    expect(publicAppCode).toMatch(/allowMethods:\s*\['GET',\s*'POST'\]/);
   });
 
   it('the authenticated app never imports a CORS middleware', () => {

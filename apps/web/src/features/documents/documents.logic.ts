@@ -803,7 +803,6 @@ export const uploadErrorMessage = (error: unknown): string => {
       export_too_large: 'Eksport przekracza dozwolony rozmiar.',
       tenant_not_found: 'Nie wybrano organizacji.',
       unavailable: 'Magazyn plików jest chwilowo niedostępny.',
-      rate_limited: 'Zbyt wiele prób. Spróbuj ponownie później.',
       internal: 'Nie udało się wgrać pliku. Spróbuj ponownie.',
     };
     return messages[error.appError.code];

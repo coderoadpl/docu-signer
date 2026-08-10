@@ -2,8 +2,6 @@ import { z } from 'zod';
 
 import {
   apiTokenSchema,
-  acceptInvitationSchema,
-  createInvitationSchema,
   createApiTokenSchema,
   createDocumentSchema,
   createSavedSearchSchema,
@@ -15,7 +13,6 @@ import {
   documentWithFilesSchema,
   exportDocumentsSchema,
   fileUploadRequestSchema,
-  invitationSchema,
   finalizeFileUploadSchema,
   padSessionActiveOutputSchema as domainPadSessionActiveOutputSchema,
   padSessionConsumeOutputSchema as domainPadSessionConsumeOutputSchema,
@@ -31,7 +28,6 @@ import {
   moveDocumentFileSchema,
   paginationQuerySchema,
   publicTenantProfileSchema,
-  publicInvitationSchema,
   savedSearchSchema,
   signatureRecordSchema,
   sourceUpdateRequestSchema,
@@ -70,7 +66,6 @@ export const healthOutputSchema = attestationSchema.extend({
 export const authConfigOutputSchema = z.object({
   googleEnabled: z.boolean(),
   passwordResetEnabled: z.boolean(),
-  emailConfigured: z.boolean(),
 });
 
 export const meOutputSchema = z.object({
@@ -195,33 +190,6 @@ export const apiTokenRevokeOutputSchema = z.object({
   revoked: z.literal(true),
 });
 
-export const invitationCreateInputSchema = createInvitationSchema;
-
-export const invitationCreateOutputSchema = z.object({
-  invitation: invitationSchema,
-  url: z.url(),
-  emailSent: z.boolean(),
-});
-
-export const invitationListOutputSchema = z.object({
-  invitations: z.array(invitationSchema),
-});
-
-export const invitationRevokeOutputSchema = z.object({
-  revoked: z.literal(true),
-});
-
-export const publicInvitationOutputSchema = z.object({
-  invitation: publicInvitationSchema,
-});
-
-export const invitationAcceptInputSchema = acceptInvitationSchema;
-
-export const invitationAcceptOutputSchema = z.object({
-  accepted: z.literal(true),
-  email: z.email(),
-});
-
 export const userPreferenceKeyInputSchema = userPreferenceKeySchema;
 
 export const userPreferenceGetOutputSchema = z.object({
@@ -314,8 +282,6 @@ export const PUBLIC_API_PREFIX = '/api/public';
 export const PUBLIC_API_ROUTES = {
   tenantDiscovery: { method: 'GET', path: `${PUBLIC_API_PREFIX}/tenants/:slug` },
   tenantProfile: { method: 'GET', path: `${PUBLIC_API_PREFIX}/tenants/:slug/v/:version` },
-  invitation: { method: 'GET', path: `${PUBLIC_API_PREFIX}/invitations/:token` },
-  invitationAccept: { method: 'POST', path: `${PUBLIC_API_PREFIX}/invitations/:token/accept` },
 } as const;
 
 export const publicVersionSchema = z
@@ -337,12 +303,6 @@ export const publicTenantDiscoveryPath = (slug: string): string =>
 
 export const publicTenantProfilePath = (slug: string, version: string): string =>
   fillPath(PUBLIC_API_ROUTES.tenantProfile.path, { slug, version });
-
-export const publicInvitationPath = (token: string): string =>
-  fillPath(PUBLIC_API_ROUTES.invitation.path, { token });
-
-export const publicInvitationAcceptPath = (token: string): string =>
-  fillPath(PUBLIC_API_ROUTES.invitationAccept.path, { token });
 
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health' },
@@ -394,9 +354,6 @@ export const API_ROUTES = {
   apiTokens: { method: 'GET', path: '/api/api-tokens' },
   apiTokensCreate: { method: 'POST', path: '/api/api-tokens' },
   apiTokenRevoke: { method: 'POST', path: '/api/api-tokens/:apiTokenId/revoke' },
-  invitations: { method: 'GET', path: '/api/invitations' },
-  invitationsCreate: { method: 'POST', path: '/api/invitations' },
-  invitationRevoke: { method: 'POST', path: '/api/invitations/:invitationId/revoke' },
   userPreference: { method: 'GET', path: '/api/me/preferences/:key' },
   userPreferenceSet: { method: 'PUT', path: '/api/me/preferences/:key' },
   tenantSettings: { method: 'GET', path: '/api/tenant-settings' },

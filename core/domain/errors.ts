@@ -7,7 +7,6 @@ export const ERROR_CODES = [
   'export_too_large',
   'tenant_not_found',
   'unavailable',
-  'rate_limited',
   'internal',
 ] as const;
 
@@ -40,8 +39,5 @@ export const tenantNotFound = (message = 'Unknown tenant'): AppError =>
 
 export const unavailable = (message = 'Service unavailable'): AppError =>
   appError('unavailable', message);
-
-export const rateLimited = (message = 'Too many requests'): AppError =>
-  appError('rate_limited', message);
 
 export const internal = (message = 'Internal error'): AppError => appError('internal', message);

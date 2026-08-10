@@ -100,7 +100,7 @@ describe('LoginPage', () => {
 
   it('shows the Google button only when the server reports it enabled (FR-26)', async () => {
     server.use(
-      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: true, passwordResetEnabled: true, emailConfigured: true } })),
+      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: true, passwordResetEnabled: true } })),
     );
 
     await renderLoginPage();
@@ -109,7 +109,7 @@ describe('LoginPage', () => {
 
   it('hides the password reminder when reset email is not configured', async () => {
     server.use(
-      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: false, passwordResetEnabled: false, emailConfigured: false } })),
+      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: false, passwordResetEnabled: false } })),
     );
 
     await renderLoginPage();

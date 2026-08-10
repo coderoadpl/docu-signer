@@ -4,16 +4,11 @@ import { cors } from 'hono/cors';
 import {
   PUBLIC_API_PREFIX,
   PUBLIC_API_ROUTES,
-  invitationAcceptInputSchema,
   publicCacheControl,
   publicVersionSchema,
 } from '#core/contract/index.js';
-import { canonicalSlugSchema, err, ok, rateLimited, validation } from '#core/domain/index.js';
-import {
-  acceptInvitation,
-  getInvitation,
-  getPublicTenantProfile,
-} from '#core/server/index.js';
+import { canonicalSlugSchema, err, ok, validation } from '#core/domain/index.js';
+import { getPublicTenantProfile } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
 import { respond } from './respond.js';
@@ -22,34 +17,21 @@ import { respond } from './respond.js';
  * The public, unauthenticated contract group (US-028, FR-23, §Public surface).
  * Registered onto the main app BEFORE the `/api/*` tenant-resolution middleware,
  * so a `/api/public/*` request is answered here and never reaches identity
- * resolution or `authorize`. Its handlers call only the identity-free
- * `getPublicTenantProfile`, `getInvitation`, and `acceptInvitation` use-cases;
- * a config-regression probe rejects references to known tenant-scoped,
- * identity-bearing operations (US-028 AC).
+ * resolution or `authorize`. It calls only `getPublicTenantProfile` — a use-case
+ * that takes no `ctx: { identity }` — so a public handler structurally cannot
+ * touch a tenant-scoped, identity-bearing use-case (US-028 AC, enforced by a
+ * config-regression probe).
  *
- * CORS is open (`origin: '*'`, `GET`/`POST` + `OPTIONS`) and scoped to this
- * prefix ONLY; the authenticated `/api/*` surface stays CORS-closed
+ * CORS is open (`origin: '*'`, `GET` + its `OPTIONS` preflight) and scoped to
+ * this prefix ONLY; the authenticated `/api/*` surface stays CORS-closed
  * (architecture §Security baseline). The slug addresses the tenant, so the same
  * URL is shareable on the apex or any tenant domain (FR-24).
  */
 export const registerPublicRoutes = <E extends Env>(
   app: Hono<E>,
-  deps: Pick<
-    AppDeps,
-    | 'tenants'
-    | 'invitations'
-    | 'invitationSecrets'
-    | 'invitationAuth'
-    | 'invitationEmail'
-    | 'invitationRateLimit'
-    | 'invitationRateLimitEnabled'
-    | 'ids'
-    | 'now'
-    | 'baseUrl'
-    | 'baseDomain'
-  >,
+  deps: Pick<AppDeps, 'tenants'>,
 ): void => {
-  app.use(`${PUBLIC_API_PREFIX}/*`, cors({ origin: '*', allowMethods: ['GET', 'POST'] }));
+  app.use(`${PUBLIC_API_PREFIX}/*`, cors({ origin: '*', allowMethods: ['GET'] }));
 
   app.get(PUBLIC_API_ROUTES.tenantDiscovery.path, async (c: Context) => {
     const slug = canonicalSlugSchema.safeParse(c.req.param('slug'));
@@ -75,32 +57,5 @@ export const registerPublicRoutes = <E extends Env>(
     }
     const result = await getPublicTenantProfile({ slug: slug.data }, deps);
     return respond(result, result.ok ? publicCacheControl('profile') : 'no-store');
-  });
-
-  app.get(PUBLIC_API_ROUTES.invitation.path, async (c) => {
-    const result = await getInvitation(c.req.param('token'), deps);
-    return respond(result.ok ? ok({ invitation: result.value }) : result);
-  });
-
-  app.post(PUBLIC_API_ROUTES.invitationAccept.path, async (c) => {
-    const forwarded = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
-    const clientKey = forwarded || c.req.header('x-real-ip') || 'unknown';
-    if (
-      deps.invitationRateLimitEnabled &&
-      !(await deps.invitationRateLimit.consume(`invitation-accept:${clientKey}`, 5, 60))
-    ) {
-      return respond(err(rateLimited('Too many invitation attempts')));
-    }
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = invitationAcceptInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return respond(err(validation('Invalid invitation acceptance', parsed.error.flatten())));
-    }
-    const result = await acceptInvitation(c.req.param('token'), parsed.data, deps);
-    return respond(
-      result.ok
-        ? ok({ accepted: true as const, email: result.value.email })
-        : result,
-    );
   });
 };
