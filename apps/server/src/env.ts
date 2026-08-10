@@ -47,6 +47,20 @@ const envSchema = serverEnvSchema.superRefine((data, ctx) => {
       message: 'STORAGE_LOCAL_PATH must be absolute',
     });
   }
+  if ((data.SEAL_CERT_PEM === undefined) !== (data.SEAL_KEY_PEM === undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SEAL_CERT_PEM'],
+      message: 'SEAL_CERT_PEM and SEAL_KEY_PEM must be set together',
+    });
+  }
+  if (data.SEAL_P12_BASE64 && data.SEAL_CERT_PEM) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SEAL_P12_BASE64'],
+      message: 'Configure either seal PEM variables or SEAL_P12_BASE64, not both',
+    });
+  }
 });
 
 export type Env = ServerEnvParsed & { APP_BASE_URL: string };

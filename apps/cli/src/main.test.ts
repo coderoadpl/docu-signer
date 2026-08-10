@@ -1,8 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 
+import { PDFDocument } from 'pdf-lib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createSignPdfSeal } from '#adapters/pdf-seal/signpdf.js';
 import { appError, err, ok } from '#core/domain/index.js';
 
 import {
@@ -10,6 +13,7 @@ import {
   normalizeStdinPassword,
   runLoginAction,
   signatureRecordsProbeResult,
+  verifySealBytes,
 } from './main.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
@@ -80,6 +84,7 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('restore');
     expect(documentHelp.stdout).toContain('purge');
     expect(documentHelp.stdout).toContain('update-source');
+    expect(documentHelp.stdout).toContain('verify-seal');
   }, CLI_TEST_TIMEOUT_MS);
 
   it('requires an explicit signature policy for source updates', () => {
@@ -120,6 +125,39 @@ describe('CLI command surface', () => {
     });
   }, CLI_TEST_TIMEOUT_MS);
 
+});
+
+describe('document verify-seal', () => {
+  it('maps valid and tampered CMS results through the CLI taxonomy', async () => {
+    const adapter = createSignPdfSeal({
+      kind: 'pem',
+      certificate: await readFile(
+        resolve(root, 'test/fixtures/pades-seal/certificate.pem'),
+        'utf8',
+      ),
+      privateKey: await readFile(
+        resolve(root, 'test/fixtures/pades-seal/private-key.pem'),
+        'utf8',
+      ),
+    });
+    if (!adapter.configured) throw new Error('Fixture seal adapter is not configured');
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const sealed = await adapter.seal({
+      bytes: await pdf.save(),
+      signingTime: new Date('2026-08-09T14:15:16.000Z'),
+    });
+    expect(verifySealBytes(sealed.bytes)).toMatchObject({
+      ok: true,
+      value: { integrity: true },
+    });
+    const tampered = new Uint8Array(sealed.bytes);
+    tampered[10] = (tampered[10] ?? 0) ^ 1;
+    expect(verifySealBytes(tampered)).toMatchObject({
+      ok: false,
+      error: { code: 'validation', message: 'PDF seal integrity check failed' },
+    });
+  });
 });
 
 describe('document show signature-records probe', () => {

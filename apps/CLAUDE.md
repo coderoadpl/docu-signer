@@ -17,7 +17,9 @@ logic lives here.
   it is the composition root that wires them together.
 - `apps/web` and `apps/cli` → `core/client` + `core/contract` only, plus the
   auth *client* adapter (constructed in `apps/web/src/api.ts` / the CLI
-  `cliCtx`). **Never** `core/server`, **never** `adapters/db`.
+  `cliCtx`). The CLI may also import the read-only PDF seal verification
+  adapter for `document verify-seal`. **Never** `core/server`, **never**
+  `adapters/db`.
 - `@vercel/*` / `@neondatabase/*` only via `adapters/` and `api/index.ts`.
 
 ## What may import it

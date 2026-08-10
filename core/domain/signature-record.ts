@@ -30,6 +30,14 @@ export const signatureRecordPayloadSchema = z.array(signatureRecordStampSchema).
 
 export type SignatureRecordPayload = z.infer<typeof signatureRecordPayloadSchema>;
 
+export const pdfSealMetadataSchema = z.object({
+  subject: z.string().min(1),
+  declaredAt: z.iso.datetime(),
+  appliedAt: z.iso.datetime(),
+});
+
+export type PdfSealMetadata = z.infer<typeof pdfSealMetadataSchema>;
+
 const createSignatureRecordPayloadSchema = z
   .array(signatureRecordStampSchema.required({ contributedBy: true }))
   .min(1);
@@ -41,6 +49,7 @@ export const signatureRecordSchema = z.object({
   fileId: z.uuid(),
   signedBy: z.string().min(1),
   payload: signatureRecordPayloadSchema,
+  seal: pdfSealMetadataSchema.nullable().optional(),
   createdAt: z.iso.datetime(),
 });
 

@@ -300,6 +300,30 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
       .returning();
     return rows[0] ? toDocumentFile(rows[0]) : null;
   },
+  updateFileSize: async (tenantId, documentId, fileId, sizeBytes) => {
+    const rows = await db
+      .update(documentFiles)
+      .set({ sizeBytes })
+      .where(
+        and(
+          eq(documentFiles.id, fileId),
+          eq(documentFiles.documentId, documentId),
+          exists(
+            db
+              .select({ id: documents.id })
+              .from(documents)
+              .where(
+                and(
+                  eq(documents.id, documentId),
+                  eq(documents.tenantId, tenantId),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({ id: documentFiles.id });
+    return rows.length > 0;
+  },
   findFile: async (tenantId, documentId, fileId) => {
     const rows = await db
       .select({ file: documentFiles })

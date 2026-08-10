@@ -79,6 +79,10 @@ export const serverEnvSchema = z.object({
   STORAGE_DRIVER: z.enum(['local-fs', 'vercel-blob']).default('local-fs'),
   STORAGE_LOCAL_PATH: z.string().default('/tmp/podpisy-storage'),
   BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
+  SEAL_CERT_PEM: z.string().min(1).optional(),
+  SEAL_KEY_PEM: z.string().min(1).optional(),
+  SEAL_P12_BASE64: z.string().min(1).optional(),
+  SEAL_P12_PASSPHRASE: z.string().default(''),
   // Email transport selector (composition root). `smtp`
   // (default): any RFC SMTP relay via the SMTP_* block — Amazon SES SMTP creds
   // included, and in dev/CI a local Mailpit that captures real sends instead of

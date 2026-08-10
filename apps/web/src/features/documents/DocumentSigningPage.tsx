@@ -29,10 +29,12 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 
-import type {
-  PadParticipant,
-  PadQueuedSubmission,
-  PadSubmittedStrokes,
+import {
+  signingDocumentDate,
+  type DocumentWithFiles,
+  type PadParticipant,
+  type PadQueuedSubmission,
+  type PadSubmittedStrokes,
 } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
@@ -989,6 +991,7 @@ export const DocumentSigningPage = ({
   const directUpload = useMutation(actions.directFileUpload);
   const finalizeUpload = useMutation(actions.finalizeFileUpload);
   const serverUpload = useMutation(actions.uploadDocumentFile);
+  const updateDocument = useMutation(actions.updateDocument);
   const createSignatureRecord = useMutation(actions.createSignatureRecord);
   const createRemotePadSession = useMutation(actions.createPadSession);
   const requestRemotePadSignature = useMutation(actions.requestPadSignature);
@@ -1968,6 +1971,30 @@ export const DocumentSigningPage = ({
   };
 
   const saveSignedPdf = async () => {
+    const settings = tenantSettings.data ??
+      await queryClient.fetchQuery(actions.tenantSettings);
+    const currentDocument: DocumentWithFiles | undefined = documentQuery.data?.document;
+    if (!currentDocument) throw new Error('Nie udało się odczytać danych dokumentu.');
+    const documentDate = signingDocumentDate(
+      settings.settings.dateMode,
+      currentDocument.documentDate,
+      new Date(),
+    );
+    if (documentDate !== currentDocument.documentDate) {
+      await updateDocument.mutateAsync({
+        documentId,
+        input: {
+          title: currentDocument.title,
+          docType: currentDocument.docType,
+          documentDate,
+          periodStart: currentDocument.periodStart,
+          periodEnd: currentDocument.periodEnd,
+          person: currentDocument.person,
+          tags: currentDocument.tags,
+        },
+      });
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+    }
     const committedStamps = await flattenedStamps();
     const signedBytes = await flattenSignedPdf(
       sourceQuery.data.bytes,
@@ -1989,8 +2016,6 @@ export const DocumentSigningPage = ({
     });
     const persistSignatureRecord = async () => {
       try {
-        const settings = tenantSettings.data ??
-          await queryClient.fetchQuery(actions.tenantSettings);
         const warning = await storeSignatureRecordAfterUpload({
           create: (input) => createSignatureRecord.mutateAsync(input),
           documentId,

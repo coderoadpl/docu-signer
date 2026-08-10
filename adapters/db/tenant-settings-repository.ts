@@ -24,13 +24,13 @@ export const createTenantSettingsRepository = (
       .limit(1);
     return rows[0] ? toTenantSettings(rows[0]) : null;
   },
-  set: async (tenantId, storeSignatureRecords) => {
+  set: async (tenantId, settings) => {
     const rows = await db
       .insert(tenantSettings)
-      .values({ tenantId, storeSignatureRecords })
+      .values({ tenantId, ...settings })
       .onConflictDoUpdate({
         target: tenantSettings.tenantId,
-        set: { storeSignatureRecords },
+        set: settings,
       })
       .returning();
     const row = rows[0];

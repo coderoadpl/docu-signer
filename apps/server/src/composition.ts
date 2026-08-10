@@ -24,6 +24,11 @@ import { createUserPreferenceRepository } from '#adapters/db/user-preferences-re
 import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
 import { createSignatureRecordRepository } from '#adapters/db/signature-records-repository.js';
 import { createSourceUpdateRequestRepository } from '#adapters/db/source-update-requests-repository.js';
+import {
+  createSignPdfSeal,
+  type PdfSealCredentials,
+} from '#adapters/pdf-seal/signpdf.js';
+import { createConsoleWarningLogger } from '#adapters/logging/console-warning.js';
 import type {
   AuthPort,
   ApiTokenRepository,
@@ -34,6 +39,7 @@ import type {
   IdGenerator,
   PadSessionRepository,
   PadSessionSecretPort,
+  PdfSealingDeps,
   SavedSearchRepository,
   SignatureRecordRepository,
   SourceUpdateRequestRepository,
@@ -60,6 +66,7 @@ export interface AppDeps {
   tenantSettings: TenantSettingsRepository;
   signatureRecords: SignatureRecordRepository;
   sourceUpdateRequests: SourceUpdateRequestRepository;
+  pdfSealing?: PdfSealingDeps;
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
@@ -136,6 +143,23 @@ export const selectStoragePort = (env: Env): StoragePort => {
   return createLocalFsStorage(env.STORAGE_LOCAL_PATH);
 };
 
+export const selectPdfSealCredentials = (env: Env): PdfSealCredentials | null => {
+  if (env.SEAL_P12_BASE64) {
+    return {
+      kind: 'p12',
+      base64: env.SEAL_P12_BASE64,
+      passphrase: env.SEAL_P12_PASSPHRASE,
+    };
+  }
+  return env.SEAL_CERT_PEM && env.SEAL_KEY_PEM
+    ? {
+        kind: 'pem',
+        certificate: env.SEAL_CERT_PEM,
+        privateKey: env.SEAL_KEY_PEM,
+      }
+    : null;
+};
+
 export const createDeps = (env: Env): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
@@ -143,6 +167,9 @@ export const createDeps = (env: Env): AppDeps => {
   const google = selectGoogleSettings(env);
   const passwordResetEnabled = selectPasswordResetEnabled(env);
   const storage = selectStoragePort(env);
+  const tenantSettings = createTenantSettingsRepository(db);
+  const signatureRecords = createSignatureRecordRepository(db);
+  const warnings = createConsoleWarningLogger();
 
   const baseTrustedOrigins = [
     env.APP_BASE_URL,
@@ -186,9 +213,16 @@ export const createDeps = (env: Env): AppDeps => {
     padSessionSecrets: createPadSessionSecrets(),
     savedSearches: createSavedSearchRepository(db),
     userPreferences: createUserPreferenceRepository(db),
-    tenantSettings: createTenantSettingsRepository(db),
-    signatureRecords: createSignatureRecordRepository(db),
+    tenantSettings,
+    signatureRecords,
     sourceUpdateRequests: createSourceUpdateRequestRepository(db),
+    pdfSealing: {
+      ids: { nextId: () => randomUUID() },
+      pdfSeal: createSignPdfSeal(selectPdfSealCredentials(env)),
+      signatureRecords,
+      tenantSettings,
+      warnings,
+    },
     storage,
     tenantDomains,
     email,

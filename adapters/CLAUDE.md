@@ -8,8 +8,9 @@ normative). This file is the one-screen distillation for anyone editing
 ## What this layer is
 
 Concrete implementations of `core/server` ports: the database repositories
-(`db/`), auth provider (`auth/`), email transport (`email/`) and document
-storage (`storage/`). This is the only place framework and vendor SDKs live.
+(`db/`), auth provider (`auth/`), email transport (`email/`), document storage
+(`storage/`), PDF sealing (`pdf-seal/`) and warning logging (`logging/`). This
+is the only place framework and vendor SDKs live.
 
 ## What it may import
 
@@ -28,14 +29,18 @@ storage (`storage/`). This is the only place framework and vendor SDKs live.
 
 - `apps/server/src/composition.ts` — the only place a *server* adapter is
   instantiated. Two sanctioned exceptions: the auth *client* adapter is
-  constructed in `apps/web/src/api.ts` and the CLI's `cliCtx`; and
+  constructed in `apps/web/src/api.ts` and the CLI's `cliCtx`; the CLI's
+  read-only `document verify-seal` command constructs the PDF verification
+  adapter; and
   `adapters/db/migrate.ts`, `adapters/db/seed.ts`,
   `adapters/db/seed-deploy.ts`, and `scripts/backup.ts` are sanctioned
   standalone composition points outside the server root. Backup runs in CI cron
   without the server. Seed needs the real auth and database adapters to hash
   credentials and persist bootstrap data, just as migrate needs the real database
   adapter.
-- `apps/web` and `apps/cli` never import server adapters or `adapters/db`.
+- `apps/web` and `apps/cli` never import server adapters or `adapters/db`; the
+  CLI may import only the read-only PDF verification surface from
+  `adapters/pdf-seal`.
 
 ## Hard rules
 

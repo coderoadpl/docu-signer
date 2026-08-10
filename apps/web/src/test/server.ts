@@ -45,6 +45,8 @@ export const server = setupServer(
         settings: {
           tenantId: 'tenant-default',
           storeSignatureRecords: true,
+          pdfSealEnabled: false,
+          dateMode: 'declared',
         },
       },
     }),

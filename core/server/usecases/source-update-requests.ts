@@ -26,6 +26,11 @@ import type {
   SourceUpdateRequestRepository,
   StoragePort,
 } from '../ports.js';
+import {
+  attemptPdfSeal,
+  recordPdfSeal,
+  type PdfSealingDeps,
+} from './pdf-sealing.js';
 
 export interface SourceUpdateRequestDeps {
   documents: DocumentRepository;
@@ -33,6 +38,7 @@ export interface SourceUpdateRequestDeps {
   signatureRecords: SignatureRecordRepository;
   sourceUpdateRequests: SourceUpdateRequestRepository;
   storage: StoragePort;
+  pdfSealing?: PdfSealingDeps;
 }
 
 const parseRequestId = (requestId: string): Result<string, AppError> => {
@@ -295,6 +301,58 @@ export const completeSourceUpdateRequest = async (
   });
   if (!completed) {
     return err(appError('conflict', 'Source update request could not be completed'));
+  }
+  if (signedFile && deps.pdfSealing) {
+    try {
+      const document = await deps.documents.findById(scope.value, request.documentId);
+      const bytes = await deps.storage.get(signedFile.storageKey);
+      if (document && bytes.ok && bytes.value) {
+        const sealed = await attemptPdfSeal(
+          { tenantId: scope.value, document, bytes: bytes.value },
+          deps.pdfSealing,
+        );
+        if (sealed) {
+          const replaced = await deps.storage.put(
+            signedFile.storageKey,
+            sealed.bytes,
+            signedFile.contentType,
+          );
+          if (replaced.ok) {
+            await deps.documents.updateFileSize?.(
+              scope.value,
+              request.documentId,
+              signedFile.id,
+              sealed.bytes.byteLength,
+            );
+            await recordPdfSeal(
+              {
+                tenantId: scope.value,
+                documentId: request.documentId,
+                fileId: signedFile.id,
+                signedBy: ctx.identity.userId,
+                metadata: sealed.metadata,
+              },
+              deps.pdfSealing,
+            );
+          } else {
+            deps.pdfSealing.warnings.warn('Replayed PDF seal could not replace the promoted artifact', {
+              tenantId: scope.value,
+              documentId: request.documentId,
+              fileId: signedFile.id,
+              error: replaced.error.message,
+            });
+          }
+        }
+      }
+    } catch (cause) {
+      // WHY: source replay is complete before sealing, so seal enrichment cannot roll it back or block it.
+      deps.pdfSealing.warnings.warn('Replayed PDF sealing failed after source update completion', {
+        tenantId: scope.value,
+        documentId: request.documentId,
+        fileId: signedFile.id,
+        cause: String(cause),
+      });
+    }
   }
   for (const file of [...priorSourceFiles, ...priorSignedFiles]) {
     await deps.storage.delete(file.storageKey);

@@ -105,7 +105,10 @@ exemplar.
   A full-screen mass-review queue shows each selected source or newest digital
   signature and supports lightweight metadata editing without signing controls.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
-  replaces the source. With the tenant setting on, each signing session also
+  replaces the source. When the tenant's PDF-seal setting is on, the server
+  then adds an invisible, externally verifiable PAdES organization seal; Tryb
+  dat chooses its signer-claimed time from the entered signing date or the true
+  wall clock. With the signature-record setting on, each signing session also
   stores its signature ink (stroke geometry, placement, color, size) bound by
   foreign key to that document — a deliberate reversal of the 2026-08-01
   never-store-ink rule (owner decision 2026-08-07, provenance in
@@ -129,8 +132,8 @@ exemplar.
   an account-security surface, not a document surface (agent decision
   2026-08-02, recorded in FOUNDATION.md).
 - Konto: personal passkeys, API tokens, two-factor authentication and the
-  tenant-wide signature-ink storage switch (Ustawienia organizacji). Removed
-  upstream verticals stay removed.
+  tenant-wide signature-ink storage, PDF-seal and Tryb dat controls (Ustawienia
+  organizacji). Removed upstream verticals stay removed.
 
 ## Layer rules (enforced, but know them anyway)
 
@@ -143,7 +146,8 @@ Per-layer one-screen summaries live beside the code — [`core/CLAUDE.md`](core/
 - `adapters/**` implement ports; only `apps/server/src/composition.ts`
   instantiates a *server* adapter. Two deliberate exceptions: the auth *client*
   adapter is constructed in `apps/web/src/api.ts` (web) and the CLI's `cliCtx`,
-  and the standalone DB/ops entrypoints `adapters/db/migrate.ts`,
+  the CLI's read-only `document verify-seal` command constructs the PDF seal
+  verification adapter, and the standalone DB/ops entrypoints `adapters/db/migrate.ts`,
   `adapters/db/seed.ts`, `adapters/db/seed-deploy.ts`, and
   `scripts/backup.ts` are sanctioned composition points outside the server
   root. Backup runs in CI cron without the server. Seed needs the real auth and

@@ -120,9 +120,9 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   },
   tenantSettings: {
     get: async () => null,
-    set: async (tenantId, storeSignatureRecords) => ({
+    set: async (tenantId, settings) => ({
       tenantId,
-      storeSignatureRecords,
+      ...settings,
     }),
   },
   signatureRecords: {

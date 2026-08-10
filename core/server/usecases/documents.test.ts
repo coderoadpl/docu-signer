@@ -309,12 +309,13 @@ const fake = (
   };
 
   const ids = [...idSequence];
+  const deps: DocumentDeps = {
+    documents: repo,
+    storage,
+    ids: { nextId: () => ids.shift() ?? fileId },
+  };
   return {
-    deps: {
-      documents: repo,
-      storage,
-      ids: { nextId: () => ids.shift() ?? fileId },
-    },
+    deps,
     documents,
     files,
     blobs,
@@ -661,6 +662,46 @@ describe('documents use-cases', () => {
         state.deps,
       ),
     ).toEqual({ ok: true, value: undefined });
+  });
+
+  it('keeps a signed-digital upload when sealing is enabled without certificate env', async () => {
+    const state = fake([documentRow()]);
+    const warn = vi.fn();
+    state.deps.pdfSealing = {
+      ids: state.deps.ids,
+      pdfSeal: { configured: false },
+      signatureRecords: {
+        listByDocument: async () => [],
+        create: async () => null,
+        recordSeal: async () => {},
+      },
+      tenantSettings: {
+        get: async () => ({
+          tenantId: 'tenant-acme',
+          storeSignatureRecords: true,
+          pdfSealEnabled: true,
+          dateMode: 'declared',
+        }),
+        set: async (tenantId, settings) => ({ tenantId, ...settings }),
+      },
+      warnings: { warn },
+    };
+    const uploaded = await serverUpload(
+      ctx(staff('tenant-acme')),
+      documentId,
+      {
+        fileName: 'agreement-signed.pdf',
+        contentType: 'application/pdf',
+        role: 'signed-digital',
+        bytes: new Uint8Array([1, 2, 3]),
+      },
+      state.deps,
+    );
+    expect(uploaded).toMatchObject({ ok: true });
+    expect(warn).toHaveBeenCalledWith(
+      'PDF seal skipped because certificate environment variables are absent',
+      expect.objectContaining({ tenantId: 'tenant-acme', documentId }),
+    );
   });
 
   it('moves a file into a new document with copied metadata defaults', async () => {

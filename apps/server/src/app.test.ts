@@ -127,9 +127,9 @@ const baseDeps = (): AppDeps => ({
   },
   tenantSettings: {
     get: async () => null,
-    set: async (tenantId, storeSignatureRecords) => ({
+    set: async (tenantId, settings) => ({
       tenantId,
-      storeSignatureRecords,
+      ...settings,
     }),
   },
   signatureRecords: {
@@ -415,10 +415,12 @@ describe('buildApp', () => {
       get: async (tenantId) => ({
         tenantId,
         storeSignatureRecords: storedSettings,
+        pdfSealEnabled: false,
+        dateMode: 'declared',
       }),
-      set: async (tenantId, storeSignatureRecords) => {
-        storedSettings = storeSignatureRecords;
-        return { tenantId, storeSignatureRecords };
+      set: async (tenantId, settings) => {
+        storedSettings = settings.storeSignatureRecords;
+        return { tenantId, ...settings };
       },
     };
     deps.signatureRecords = {
@@ -439,7 +441,13 @@ describe('buildApp', () => {
     const settings = await app.request(API_ROUTES.tenantSettings.path, { headers });
     expect(await settings.json()).toMatchObject({
       ok: true,
-      data: { settings: { storeSignatureRecords: true } },
+      data: {
+        settings: {
+          storeSignatureRecords: true,
+          pdfSealEnabled: false,
+          dateMode: 'declared',
+        },
+      },
     });
     const updated = await app.request(API_ROUTES.tenantSettingsUpdate.path, {
       method: API_ROUTES.tenantSettingsUpdate.method,
@@ -448,7 +456,13 @@ describe('buildApp', () => {
     });
     expect(await updated.json()).toMatchObject({
       ok: true,
-      data: { settings: { storeSignatureRecords: false } },
+      data: {
+        settings: {
+          storeSignatureRecords: false,
+          pdfSealEnabled: false,
+          dateMode: 'declared',
+        },
+      },
     });
     const created = await app.request(
       API_ROUTES.signatureRecordsCreate.path.replace(':documentId', documentId),
