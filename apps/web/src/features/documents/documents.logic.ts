@@ -132,6 +132,17 @@ export const documentSigningSearchSchema = z.preprocess(
 
 export type DocumentSigningSearchParams = z.infer<typeof documentSigningSearchSchema>;
 
+export const documentReviewSearchSchema = z.preprocess(
+  (value) => (typeof value === 'object' && value !== null ? value : {}),
+  documentsSearchInputSchema.extend({
+    kolejka: queueParamSchema,
+    tryb: z.enum(['podpisany', 'edycja']).optional().catch(undefined),
+  }),
+);
+
+export type DocumentReviewSearchParams = z.infer<typeof documentReviewSearchSchema>;
+export type DocumentReviewMode = 'source' | 'signed' | 'edit';
+
 export const emptyDocumentFilters = (): DocumentFilterValues => ({
   text: '',
   docType: '',
@@ -444,16 +455,46 @@ export const newestSignablePdfFile = (
   return signedDigital[0] ?? source[0];
 };
 
+export const newestDocumentFileByRole = (
+  document: Pick<DocumentWithFiles, 'files'>,
+  role: 'source' | 'signed-digital',
+): DocumentFile | undefined =>
+  document.files.filter((file) => file.role === role).sort(newestFileFirst)[0];
+
+const documentsInCanonicalOrder = <Document extends CanonicalGroupedDocumentInput>(
+  documents: Document[],
+): Document[] =>
+  groupDocumentsCanonically(documents)
+    .flatMap((periodGroup) => periodGroup.people)
+    .flatMap((personGroup) => personGroup.documents);
+
 export const massSigningQueueTargets = (
   documents: DocumentWithFiles[],
 ): SigningQueueTarget[] =>
-  groupDocumentsCanonically(documents)
-    .flatMap((periodGroup) => periodGroup.people)
-    .flatMap((personGroup) => personGroup.documents)
+  documentsInCanonicalOrder(documents)
     .flatMap((document) => {
       const file = newestSignablePdfFile(document);
       return file ? [{ documentId: document.id, fileId: file.id }] : [];
     });
+
+export const massReviewQueueDocumentIds = (
+  documents: DocumentWithFiles[],
+): string[] => documentsInCanonicalOrder(documents).map((document) => document.id);
+
+export const massReviewQueueSearch = (
+  documentIds: string[],
+): Pick<DocumentReviewSearchParams, 'kolejka'> => ({
+  kolejka: documentIds.join(','),
+});
+
+export const reviewQueueFromSearch = (
+  search: Pick<DocumentReviewSearchParams, 'kolejka'>,
+): string[] => Array.from(new Set(commaParts(search.kolejka)));
+
+export const reviewModeFromSearch = (
+  search: Pick<DocumentReviewSearchParams, 'tryb'>,
+): DocumentReviewMode =>
+  search.tryb === 'podpisany' ? 'signed' : search.tryb === 'edycja' ? 'edit' : 'source';
 
 export const signingQueueSearch = ({
   signedCount,
@@ -507,6 +548,21 @@ export const signingQueueFromSearch = (
 
 export const documentsSearchFromSigningSearch = (
   search: DocumentSigningSearchParams,
+): DocumentsSearchParams =>
+  documentsSearchSchema.parse({
+    widok: search.widok,
+    q: search.q,
+    typ: search.typ,
+    osoba: search.osoba,
+    tag: search.tag,
+    status: search.status,
+    szkice: search.szkice,
+    od: search.od,
+    do: search.do,
+  });
+
+export const documentsSearchFromReviewSearch = (
+  search: DocumentReviewSearchParams,
 ): DocumentsSearchParams =>
   documentsSearchSchema.parse({
     widok: search.widok,
