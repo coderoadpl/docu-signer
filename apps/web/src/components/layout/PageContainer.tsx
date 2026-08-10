@@ -3,12 +3,16 @@ import { Container } from '@mui/material';
 
 interface PageContainerProps {
   children: ReactNode;
+  wide?: boolean;
 }
 
-export const PageContainer = ({ children }: PageContainerProps) => (
+const READING_WIDTH = '76rem';
+const WIDE_WIDTH = '96rem';
+
+export const PageContainer = ({ children, wide = false }: PageContainerProps) => (
   <Container
     data-testid="page-container"
-    sx={{ maxWidth: '76rem !important', px: 2, py: 6 }}
+    sx={{ maxWidth: `${wide ? WIDE_WIDTH : READING_WIDTH} !important`, px: 2, py: 6 }}
   >
     {children}
   </Container>
