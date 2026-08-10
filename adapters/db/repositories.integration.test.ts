@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDocumentRepository } from './documents-repository.js';
 import { createPadSessionRepository } from './pad-sessions-repository.js';
 import { createApiTokenRepository } from './api-tokens-repository.js';
+import { createInvitationRepository } from './invitations-repository.js';
 import { createTenantAccessReader } from './repositories.js';
 import { createSavedSearchRepository } from './saved-searches-repository.js';
 import { createUserPreferenceRepository } from './user-preferences-repository.js';
@@ -56,6 +57,58 @@ afterAll(async () => {
     pool,
     adminDatabaseUrl: baseDatabaseUrl,
     databaseName: ITEST_DB,
+  });
+});
+
+describe('InvitationRepository', () => {
+  it('replaces one pending invite, isolates tenants, revokes, and accepts into a grant', async () => {
+    const repository = createInvitationRepository(db);
+    const first = await repository.createOrReplace({
+      id: '90909090-9090-4090-8090-909090909090',
+      tenantId: 'tenant-a',
+      email: 'invited@example.com',
+      role: 'admin',
+      tokenHash: 'first-hash',
+      invitedBy: 'user-owner',
+      expiresAt: '2026-08-17T10:00:00.000Z',
+    });
+    expect(first.status).toBe('pending');
+    const replaced = await repository.createOrReplace({
+      id: '91919191-9191-4191-8191-919191919191',
+      tenantId: 'tenant-a',
+      email: 'invited@example.com',
+      role: 'owner',
+      tokenHash: 'second-hash',
+      invitedBy: 'user-owner',
+      expiresAt: '2026-08-17T11:00:00.000Z',
+    });
+    expect(replaced.id).toBe('91919191-9191-4191-8191-919191919191');
+    expect(await repository.listByTenant('tenant-a')).toHaveLength(1);
+    expect(await repository.listByTenant('tenant-b')).toEqual([]);
+    expect(await repository.findByTokenHash('first-hash')).toBeNull();
+    await expect(repository.findByTokenHash('second-hash')).resolves.toMatchObject({
+      email: 'invited@example.com',
+      organizationName: 'A',
+      tokenHash: 'second-hash',
+    });
+    expect(await repository.revoke('tenant-b', replaced.id)).toBe(false);
+    expect(await repository.revoke('tenant-a', replaced.id)).toBe(true);
+
+    await repository.createOrReplace({
+      id: '92929292-9292-4292-8292-929292929292',
+      tenantId: 'tenant-a',
+      email: 'admin@example.com',
+      role: 'admin',
+      tokenHash: 'accept-hash',
+      invitedBy: 'user-owner',
+      expiresAt: '2026-08-17T10:00:00.000Z',
+    });
+    expect(await repository.hasAccount('admin@example.com')).toBe(true);
+    expect(await repository.accept('92929292-9292-4292-8292-929292929292', 'user-admin')).toBe(true);
+    expect(await repository.accept('92929292-9292-4292-8292-929292929292', 'user-admin')).toBe(false);
+    await expect(repository.listByTenant('tenant-a')).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: 'accepted' })]),
+    );
   });
 });
 

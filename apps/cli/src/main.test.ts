@@ -32,6 +32,7 @@ describe('CLI command surface', () => {
     expect(result.stdout).toContain('document');
     expect(result.stdout).toContain('login');
     expect(result.stdout).toContain('health');
+    expect(result.stdout).toContain('invitation');
     expect(result.stdout).toContain('origin');
     expect(result.stdout).toContain('public');
     expect(result.stdout).toContain('tenant-settings');
@@ -82,6 +83,14 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('purge');
     expect(documentHelp.stdout).toContain('update-source');
     expect(documentHelp.stdout).toContain('verify-seal');
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('documents the minimal invitation commands', () => {
+    const invitationHelp = run('invitation', '--help');
+    expect(invitationHelp.status).toBe(0);
+    expect(invitationHelp.stdout).toContain('create');
+    expect(invitationHelp.stdout).toContain('list');
+    expect(invitationHelp.stdout).toContain('revoke');
   }, CLI_TEST_TIMEOUT_MS);
 
   it('requires an explicit signature policy for source updates', () => {

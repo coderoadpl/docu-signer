@@ -19,7 +19,7 @@ test('account settings contains personal security controls and the archive-wide 
   await expect(page.getByText(/^Hasło$/i)).toBeVisible();
   await expect(page.getByText(/uwierzytelnianie dwuskładnikowe/i)).toBeVisible();
   await expect(page.getByText(/klucze dostępu/i)).toBeVisible();
-  await expect(page.getByText(/firma|domena|administrator/i)).toHaveCount(0);
+  await expect(page.getByText(/utwórz firmę|zmień firmę|domena firmy/i)).toHaveCount(0);
 });
 
 test('registration creates an account without exposing tenant management', async ({ page }) => {

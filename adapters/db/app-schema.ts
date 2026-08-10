@@ -57,6 +57,38 @@ export const tenantAdmins = pgTable(
   ],
 );
 
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role', { enum: ['owner', 'admin'] }).notNull(),
+    tokenHash: text('token_hash').notNull(),
+    invitedBy: text('invited_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    status: text('status', {
+      enum: ['pending', 'accepted', 'revoked', 'expired'],
+    }).notNull().default('pending'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('invitations_tenant_status_idx').on(table.tenantId, table.status),
+    uniqueIndex('invitations_token_hash_uidx').on(table.tokenHash),
+    uniqueIndex('invitations_tenant_email_pending_uidx')
+      .on(table.tenantId, table.email)
+      .where(sql`${table.status} = 'pending'`),
+    check('invitations_role_check', sql`${table.role} IN ('owner', 'admin')`),
+    check(
+      'invitations_status_check',
+      sql`${table.status} IN ('pending', 'accepted', 'revoked', 'expired')`,
+    ),
+  ],
+);
+
 export const tenantSettings = pgTable(
   'tenant_settings',
   {
