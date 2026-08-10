@@ -37,9 +37,9 @@ each.
   cannot pass; staging-by-preview verification is deliberately waived.
 - One shared Neon database and Blob store across Production and Preview — no
   per-preview branch databases.
-- Admin accounts self-seed at deploy time from `SEED_ADMIN{1,2}_*` env
-  (`db:seed:deploy` in `vercel-build`); env is the source of truth for their
-  passwords.
+- Env-seeded accounts are retired in favor of invitations; `db:seed:deploy`
+  creates one bootstrap owner from `SEED_ADMIN1_*` only when the database has
+  zero users, then becomes a permanent no-op (Together-pattern first-run bootstrap).
 - The deploy seed binds `APP_BASE_DOMAIN` to the default tenant because the web
   shell is single-tenant per domain.
 - Registration closed in production via `AUTH_DISABLE_SIGNUP`; single tenant
@@ -48,10 +48,8 @@ each.
   90 min).
 - Migration lineage reset wholesale at the skeleton migration (architecture.md
   §Environments owner ruling); forward-only binds from that merge onward.
-- Login hides demo credentials and magic-link controls outside dev/e2e builds
-  until SMTP exists in production.
-- Password reset is hidden on deployed environments until a real SMTP relay or
-  SES transport is configured; dev/e2e use Mailpit.
+- Login hides demo credentials and magic-link controls outside dev/e2e builds.
+- Password reset is hidden until SMTP or SES is configured; dev/e2e use Mailpit.
 - Merges to `main` land over SSH as the owner — Vercel Hobby blocks production
   deploys from commits authored by an unconnected account, so `gh pr merge`
   (agent-authored merge commit) cannot release; `gh` stays for PR management.

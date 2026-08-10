@@ -4,6 +4,7 @@ import { serverEnvSchema } from '#core/server/config.js';
 
 import {
   selectEmailPort,
+  selectEmailConfigured,
   selectGoogleSettings,
   selectPasswordResetEnabled,
   selectPdfSealCredentials,
@@ -21,14 +22,14 @@ const env = (over: Partial<Env>): Env => ({
 });
 
 describe('selectEmailPort', () => {
-  it('wires the smtp transport by default (dev/CI point it at Mailpit, no auth required)', () => {
+  it('wires a no-op transport when email is not configured', () => {
     const port = selectEmailPort(env({}));
     expect(typeof port.sendMail).toBe('function');
   });
 
   it('wires the smtp transport against an authenticated relay when creds are set', () => {
     const port = selectEmailPort(
-      env({ EMAIL_TRANSPORT: 'smtp', SMTP_HOST: 'smtp.example.com', SMTP_USER: 'u', SMTP_PASS: 'p' }),
+      env({ EMAIL_TRANSPORT: 'smtp', SMTP_HOST: 'smtp.example.com', SMTP_PORT: 587, SMTP_USER: 'u', SMTP_PASS: 'p', MAIL_FROM: 'Podpisy <no-reply@example.com>' }),
     );
     expect(typeof port.sendMail).toBe('function');
   });
@@ -40,6 +41,7 @@ describe('selectEmailPort', () => {
         AWS_REGION: 'eu-central-1',
         AWS_ACCESS_KEY_ID: 'AKIA-test',
         AWS_SECRET_ACCESS_KEY: 'secret',
+        MAIL_FROM: 'Podpisy <no-reply@example.com>',
       }),
     );
     expect(typeof port.sendMail).toBe('function');
@@ -47,6 +49,23 @@ describe('selectEmailPort', () => {
 
   it('fails fast when EMAIL_TRANSPORT=ses is missing its AWS credentials', () => {
     expect(() => selectEmailPort(env({ EMAIL_TRANSPORT: 'ses' }))).toThrow(/AWS_REGION/);
+  });
+
+  it('reports delivery configured only for complete SMTP or SES settings', () => {
+    expect(selectEmailConfigured(env({}))).toBe(false);
+    expect(selectEmailConfigured(env({ SMTP_HOST: 'smtp.example.com' }))).toBe(false);
+    expect(selectEmailConfigured(env({
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_PORT: 587,
+      MAIL_FROM: 'Podpisy <no-reply@example.com>',
+    }))).toBe(true);
+    expect(selectEmailConfigured(env({
+      EMAIL_TRANSPORT: 'ses',
+      AWS_REGION: 'eu-central-1',
+      AWS_ACCESS_KEY_ID: 'key',
+      AWS_SECRET_ACCESS_KEY: 'secret',
+      MAIL_FROM: 'Podpisy <no-reply@example.com>',
+    }))).toBe(true);
   });
 });
 
@@ -64,8 +83,8 @@ describe('selectGoogleSettings', () => {
 });
 
 describe('selectPasswordResetEnabled', () => {
-  it('is enabled for local dev and CI Mailpit', () => {
-    expect(selectPasswordResetEnabled(env({}))).toBe(true);
+  it('is hidden when email is not configured', () => {
+    expect(selectPasswordResetEnabled(env({}))).toBe(false);
   });
 
   it('is hidden on deploys that still point at the local Mailpit defaults', () => {
@@ -77,7 +96,8 @@ describe('selectPasswordResetEnabled', () => {
       VERCEL: '1',
       SECURE_COOKIES: true,
       SMTP_HOST: 'smtp.example.com',
-      EMAIL_FROM: 'Podpisy <no-reply@example.com>',
+      SMTP_PORT: 587,
+      MAIL_FROM: 'Podpisy <no-reply@example.com>',
     }))).toBe(true);
   });
 
@@ -89,6 +109,7 @@ describe('selectPasswordResetEnabled', () => {
       AWS_REGION: 'eu-central-1',
       AWS_ACCESS_KEY_ID: 'AKIA-test',
       AWS_SECRET_ACCESS_KEY: 'secret',
+      MAIL_FROM: 'Podpisy <no-reply@example.com>',
     }))).toBe(true);
   });
 });

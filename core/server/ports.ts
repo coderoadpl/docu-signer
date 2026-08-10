@@ -4,6 +4,7 @@ import type {
   Document,
   DocumentFile,
   DocumentListFilter,
+  Invitation,
   PadSession,
   PadCurrentDocument,
   PadParticipant,
@@ -11,6 +12,7 @@ import type {
   PadSignatureRequest,
   PadSubmittedStrokes,
   PdfSealMetadata,
+  PublicInvitation,
   SavedSearch,
   SignatureRecord,
   SignatureRecordCursor,
@@ -100,6 +102,35 @@ export interface ApiTokenSecretPort {
   generate(): string;
   hash(value: string): string;
   matchesHash(value: string, tokenHash: string): boolean;
+}
+
+export interface InvitationWithHash extends Invitation {
+  tokenHash: string;
+}
+
+export interface InvitationRepository {
+  createOrReplace(input: Omit<InvitationWithHash, 'status'>): Promise<Invitation>;
+  listByTenant(tenantId: string): Promise<Invitation[]>;
+  findByTokenHash(tokenHash: string): Promise<(InvitationWithHash & PublicInvitation) | null>;
+  hasAccount(email: string): Promise<boolean>;
+  accept(invitationId: string, userId: string): Promise<boolean>;
+  revoke(tenantId: string, invitationId: string): Promise<boolean>;
+  expire(invitationId: string): Promise<void>;
+  expirePastDue(tenantId: string, now: string): Promise<void>;
+}
+
+export interface InvitationSecretPort {
+  generate(): string;
+  hash(value: string): string;
+  matchesHash(value: string, tokenHash: string): boolean;
+}
+
+export interface InvitationAuthPort {
+  createAccount(input: { email: string; password: string; name: string }): Promise<{ userId: string }>;
+}
+
+export interface RateLimitPort {
+  consume(key: string, max: number, windowSeconds: number): Promise<boolean>;
 }
 
 export interface SavedSearchRepository {

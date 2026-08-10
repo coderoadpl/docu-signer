@@ -7,7 +7,7 @@ import type { Db } from './client.js';
 import { account, tenantAdmins, tenantDomains, tenants, user } from './schema.js';
 
 export interface SeedAdmin {
-  readonly slot: '1' | '2';
+  readonly slot: '1';
   readonly email: string;
   readonly password: string;
   readonly role: 'owner' | 'admin';
@@ -32,8 +32,6 @@ interface DeploySeedResult {
 interface SeedAdminEnvironment {
   readonly SEED_ADMIN1_EMAIL?: string | undefined;
   readonly SEED_ADMIN1_PASSWORD?: string | undefined;
-  readonly SEED_ADMIN2_EMAIL?: string | undefined;
-  readonly SEED_ADMIN2_PASSWORD?: string | undefined;
 }
 
 export const configuredSeedAdmins = (env: SeedAdminEnvironment): readonly SeedAdmin[] => {
@@ -44,14 +42,6 @@ export const configuredSeedAdmins = (env: SeedAdminEnvironment): readonly SeedAd
       email: env.SEED_ADMIN1_EMAIL,
       password: env.SEED_ADMIN1_PASSWORD,
       role: 'owner',
-    });
-  }
-  if (env.SEED_ADMIN2_EMAIL && env.SEED_ADMIN2_PASSWORD) {
-    admins.push({
-      slot: '2',
-      email: env.SEED_ADMIN2_EMAIL,
-      password: env.SEED_ADMIN2_PASSWORD,
-      role: 'admin',
     });
   }
   return admins;
@@ -179,6 +169,9 @@ export const ensureDeploySeed = async (
   appBaseDomain?: string,
 ): Promise<DeploySeedResult> => {
   if (admins.length === 0) return { admins: [], domain: null };
+
+  const existingUsers = await db.select({ id: user.id }).from(user).limit(1);
+  if (existingUsers.length > 0) return { admins: [], domain: null };
 
   const adminResults = await ensureSeedAdmins(db, admins);
   const domain = appBaseDomain

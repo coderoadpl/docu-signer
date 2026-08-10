@@ -7,6 +7,7 @@ import {
   API_ROUTES,
   PAD_SECRET_HEADER,
   apiTokenCreateInputSchema,
+  invitationCreateInputSchema,
   TENANT_HEADER,
   documentCreateInputSchema,
   documentFileMoveInputSchema,
@@ -45,6 +46,7 @@ import {
 import {
   approveDocument,
   createApiToken,
+  createInvitation,
   createDocument,
   createPadSession,
   createSavedSearch,
@@ -72,6 +74,7 @@ import {
   joinOwnPadSession,
   listDocuments,
   listApiTokens,
+  listInvitations,
   listTrashedDocuments,
   listSavedSearches,
   listSignatureRecords,
@@ -83,6 +86,7 @@ import {
   resolveIdentity,
   restoreDocument,
   revokeApiToken,
+  revokeInvitation,
   requestFileUpload,
   requestPadSignature,
   setPadCurrentDocument,
@@ -257,6 +261,7 @@ export const buildApp = (deps: AppDeps) => {
   app.get(API_PATHS.config, () => respond(ok({
     googleEnabled: deps.googleEnabled,
     passwordResetEnabled: deps.passwordResetEnabled,
+    emailConfigured: deps.emailConfigured,
   })));
 
   // The public, unauthenticated contract group (US-028, §Public surface). Mounted
@@ -355,6 +360,30 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ settings: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.invitations.path, async (c) => {
+    const result = await listInvitations(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ invitations: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.invitationsCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = invitationCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid invitation', parsed.error.flatten())));
+    }
+    const result = await createInvitation(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result);
+  });
+
+  app.post(API_ROUTES.invitationRevoke.path, async (c) => {
+    const result = await revokeInvitation(
+      ctxOf(c.get('identity')),
+      c.req.param('invitationId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ revoked: true as const }) : result);
   });
 
   app.get(API_ROUTES.signatureRecords.path, async (c) => {

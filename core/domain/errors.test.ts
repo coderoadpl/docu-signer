@@ -10,6 +10,7 @@ import {
   tenantNotFound,
   unauthorized,
   unavailable,
+  rateLimited,
   validation,
 } from './errors.js';
 
@@ -97,6 +98,7 @@ describe('ERROR_CODES taxonomy', () => {
     export_too_large: exportTooLarge,
     tenant_not_found: tenantNotFound,
     unavailable,
+    rate_limited: rateLimited,
     internal,
   };
 
