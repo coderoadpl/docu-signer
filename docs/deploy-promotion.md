@@ -79,7 +79,8 @@ PR may be delegated to an agent; **approval and merge are not.**
    `production` triggers the Production build against production env vars.
 6. **Verify the deploy SHA attestation.** Confirm production `/api/health`
    reports the merged commit's `sha`. The `post-deploy-smoke` workflow performs
-   the same check automatically with `EXPECTED_SHA` set to that commit.
+   the same check automatically with `EXPECTED_SHA` set to that commit, then
+   runs a real-browser password login probe against production.
 
 **Rollback** is a release in reverse: open and merge a PR that reverts
 `production` to the previous known-good SHA (or `git revert` the offending

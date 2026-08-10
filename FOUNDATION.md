@@ -40,6 +40,8 @@ each.
 - Env-seeded accounts are retired in favor of invitations; `db:seed:deploy`
   creates one bootstrap owner from `SEED_ADMIN1_*` only when the database has
   zero users, then becomes a permanent no-op (Together-pattern first-run bootstrap).
+  PR #74 was reverted on 2026-08-10 for a misattributed login outage and re-landed
+  the same day with a post-deploy browser login probe.
 - The deploy seed binds `APP_BASE_DOMAIN` to the default tenant because the web
   shell is single-tenant per domain.
 - Registration closed in production via `AUTH_DISABLE_SIGNUP`; single tenant

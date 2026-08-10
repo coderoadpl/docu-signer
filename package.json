@@ -36,6 +36,7 @@
     "visual:report": "tsx scripts/visual-report.ts",
     "visual:verdict-input": "tsx scripts/visual-verdict-input.ts",
     "smoke:remote": "tsx scripts/smoke-remote.ts",
+    "probe:browser": "tsx scripts/browser-probe.ts",
     "lock-lint": "pnpm install --frozen-lockfile --lockfile-only"
   },
   "engines": {
