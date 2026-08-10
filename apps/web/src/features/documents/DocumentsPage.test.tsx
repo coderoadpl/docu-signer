@@ -725,6 +725,47 @@ describe('DocumentsPage', () => {
     expect(await screen.findByText('Zatwierdzono 2, błędów 0.')).toBeInTheDocument();
   });
 
+  it('bulk reverts only selected approved documents from a mixed selection', async () => {
+    const unapprove = vi.fn();
+    const secondApproved = {
+      ...document,
+      id: '66666666-6666-4666-8666-666666666666',
+      title: 'Drugi zatwierdzony',
+    };
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { documents: [document, secondApproved, draftDocument] },
+        }),
+      ),
+      http.post('/api/documents/:id/unapprove', ({ params }) => {
+        const id = String(params.id);
+        unapprove(id);
+        const current = id === document.id ? document : secondApproved;
+        return HttpResponse.json({
+          ok: true,
+          data: { document: { ...current, draft: true } },
+        });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Drugi zatwierdzony');
+    expect(screen.queryByRole('button', { name: /Cofnij do szkicu/u })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
+    const buttons = screen.getAllByRole('button').map((button) => button.textContent ?? '');
+    expect(buttons.indexOf('Zatwierdź (1)')).toBeLessThan(
+      buttons.indexOf('Cofnij do szkicu (2)'),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Cofnij do szkicu (2)' }));
+
+    await waitFor(() => expect(unapprove).toHaveBeenCalledWith(DOCUMENT_ID));
+    expect(unapprove).toHaveBeenCalledWith('66666666-6666-4666-8666-666666666666');
+    expect(unapprove).not.toHaveBeenCalledWith(draftDocument.id);
+    expect(await screen.findByText('Cofnięto do szkicu 2, błędów 0.')).toBeInTheDocument();
+  });
+
   it('starts mass signing selected PDFs in canonical grouped order', async () => {
     const baseFile = {
       id: '33333333-3333-4333-8333-333333333333',
@@ -1057,6 +1098,45 @@ describe('DocumentsPage', () => {
 
     expect(await screen.findByText('Zatwierdzono 1, błędów 1.')).toBeInTheDocument();
     expect(approve).toHaveBeenCalledTimes(2);
+  });
+
+  it('summarizes partial failures while reverting selected approved documents', async () => {
+    const unapprove = vi.fn();
+    const secondApproved = {
+      ...document,
+      id: '66666666-6666-4666-8666-666666666666',
+      title: 'Drugi zatwierdzony',
+    };
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { documents: [document, secondApproved] },
+        }),
+      ),
+      http.post('/api/documents/:id/unapprove', ({ params }) => {
+        const id = String(params.id);
+        unapprove(id);
+        if (id === document.id) {
+          return HttpResponse.json({
+            ok: true,
+            data: { document: { ...document, draft: true } },
+          });
+        }
+        return HttpResponse.json(
+          { ok: false, error: { code: 'internal', message: 'Błąd cofania do szkicu' } },
+          { status: 500 },
+        );
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Drugi zatwierdzony');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cofnij do szkicu (2)' }));
+
+    expect(await screen.findByText('Cofnięto do szkicu 1, błędów 1.')).toBeInTheDocument();
+    expect(unapprove).toHaveBeenCalledTimes(2);
   });
 
   it('opens the row overflow menu and moves a document to trash', async () => {

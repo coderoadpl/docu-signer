@@ -244,6 +244,12 @@ export const approveDocumentMutation = (api: ApiClient) =>
     call: (documentId: string) => api.approveDocument(documentId),
   });
 
+export const unapproveDocumentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'unapprove'],
+    call: (documentId: string) => api.unapproveDocument(documentId),
+  });
+
 export const deleteDocumentMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...documentsScopes.all(), 'delete'],

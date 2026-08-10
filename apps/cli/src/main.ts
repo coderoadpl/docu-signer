@@ -674,6 +674,16 @@ document
   });
 
 document
+  .command('unapprove <id>')
+  .description('Revert an approved document to draft')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    emit(await ctx.api.unapproveDocument(id), ctx.json, (data) =>
+      `unapproved: ${data.document.title} (${data.document.id})`,
+    );
+  });
+
+document
   .command('upload <id> <path>')
   .description('Upload an attachment through the server')
   .requiredOption('--role <role>', 'source|signed-scan|signed-digital|other')

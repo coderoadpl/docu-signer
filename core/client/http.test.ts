@@ -141,7 +141,7 @@ describe('API client', () => {
     expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
-  it('calls approve, API token and preference routes through the contract', async () => {
+  it('calls document approval, API token and preference routes through the contract', async () => {
     const token = {
       id: '22222222-2222-4222-8222-222222222222',
       userId: 'user-1',
@@ -167,6 +167,7 @@ describe('API client', () => {
     };
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input);
+      if (url.endsWith('/unapprove')) return json({ ok: true, data: { document } });
       if (url.endsWith('/approve')) return json({ ok: true, data: { document } });
       if (url.endsWith('/api/api-tokens') && init?.method === 'GET') {
         return json({ ok: true, data: { apiTokens: [token] } });
@@ -195,6 +196,7 @@ describe('API client', () => {
     const api = createApiClient({ baseUrl: '', fetchImpl });
 
     await api.approveDocument(document.id);
+    await api.unapproveDocument(document.id);
     await api.listApiTokens();
     await api.createApiToken({ name: 'Importer', scopes: ['write:draft'] });
     await api.revokeApiToken(token.id);
@@ -205,16 +207,18 @@ describe('API client', () => {
 
     expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(`/api/documents/${document.id}/approve`);
     expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
-    expect(String(fetchImpl.mock.calls[1]?.[0])).toBe('/api/api-tokens');
-    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' });
-    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({
+    expect(String(fetchImpl.mock.calls[1]?.[0])).toBe(`/api/documents/${document.id}/unapprove`);
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' });
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe('/api/api-tokens');
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'GET' });
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({
       method: 'POST',
       body: JSON.stringify({ name: 'Importer', scopes: ['write:draft'] }),
     });
-    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(`/api/api-tokens/${token.id}/revoke`);
-    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe('/api/me/preferences/documents.columns');
-    expect(fetchImpl.mock.calls[4]?.[1]).toMatchObject({ method: 'GET' });
-    expect(fetchImpl.mock.calls[5]?.[1]).toMatchObject({
+    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe(`/api/api-tokens/${token.id}/revoke`);
+    expect(String(fetchImpl.mock.calls[5]?.[0])).toBe('/api/me/preferences/documents.columns');
+    expect(fetchImpl.mock.calls[5]?.[1]).toMatchObject({ method: 'GET' });
+    expect(fetchImpl.mock.calls[6]?.[1]).toMatchObject({
       method: 'PUT',
       body: JSON.stringify({ value: { order: ['title'], visible: ['title'] } }),
     });

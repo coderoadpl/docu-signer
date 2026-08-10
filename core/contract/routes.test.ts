@@ -79,6 +79,10 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/documents/:documentId/approve',
     });
+    expect(API_ROUTES.documentUnapprove).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/unapprove',
+    });
     expect(API_ROUTES.savedSearches).toEqual({
       method: 'GET',
       path: '/api/saved-searches',

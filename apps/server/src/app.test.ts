@@ -89,6 +89,7 @@ const baseDeps = (): AppDeps => ({
     },
     update: async () => null,
     approve: async () => null,
+    unapprove: async () => null,
     delete: async () => false,
     restore: async () => null,
     purge: async () => false,
@@ -418,6 +419,57 @@ describe('buildApp', () => {
     expect(await response.json()).toMatchObject({
       ok: true,
       data: { document: { title: 'Umowa', tenantId: tenant.id } },
+    });
+  });
+
+  it('approves and reverts a document through the contract routes', async () => {
+    const deps = authorizedDeps();
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const row: Document = {
+      id: documentId,
+      tenantId: tenant.id,
+      title: 'Umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      draft: true,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      deletedAt: null,
+    };
+    deps.documents.approve = async (tenantId, id) =>
+      tenantId === tenant.id && id === documentId ? { ...row, draft: false } : null;
+    deps.documents.unapprove = async (tenantId, id) =>
+      tenantId === tenant.id && id === documentId ? row : null;
+    const app = buildApp(deps);
+
+    const approved = await app.request(
+      API_ROUTES.documentApprove.path.replace(':documentId', documentId),
+      {
+        method: API_ROUTES.documentApprove.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({
+      ok: true,
+      data: { document: { draft: false } },
+    });
+
+    const unapproved = await app.request(
+      API_ROUTES.documentUnapprove.path.replace(':documentId', documentId),
+      {
+        method: API_ROUTES.documentUnapprove.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(unapproved.status).toBe(200);
+    expect(await unapproved.json()).toMatchObject({
+      ok: true,
+      data: { document: { draft: true } },
     });
   });
 

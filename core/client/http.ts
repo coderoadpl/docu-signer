@@ -21,6 +21,7 @@ import {
   documentPurgeOutputSchema,
   documentRestoreOutputSchema,
   documentTrashListOutputSchema,
+  documentUnapproveOutputSchema,
   documentUpdateOutputSchema,
   fileUploadRequestOutputSchema,
   looseEnvelopeSchema,
@@ -342,6 +343,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.documentApprove.method,
       pathWith(API_ROUTES.documentApprove.path, { documentId }),
       documentApproveOutputSchema,
+      {},
+      signal,
+    ),
+  unapproveDocument: (documentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentUnapprove.method,
+      pathWith(API_ROUTES.documentUnapprove.path, { documentId }),
+      documentUnapproveOutputSchema,
       {},
       signal,
     ),

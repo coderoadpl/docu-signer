@@ -210,6 +210,17 @@ export const approveDocument = async (
   return approved ? ok(approved) : err(notFound('Document not found'));
 };
 
+export const unapproveDocument = async (
+  ctx: Ctx,
+  documentId: string,
+  deps: DocumentDeps,
+): Promise<Result<Document, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:approve');
+  if (!scope.ok) return scope;
+  const unapproved = await deps.documents.unapprove(scope.value, documentId);
+  return unapproved ? ok(unapproved) : err(notFound('Document not found'));
+};
+
 export const deleteDocument = async (
   ctx: Ctx,
   documentId: string,
