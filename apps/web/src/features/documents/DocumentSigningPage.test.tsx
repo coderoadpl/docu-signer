@@ -18,6 +18,81 @@ import { renderSourcePage, type SigningStampWithMetrics } from './signing-pdf.js
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const SOURCE_ID = '22222222-2222-4222-8222-222222222222';
+const SHARED_SESSION_ID = '55555555-5555-4555-8555-555555555555';
+
+const queuedPadSubmission = {
+  id: '88888888-8888-4888-8888-888888888888',
+  requestId: null,
+  document: { key: `${DOCUMENT_ID}:${SOURCE_ID}`, title: 'Umowa do podpisu' },
+  inkColor: 'black' as const,
+  sourceSize: { width: 834, height: 620 },
+  contributedBy: { accountId: 'user-weronika', label: 'Weronika' },
+  strokes: [
+    {
+      points: [
+        { x: 0.2, y: 0.4, pressure: 0.5 },
+        { x: 0.8, y: 0.6, pressure: 0.5 },
+      ],
+    },
+  ],
+  createdAt: '2026-08-09T10:00:00.000Z',
+};
+
+const installSharedTrayHandlers = () => {
+  let submissions = [queuedPadSubmission];
+  const lastPolledAt = new Date().toISOString();
+  server.use(
+    http.get('/api/pad-sessions/active', () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          session: {
+            id: SHARED_SESSION_ID,
+            tenantId: 'tenant-1',
+            createdBy: 'user-owner',
+            mode: 'shared',
+            status: 'active',
+            createdAt: lastPolledAt,
+            expiresAt: new Date(Date.now() + 14_400_000).toISOString(),
+            lastPolledAt,
+            currentRequest: null,
+            currentDocument: queuedPadSubmission.document,
+          },
+        },
+      }),
+    ),
+    http.post('/api/pad-sessions/:sessionId/document', () =>
+      HttpResponse.json({ ok: true, data: { document: queuedPadSubmission.document } }),
+    ),
+    http.post('/api/pad-sessions/:sessionId/consume', () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          submittedStrokes: null,
+          lastPolledAt,
+          participants: [
+            {
+              accountId: 'user-weronika',
+              label: 'Weronika',
+              lastPolledAt,
+            },
+          ],
+          submissions,
+        },
+      }),
+    ),
+    http.post(
+      '/api/pad-sessions/:sessionId/submissions/:submissionId/consume',
+      () => {
+        submissions = [];
+        return HttpResponse.json({
+          ok: true,
+          data: { submission: queuedPadSubmission },
+        });
+      },
+    ),
+  );
+};
 
 const pdfMocks = vi.hoisted(() => ({
   flatten: vi.fn<
@@ -458,6 +533,41 @@ describe('DocumentSigningPage', () => {
     ).not.toBeInTheDocument();
     fireEvent.click(status);
     expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
+  });
+
+  it('materializes an attributed shared-tray signature as a selected stamp', async () => {
+    installSharedTrayHandlers();
+    await renderPage();
+    await signingCanvas();
+
+    const tray = await screen.findByRole('button', {
+      name: 'Podpisy: Weronika (1)',
+    });
+    fireEvent.click(tray);
+    expect(await screen.findByText('Podpisy do umieszczenia')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Umieść' }));
+
+    expect(await screen.findByText('Wybrany odcisk: strona 1')).toBeVisible();
+    expect(screen.getByText('Podpis: Weronika')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Podpisy: Weronika (1)' })).not.toBeInTheDocument();
+  });
+
+  it('confirms before advancing with unplaced shared-tray signatures', async () => {
+    installSharedTrayHandlers();
+    const { router } = await renderPage(
+      `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+    );
+    await signingCanvas();
+    expect(await screen.findByRole('button', { name: 'Podpisy: Weronika (1)' })).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dalej' }));
+    expect(
+      await screen.findByText('W skrzynce są nieumieszczone podpisy dla tego dokumentu.'),
+    ).toBeVisible();
+    expect(router.state.location.search.koniec).not.toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Odrzuć i przejdź dalej' }));
+    expect(await screen.findByRole('heading', { name: 'Podsumowanie' })).toBeVisible();
+    expect(screen.getByText('Pominięto 1')).toBeVisible();
   });
 
   it('automatically requests the active mass-signing document when Auto-pad is on', async () => {

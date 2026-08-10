@@ -16,6 +16,7 @@ import {
   type Document,
   type DocumentListFilter,
   type PadSession,
+  type PadQueuedSubmission,
   type SourceUpdateRequest,
 } from '#core/domain/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
@@ -83,14 +84,23 @@ const baseDeps = (): AppDeps => ({
       createdAt: '2026-08-02T00:00:00.000Z',
       lastPolledAt: null,
       currentRequest: null,
+      currentDocument: null,
       submittedStrokes: null,
     }),
     findById: async () => null,
     findActiveByUser: async () => null,
+    findActiveShared: async () => null,
     renew: async () => null,
     requestSignature: async () => null,
+    setCurrentDocument: async () => null,
     submitStrokes: async () => null,
     consumeStrokes: async () => null,
+    touchParticipant: async () => {},
+    listParticipants: async () => [],
+    removeParticipant: async () => false,
+    enqueueSubmission: async () => {},
+    listSubmissions: async () => [],
+    consumeSubmission: async () => null,
     close: async () => false,
   },
   padSessionSecrets: {
@@ -470,14 +480,17 @@ describe('buildApp', () => {
       tenantId: tenant.id,
       createdBy: user.userId,
       secretHash: 'hash:pad_secret',
+      mode: 'private',
       status: 'active' as const,
       createdAt: '2026-08-04T10:00:00.000Z',
       expiresAt: '2099-08-04T14:00:00.000Z',
       lastPolledAt: null,
       currentRequest: null,
+      currentDocument: null,
       submittedStrokes: null,
     };
     let currentPadSession = padSession;
+    let queuedSubmission: PadQueuedSubmission | undefined;
     deps.ids = { nextId: () => requestId };
     deps.padSessionSecrets = {
       generate: () => 'pad_secret',
@@ -491,6 +504,7 @@ describe('buildApp', () => {
       },
       findById: async () => currentPadSession,
       findActiveByUser: async () => currentPadSession,
+      findActiveShared: async () => null,
       renew: async (_tenantId, _sessionId, expiresAt, lastPolledAt) => {
         currentPadSession = { ...currentPadSession, expiresAt, lastPolledAt };
         return currentPadSession;
@@ -500,6 +514,10 @@ describe('buildApp', () => {
           ...currentPadSession,
           currentRequest: request,
         };
+        return currentPadSession;
+      },
+      setCurrentDocument: async (_tenantId, _sessionId, document) => {
+        currentPadSession = { ...currentPadSession, currentDocument: document };
         return currentPadSession;
       },
       submitStrokes: async (_tenantId, _sessionId, strokes) => {
@@ -516,6 +534,18 @@ describe('buildApp', () => {
         contributedBy: { accountId: 'user-owner', label: 'Owner' },
         strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
       }),
+      touchParticipant: async () => {},
+      listParticipants: async () => [],
+      removeParticipant: async () => false,
+      enqueueSubmission: async (_tenantId, _sessionId, submission) => {
+        queuedSubmission = submission;
+      },
+      listSubmissions: async () => queuedSubmission ? [queuedSubmission] : [],
+      consumeSubmission: async () => {
+        const submission = queuedSubmission ?? null;
+        queuedSubmission = undefined;
+        return submission;
+      },
       close: async () => true,
     };
     const app = buildApp(deps);
@@ -523,7 +553,8 @@ describe('buildApp', () => {
 
     const created = await app.request(API_ROUTES.padSessionsCreate.path, {
       method: API_ROUTES.padSessionsCreate.method,
-      headers: tenantHeader,
+      headers: { ...tenantHeader, 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'shared' }),
     });
     expect(created.status).toBe(200);
     await expect(created.json()).resolves.toMatchObject({
@@ -553,6 +584,21 @@ describe('buildApp', () => {
       { headers: { ...tenantHeader, [PAD_SECRET_HEADER]: 'pad_secret' } },
     );
     expect(state.status).toBe(200);
+
+    const currentDocument = await app.request(
+      API_ROUTES.padSessionDocument.path.replace(':sessionId', padSession.id),
+      {
+        method: API_ROUTES.padSessionDocument.method,
+        headers: { ...tenantHeader, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          document: { key: 'document-a:file-a', title: 'Umowa' },
+        }),
+      },
+    );
+    await expect(currentDocument.json()).resolves.toMatchObject({
+      ok: true,
+      data: { document: { key: 'document-a:file-a', title: 'Umowa' } },
+    });
 
     const requested = await app.request(
       API_ROUTES.padSessionRequest.path.replace(':sessionId', padSession.id),
@@ -618,7 +664,25 @@ describe('buildApp', () => {
     );
     await expect(consumed.json()).resolves.toMatchObject({
       ok: true,
-      data: { submittedStrokes: { requestId }, lastPolledAt: expect.any(String) },
+      data: {
+        submittedStrokes: null,
+        submissions: [{ id: requestId, requestId }],
+        lastPolledAt: expect.any(String),
+      },
+    });
+
+    const consumedSubmission = await app.request(
+      API_ROUTES.padSessionSubmissionConsume.path
+        .replace(':sessionId', padSession.id)
+        .replace(':submissionId', requestId),
+      {
+        method: API_ROUTES.padSessionSubmissionConsume.method,
+        headers: tenantHeader,
+      },
+    );
+    await expect(consumedSubmission.json()).resolves.toMatchObject({
+      ok: true,
+      data: { submission: { id: requestId, requestId } },
     });
 
     const closed = await app.request(

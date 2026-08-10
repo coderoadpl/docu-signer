@@ -19,6 +19,7 @@ import {
   IconButton,
   LinearProgress,
   Paper,
+  Popover,
   Slider,
   Stack,
   ToggleButton,
@@ -28,7 +29,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 
-import type { PadSubmittedStrokes } from '#core/domain/index.js';
+import type {
+  PadParticipant,
+  PadQueuedSubmission,
+  PadSubmittedStrokes,
+} from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SigningShell } from '../../components/layout/SigningShell.js';
@@ -145,7 +150,9 @@ const BusyButtonProgress = () => (
 interface RemotePadSession {
   id: string;
   url: string;
+  mode: 'private' | 'shared';
   lastPolledAt: string | null;
+  participants: PadParticipant[];
   pendingRequestId: string | null;
   pendingTargetKey: string | null;
   fulfilledTargetKey: string | null;
@@ -161,6 +168,9 @@ const padUrlForSession = (sessionId: string, secret: string): string => {
 
 const remotePadConnected = (lastPolledAt: string | null): boolean =>
   lastPolledAt !== null && Date.now() - Date.parse(lastPolledAt) < 5000;
+
+const sharedPadConnected = (participants: PadParticipant[]): boolean =>
+  participants.some((participant) => remotePadConnected(participant.lastPolledAt));
 
 const remoteStrokesToInkStrokes = (
   strokes: PadSubmittedStrokes['strokes'],
@@ -547,6 +557,7 @@ export const PadQrDialog = ({
         {sessionUrl ? (
           <Typography variant="body2" color="text.secondary" align="center">
             Zeskanuj kod aparatem telefonu lub tabletu (najlepiej tablet z rysikiem).
+            Może dołączyć każde konto organizacji.
           </Typography>
         ) : null}
       </Stack>
@@ -590,6 +601,77 @@ const RemotePadStatusIndicator = ({
       </Typography>
     </Stack>
   );
+
+const IncomingSignatureTray = ({
+  anchor,
+  onClose,
+  onDiscard,
+  onMaterialize,
+  onOpen,
+  submissions,
+}: {
+  anchor: HTMLElement | null;
+  onClose: () => void;
+  onDiscard: (submission: PadQueuedSubmission) => void;
+  onMaterialize: (submission: PadQueuedSubmission) => void;
+  onOpen: (element: HTMLElement) => void;
+  submissions: PadQueuedSubmission[];
+}) => {
+  if (submissions.length === 0) return null;
+  const counts = new Map<string, { label: string; count: number }>();
+  for (const submission of submissions) {
+    const contributor = submission.contributedBy;
+    const current = counts.get(contributor.accountId);
+    counts.set(contributor.accountId, {
+      label: contributor.label,
+      count: (current?.count ?? 0) + 1,
+    });
+  }
+  const summary = [...counts.values()]
+    .map(({ count, label }) => `${label} (${count})`)
+    .join(' · ');
+  return (
+    <>
+      <Button
+        size="small"
+        variant="text"
+        onClick={(event) => onOpen(event.currentTarget)}
+        sx={{ minHeight: 36, px: 1 }}
+      >
+        Podpisy: {summary}
+      </Button>
+      <Popover
+        open={Boolean(anchor)}
+        anchorEl={anchor}
+        onClose={onClose}
+        anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+      >
+        <Stack sx={{ minWidth: 310, maxWidth: 420, p: 1 }}>
+          <Typography variant="subtitle2" sx={{ px: 1, py: 0.75 }}>
+            Podpisy do umieszczenia
+          </Typography>
+          {submissions.map((submission, index) => (
+            <Stack
+              key={submission.id}
+              direction="row"
+              sx={{ alignItems: 'center', gap: 1, px: 1, py: 0.5 }}
+            >
+              <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                {submission.contributedBy.label} · podpis {index + 1}
+              </Typography>
+              <Button size="small" onClick={() => onMaterialize(submission)}>
+                Umieść
+              </Button>
+              <Button color="error" size="small" onClick={() => onDiscard(submission)}>
+                Odrzuć
+              </Button>
+            </Stack>
+          ))}
+        </Stack>
+      </Popover>
+    </>
+  );
+};
 
 const PageHeader = ({
   fileName,
@@ -702,6 +784,7 @@ const StampPlacementControls = ({
   activeInkSize,
   activePlacement,
   committing,
+  contributorLabel,
   label,
   onInkSizeChange,
   onPageChange,
@@ -718,6 +801,7 @@ const StampPlacementControls = ({
   activeInkSize?: number;
   activePlacement: SignaturePlacement;
   committing: boolean;
+  contributorLabel?: string;
   label: string;
   marginBottom?: number;
   marginTop?: number;
@@ -815,6 +899,11 @@ const StampPlacementControls = ({
       Usuń
     </Button>
     <Typography variant="body2">{label}</Typography>
+    {contributorLabel ? (
+      <Typography variant="body2" color="text.secondary">
+        Podpis: {contributorLabel}
+      </Typography>
+    ) : null}
   </Stack>
 );
 
@@ -903,7 +992,9 @@ export const DocumentSigningPage = ({
   const createSignatureRecord = useMutation(actions.createSignatureRecord);
   const createRemotePadSession = useMutation(actions.createPadSession);
   const requestRemotePadSignature = useMutation(actions.requestPadSignature);
+  const setRemotePadCurrentDocument = useMutation(actions.setPadCurrentDocument);
   const consumeRemotePadStrokes = useMutation(actions.consumePadStrokes);
+  const consumeRemotePadSubmission = useMutation(actions.consumePadSubmission);
   const closeRemotePadSessionMutation = useMutation(actions.closePadSession);
   const [committing, setCommitting] = useState(false);
   const [remotePadQrOpen, setRemotePadQrOpen] = useState(false);
@@ -911,8 +1002,12 @@ export const DocumentSigningPage = ({
   const [remotePadQrDataUrl, setRemotePadQrDataUrl] = useState<string>();
   const [remotePadError, setRemotePadError] = useState<string>();
   const [autoPad, setAutoPad] = useState(false);
+  const [incomingSubmissions, setIncomingSubmissions] = useState<PadQueuedSubmission[]>([]);
+  const [trayAnchor, setTrayAnchor] = useState<HTMLElement | null>(null);
+  const [trayAdvanceConfirming, setTrayAdvanceConfirming] = useState(false);
   const consumingRemotePadRef = useRef(false);
   const requestingRemotePadRef = useRef(false);
+  const syncedRemoteDocumentRef = useRef<string | undefined>(undefined);
 
   const queueTargets = signingQueueFromSearch(signingSearch);
   const massMode = signingSearch.tryb === 'masowe';
@@ -928,6 +1023,9 @@ export const DocumentSigningPage = ({
   const sequenceTotal = signingSearch.razem ?? 0;
   const listSearch = documentsSearchFromSigningSearch(signingSearch);
   const activeSigningTargetKey = `${documentId}:${fileId}`;
+  const activeIncomingSubmissions = incomingSubmissions.filter(
+    (submission) => submission.document.key === activeSigningTargetKey,
+  );
   const desktopContributor = identityQuery.data
     ? {
         accountId: identityQuery.data.userId,
@@ -946,6 +1044,8 @@ export const DocumentSigningPage = ({
       return;
     }
     setRemotePadSession(undefined);
+    setIncomingSubmissions([]);
+    setTrayAnchor(null);
     setRemotePadQrDataUrl(undefined);
     setRemotePadQrOpen(false);
     await queryClient.invalidateQueries(actions.activePadSessionInvalidates());
@@ -973,11 +1073,19 @@ export const DocumentSigningPage = ({
     if (!active) return;
     setRemotePadSession((current) =>
       current?.id === active.id
-        ? { ...current, lastPolledAt: active.lastPolledAt }
+        ? {
+            ...current,
+            mode: active.mode,
+            lastPolledAt: active.lastPolledAt,
+            pendingRequestId:
+              current.pendingRequestId ?? active.currentRequest?.requestId ?? null,
+          }
         : {
             id: active.id,
             url: padUrlForSession(active.id, ''),
+            mode: active.mode,
             lastPolledAt: active.lastPolledAt,
+            participants: [],
             pendingRequestId: active.currentRequest?.requestId ?? null,
             pendingTargetKey: null,
             fulfilledTargetKey: null,
@@ -990,13 +1098,15 @@ export const DocumentSigningPage = ({
     setRemotePadError(undefined);
     if (remotePadSession || createRemotePadSession.isPending) return;
     void createRemotePadSession
-      .mutateAsync(undefined)
+      .mutateAsync('shared')
       .then(({ session, secret }) => {
         const url = padUrlForSession(session.id, secret);
         setRemotePadSession({
           id: session.id,
           url,
+          mode: session.mode,
           lastPolledAt: session.lastPolledAt,
+          participants: [],
           pendingRequestId: null,
           pendingTargetKey: null,
           fulfilledTargetKey: null,
@@ -1030,6 +1140,34 @@ export const DocumentSigningPage = ({
     };
   }, [remotePadSession?.url]);
 
+  useEffect(() => {
+    const sessionId = remotePadSession?.id;
+    const documentTitle = documentQuery.data?.document.title;
+    if (!sessionId || remotePadSession.mode !== 'shared' || !documentTitle) return;
+    const syncKey = `${sessionId}:${activeSigningTargetKey}:${documentTitle}`;
+    if (syncedRemoteDocumentRef.current === syncKey) return;
+    syncedRemoteDocumentRef.current = syncKey;
+    void setRemotePadCurrentDocument
+      .mutateAsync({
+        sessionId,
+        document: { key: activeSigningTargetKey, title: documentTitle },
+      })
+      .catch((error: unknown) => {
+        syncedRemoteDocumentRef.current = undefined;
+        setRemotePadError(
+          error instanceof Error
+            ? error.message
+            : 'Nie udało się udostępnić dokumentu padom.',
+        );
+      });
+  }, [
+    activeSigningTargetKey,
+    documentQuery.data?.document.title,
+    remotePadSession?.id,
+    remotePadSession?.mode,
+    setRemotePadCurrentDocument,
+  ]);
+
   const returnToList = () => {
     setSignaturePadOpen(false);
     void navigate({
@@ -1040,7 +1178,7 @@ export const DocumentSigningPage = ({
   };
 
   const requestMassExit = () => {
-    if (stamps.length > 0) {
+    if (stamps.length > 0 || activeIncomingSubmissions.length > 0) {
       setMassExitConfirming(true);
       return;
     }
@@ -1092,6 +1230,8 @@ export const DocumentSigningPage = ({
     setStamps([]);
     setSelectedStampIndex(undefined);
     setMassExitConfirming(false);
+    setTrayAdvanceConfirming(false);
+    setTrayAnchor(null);
     setSignaturePadOpen(false);
     setCommitError(undefined);
     currentStrokeRef.current = undefined;
@@ -1297,6 +1437,67 @@ export const DocumentSigningPage = ({
     [inkColorId, metrics, pageIndex, pageReady, previouslySignedSource],
   );
 
+  const removeIncomingSubmission = (submissionId: string) => {
+    setIncomingSubmissions((current) =>
+      current.filter((submission) => submission.id !== submissionId),
+    );
+  };
+
+  const discardIncomingSubmission = async (submission: PadQueuedSubmission) => {
+    const sessionId = remotePadSession?.id;
+    if (!sessionId) return;
+    try {
+      await consumeRemotePadSubmission.mutateAsync({
+        sessionId,
+        submissionId: submission.id,
+      });
+      removeIncomingSubmission(submission.id);
+      setTrayAnchor(null);
+    } catch (error) {
+      setRemotePadError(
+        error instanceof Error ? error.message : 'Nie udało się odrzucić podpisu.',
+      );
+    }
+  };
+
+  const materializeIncomingSubmission = async (
+    submission: PadQueuedSubmission,
+  ) => {
+    const sessionId = remotePadSession?.id;
+    if (!sessionId || submission.document.key !== activeSigningTargetKey) return;
+    if (!pageReady) {
+      setRemotePadError('Poczekaj na wyrenderowanie strony przed umieszczeniem podpisu.');
+      return;
+    }
+    try {
+      const consumed = await consumeRemotePadSubmission.mutateAsync({
+        sessionId,
+        submissionId: submission.id,
+      });
+      const materialized = materializePadStrokes(
+        remoteStrokesToInkStrokes(consumed.submission.strokes),
+        consumed.submission.sourceSize,
+        consumed.submission.contributedBy,
+        consumed.submission.inkColor,
+      );
+      if (!materialized) return;
+      removeIncomingSubmission(submission.id);
+      setTrayAnchor(null);
+    } catch (error) {
+      setRemotePadError(
+        error instanceof Error ? error.message : 'Nie udało się umieścić podpisu.',
+      );
+    }
+  };
+
+  const discardActiveIncomingSubmissions = async () => {
+    await Promise.all(
+      activeIncomingSubmissions.map((submission) =>
+        discardIncomingSubmission(submission),
+      ),
+    );
+  };
+
   const requestSignatureFromRemotePad = useCallback(async () => {
     const sessionId = remotePadSession?.id;
     const documentTitle = documentQuery.data?.document.title;
@@ -1334,8 +1535,14 @@ export const DocumentSigningPage = ({
   ]);
 
   const isRemotePadConnected = remotePadConnected(
-    remotePadSession?.lastPolledAt ?? null,
+    remotePadSession?.mode === 'shared'
+      ? null
+      : remotePadSession?.lastPolledAt ?? null,
   );
+  const isSharedRemotePadConnected =
+    remotePadSession?.mode === 'shared' &&
+    sharedPadConnected(remotePadSession.participants);
+  const hasConnectedRemotePad = isRemotePadConnected || isSharedRemotePadConnected;
 
   useEffect(() => {
     const sessionId = remotePadSession?.id;
@@ -1345,10 +1552,31 @@ export const DocumentSigningPage = ({
       consumingRemotePadRef.current = true;
       void consumeRemotePadStrokes
         .mutateAsync(sessionId)
-        .then(({ lastPolledAt, submittedStrokes }) => {
+        .then(({ lastPolledAt, participants, submissions, submittedStrokes }) => {
           setRemotePadSession((current) =>
-            current?.id === sessionId ? { ...current, lastPolledAt } : current,
+            current?.id === sessionId
+              ? { ...current, lastPolledAt, participants }
+              : current,
           );
+          setIncomingSubmissions(submissions);
+          const requestedSubmission = submissions.find(
+            (submission) =>
+              submission.requestId !== null &&
+              submission.requestId === remotePadSession.pendingRequestId,
+          );
+          if (requestedSubmission) {
+            setRemotePadSession((current) =>
+              current?.id === sessionId
+                ? {
+                    ...current,
+                    pendingRequestId: null,
+                    pendingTargetKey: null,
+                    fulfilledTargetKey:
+                      current.pendingTargetKey ?? activeSigningTargetKey,
+                  }
+                : current,
+            );
+          }
           if (!submittedStrokes) return;
           if (submittedStrokes.requestId !== remotePadSession.pendingRequestId) return;
           const materialized = materializePadStrokes(
@@ -1391,7 +1619,7 @@ export const DocumentSigningPage = ({
       !massMode ||
       !autoPad ||
       !pageReady ||
-      !isRemotePadConnected ||
+      !hasConnectedRemotePad ||
       !remotePadSession ||
       (remotePadSession.pendingRequestId !== null &&
         (remotePadSession.pendingTargetKey === null ||
@@ -1405,7 +1633,7 @@ export const DocumentSigningPage = ({
   }, [
     activeSigningTargetKey,
     autoPad,
-    isRemotePadConnected,
+    hasConnectedRemotePad,
     massMode,
     pageReady,
     remotePadSession,
@@ -1803,8 +2031,12 @@ export const DocumentSigningPage = ({
     }
   };
 
-  const proceedMassSigning = async () => {
+  const proceedMassSigning = async (trayConfirmed = false) => {
     if (committing) return;
+    if (activeIncomingSubmissions.length > 0 && !trayConfirmed) {
+      setTrayAdvanceConfirming(true);
+      return;
+    }
     if (stamps.length === 0) {
       advanceMassSigning({
         signedCount: sequenceSignedCount,
@@ -1827,6 +2059,23 @@ export const DocumentSigningPage = ({
       setCommitting(false);
     }
   };
+
+  const discardTrayAndProceed = async () => {
+    await discardActiveIncomingSubmissions();
+    setTrayAdvanceConfirming(false);
+    await proceedMassSigning(true);
+  };
+
+  const incomingTray = (
+    <IncomingSignatureTray
+      anchor={trayAnchor}
+      submissions={activeIncomingSubmissions}
+      onClose={() => setTrayAnchor(null)}
+      onOpen={setTrayAnchor}
+      onDiscard={(submission) => void discardIncomingSubmission(submission)}
+      onMaterialize={(submission) => void materializeIncomingSubmission(submission)}
+    />
+  );
 
   return (
     <SigningShell
@@ -1911,7 +2160,7 @@ export const DocumentSigningPage = ({
               >
                 {signingPadBusy ? 'Renderowanie…' : 'Złóż podpis'}
               </Button>
-              {!isRemotePadConnected ? (
+              {!hasConnectedRemotePad ? (
                 <Button
                   variant="outlined"
                   onClick={openRemotePadQr}
@@ -1942,11 +2191,12 @@ export const DocumentSigningPage = ({
                     Poproś pad o podpis
                   </Button>
                   <RemotePadStatusIndicator
-                    connected={isRemotePadConnected}
+                    connected={hasConnectedRemotePad}
                     onOpen={openRemotePadQr}
                   />
                 </>
               ) : null}
+              {incomingTray}
               <ToggleButtonGroup
                 exclusive
                 size="small"
@@ -2055,6 +2305,7 @@ export const DocumentSigningPage = ({
                 onRemove={removeSelectedStamp}
                 {...(selectedStamp
                   ? {
+                      contributorLabel: selectedStamp.contributedBy.label,
                       onInkSizeChange: resizeSelectedInk,
                       onPageChange: moveSelectedStampPage,
                       pageCount: pdf
@@ -2099,14 +2350,47 @@ export const DocumentSigningPage = ({
                     <Button
                       color="inherit"
                       size="small"
-                      onClick={returnToList}
+                      onClick={() => {
+                        void discardActiveIncomingSubmissions().then(returnToList);
+                      }}
                     >
                       Odrzuć i zamknij
                     </Button>
                   </Stack>
                 }
               >
-                Ten dokument ma niezapisane odciski.
+                <span>Ten dokument ma niezapisane odciski.</span>
+                {activeIncomingSubmissions.length > 0 ? (
+                  <Typography component="span" variant="body2" sx={{ display: 'block' }}>
+                    W skrzynce są też nieumieszczone podpisy.
+                  </Typography>
+                ) : null}
+              </Alert>
+            ) : null}
+            {trayAdvanceConfirming ? (
+              <Alert
+                severity="warning"
+                sx={{ mb: 1 }}
+                action={
+                  <Stack direction="row" sx={{ gap: 1 }}>
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={() => setTrayAdvanceConfirming(false)}
+                    >
+                      Wróć
+                    </Button>
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={() => void discardTrayAndProceed()}
+                    >
+                      Odrzuć i przejdź dalej
+                    </Button>
+                  </Stack>
+                }
+              >
+                W skrzynce są nieumieszczone podpisy dla tego dokumentu.
               </Alert>
             ) : null}
             {selectedStamp ? (
@@ -2114,6 +2398,7 @@ export const DocumentSigningPage = ({
                 activeInkSize={activeInkSize}
                 activePlacement={activePlacement}
                 committing={committing}
+                contributorLabel={selectedStamp.contributedBy.label}
                 label={`Wybrany odcisk: strona ${selectedStamp.pageIndex + 1}`}
                 marginBottom={1}
                 onInkSizeChange={resizeSelectedInk}
@@ -2147,7 +2432,7 @@ export const DocumentSigningPage = ({
                 >
                   {signingPadBusy ? 'Renderowanie…' : 'Złóż podpis'}
                 </Button>
-                {!isRemotePadConnected ? (
+                {!hasConnectedRemotePad ? (
                   <Button
                     variant="outlined"
                     onClick={openRemotePadQr}
@@ -2177,7 +2462,7 @@ export const DocumentSigningPage = ({
                     Poproś pad o podpis
                   </Button>
                 ) : null}
-                {isRemotePadConnected ? (
+                {hasConnectedRemotePad ? (
                   <ToggleButton
                     value="auto-pad"
                     selected={autoPad}
@@ -2191,10 +2476,11 @@ export const DocumentSigningPage = ({
                 ) : null}
                 {remotePadSession ? (
                   <RemotePadStatusIndicator
-                    connected={isRemotePadConnected}
+                    connected={hasConnectedRemotePad}
                     onOpen={openRemotePadQr}
                   />
                 ) : null}
+                {incomingTray}
                 <Button
                   variant="contained"
                   onClick={() => void proceedMassSigning()}

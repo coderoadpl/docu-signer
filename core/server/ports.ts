@@ -5,6 +5,9 @@ import type {
   DocumentFile,
   DocumentListFilter,
   PadSession,
+  PadCurrentDocument,
+  PadParticipant,
+  PadQueuedSubmission,
   PadSignatureRequest,
   PadSubmittedStrokes,
   SavedSearch,
@@ -167,11 +170,12 @@ export interface PadSessionRepository {
   create(
     input: Omit<
       PadSession,
-      'createdAt' | 'currentRequest' | 'lastPolledAt' | 'submittedStrokes' | 'status'
+      'createdAt' | 'currentDocument' | 'currentRequest' | 'lastPolledAt' | 'submittedStrokes' | 'status'
     >,
   ): Promise<PadSession>;
   findById(tenantId: string, sessionId: string): Promise<PadSession | null>;
   findActiveByUser(tenantId: string, userId: string): Promise<PadSession | null>;
+  findActiveShared(tenantId: string, excludeUserId: string): Promise<PadSession | null>;
   renew(
     tenantId: string,
     sessionId: string,
@@ -183,12 +187,35 @@ export interface PadSessionRepository {
     sessionId: string,
     request: PadSignatureRequest,
   ): Promise<PadSession | null>;
+  setCurrentDocument(
+    tenantId: string,
+    sessionId: string,
+    document: PadCurrentDocument,
+  ): Promise<PadSession | null>;
   submitStrokes(
     tenantId: string,
     sessionId: string,
     strokes: PadSubmittedStrokes,
   ): Promise<PadSession | null>;
   consumeStrokes(tenantId: string, sessionId: string): Promise<PadSubmittedStrokes | null>;
+  touchParticipant(
+    tenantId: string,
+    sessionId: string,
+    participant: PadParticipant & { id: string },
+  ): Promise<void>;
+  listParticipants(tenantId: string, sessionId: string): Promise<PadParticipant[]>;
+  removeParticipant(tenantId: string, sessionId: string, accountId: string): Promise<boolean>;
+  enqueueSubmission(
+    tenantId: string,
+    sessionId: string,
+    submission: PadQueuedSubmission,
+  ): Promise<void>;
+  listSubmissions(tenantId: string, sessionId: string): Promise<PadQueuedSubmission[]>;
+  consumeSubmission(
+    tenantId: string,
+    sessionId: string,
+    submissionId: string,
+  ): Promise<PadQueuedSubmission | null>;
   close(tenantId: string, sessionId: string): Promise<boolean>;
 }
 

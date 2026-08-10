@@ -113,11 +113,13 @@ exemplar.
   corrected source. No product surface offers applying stored ink to any
   other document. Each stored stamp records the account that contributed its
   ink, including ink submitted from an authenticated remote pad. A desktop
-  signing user has one global remote pad session shared by every signing surface at
-  `/pad/{sessionId}`; the pad requires a normal login plus either the session
-  secret from the URL fragment (QR) or same-user identity (`/pad` join), and
-  defaults to a touch-locked Piórko mode with an explicit Ręka mode for finger
-  drawing.
+  signing user has one global remote pad host session shared by every signing
+  surface at `/pad/{sessionId}`. Private sessions require the same account;
+  shared sessions admit any account in the tenant by QR fragment secret or
+  identity join, track participants separately from host-session slots, and
+  queue proactive server-attributed signatures for deliberate placement in the
+  current document. The pad defaults to a touch-locked Piórko mode with an
+  explicit Ręka mode for finger drawing.
 - Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
   timestamps (`createdAt`, `updatedAt`) never render in UI or exports. Two
   carve-outs: `deletedAt` records a user action and renders as `Usunięto:` in
