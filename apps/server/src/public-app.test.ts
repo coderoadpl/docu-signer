@@ -47,26 +47,6 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     hash: (value) => value,
     matchesHash: (value, tokenHash) => value === tokenHash,
   },
-  invitationEmail: null,
-  invitations: {
-    createOrReplace: async () => { throw new Error('not implemented'); },
-    listByTenant: async () => [],
-    findByTokenHash: async () => null,
-    hasAccount: async () => false,
-    accept: async () => false,
-    revoke: async () => false,
-    expire: async () => {},
-    expirePastDue: async () => {},
-  },
-  invitationSecrets: {
-    generate: () => 'invite-secret',
-    hash: (value) => value,
-    matchesHash: (value, tokenHash) => value === tokenHash,
-  },
-  invitationAuth: { createAccount: async () => ({ userId: 'invited-user' }) },
-  invitationRateLimit: { consume: async () => true },
-  invitationRateLimitEnabled: false,
-  emailConfigured: false,
   documents: {
     listByTenant: async () => [],
     listDeletedByTenant: async () => [],
@@ -182,8 +162,6 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
   health: { pingDatabase: async () => true },
   ids: { nextId: () => 'test-id' },
   baseDomain: 'localhost',
-  baseUrl: 'http://localhost',
-  now: () => new Date('2026-08-10T10:00:00.000Z'),
   commitSha: 'test-sha',
 });
 

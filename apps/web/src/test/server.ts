@@ -25,10 +25,7 @@ export const server = setupServer(
       },
     }),
   ),
-  http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: false, passwordResetEnabled: true, emailConfigured: true } })),
-  http.get('*/api/invitations', () =>
-    HttpResponse.json({ ok: true, data: { invitations: [] } }),
-  ),
+  http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: false, passwordResetEnabled: true } })),
   http.get('*/api/saved-searches', () =>
     HttpResponse.json({ ok: true, data: { savedSearches: [] } }),
   ),

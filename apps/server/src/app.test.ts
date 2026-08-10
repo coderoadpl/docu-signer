@@ -54,26 +54,6 @@ const baseDeps = (): AppDeps => ({
     hash: (value) => value,
     matchesHash: (value, tokenHash) => value === tokenHash,
   },
-  invitationEmail: null,
-  invitations: {
-    createOrReplace: async () => { throw new Error('not implemented'); },
-    listByTenant: async () => [],
-    findByTokenHash: async () => null,
-    hasAccount: async () => false,
-    accept: async () => false,
-    revoke: async () => false,
-    expire: async () => {},
-    expirePastDue: async () => {},
-  },
-  invitationSecrets: {
-    generate: () => 'invite-secret',
-    hash: (value) => value,
-    matchesHash: (value, tokenHash) => value === tokenHash,
-  },
-  invitationAuth: { createAccount: async () => ({ userId: 'invited-user' }) },
-  invitationRateLimit: { consume: async () => true },
-  invitationRateLimitEnabled: false,
-  emailConfigured: false,
   documents: {
     listByTenant: async () => [],
     listDeletedByTenant: async () => [],
@@ -192,8 +172,6 @@ const baseDeps = (): AppDeps => ({
   health: { pingDatabase: async () => true },
   ids: { nextId: () => '11111111-1111-4111-8111-111111111111' },
   baseDomain: 'localhost',
-  baseUrl: 'http://localhost',
-  now: () => new Date('2026-08-10T10:00:00.000Z'),
   commitSha: 'test-sha',
 });
 
@@ -231,106 +209,6 @@ describe('buildApp', () => {
     expect(await health.json()).toMatchObject({
       ok: true,
       data: { database: 'up', sha: 'test-sha' },
-    });
-  });
-
-  it('creates, lists, inspects, accepts, and revokes invitations through the contract routes', async () => {
-    const deps = authorizedDeps();
-    const invitation = {
-      id: '77777777-7777-4777-8777-777777777777',
-      tenantId: 'tenant-default',
-      email: 'new@example.com',
-      role: 'admin' as const,
-      invitedBy: 'user-1',
-      status: 'pending' as const,
-      expiresAt: '2026-08-17T10:00:00.000Z',
-    };
-    deps.invitations = {
-      createOrReplace: async () => invitation,
-      listByTenant: async () => [invitation],
-      findByTokenHash: async () => ({
-        ...invitation,
-        tokenHash: 'invite-secret',
-        organizationName: 'Archive',
-      }),
-      hasAccount: async () => false,
-      accept: async () => true,
-      revoke: async () => true,
-      expire: async () => {},
-      expirePastDue: async () => {},
-    };
-    deps.invitationSecrets = {
-      generate: () => 'invite-secret',
-      hash: (value) => value,
-      matchesHash: (value, tokenHash) => value === tokenHash,
-    };
-    const app = buildApp(deps);
-    const headers = { host: 'default.localhost', cookie: 'session=test' };
-
-    const created = await app.request(API_ROUTES.invitationsCreate.path, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ email: 'new@example.com', role: 'admin' }),
-    });
-    expect(created.status).toBe(200);
-    expect(await created.json()).toMatchObject({
-      ok: true,
-      data: { url: 'http://default.localhost/zaproszenie/invite-secret', emailSent: false },
-    });
-    expect((await app.request(API_ROUTES.invitations.path, { headers })).status).toBe(200);
-    expect((await app.request('/api/public/invitations/invite-secret')).status).toBe(200);
-    expect((await app.request('/api/public/invitations/invite-secret/accept', {
-      method: 'POST',
-      body: JSON.stringify({ password: 'new-password' }),
-    })).status).toBe(200);
-    expect((await app.request('/api/invitations/77777777-7777-4777-8777-777777777777/revoke', {
-      method: 'POST',
-      headers,
-    })).status).toBe(200);
-  });
-
-  it('rate-limits public invitation acceptance before account provisioning', async () => {
-    const deps = baseDeps();
-    deps.invitationRateLimitEnabled = true;
-    deps.invitationRateLimit = { consume: async () => false };
-    const response = await buildApp(deps).request('/api/public/invitations/invite-secret/accept', {
-      method: 'POST',
-      headers: { 'x-forwarded-for': '192.0.2.1, 198.51.100.2' },
-      body: JSON.stringify({ password: 'new-password' }),
-    });
-    expect(response.status).toBe(429);
-    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
-  });
-
-  it('rejects malformed invitation creation and acceptance at the route boundary', async () => {
-    const createResponse = await buildApp(authorizedDeps()).request(API_ROUTES.invitationsCreate.path, {
-      method: 'POST',
-      headers: { host: 'default.localhost', cookie: 'session=test' },
-      body: JSON.stringify({ email: 'not-an-email', role: 'admin' }),
-    });
-    expect(createResponse.status).toBe(400);
-    expect(await createResponse.json()).toMatchObject({
-      ok: false,
-      error: { code: 'validation' },
-    });
-    const malformedCreateResponse = await buildApp(authorizedDeps()).request(
-      API_ROUTES.invitationsCreate.path,
-      {
-        method: 'POST',
-        headers: { host: 'default.localhost', cookie: 'session=test' },
-        body: '{',
-      },
-    );
-    expect(malformedCreateResponse.status).toBe(400);
-
-    const acceptResponse = await buildApp(baseDeps()).request(
-      '/api/public/invitations/invite-secret/accept',
-      { method: 'POST', body: '{' },
-    );
-    expect(acceptResponse.status).toBe(400);
-    expect(await acceptResponse.json()).toMatchObject({
-      ok: false,
-      error: { code: 'validation' },
     });
   });
 

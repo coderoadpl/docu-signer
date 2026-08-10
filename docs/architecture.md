@@ -691,15 +691,14 @@ expressing its reads as a `visitor` capability would be dishonest — `visitor` 
 an *authenticated* tenant-less principal, and a public reader is not authenticated
 at all. Instead the public handlers are registered ahead of the `/api/*`
 tenant-resolution middleware and call only use-cases that take **no** `ctx:
-{ identity }`: `getPublicTenantProfile`, `getInvitation`, and
-`acceptInvitation`. A public handler therefore *structurally cannot* reach a
-tenant-scoped, identity-bearing use-case (the US-028 acceptance criterion). This
-is enforced by a config-regression probe
+{ identity }` (e.g. `getPublicTenantProfile`), so a public handler *structurally
+cannot* reach a tenant-scoped, identity-bearing use-case (the US-028 acceptance
+criterion). This is enforced by a config-regression probe
 (`config-regression/public-surface.test.ts`): it scans the public app for any
 identity-bearing use-case name or `authorize`/`resolveIdentity` reference and
-asserts the three public use-case signatures take input/token rather than
-`ctx: Ctx`. The default-deny capability model is therefore untouched — public
-flows live *outside* it by construction, not as a new grant row.
+asserts the public use-case's first parameter is not `ctx: Ctx`. The default-deny
+capability model is therefore untouched — public reads live *outside* it by
+construction, not as a new grant row.
 
 — **TYPE**: `Capability` is a closed union and the helpers take it as a required
 argument, so a use-case cannot name a capability the union does not declare;
@@ -991,28 +990,25 @@ reject `db.transaction()` on any code path that can run on `neon-http`.
 
 Products on this foundation ship no public marketing pages — creators bring
 their own sites ([ADR-0001](decisions/0001-public-surface-embeds-over-pages.md)).
-The platform owns the commerce layer and exposes it as: public contract routes
-(unauthenticated, open CORS; tenant-profile reads are cache keyed to tenant
-content version), shareable flow URLs on tenant domains (checkout without any
+The platform owns the commerce layer and exposes it as: public read-only
+contract routes (unauthenticated GET, open CORS, cache keyed to tenant content
+version), shareable flow URLs on tenant domains (checkout without any
 creator-hosted page), post-MVP iframe embed widgets (`/embed/*`, Hono +
 `hono/jsx` typed templates — plain HTML, no client runtime), and a recommended
 (pending confirmation) headless React SDK reusing `core/contract` types. The
 authenticated app remains a static SPA.
 
 **Built (US-028, FR-23/FR-24, [ADR-0006](decisions/0006-public-read-only-surface.md)):**
-the public contract routes are live as the `PUBLIC_API_ROUTES` group in
-`core/contract` — a structurally distinct registry under `/api/public/*`. It
-contains tenant discovery/profile `GET`s, invitation lookup `GET`, and invitation
-acceptance `POST`. Tenant profiles (`slug`, `displayName`, `contentVersion` —
-never emails, access grants or documents) use `getPublicTenantProfile`;
-invitations use `getInvitation` and `acceptInvitation`, with auth-style rate
-limiting on acceptance. All three use-cases take **no identity** and run no
-`authorize`. The group is registered on the main app before the `/api/*`
+the public read-only contract routes are live as the `PUBLIC_API_ROUTES` group in
+`core/contract` — a structurally distinct registry under `/api/public/*`,
+unauthenticated `GET` only. The demo route is the **public tenant profile**
+(`slug`, `displayName`, `contentVersion` — never emails, access grants or documents),
+served by `getPublicTenantProfile`, a use-case that takes **no identity** and runs
+no `authorize`. It is registered on the main app before the `/api/*`
 tenant-resolution middleware, so a public request never reaches identity
-resolution (§Authorization), and its open CORS middleware covers every public
-endpoint. Tenant profile routes are slug-addressed, so their URLs are shareable
-on the apex or any tenant domain (FR-24). Caching, CORS and versioning are
-described in §HTTP caching. Not yet built: shareable checkout flows, embed
+resolution (§Authorization). The route is slug-addressed, so the same URL is
+shareable on the apex or any tenant domain (FR-24). Caching, CORS and versioning
+are described in §HTTP caching. Not yet built: shareable checkout flows, embed
 widgets, the headless SDK.
 
 ## HTTP caching
@@ -1106,16 +1102,15 @@ code.
 - `EmailPort` (server): `sendMail({ to, subject, text, html?, link? })` — the one
   outbound-mail seam (US-026). `link` is the optional primary-action URL a
   transactional mail carries; a transport embeds it in the body and otherwise
-  ignores the field. Composition selects `smtp` (default — any RFC relay, Amazon
-  SES SMTP creds included), `ses` (Amazon SES direct over the SESv2 HTTP API,
-  standard AWS_* credentials), or the no-op adapter when SMTP is unconfigured.
-  The no-op is deliberate: invitation creation stays successful and the UI
-  exposes the copy-link fallback; composition logs one clear warning. There is
-  **no dev-only transport**: `.env.example` and the smoke/e2e/CI harnesses
-  explicitly configure the real `smtp` adapter against local **Mailpit**
-  (docker-compose.dev.yml), and the magic-link and password-reset gates recover
-  captured links over its HTTP API. The auth mail senders in `create-auth.ts`
-  are consumers of `sendMail`, not the port's shape.
+  ignores the field. Two adapters in `adapters/email/`, selected by
+  `EMAIL_TRANSPORT`: `smtp` (default — any RFC relay,
+  Amazon SES SMTP creds included) and `ses` (Amazon SES direct over the SESv2 HTTP
+  API, standard AWS_* credentials). There is **no dev transport**: dev/e2e/CI run
+  the real `smtp` adapter pointed at a local **Mailpit** (docker-compose.dev.yml)
+  that captures real sends instead of delivering — the magic-link and password
+  reset gates read the message back over Mailpit's HTTP API to recover the link,
+  so there is no in-app dev route to keep off production. The auth mail senders
+  in `create-auth.ts` are consumers of `sendMail`, not the port's shape.
 - `DocumentRepository`: tenant-scoped archive metadata and file records.
 - `TenantSettingsRepository`: tenant-scoped signature-record retention, PDF-seal
   enablement and declared/actual date policy.
@@ -1179,7 +1174,7 @@ repository ports.
 decision).
 
 - Shape as built: `sendMail({ to, subject, text, html?, link? })`. No `tenantId`:
-  the foundation sends from one verified domain (`MAIL_FROM`); per-tenant branded
+  the foundation sends from one verified domain (`EMAIL_FROM`); per-tenant branded
   senders are a when-triggered extension. `link` is the optional primary-action
   URL — a general transactional-mail concept — so magic-link and password-reset
   auth mail are consumers of the seam, not the port's shape.
@@ -1204,10 +1199,9 @@ decision).
   real sends like a self-hosted MailTrap; the magic-link and password-reset gates
   recover links over Mailpit's HTTP API (`/api/v1/messages`,
   `/api/v1/message/{id}`) and follow them, so no in-app retrieval route ships.
-  Composition **fails fast** when `ses` is selected without its AWS block.
-  SMTP configuration is either absent (the warned no-op/copy-link mode) or a
-  complete host/port/from block; SMTP auth stays optional for open local relays.
-  Every email-vendor SDK (nodemailer and
+  Composition **fails fast** when
+  `ses` is selected without its AWS block (an open local Mailpit needs no SMTP
+  auth, so `smtp` requires only a host). Every email-vendor SDK (nodemailer and
   `@aws-sdk/*`) is contained to `adapters/email` by depcruise
   (`smtp-sdk-only-in-adapters-email`). The originally-sketched Resend/`console`
   split was superseded by SMTP-as-universal-default
@@ -1370,9 +1364,8 @@ foundation):
   vars are marked Sensitive** (write-only in the dashboard/CLI; control 3 of 5).
 - **Migrations and the deploy admin seed run at build time** against the shared
   deployed database. `db:seed:deploy` runs after migration and creates
-  one bootstrap owner plus the `default` tenant only when the database has zero
-  users; later deploys never update credentials or add accounts. It never invokes
-  the local `db:seed` demo fixture. With no admin 1 pair it is a no-op.
+  only the `default` tenant plus the `SEED_ADMIN*` accounts and grants; it never
+  invokes the local `db:seed` demo fixture. With no admin 1 pair it is a no-op.
   Preview and Production migrations are forward-only, so destructive changes
   ship as two deploys, expand → contract. A Preview build is not a database
   isolation boundary in this fork.

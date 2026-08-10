@@ -44,6 +44,10 @@ const runSeed = (): void => {
       ...process.env,
       DATABASE_URL: seedDatabaseUrl,
       BETTER_AUTH_SECRET: 'seed-integration-secret-at-least-32-characters',
+      SEED_ADMIN1_EMAIL: 'owner@podpisy.test',
+      SEED_ADMIN1_PASSWORD: 'owner-password',
+      SEED_ADMIN2_EMAIL: 'admin@podpisy.test',
+      SEED_ADMIN2_PASSWORD: 'admin-password',
     },
   });
   expect(result.status, result.stderr).toBe(0);
@@ -136,8 +140,10 @@ describe('seed convergence', () => {
       const expected = await readDataset(client);
 
       expect(expected.users.map((row) => row.email)).toEqual([
+        'admin@podpisy.test',
         'demo@agentproofarch.dev',
         'mag@example.com',
+        'owner@podpisy.test',
       ]);
       expect(expected.tenants).toEqual([
         { id: 'tenant-default', slug: 'default', name: 'Archiwum dokumentów' },
@@ -148,6 +154,18 @@ describe('seed convergence', () => {
         email: row.email,
         role: row.role,
       }))).toEqual([
+        {
+          id: 'admin-default-1',
+          tenant_id: 'tenant-default',
+          email: 'owner@podpisy.test',
+          role: 'owner',
+        },
+        {
+          id: 'admin-default-2',
+          tenant_id: 'tenant-default',
+          email: 'admin@podpisy.test',
+          role: 'admin',
+        },
         {
           id: 'admin-default-demo',
           tenant_id: 'tenant-default',

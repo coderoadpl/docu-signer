@@ -17,7 +17,6 @@ import {
 import {
   apiTokenCreateInputSchema,
   documentCreateInputSchema,
-  invitationCreateInputSchema,
   tenantSettingsUpdateInputSchema,
 } from '#core/contract/index.js';
 import {
@@ -904,42 +903,6 @@ token.command('list').description('List personal API tokens').action(async () =>
 token.command('revoke <id>').description('Revoke a personal API token').action(async (id: string) => {
   const ctx = cliCtx();
   emit(await ctx.api.revokeApiToken(id), ctx.json, () => `revoked: ${id}`);
-});
-
-const invitation = program.command('invitation').description('Manage archive invitations');
-
-invitation
-  .command('create')
-  .description('Create or regenerate an invitation; the link is shown once')
-  .requiredOption('--email <email>')
-  .requiredOption('--role <role>', 'owner|admin')
-  .action(async (options: { email: string; role: string }) => {
-    const ctx = cliCtx();
-    const input = parseArgs(
-      invitationCreateInputSchema,
-      { email: options.email, role: options.role },
-      ctx.json,
-    );
-    if (input === undefined) return;
-    emit(await ctx.api.createInvitation(input), ctx.json, (data) =>
-      `created: ${data.invitation.email} (${data.invitation.id})\nlink: ${data.url}`,
-    );
-  });
-
-invitation.command('list').description('List archive invitations').action(async () => {
-  const ctx = cliCtx();
-  emit(await ctx.api.listInvitations(), ctx.json, (data) =>
-    data.invitations.length === 0
-      ? 'no invitations'
-      : data.invitations
-          .map((item) => `- ${item.email}\t${item.role}\t${item.status}\t(${item.id})`)
-          .join('\n'),
-  );
-});
-
-invitation.command('revoke <id>').description('Revoke a pending invitation').action(async (id: string) => {
-  const ctx = cliCtx();
-  emit(await ctx.api.revokeInvitation(id), ctx.json, () => `revoked: ${id}`);
 });
 
 const publicCmd = program

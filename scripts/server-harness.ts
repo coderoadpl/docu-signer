@@ -69,7 +69,6 @@ export const bootServer = async ({
       SMTP_HOST: 'localhost',
       SMTP_PORT: String(MAILPIT_SMTP_PORT),
       SMTP_SECURE: 'false',
-      MAIL_FROM: 'Podpisy <no-reply@localhost>',
     },
   });
   let logs = '';

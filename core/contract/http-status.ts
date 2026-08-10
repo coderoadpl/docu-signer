@@ -9,7 +9,6 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   export_too_large: 413,
   tenant_not_found: 404,
   unavailable: 503,
-  rate_limited: 429,
   internal: 500,
 };
 
@@ -22,6 +21,5 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   export_too_large: 9,
   tenant_not_found: 7,
   unavailable: 8,
-  rate_limited: 11,
   internal: 10,
 };
