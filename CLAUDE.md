@@ -58,18 +58,22 @@ TEST: the retry-plus-trace config itself surfaces and records every flake ·
 REVIEW+AI: the PR-template line; a rerun-to-green merge without a filed P1 is
 rejected.)
 
+Security-relevant rule reversals require an owner-visible artifact in the repo
+before ai-review may accept them; the owner's confirming PR #65 comment is the
+exemplar.
+
 - `pnpm run e2e` = the **browser** gate: Playwright drives real browsers over
   the real stack (isolated `agentproofarch_e2e` DB, `localhost` registered as a
   single-tenant custom domain, `entry.node.ts` serving the built bundle): Chromium
-  covers all six spec files (18 tests), and WebKit reruns `documents.spec.ts` to
-  pin the Safari/pdf.js legacy regression (26 test executions total):
+  covers all six spec files (19 tests), and WebKit reruns `documents.spec.ts` to
+  pin the Safari/pdf.js legacy regression (28 test executions total):
   `app.spec.ts` (login → archive navigation →
   failed-login → cache headers → liveness/readiness → anonymous redirect to login),
   `documents.spec.ts` (create → role uploads → source-only preview link +
-  content-type → export; detail signing; trash → restore roundtrip; signature
-  pad pen/touch stamp placement; QR remote pad two-context mass signing;
-  draft-filter approve roundtrip; mass signing sign/skip and signed-file-target
-  flows),
+  content-type → export; detail signing; immediate source replacement with
+  signature transfer; trash → restore roundtrip; signature pad pen/touch stamp
+  placement; QR remote pad two-context mass signing; draft-filter approve
+  roundtrip; mass signing sign/skip and signed-file-target flows),
   `magic-link.spec.ts` (trusted-user sign-in), `passkey.spec.ts`
   (registration → passkey sign-in), `settings.spec.ts` (account security and
   registration), and `password-reset.spec.ts`

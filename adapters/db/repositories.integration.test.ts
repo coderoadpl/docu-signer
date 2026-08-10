@@ -1,5 +1,6 @@
 import { drizzle as drizzleNodePg, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate as migrateNodePg } from 'drizzle-orm/node-postgres/migrator';
+import { eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -11,6 +12,7 @@ import { createSavedSearchRepository } from './saved-searches-repository.js';
 import { createUserPreferenceRepository } from './user-preferences-repository.js';
 import { createTenantSettingsRepository } from './tenant-settings-repository.js';
 import { createSignatureRecordRepository } from './signature-records-repository.js';
+import { createSourceUpdateRequestRepository } from './source-update-requests-repository.js';
 import { tenantAdmins, tenants, user } from './schema.js';
 import * as schema from './schema.js';
 import { closePoolAndDropIntegrationDatabase } from './test-support/integration-database.js';
@@ -420,6 +422,139 @@ describe('SignatureRecordRepository', () => {
     await expect(
       repository.listByDocument('tenant-a', documentId, null, 10),
     ).resolves.toEqual([]);
+  });
+});
+
+describe('SourceUpdateRequestRepository', () => {
+  it('enforces one pending request and atomically promotes files and re-points records', async () => {
+    const documents = createDocumentRepository(db);
+    const signatures = createSignatureRecordRepository(db);
+    const requests = createSourceUpdateRequestRepository(db);
+    const documentId = '10101010-1010-4010-8010-101010101010';
+    const sourceFileId = '20202020-2020-4020-8020-202020202020';
+    const signedFileId = '30303030-3030-4030-8030-303030303030';
+    const stagedSourceFileId = '40404040-4040-4040-8040-404040404040';
+    const stagedSignedFileId = '50505050-5050-4050-8050-505050505050';
+    const requestId = '60606060-6060-4060-8060-606060606060';
+    await documents.create({
+      id: documentId,
+      tenantId: 'tenant-a',
+      title: 'Aktualizacja źródła',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-08',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: ['source-update-itest'],
+    });
+    for (const input of [
+      { id: sourceFileId, role: 'source' as const },
+      { id: signedFileId, role: 'signed-digital' as const },
+      { id: stagedSourceFileId, role: 'other' as const },
+      { id: stagedSignedFileId, role: 'other' as const },
+    ]) {
+      await documents.createFile('tenant-a', {
+        ...input,
+        documentId,
+        fileName: `${input.id}.pdf`,
+        contentType: 'application/pdf',
+        sizeBytes: 3,
+        storageKey: `documents/tenant-a/source-update/${input.id}`,
+      });
+    }
+    await signatures.create({
+      id: '70707070-7070-4070-8070-707070707070',
+      tenantId: 'tenant-a',
+      documentId,
+      fileId: signedFileId,
+      signedBy: 'user-admin',
+      payload: [
+        {
+          strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
+          pageIndex: 0,
+          placement: { offsetX: 0, offsetY: 0, scale: 1 },
+          inkColor: 'black',
+          inkSize: 2,
+        },
+      ],
+    });
+    await expect(
+      requests.create({
+        id: requestId,
+        tenantId: 'tenant-a',
+        documentId,
+        requestedBy: 'user-owner',
+        newSourceFileId: stagedSourceFileId,
+        mode: 'transfer',
+        approvalIds: [
+          {
+            id: '80808080-8080-4080-8080-808080808080',
+            approverId: 'user-admin',
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      id: requestId,
+      approvals: [{ approverId: 'user-admin', decision: 'pending' }],
+    });
+    await expect(
+      requests.create({
+        id: '90909090-9090-4090-8090-909090909090',
+        tenantId: 'tenant-a',
+        documentId,
+        requestedBy: 'user-owner',
+        newSourceFileId: stagedSourceFileId,
+        mode: 'delete-signed',
+        approvalIds: [],
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      requests.listPendingByApprover('tenant-a', 'user-admin'),
+    ).resolves.toMatchObject([{ id: requestId }]);
+    await expect(documents.findById('tenant-a', documentId)).resolves.toMatchObject({
+      id: documentId,
+    });
+    await expect(documents.listFiles('tenant-a', documentId)).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: stagedSourceFileId })]),
+    );
+    await expect(
+      documents.listFilesIncludingDeleted('tenant-a', documentId),
+    ).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: stagedSourceFileId })]),
+    );
+    await expect(
+      documents.listAllFilesIncludingDeleted('tenant-a', documentId),
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: stagedSourceFileId })]),
+    );
+    await expect(
+      requests.decide('tenant-a', requestId, 'user-admin', 'accepted'),
+    ).resolves.toMatchObject({ approvals: [{ decision: 'accepted' }] });
+    await expect(
+      requests.complete({
+        tenantId: 'tenant-a',
+        requestId,
+        completedBy: 'user-admin',
+        signedFileId: stagedSignedFileId,
+      }),
+    ).resolves.toMatchObject({ status: 'completed' });
+    await expect(documents.listFiles('tenant-a', documentId)).resolves.toMatchObject([
+      { id: stagedSourceFileId, role: 'source' },
+      { id: stagedSignedFileId, role: 'signed-digital' },
+    ]);
+    await expect(
+      signatures.listByDocument('tenant-a', documentId, null, 10),
+    ).resolves.toMatchObject([{ fileId: stagedSignedFileId, signedBy: 'user-admin' }]);
+    const stored = await db
+      .select()
+      .from(schema.sourceUpdateRequests)
+      .where(eq(schema.sourceUpdateRequests.id, requestId));
+    expect(stored[0]).toMatchObject({
+      priorSourceFileIds: [sourceFileId],
+      priorSignedFileIds: [signedFileId],
+      resolvedBy: 'user-admin',
+      resolvedAt: expect.any(Date),
+    });
   });
 });
 

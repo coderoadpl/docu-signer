@@ -101,6 +101,147 @@ const renderPage = async (
 };
 
 describe('DocumentDetailPage', () => {
+  it('enables source updates with signature records and shows both dialog choices', async () => {
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/signature-records`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            items: [
+              {
+                id: '55555555-5555-4555-8555-555555555555',
+                tenantId: 'tenant-1',
+                documentId: DOCUMENT_ID,
+                fileId: SIGNED_ID,
+                signedBy: 'user-owner',
+                payload: [
+                  {
+                    strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
+                    pageIndex: 0,
+                    placement: { offsetX: 0, offsetY: 0, scale: 1 },
+                    inkColor: 'black',
+                    inkSize: 2,
+                  },
+                ],
+                createdAt: '2026-08-08T10:00:00.000Z',
+              },
+            ],
+            nextCursor: null,
+          },
+        }),
+      ),
+    );
+    await renderPage();
+
+    const action = await screen.findByRole('button', { name: 'Uaktualnij źródło' });
+    expect(action).toBeEnabled();
+    await userEvent.click(action);
+    const dialog = screen.getByRole('dialog', { name: 'Uaktualnij źródło' });
+    expect(within(dialog).getByRole('radio', { name: /Usuń podpisany/u })).toBeInTheDocument();
+    expect(within(dialog).getByRole('radio', { name: /Przenieś podpisy/u })).toBeInTheDocument();
+  });
+
+  it('disables source updates for legacy signed files and explains why', async () => {
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+    );
+    await renderPage();
+
+    const action = await screen.findByRole('button', { name: 'Uaktualnij źródło' });
+    expect(action).toBeDisabled();
+    await userEvent.hover(action.parentElement ?? action);
+    expect(
+      await screen.findByText(
+        'Brak zapisu podpisów — dokumenty podpisane przed włączeniem zapisu wymagają ponownego podpisania.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows signer decisions on a pending source update', async () => {
+    const decision = vi.fn();
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'user-signer',
+            email: 'signer@example.com',
+            name: 'Signer',
+            tenant: {
+              id: 'tenant-1',
+              slug: 'default',
+              name: 'Archiwum',
+              staffRole: 'admin',
+            },
+          },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/source-update-request`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            request: {
+              id: '66666666-6666-4666-8666-666666666666',
+              tenantId: 'tenant-1',
+              documentId: DOCUMENT_ID,
+              requestedBy: 'user-owner',
+              newSourceFileId: '77777777-7777-4777-8777-777777777777',
+              mode: 'transfer',
+              status: 'pending',
+              approvals: [
+                {
+                  id: '88888888-8888-4888-8888-888888888888',
+                  approverId: 'user-signer',
+                  decision: 'pending',
+                },
+              ],
+            },
+          },
+        }),
+      ),
+      http.post('/api/source-update-requests/:requestId/decision', async ({ request }) => {
+        decision(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            request: {
+              id: '66666666-6666-4666-8666-666666666666',
+              tenantId: 'tenant-1',
+              documentId: DOCUMENT_ID,
+              requestedBy: 'user-owner',
+              newSourceFileId: '77777777-7777-4777-8777-777777777777',
+              mode: 'transfer',
+              status: 'rejected',
+              approvals: [
+                {
+                  id: '88888888-8888-4888-8888-888888888888',
+                  approverId: 'user-signer',
+                  decision: 'rejected',
+                },
+              ],
+            },
+          },
+        });
+      }),
+    );
+    await renderPage();
+
+    expect(
+      await screen.findByText(/oczekuje na akceptację wymaganych podpisujących/u),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zaakceptuj' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Odrzuć' }));
+    await waitFor(() => expect(decision).toHaveBeenCalledWith({ decision: 'reject' }));
+  });
+
   it('returns to documents with the preserved list search params', async () => {
     server.use(
       http.get(`/api/documents/${DOCUMENT_ID}`, () =>

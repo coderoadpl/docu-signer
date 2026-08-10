@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
 
 import {
   signatureRecordPayloadSchema,
@@ -50,7 +50,10 @@ export const createSignatureRecordRepository = (
     const rows = await db
       .insert(signatureRecords)
       .values(input)
-      .onConflictDoNothing({ target: signatureRecords.fileId })
+      .onConflictDoNothing({
+        target: signatureRecords.fileId,
+        where: sql`${signatureRecords.replayedFromId} IS NULL`,
+      })
       .returning();
     return rows[0] ? toSignatureRecord(rows[0]) : null;
   },

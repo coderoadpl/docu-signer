@@ -79,6 +79,22 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('trash-list');
     expect(documentHelp.stdout).toContain('restore');
     expect(documentHelp.stdout).toContain('purge');
+    expect(documentHelp.stdout).toContain('update-source');
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('requires an explicit signature policy for source updates', () => {
+    const result = run(
+      '--json',
+      'document',
+      'update-source',
+      '11111111-1111-4111-8111-111111111111',
+      'nowe.pdf',
+    );
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
   }, CLI_TEST_TIMEOUT_MS);
 
   it('maps an unknown removed command to the validation exit code', () => {

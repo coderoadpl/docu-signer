@@ -1,5 +1,7 @@
 import { getStroke, type StrokeOptions } from 'perfect-freehand';
 
+import { signatureInkToPdfPaths } from '#core/client/index.js';
+
 export interface InkPoint {
   x: number;
   y: number;
@@ -615,19 +617,16 @@ export const inkToPdfPaths = (
   metrics: CanvasPdfMetrics,
   inkSize?: number,
 ): InkOutlinePath[] =>
-  inkToCssOutlines(strokes, placement, metrics, inkSize).map((outline) => {
-    const points = outline.points.map(({ x, y }) => {
-      const point = canvasCssPointToPdf({ x, y }, metrics);
-      return {
-        x: point.x,
-        y: -point.y,
-      };
-    });
-    return {
-      path: outlinePointsToSvgPath(points),
-      points,
-    };
-  });
+  signatureInkToPdfPaths(
+    {
+      strokes,
+      pageIndex: 0,
+      placement,
+      inkColor: 'black',
+      inkSize: inkSize ?? DEFAULT_SIGNING_INK_SIZE,
+    },
+    metrics,
+  );
 
 export const signedFileName = (sourceName: string): string => {
   const stem = sourceName.replace(/\.pdf$/iu, '');

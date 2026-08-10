@@ -15,6 +15,7 @@ import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
 import { createSignatureRecordRepository } from '#adapters/db/signature-records-repository.js';
+import { createSourceUpdateRequestRepository } from '#adapters/db/source-update-requests-repository.js';
 import {
   createHealthPort,
   createTenantAccessReader,
@@ -142,6 +143,7 @@ beforeAll(async () => {
     userPreferences: createUserPreferenceRepository(db),
     tenantSettings: createTenantSettingsRepository(db),
     signatureRecords: createSignatureRecordRepository(db),
+    sourceUpdateRequests: createSourceUpdateRequestRepository(db),
     savedSearches: {
       listByTenant: async () => [],
       create: async (input) => ({ ...input, createdAt: '2026-08-02T00:00:00.000Z' }),

@@ -10,3 +10,4 @@ export * from './usecases/public.js';
 export * from './usecases/pad-sessions.js';
 export * from './usecases/tenant-settings.js';
 export * from './usecases/signature-records.js';
+export * from './usecases/source-update-requests.js';

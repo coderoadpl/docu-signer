@@ -120,6 +120,10 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
     ...actions.trashedDocuments,
     enabled: Boolean(tenant),
   });
+  const pendingSourceUpdates = useQuery({
+    ...actions.pendingSourceUpdateRequests,
+    enabled: Boolean(tenant),
+  });
   const createSavedSearch = useMutation(savedSearchActions.createSavedSearch);
   const deleteSavedSearch = useMutation({
     ...savedSearchActions.deleteSavedSearch,
@@ -130,6 +134,7 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
   });
   const savedSearchItems = savedSearches.data?.savedSearches ?? [];
   const trashCount = trashedDocuments.data?.documents.length ?? 0;
+  const pendingSourceUpdateCount = pendingSourceUpdates.data?.requests.length ?? 0;
 
   const closeSavedSearchMenu = () => {
     setSavedSearchMenuAnchor(null);
@@ -217,6 +222,17 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
           })}
         </Box>
       ) : null}
+      <ListItemButton
+        className="app-shell-nav-item"
+        component={RouterLink}
+        to="/app/source-updates"
+        activeOptions={{ exact: true, includeSearch: false }}
+      >
+        <ListItemText primary="Aktualizacje źródeł" />
+        {pendingSourceUpdateCount > 0 ? (
+          <Chip size="small" variant="outlined" label={pendingSourceUpdateCount} />
+        ) : null}
+      </ListItemButton>
       <ListItemButton
         className="app-shell-nav-item"
         component={RouterLink}

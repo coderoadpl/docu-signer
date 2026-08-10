@@ -23,6 +23,7 @@ import { createVercelBlobStorage } from '#adapters/storage/vercel-blob.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
 import { createSignatureRecordRepository } from '#adapters/db/signature-records-repository.js';
+import { createSourceUpdateRequestRepository } from '#adapters/db/source-update-requests-repository.js';
 import type {
   AuthPort,
   ApiTokenRepository,
@@ -35,6 +36,7 @@ import type {
   PadSessionSecretPort,
   SavedSearchRepository,
   SignatureRecordRepository,
+  SourceUpdateRequestRepository,
   StoragePort,
   TenantAccessReader,
   TenantDomainRepository,
@@ -57,6 +59,7 @@ export interface AppDeps {
   userPreferences: UserPreferenceRepository;
   tenantSettings: TenantSettingsRepository;
   signatureRecords: SignatureRecordRepository;
+  sourceUpdateRequests: SourceUpdateRequestRepository;
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
@@ -185,6 +188,7 @@ export const createDeps = (env: Env): AppDeps => {
     userPreferences: createUserPreferenceRepository(db),
     tenantSettings: createTenantSettingsRepository(db),
     signatureRecords: createSignatureRecordRepository(db),
+    sourceUpdateRequests: createSourceUpdateRequestRepository(db),
     storage,
     tenantDomains,
     email,

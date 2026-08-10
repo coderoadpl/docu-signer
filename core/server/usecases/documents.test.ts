@@ -133,6 +133,14 @@ const fake = (
             (document) => document.id === id && document.tenantId === tenantId,
           ),
       ),
+    listAllFilesIncludingDeleted: async (tenantId, id) =>
+      files.filter(
+        (file) =>
+          file.documentId === id &&
+          documents.some(
+            (document) => document.id === id && document.tenantId === tenantId,
+          ),
+      ),
     listFilesForDocuments: async (tenantId, ids) =>
       files.filter(
         (file) =>
@@ -1007,7 +1015,7 @@ describe('documents use-cases', () => {
           ...state.deps,
           documents: {
             ...state.deps.documents,
-            listFilesIncludingDeleted: async () => Promise.reject(new Error('failed port')),
+            listAllFilesIncludingDeleted: async () => Promise.reject(new Error('failed port')),
           },
         },
       ),

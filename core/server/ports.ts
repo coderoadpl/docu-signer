@@ -11,6 +11,9 @@ import type {
   SignatureRecord,
   SignatureRecordCursor,
   SignatureRecordPayload,
+  SourceUpdateApprovalDecision,
+  SourceUpdateMode,
+  SourceUpdateRequest,
   Result,
   StaffRole,
   Tenant,
@@ -28,6 +31,7 @@ export interface DocumentRepository {
   findAnyById(tenantId: string, documentId: string): Promise<Document | null>;
   listFiles(tenantId: string, documentId: string): Promise<DocumentFile[]>;
   listFilesIncludingDeleted(tenantId: string, documentId: string): Promise<DocumentFile[]>;
+  listAllFilesIncludingDeleted(tenantId: string, documentId: string): Promise<DocumentFile[]>;
   listFilesForDocuments(
     tenantId: string,
     documentIds: string[],
@@ -119,6 +123,44 @@ export interface SignatureRecordRepository {
     signedBy: string;
     payload: SignatureRecordPayload;
   }): Promise<SignatureRecord | null>;
+}
+
+export interface SourceUpdateRequestRepository {
+  create(input: {
+    id: string;
+    tenantId: string;
+    documentId: string;
+    requestedBy: string;
+    newSourceFileId: string;
+    mode: SourceUpdateMode;
+    approvalIds: Array<{ id: string; approverId: string }>;
+  }): Promise<SourceUpdateRequest | null>;
+  findById(tenantId: string, requestId: string): Promise<SourceUpdateRequest | null>;
+  findActiveByDocument(
+    tenantId: string,
+    documentId: string,
+  ): Promise<SourceUpdateRequest | null>;
+  listPendingByApprover(
+    tenantId: string,
+    approverId: string,
+  ): Promise<SourceUpdateRequest[]>;
+  decide(
+    tenantId: string,
+    requestId: string,
+    approverId: string,
+    decision: Exclude<SourceUpdateApprovalDecision, 'pending'>,
+  ): Promise<SourceUpdateRequest | null>;
+  cancel(
+    tenantId: string,
+    requestId: string,
+    requestedBy: string,
+  ): Promise<SourceUpdateRequest | null>;
+  complete(input: {
+    tenantId: string;
+    requestId: string;
+    completedBy: string;
+    signedFileId: string | null;
+  }): Promise<SourceUpdateRequest | null>;
 }
 
 export interface PadSessionRepository {

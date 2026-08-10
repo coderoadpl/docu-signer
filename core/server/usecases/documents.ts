@@ -242,7 +242,10 @@ export const purgeDocument = async (
   if (tokenDeleteDenial) return tokenDeleteDenial;
   const document = await deps.documents.findAnyById(scope.value, documentId);
   if (!document) return ok(undefined);
-  const files = await deps.documents.listFilesIncludingDeleted(scope.value, documentId);
+  const files = await deps.documents.listAllFilesIncludingDeleted(
+    scope.value,
+    documentId,
+  );
   for (const file of files) {
     const removed = await deps.storage.delete(file.storageKey);
     if (!removed.ok) return removed;

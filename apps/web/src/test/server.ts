@@ -9,6 +9,22 @@ import { z } from 'zod';
  * this with its own `server.use(...)`.
  */
 export const server = setupServer(
+  http.get('*/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'user-owner',
+        email: 'owner@example.com',
+        name: 'Owner',
+        tenant: {
+          id: 'tenant-default',
+          slug: 'default',
+          name: 'Archiwum',
+          staffRole: 'owner',
+        },
+      },
+    }),
+  ),
   http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: false, passwordResetEnabled: true } })),
   http.get('*/api/saved-searches', () =>
     HttpResponse.json({ ok: true, data: { savedSearches: [] } }),
@@ -32,6 +48,15 @@ export const server = setupServer(
         },
       },
     }),
+  ),
+  http.get('*/api/documents/:documentId/signature-records', () =>
+    HttpResponse.json({ ok: true, data: { items: [], nextCursor: null } }),
+  ),
+  http.get('*/api/documents/:documentId/source-update-request', () =>
+    HttpResponse.json({ ok: true, data: { request: null } }),
+  ),
+  http.get('*/api/source-update-requests/pending', () =>
+    HttpResponse.json({ ok: true, data: { requests: [] } }),
   ),
   http.post('*/api/documents/:documentId/signature-records', async ({ params, request }) => {
     const body = await request.json();

@@ -9,6 +9,8 @@ export const CAPABILITIES = [
   'user-preference:manage',
   'tenant-settings:manage',
   'signature-record:manage',
+  'source-update:read',
+  'source-update:manage',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -29,12 +31,15 @@ const GRANTS: Record<Capability, readonly Principal[]> = {
   'user-preference:manage': ['owner', 'admin'],
   'tenant-settings:manage': ['owner', 'admin'],
   'signature-record:manage': ['owner', 'admin'],
+  'source-update:read': ['owner', 'admin'],
+  'source-update:manage': ['owner', 'admin'],
 };
 
 const tokenAllows = (identity: Identity, capability: Capability): Verdict => {
   if (identity.apiToken === null) return { allowed: true };
   const scopes = identity.apiToken.scopes;
   if (capability === 'document:read' && scopes.includes('read')) return { allowed: true };
+  if (capability === 'source-update:read' && scopes.includes('read')) return { allowed: true };
   if (
     capability === 'document:write' &&
     (scopes.includes('write') || scopes.includes('write:draft'))

@@ -5,11 +5,16 @@ import { ApiError, createApiClient } from './http.js';
 import {
   apiTokensInvalidates,
   apiTokensQuery,
+  activeSourceUpdateRequestQuery,
+  cancelSourceUpdateRequestMutation,
   changePasswordMutation,
   createApiTokenMutation,
   createDocumentMutation,
   createSavedSearchMutation,
   createSignatureRecordMutation,
+  createSourceUpdateRequestMutation,
+  completeSourceUpdateRequestMutation,
+  decideSourceUpdateRequestMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
   deleteSavedSearchMutation,
@@ -22,6 +27,7 @@ import {
   meQuery,
   moveDocumentFileMutation,
   purgeDocumentMutation,
+  pendingSourceUpdateRequestsQuery,
   requestPasswordResetMutation,
   resetPasswordMutation,
   requestFileUploadMutation,
@@ -31,6 +37,7 @@ import {
   savedSearchesQuery,
   signatureRecordsInvalidates,
   signatureRecordsQuery,
+  sourceUpdateRequestsInvalidates,
   trashedDocumentsQuery,
   updateDocumentMutation,
   updateTenantSettingsMutation,
@@ -407,6 +414,11 @@ describe('tenant settings and signature record descriptors', () => {
       ],
       createdAt: '2026-08-07T10:00:00.000Z',
     };
+    const nextRecord = {
+      ...record,
+      id: '77777777-7777-4777-8777-777777777777',
+      createdAt: '2026-08-07T11:00:00.000Z',
+    };
     const fetchImpl = vi.fn<typeof fetch>((input, init) => {
       const url = String(input);
       if (url.endsWith('/api/tenant-settings')) {
@@ -417,9 +429,10 @@ describe('tenant settings and signature record descriptors', () => {
           },
         });
       }
-      return init?.method === 'GET'
-        ? response({ items: [record], nextCursor: null })
-        : response({ signatureRecord: record });
+      if (init?.method !== 'GET') return response({ signatureRecord: record });
+      return url.includes('cursor=next-page')
+        ? response({ items: [nextRecord], nextCursor: null })
+        : response({ items: [record], nextCursor: 'next-page' });
     });
     const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
     const client = newClient();
@@ -440,7 +453,7 @@ describe('tenant settings and signature record descriptors', () => {
       document.id,
     ]);
     await expect(client.fetchQuery(signatureRecordsQuery(api, document.id))).resolves.toEqual({
-      items: [record],
+      items: [record, nextRecord],
       nextCursor: null,
     });
     await expect(
@@ -451,6 +464,80 @@ describe('tenant settings and signature record descriptors', () => {
     ).resolves.toEqual({ signatureRecord: record });
     expect(signatureRecordsInvalidates(document.id)).toEqual({
       queryKey: ['signature-records', document.id],
+    });
+  });
+
+  it('propagates an error from a later signature-record page', async () => {
+    let page = 0;
+    const fetchImpl = vi.fn<typeof fetch>(() => {
+      page += 1;
+      return page === 1
+        ? response({ items: [], nextCursor: 'next-page' })
+        : errorResponse('unauthorized', 'Sign in');
+    });
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+
+    await expect(
+      newClient().fetchQuery(signatureRecordsQuery(api, document.id)),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      appError: { code: 'unauthorized', message: 'Sign in' },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('source update request descriptors', () => {
+  it('executes document, notification, and state transition calls', async () => {
+    const request = {
+      id: '66666666-6666-4666-8666-666666666666',
+      tenantId: 'tenant-default',
+      documentId: document.id,
+      requestedBy: 'user-owner',
+      newSourceFileId: documentFile.id,
+      mode: 'transfer' as const,
+      status: 'pending' as const,
+      approvals: [],
+    };
+    const fetchImpl = vi.fn<typeof fetch>((input) =>
+      String(input).endsWith('/pending')
+        ? response({ requests: [request] })
+        : response({ request }),
+    );
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+    const client = newClient();
+
+    await expect(
+      client.fetchQuery(activeSourceUpdateRequestQuery(api, document.id)),
+    ).resolves.toEqual({ request });
+    await expect(
+      client.fetchQuery(pendingSourceUpdateRequestsQuery(api)),
+    ).resolves.toEqual({ requests: [request] });
+    await expect(
+      new MutationObserver(client, createSourceUpdateRequestMutation(api)).mutate({
+        documentId: document.id,
+        input: { newSourceFileId: documentFile.id, mode: 'transfer' },
+      }),
+    ).resolves.toEqual({ request });
+    await expect(
+      new MutationObserver(client, decideSourceUpdateRequestMutation(api)).mutate({
+        requestId: request.id,
+        input: { decision: 'accept' },
+      }),
+    ).resolves.toEqual({ request });
+    await expect(
+      new MutationObserver(client, cancelSourceUpdateRequestMutation(api)).mutate(
+        request.id,
+      ),
+    ).resolves.toEqual({ request });
+    await expect(
+      new MutationObserver(client, completeSourceUpdateRequestMutation(api)).mutate({
+        requestId: request.id,
+        input: { signedFileId: documentFile.id },
+      }),
+    ).resolves.toEqual({ request });
+    expect(sourceUpdateRequestsInvalidates()).toEqual({
+      queryKey: ['source-update-requests'],
     });
   });
 });

@@ -564,6 +564,53 @@ test('signs a source document from the detail page', async ({ page }) => {
   await expect(signedSection.getByText(signedAgainName)).toBeVisible();
 });
 
+test('updates the source and immediately transfers the current account signatures', async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  const title = `Aktualizacja źródła e2e ${stamp}`;
+  const sourceName = `aktualizacja-stara-${stamp}.pdf`;
+  const replacementName = `aktualizacja-nowa-${stamp}.pdf`;
+  const transferredName = `aktualizacja-nowa-${stamp}-podpisany.pdf`;
+
+  await signIn(page);
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
+  await createSourceDocument(page, title, sourceName);
+
+  const sourceSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Źródło/ }) });
+  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
+  await signVisiblePdf(page);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  const updateSource = page.getByRole('button', { name: 'Uaktualnij źródło' });
+  await expect(updateSource).toBeEnabled();
+  await updateSource.click();
+  const updateDialog = page.getByRole('dialog', { name: 'Uaktualnij źródło' });
+  await updateDialog.locator('input[type="file"]').setInputFiles({
+    name: replacementName,
+    mimeType: 'application/pdf',
+    buffer: await validPdfBuffer(),
+  });
+  await updateDialog.getByRole('radio', { name: /Przenieś podpisy/u }).check();
+  await updateDialog.getByRole('button', { name: 'Uaktualnij' }).click();
+  await expect(updateDialog).toBeHidden();
+
+  await expect(sourceSection.getByText(replacementName)).toBeVisible();
+  await expect(sourceSection.getByText(sourceName)).toBeHidden();
+  const signedSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Podpis cyfrowy/ }) });
+  await expect(signedSection.getByText(transferredName)).toBeVisible();
+  const preview = signedSection.getByLabel(`Podgląd pliku ${transferredName}`);
+  const previewHref = await preview.getAttribute('href');
+  if (!previewHref) throw new Error('Missing transferred signature preview href');
+  const previewResponse = await page.request.get(previewHref);
+  expect(previewResponse.ok()).toBe(true);
+  expect(previewResponse.headers()['content-type']).toContain('application/pdf');
+});
+
 test('moves a document to trash and restores it', async ({ page }) => {
   const stamp = Date.now();
   const title = `Kosz e2e ${stamp}`;

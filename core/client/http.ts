@@ -44,6 +44,9 @@ import {
   savedSearchListOutputSchema,
   signatureRecordCreateOutputSchema,
   signatureRecordListOutputSchema,
+  sourceUpdateRequestGetOutputSchema,
+  sourceUpdateRequestListOutputSchema,
+  sourceUpdateRequestOutputSchema,
   tenantSettingsGetOutputSchema,
   tenantSettingsUpdateOutputSchema,
   userPreferenceGetOutputSchema,
@@ -69,6 +72,9 @@ import {
   type Result,
   type SetUserPreference,
   type CreateSignatureRecord,
+  type CompleteSourceUpdateRequest,
+  type CreateSourceUpdateRequest,
+  type DecideSourceUpdateRequest,
   type UpdateTenantSettings,
   type UpdateDocument,
 } from '#core/domain/index.js';
@@ -564,6 +570,72 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.signatureRecordsCreate.method,
       pathWith(API_ROUTES.signatureRecordsCreate.path, { documentId }),
       signatureRecordCreateOutputSchema,
+      input,
+      signal,
+    ),
+  getActiveSourceUpdateRequest: (documentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.sourceUpdateRequest.method,
+      pathWith(API_ROUTES.sourceUpdateRequest.path, { documentId }),
+      sourceUpdateRequestGetOutputSchema,
+      undefined,
+      signal,
+    ),
+  listPendingSourceUpdateRequests: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.sourceUpdateRequestsPending.method,
+      API_ROUTES.sourceUpdateRequestsPending.path,
+      sourceUpdateRequestListOutputSchema,
+      undefined,
+      signal,
+    ),
+  createSourceUpdateRequest: (
+    documentId: string,
+    input: CreateSourceUpdateRequest,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.sourceUpdateRequestsCreate.method,
+      pathWith(API_ROUTES.sourceUpdateRequestsCreate.path, { documentId }),
+      sourceUpdateRequestOutputSchema,
+      input,
+      signal,
+    ),
+  decideSourceUpdateRequest: (
+    requestId: string,
+    input: DecideSourceUpdateRequest,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.sourceUpdateRequestDecision.method,
+      pathWith(API_ROUTES.sourceUpdateRequestDecision.path, { requestId }),
+      sourceUpdateRequestOutputSchema,
+      input,
+      signal,
+    ),
+  cancelSourceUpdateRequest: (requestId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.sourceUpdateRequestCancel.method,
+      pathWith(API_ROUTES.sourceUpdateRequestCancel.path, { requestId }),
+      sourceUpdateRequestOutputSchema,
+      {},
+      signal,
+    ),
+  completeSourceUpdateRequest: (
+    requestId: string,
+    input: CompleteSourceUpdateRequest,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.sourceUpdateRequestComplete.method,
+      pathWith(API_ROUTES.sourceUpdateRequestComplete.path, { requestId }),
+      sourceUpdateRequestOutputSchema,
       input,
       signal,
     ),

@@ -30,6 +30,10 @@ import {
   savedSearchListOutputSchema,
   signatureRecordCreateInputSchema,
   signatureRecordListOutputSchema,
+  sourceUpdateRequestCompleteInputSchema,
+  sourceUpdateRequestCreateInputSchema,
+  sourceUpdateRequestDecisionInputSchema,
+  sourceUpdateRequestOutputSchema,
   tenantSettingsGetOutputSchema,
   tenantSettingsUpdateInputSchema,
   userPreferenceGetOutputSchema,
@@ -107,6 +111,14 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/documents/:documentId/signature-records',
     });
+    expect(API_ROUTES.sourceUpdateRequestsCreate).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/source-update-requests',
+    });
+    expect(API_ROUTES.sourceUpdateRequestDecision).toEqual({
+      method: 'POST',
+      path: '/api/source-update-requests/:requestId/decision',
+    });
     expect(PAD_SECRET_HEADER).toBe('x-pad-secret');
     expect(API_ROUTES.padSessionsCreate).toEqual({
       method: 'POST',
@@ -144,6 +156,40 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/pad-sessions/:sessionId/disconnect',
     });
+  });
+
+  it('validates source update request inputs without audit fields', () => {
+    const newSourceFileId = '11111111-1111-4111-8111-111111111111';
+    expect(
+      sourceUpdateRequestCreateInputSchema.safeParse({
+        newSourceFileId,
+        mode: 'transfer',
+      }).success,
+    ).toBe(true);
+    expect(
+      sourceUpdateRequestDecisionInputSchema.safeParse({ decision: 'accept' }).success,
+    ).toBe(true);
+    expect(
+      sourceUpdateRequestCompleteInputSchema.safeParse({
+        signedFileId: newSourceFileId,
+      }).success,
+    ).toBe(true);
+    expect(
+      sourceUpdateRequestOutputSchema.safeParse({
+        request: {
+          id: '22222222-2222-4222-8222-222222222222',
+          tenantId: 'tenant-default',
+          documentId: '33333333-3333-4333-8333-333333333333',
+          requestedBy: 'user-owner',
+          newSourceFileId,
+          mode: 'transfer',
+          status: 'pending',
+          approvals: [],
+          createdAt: '2026-08-08T10:00:00.000Z',
+          priorSourceFileIds: [],
+        },
+      }).success,
+    ).toBe(true);
   });
 
   it('validates pad session contracts and stroke payloads', () => {

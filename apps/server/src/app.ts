@@ -21,6 +21,9 @@ import {
   serverUploadMetadataSchema,
   signatureRecordCreateInputSchema,
   signatureRecordListInputSchema,
+  sourceUpdateRequestCompleteInputSchema,
+  sourceUpdateRequestCreateInputSchema,
+  sourceUpdateRequestDecisionInputSchema,
   tenantSettingsUpdateInputSchema,
   userPreferenceKeyInputSchema,
   userPreferenceSetInputSchema,
@@ -44,9 +47,13 @@ import {
   createPadSession,
   createSavedSearch,
   createSignatureRecord,
+  createSourceUpdateRequest,
   closePadSession,
   consumePadStrokes,
   disconnectPadSession,
+  decideSourceUpdateRequest,
+  cancelSourceUpdateRequest,
+  completeSourceUpdateRequest,
   deleteDocument,
   deleteSavedSearch,
   exportDocuments,
@@ -57,6 +64,7 @@ import {
   getUserPreference,
   getTenantSettings,
   getActivePadSession,
+  getActiveSourceUpdateRequest,
   getPadState,
   joinOwnPadSession,
   listDocuments,
@@ -64,6 +72,7 @@ import {
   listTrashedDocuments,
   listSavedSearches,
   listSignatureRecords,
+  listPendingSourceUpdateRequests,
   moveDocumentFile,
   purgeDocument,
   removeFile,
@@ -374,6 +383,77 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ signatureRecord: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.sourceUpdateRequest.path, async (c) => {
+    const result = await getActiveSourceUpdateRequest(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.sourceUpdateRequestsPending.path, async (c) => {
+    const result = await listPendingSourceUpdateRequests(
+      ctxOf(c.get('identity')),
+      deps,
+    );
+    return respond(result.ok ? ok({ requests: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.sourceUpdateRequestsCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = sourceUpdateRequestCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid source update request', parsed.error.flatten())));
+    }
+    const result = await createSourceUpdateRequest(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.sourceUpdateRequestDecision.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = sourceUpdateRequestDecisionInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid source update decision', parsed.error.flatten())));
+    }
+    const result = await decideSourceUpdateRequest(
+      ctxOf(c.get('identity')),
+      c.req.param('requestId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.sourceUpdateRequestCancel.path, async (c) => {
+    const result = await cancelSourceUpdateRequest(
+      ctxOf(c.get('identity')),
+      c.req.param('requestId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.sourceUpdateRequestComplete.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => ({}));
+    const parsed = sourceUpdateRequestCompleteInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid source update completion', parsed.error.flatten())));
+    }
+    const result = await completeSourceUpdateRequest(
+      ctxOf(c.get('identity')),
+      c.req.param('requestId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
   });
 
   app.post(API_ROUTES.padSessionsCreate.path, async (c) => {

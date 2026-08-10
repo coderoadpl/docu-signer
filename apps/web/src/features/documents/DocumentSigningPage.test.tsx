@@ -351,6 +351,34 @@ const pointerEventAt = (
 };
 
 describe('DocumentSigningPage', () => {
+  it('blocks signing while the document has a pending source update', async () => {
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}/source-update-request`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            request: {
+              id: '66666666-6666-4666-8666-666666666666',
+              tenantId: 'tenant-1',
+              documentId: DOCUMENT_ID,
+              requestedBy: 'user-owner',
+              newSourceFileId: '77777777-7777-4777-8777-777777777777',
+              mode: 'transfer',
+              status: 'pending',
+              approvals: [],
+            },
+          },
+        }),
+      ),
+    );
+    await renderPage();
+
+    expect(
+      await screen.findByText(/Podpisywanie jest zablokowane/u),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Złóż podpis' })).not.toBeInTheDocument();
+  });
+
   it('creates and closes a QR pad session from the signing toolbar', async () => {
     let closed = 0;
     server.use(
