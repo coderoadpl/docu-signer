@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-const MAX_PAD_STROKES_BYTES = 200 * 1024;
+export const MAX_PAD_STROKES_BYTES = 4 * 1024 * 1024;
+export const PAD_STROKES_TOO_LARGE_MESSAGE =
+  'Podpis jest zbyt duży — spróbuj krótszymi pociągnięciami.';
 export const PAD_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
 
 const padSessionStatusSchema = z.enum(['active', 'closed']);
@@ -42,7 +44,7 @@ export const padSubmittedStrokesSchema = z
   })
   .refine(
     (value) => serializedSize(value) <= MAX_PAD_STROKES_BYTES,
-    `Pad strokes may not exceed ${MAX_PAD_STROKES_BYTES} bytes`,
+    PAD_STROKES_TOO_LARGE_MESSAGE,
   );
 
 export type PadSubmittedStrokes = z.infer<typeof padSubmittedStrokesSchema>;

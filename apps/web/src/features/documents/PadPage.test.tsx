@@ -595,8 +595,15 @@ describe('PadPage', () => {
       ),
       http.post('*/api/pad-sessions/:sessionId/submit', () =>
         HttpResponse.json(
-          { ok: false, error: { code: 'validation', message: 'Za dużo danych podpisu.' } },
-          { status: 422 },
+          {
+            ok: false,
+            error: {
+              code: 'validation',
+              message:
+                'Podpis jest zbyt duży — spróbuj krótszymi pociągnięciami.',
+            },
+          },
+          { status: 400 },
         ),
       ),
     );
@@ -689,7 +696,9 @@ describe('PadPage', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Zatwierdź' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Za dużo danych podpisu.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Podpis jest zbyt duży — spróbuj krótszymi pociągnięciami.',
+    );
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Umowa do podpisu' })).toBeVisible(),
     );

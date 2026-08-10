@@ -95,8 +95,8 @@ export const signingInkColorById = (id: SigningInkColorId): SigningInkColor =>
   SIGNING_INK_COLORS.find((color) => color.id === id) ?? DEFAULT_SIGNING_INK_COLOR;
 
 const SIGNING_PEN_PRIORITY_MS = 500;
-export const DEFAULT_SIGNING_INK_SIZE = 4;
-export const MIN_SIGNING_INK_SIZE = 2;
+export const DEFAULT_SIGNING_INK_SIZE = 2;
+export const MIN_SIGNING_INK_SIZE = 1;
 export const MAX_SIGNING_INK_SIZE = 6;
 
 // WHY: these options keep pressure-sensitive ink legible for signatures while
@@ -445,6 +445,25 @@ export const updateSigningStampPlacement = (
       ? createSigningStamp({
           ...stamp,
           placement: clampSignaturePlacementToPage(stamp.strokes, placement),
+        })
+      : createSigningStamp(stamp),
+  );
+
+export const moveSigningStampToPage = (
+  stamps: readonly SigningStamp[],
+  stampIndex: number,
+  pageIndex: number,
+  pageCount: number,
+): SigningStamp[] =>
+  stamps.map((stamp, index) =>
+    index === stampIndex
+      ? createSigningStamp({
+          ...stamp,
+          pageIndex: clamp(pageIndex, 0, Math.max(0, pageCount - 1)),
+          placement: clampSignaturePlacementToPage(
+            stamp.strokes,
+            stamp.placement,
+          ),
         })
       : createSigningStamp(stamp),
   );

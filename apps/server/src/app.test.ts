@@ -9,7 +9,14 @@ import {
   looseEnvelopeSchema,
   TENANT_HEADER,
 } from '#core/contract/index.js';
-import { ok, type Document, type DocumentListFilter, type PadSession } from '#core/domain/index.js';
+import {
+  MAX_PAD_STROKES_BYTES,
+  PAD_STROKES_TOO_LARGE_MESSAGE,
+  ok,
+  type Document,
+  type DocumentListFilter,
+  type PadSession,
+} from '#core/domain/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
 
 import { buildApp } from './app.js';
@@ -440,6 +447,29 @@ describe('buildApp', () => {
     await expect(submitted.json()).resolves.toMatchObject({
       ok: true,
       data: { submitted: true },
+    });
+
+    const oversized = await app.request(
+      API_ROUTES.padSessionSubmit.path.replace(':sessionId', padSession.id),
+      {
+        method: API_ROUTES.padSessionSubmit.method,
+        headers: {
+          ...tenantHeader,
+          'content-length': String(MAX_PAD_STROKES_BYTES + 1),
+          'content-type': 'application/json',
+          [PAD_SECRET_HEADER]: 'pad_secret',
+        },
+        body: 'x'.repeat(MAX_PAD_STROKES_BYTES + 1),
+      },
+    );
+    expect(MAX_PAD_STROKES_BYTES).toBe(4 * 1024 * 1024);
+    const oversizedBody: unknown = await oversized.json();
+    expect({ status: oversized.status, body: oversizedBody }).toMatchObject({
+      status: 400,
+      body: {
+        ok: false,
+        error: { message: PAD_STROKES_TOO_LARGE_MESSAGE },
+      },
     });
 
     const consumed = await app.request(
