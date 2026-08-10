@@ -32,6 +32,7 @@ import {
 } from './routes/documents.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
 import { LoginRoute } from './routes/login.js';
+import { InvitationRoute } from './routes/invitation.js';
 import { NotFoundRoute } from './routes/not-found.js';
 import { PadRoute } from './routes/pad.js';
 import { RegisterRoute } from './routes/register.js';
@@ -104,6 +105,11 @@ const resetPasswordRoute = createRoute({
   path: '/reset-password',
   validateSearch: resetPasswordSearchSchema,
   component: ResetPasswordRoute,
+});
+const invitationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/zaproszenie/$token',
+  component: InvitationRoute,
 });
 const padRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -179,6 +185,7 @@ const router = createRouter({
     registerRoute,
     forgotPasswordRoute,
     resetPasswordRoute,
+    invitationRoute,
     padRoute,
     appLayoutRoute.addChildren([
       appIndexRoute,

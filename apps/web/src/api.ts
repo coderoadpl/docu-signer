@@ -2,6 +2,12 @@ import { context, trace } from '@opentelemetry/api';
 
 import { createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
 import {
+  acceptInvitationMutation,
+  createInvitationMutation,
+  invitationsInvalidates,
+  invitationsQuery,
+  publicInvitationQuery,
+  revokeInvitationMutation,
   activePadSessionQuery,
   activePadSessionInvalidates,
   activeSourceUpdateRequestQuery,
@@ -91,6 +97,12 @@ const authClient = createBetterAuthClientAdapter('');
 
 export const actions = {
   config: configQuery(apiClient),
+  invitations: invitationsQuery(apiClient),
+  createInvitation: createInvitationMutation(apiClient),
+  revokeInvitation: revokeInvitationMutation(apiClient),
+  invitationsInvalidates,
+  publicInvitation: (token: string) => publicInvitationQuery(apiClient, token),
+  acceptInvitation: acceptInvitationMutation(apiClient),
   me: meQuery(apiClient),
   meInvalidates,
   documents: (filter: Parameters<typeof documentsQuery>[1]) =>

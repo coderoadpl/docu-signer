@@ -7,6 +7,9 @@ import {
   API_ROUTES,
   PAD_SECRET_HEADER,
   apiTokenCreateInputSchema,
+  invitationAcceptInputSchema,
+  invitationCreateInputSchema,
+  PUBLIC_API_ROUTES,
   TENANT_HEADER,
   documentCreateInputSchema,
   documentFileMoveInputSchema,
@@ -40,11 +43,14 @@ import {
   PAD_STROKES_TOO_LARGE_MESSAGE,
   unavailable,
   validation,
+  rateLimited,
   type Identity,
 } from '#core/domain/index.js';
 import {
   approveDocument,
   createApiToken,
+  acceptInvitation,
+  createInvitation,
   createDocument,
   createPadSession,
   createSavedSearch,
@@ -62,6 +68,7 @@ import {
   exportDocuments,
   finalizeFileUpload,
   getDocument,
+  getInvitation,
   getFileContent,
   getFileExport,
   getUserPreference,
@@ -72,6 +79,7 @@ import {
   joinOwnPadSession,
   listDocuments,
   listApiTokens,
+  listInvitations,
   listTrashedDocuments,
   listSavedSearches,
   listSignatureRecords,
@@ -83,6 +91,7 @@ import {
   resolveIdentity,
   restoreDocument,
   revokeApiToken,
+  revokeInvitation,
   requestFileUpload,
   requestPadSignature,
   setPadCurrentDocument,
@@ -257,7 +266,35 @@ export const buildApp = (deps: AppDeps) => {
   app.get(API_PATHS.config, () => respond(ok({
     googleEnabled: deps.googleEnabled,
     passwordResetEnabled: deps.passwordResetEnabled,
+    emailConfigured: deps.emailConfigured,
   })));
+
+  app.get(PUBLIC_API_ROUTES.invitation.path, async (c) => {
+    const result = await getInvitation(c.req.param('token'), deps);
+    return respond(result.ok ? ok({ invitation: result.value }) : result);
+  });
+
+  app.post(PUBLIC_API_ROUTES.invitationAccept.path, async (c) => {
+    const forwarded = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+    const clientKey = forwarded || c.req.header('x-real-ip') || 'unknown';
+    if (
+      deps.invitationRateLimitEnabled &&
+      !(await deps.invitationRateLimit.consume(`invitation-accept:${clientKey}`, 5, 60))
+    ) {
+      return respond(err(rateLimited('Too many invitation attempts')));
+    }
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = invitationAcceptInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid invitation acceptance', parsed.error.flatten())));
+    }
+    const result = await acceptInvitation(c.req.param('token'), parsed.data, deps);
+    return respond(
+      result.ok
+        ? ok({ accepted: true as const, email: result.value.email })
+        : result,
+    );
+  });
 
   // The public, unauthenticated contract group (US-028, §Public surface). Mounted
   // HERE — before the `/api/*` tenant-resolution middleware below — so a request
@@ -355,6 +392,30 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ settings: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.invitations.path, async (c) => {
+    const result = await listInvitations(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ invitations: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.invitationsCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = invitationCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid invitation', parsed.error.flatten())));
+    }
+    const result = await createInvitation(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result);
+  });
+
+  app.post(API_ROUTES.invitationRevoke.path, async (c) => {
+    const result = await revokeInvitation(
+      ctxOf(c.get('identity')),
+      c.req.param('invitationId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ revoked: true as const }) : result);
   });
 
   app.get(API_ROUTES.signatureRecords.path, async (c) => {

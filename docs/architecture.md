@@ -1174,7 +1174,7 @@ repository ports.
 decision).
 
 - Shape as built: `sendMail({ to, subject, text, html?, link? })`. No `tenantId`:
-  the foundation sends from one verified domain (`EMAIL_FROM`); per-tenant branded
+  the foundation sends from one verified domain (`MAIL_FROM`); per-tenant branded
   senders are a when-triggered extension. `link` is the optional primary-action
   URL — a general transactional-mail concept — so magic-link and password-reset
   auth mail are consumers of the seam, not the port's shape.
@@ -1364,8 +1364,9 @@ foundation):
   vars are marked Sensitive** (write-only in the dashboard/CLI; control 3 of 5).
 - **Migrations and the deploy admin seed run at build time** against the shared
   deployed database. `db:seed:deploy` runs after migration and creates
-  only the `default` tenant plus the `SEED_ADMIN*` accounts and grants; it never
-  invokes the local `db:seed` demo fixture. With no admin 1 pair it is a no-op.
+  one bootstrap owner plus the `default` tenant only when the database has zero
+  users; later deploys never update credentials or add accounts. It never invokes
+  the local `db:seed` demo fixture. With no admin 1 pair it is a no-op.
   Preview and Production migrations are forward-only, so destructive changes
   ship as two deploys, expand → contract. A Preview build is not a database
   isolation boundary in this fork.
