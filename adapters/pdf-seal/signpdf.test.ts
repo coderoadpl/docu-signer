@@ -176,6 +176,7 @@ describe('signpdf PAdES adapter', () => {
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
     });
+    if (sealed.kind !== 'sealed') throw new Error(sealed.reason);
     const tampered = new Uint8Array(sealed.bytes);
     tampered[10] = (tampered[10] ?? 0) ^ 1;
     expect(verifyPdfSeal(tampered)).toMatchObject({
@@ -203,13 +204,14 @@ describe('signpdf PAdES adapter', () => {
       bytes: await samplePdf(),
       signingTime: new Date('2051-08-09T14:15:16.000Z'),
     });
+    if (sealed.kind !== 'sealed') throw new Error(sealed.reason);
     expect(verifyPdfSeal(sealed.bytes)).toMatchObject({
       declaredAt: '2051-08-09T14:15:16.000Z',
       integrity: true,
     });
   });
 
-  it('rejects a certificate without a common name', async () => {
+  it('reports a certificate without a common name as a failed outcome', async () => {
     const pem = await credentials();
     const privateKey = forge.pki.privateKeyFromPem(pem.privateKey);
     const certificate = forge.pki.createCertificate();
@@ -229,10 +231,13 @@ describe('signpdf PAdES adapter', () => {
     await expect(adapter.seal({
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
-    })).rejects.toThrow('common name');
+    })).resolves.toMatchObject({
+      kind: 'failed',
+      reason: expect.stringContaining('common name'),
+    });
   });
 
-  it('rejects incomplete and mismatched PKCS#12 credential bundles', async () => {
+  it('reports incomplete and mismatched PKCS#12 credential bundles', async () => {
     const pem = await credentials();
     const certificate = forge.pki.certificateFromPem(pem.certificate);
     const p12Credentials = (
@@ -250,7 +255,10 @@ describe('signpdf PAdES adapter', () => {
     await expect(noKey.seal({
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
-    })).rejects.toThrow('no private key');
+    })).resolves.toMatchObject({
+      kind: 'failed',
+      reason: expect.stringContaining('no private key'),
+    });
 
     const mismatchedKey = forge.pki.rsa.generateKeyPair({ bits: 1024 }).privateKey;
     const mismatched = createSignPdfSeal(p12Credentials(mismatchedKey, certificate));
@@ -258,7 +266,10 @@ describe('signpdf PAdES adapter', () => {
     await expect(mismatched.seal({
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
-    })).rejects.toThrow('matching its private key');
+    })).resolves.toMatchObject({
+      kind: 'failed',
+      reason: expect.stringContaining('matching its private key'),
+    });
   });
 
   it('uses the wall clock when a signer receives no explicit signing time', async () => {
@@ -272,6 +283,7 @@ describe('signpdf PAdES adapter', () => {
     };
     Object.defineProperty(input, 'signingTime', { value: undefined });
     const sealed = await adapter.seal(input);
+    if (sealed.kind !== 'sealed') throw new Error(sealed.reason);
     expect(verifyPdfSeal(sealed.bytes).declaredAt).toBe('2026-08-09T14:15:16.000Z');
   });
 
@@ -282,6 +294,7 @@ describe('signpdf PAdES adapter', () => {
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
     });
+    if (sealed.kind !== 'sealed') throw new Error(sealed.reason);
     const invalidRange = Buffer.from(sealed.bytes);
     const rangeStart = invalidRange.indexOf(Buffer.from('/ByteRange [0 '));
     invalidRange[rangeStart + '/ByteRange ['.length] = '1'.charCodeAt(0);
@@ -403,18 +416,24 @@ describe('signpdf PAdES adapter', () => {
     );
 
     const failed = await sealingDeps('declared');
-    failed.pdfSeal = {
+    await expect(attemptPdfSeal(
+      { tenantId: 'tenant-1', document, bytes: new Uint8Array([1, 2, 3]) },
+      failed,
+    )).resolves.toBeNull();
+    expect(failed.warnings.warn).toHaveBeenCalledWith(
+      expect.stringContaining('preserving the uploaded PDF'),
+      expect.objectContaining({ reason: expect.stringContaining('PDF') }),
+    );
+
+    const exploded = await sealingDeps('declared');
+    exploded.pdfSeal = {
       configured: true,
       seal: async () => { throw new Error('fixture failure'); },
     };
     await expect(attemptPdfSeal(
       { tenantId: 'tenant-1', document, bytes: await samplePdf() },
-      failed,
-    )).resolves.toBeNull();
-    expect(failed.warnings.warn).toHaveBeenCalledWith(
-      expect.stringContaining('preserving the uploaded PDF'),
-      expect.any(Object),
-    );
+      exploded,
+    )).rejects.toThrow('fixture failure');
 
     const record = vi.fn(async () => {});
     failed.signatureRecords.recordSeal = record;
@@ -441,11 +460,7 @@ describe('signpdf PAdES adapter', () => {
         declaredAt: '2026-08-09T14:15:16.000Z',
         appliedAt: '2026-08-09T14:15:16.789Z',
       },
-    }, failed)).resolves.toBeUndefined();
-    expect(failed.warnings.warn).toHaveBeenCalledWith(
-      'PDF seal metadata could not be stored',
-      expect.any(Object),
-    );
+    }, failed)).rejects.toThrow('db failure');
     delete failed.signatureRecords.recordSeal;
     await expect(recordPdfSeal({
       tenantId: 'tenant-1',

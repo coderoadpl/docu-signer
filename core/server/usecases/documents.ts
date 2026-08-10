@@ -317,46 +317,36 @@ const finalizeUpload = async (
   let sizeBytes = metadata.value.sizeBytes;
   let sealMetadata;
   if (parsed.data.role === 'signed-digital' && deps.pdfSealing) {
-    try {
-      const storedBytes = await deps.storage.get(parsed.data.key);
-      if (storedBytes.ok && storedBytes.value) {
-        const sealed = await attemptPdfSeal(
-          { tenantId, document, bytes: storedBytes.value },
-          deps.pdfSealing,
+    const storedBytes = await deps.storage.get(parsed.data.key);
+    if (storedBytes.ok && storedBytes.value) {
+      const sealed = await attemptPdfSeal(
+        { tenantId, document, bytes: storedBytes.value },
+        deps.pdfSealing,
+      );
+      if (sealed) {
+        const replaced = await deps.storage.put(
+          parsed.data.key,
+          sealed.bytes,
+          metadata.value.contentType,
         );
-        if (sealed) {
-          const replaced = await deps.storage.put(
-            parsed.data.key,
-            sealed.bytes,
-            metadata.value.contentType,
-          );
-          if (replaced.ok) {
-            sizeBytes = sealed.bytes.byteLength;
-            sealMetadata = sealed.metadata;
-          } else {
-            deps.pdfSealing.warnings.warn('Sealed PDF could not replace the uploaded artifact', {
-              tenantId,
-              documentId,
-              storageKey: parsed.data.key,
-              error: replaced.error.message,
-            });
-          }
+        if (replaced.ok) {
+          sizeBytes = sealed.bytes.byteLength;
+          sealMetadata = sealed.metadata;
+        } else {
+          deps.pdfSealing.warnings.warn('Sealed PDF could not replace the uploaded artifact', {
+            tenantId,
+            documentId,
+            storageKey: parsed.data.key,
+            error: replaced.error.message,
+          });
         }
-      } else if (!storedBytes.ok) {
-        deps.pdfSealing.warnings.warn('Uploaded PDF could not be read for sealing', {
-          tenantId,
-          documentId,
-          storageKey: parsed.data.key,
-          error: storedBytes.error.message,
-        });
       }
-    } catch (cause) {
-      // WHY: seal I/O is fail-open so a completed signing remains stored even when evidence enrichment fails.
-      deps.pdfSealing.warnings.warn('PDF sealing I/O failed; preserving the uploaded artifact', {
+    } else if (!storedBytes.ok) {
+      deps.pdfSealing.warnings.warn('Uploaded PDF could not be read for sealing', {
         tenantId,
         documentId,
         storageKey: parsed.data.key,
-        cause: String(cause),
+        error: storedBytes.error.message,
       });
     }
   }

@@ -147,6 +147,7 @@ describe('document verify-seal', () => {
       bytes: await pdf.save(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
     });
+    if (sealed.kind !== 'sealed') throw new Error(sealed.reason);
     expect(verifySealBytes(sealed.bytes)).toMatchObject({
       ok: true,
       value: { integrity: true },

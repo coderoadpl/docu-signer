@@ -248,27 +248,35 @@ export const createSignPdfSeal = (
   return {
     configured: true,
     seal: async ({ bytes, signingTime }) => {
-      const pdf = await PDFDocument.load(bytes);
-      const prepared = signerAndSubject(credentials);
-      pdflibAddPlaceholder({
-        pdfDoc: pdf,
-        reason: 'Pieczęć organizacji',
-        contactInfo: '',
-        name: prepared.subject,
-        location: 'Polska',
-        signingTime,
-        signatureLength: 16_384,
-        subFilter: SUBFILTER_ETSI_CADES_DETACHED,
-        widgetRect: [0, 0, 0, 0],
-        appName: 'docu-signer',
-      });
-      const placeholder = await pdf.save({ useObjectStreams: false });
-      const sealed = await signPdf.sign(
-        Buffer.from(placeholder),
-        prepared.signer,
-        signingTime,
-      );
-      return { bytes: new Uint8Array(sealed), subject: prepared.subject };
+      try {
+        const pdf = await PDFDocument.load(bytes);
+        const prepared = signerAndSubject(credentials);
+        pdflibAddPlaceholder({
+          pdfDoc: pdf,
+          reason: 'Pieczęć organizacji',
+          contactInfo: '',
+          name: prepared.subject,
+          location: 'Polska',
+          signingTime,
+          signatureLength: 16_384,
+          subFilter: SUBFILTER_ETSI_CADES_DETACHED,
+          widgetRect: [0, 0, 0, 0],
+          appName: 'docu-signer',
+        });
+        const placeholder = await pdf.save({ useObjectStreams: false });
+        const sealed = await signPdf.sign(
+          Buffer.from(placeholder),
+          prepared.signer,
+          signingTime,
+        );
+        return {
+          kind: 'sealed',
+          bytes: new Uint8Array(sealed),
+          subject: prepared.subject,
+        };
+      } catch (cause) {
+        return { kind: 'failed', reason: String(cause) };
+      }
     },
   };
 };

@@ -786,6 +786,12 @@ describe('database invariants', () => {
     );
     await expect(
       pool.query(
+        `INSERT INTO tenant_settings (tenant_id, date_mode)
+         VALUES ('tenant-constraints', 'inferred')`,
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(
         `INSERT INTO tenant_admins (id, tenant_id, user_id, role)
          VALUES ('grant-invalid', 'tenant-constraints', 'user-invalid', 'member')`,
       ),

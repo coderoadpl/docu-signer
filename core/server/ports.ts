@@ -153,7 +153,10 @@ export type PdfSealPort =
       seal(input: {
         bytes: Uint8Array;
         signingTime: Date;
-      }): Promise<{ bytes: Uint8Array; subject: string }>;
+      }): Promise<
+        | { kind: 'sealed'; bytes: Uint8Array; subject: string }
+        | { kind: 'failed'; reason: string }
+      >;
     };
 
 export interface WarningLoggerPort {
