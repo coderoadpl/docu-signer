@@ -515,6 +515,10 @@ describe('DocumentSigningPage', () => {
                 requestId: activeRequestId,
                 inkColor: 'black',
                 sourceSize: { width: 834, height: 620 },
+                contributedBy: {
+                  accountId: 'user-pad',
+                  label: 'Pad User',
+                },
                 strokes: [
                   {
                     points: [
@@ -581,6 +585,13 @@ describe('DocumentSigningPage', () => {
     expect(requestedTitles).toHaveLength(1);
 
     fireEvent.click(await enabledButton('Dalej'));
+
+    await waitFor(() =>
+      expect(pdfMocks.flatten.mock.calls[0]?.[1]?.[0]?.stamp.contributedBy).toEqual({
+        accountId: 'user-pad',
+        label: 'Pad User',
+      }),
+    );
 
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(
@@ -1160,6 +1171,7 @@ describe('DocumentSigningPage', () => {
             stamp: expect.objectContaining({
               pageIndex: 1,
               inkColor: expect.objectContaining({ id: 'navy' }),
+              contributedBy: { accountId: 'user-owner', label: 'Owner' },
               strokes: expect.arrayContaining([
                 expect.objectContaining({ points: expect.any(Array) }),
               ]),

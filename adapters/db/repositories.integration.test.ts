@@ -609,6 +609,7 @@ describe('PadSessionRepository', () => {
       requestId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
       inkColor: 'black' as const,
       sourceSize: { width: 834, height: 620 },
+      contributedBy: { accountId: 'user-owner', label: 'Owner' },
       strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
     };
     await expect(repository.submitStrokes('tenant-a', session.id, strokes)).resolves.toMatchObject({

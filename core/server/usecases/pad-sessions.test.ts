@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Identity, PadSession, PadSubmittedStrokes } from '#core/domain/index.js';
+import type { Identity, PadSession, PadStrokeSubmission } from '#core/domain/index.js';
 import type { PadSessionRepository } from '../ports.js';
 import {
   closePadSession,
@@ -38,11 +38,12 @@ const otherOwner: Identity = {
   ...owner(),
   userId: 'user-other',
   email: 'other@example.com',
+  name: 'Other Owner',
 };
 
 const ctx = (identity: Identity) => ({ identity });
 
-const submitted = (id = requestId): PadSubmittedStrokes => ({
+const submitted = (id = requestId): PadStrokeSubmission => ({
   requestId: id,
   inkColor: 'navy',
   sourceSize: { width: 834, height: 620 },
@@ -54,6 +55,17 @@ const submitted = (id = requestId): PadSubmittedStrokes => ({
       ],
     },
   ],
+});
+
+const attributedSubmission = (
+  submission = submitted(),
+  contributor: Identity = owner(),
+) => ({
+  ...submission,
+  contributedBy: {
+    accountId: contributor.userId,
+    label: contributor.name,
+  },
 });
 
 const fake = (initial: PadSession[] = []) => {
@@ -428,7 +440,7 @@ describe('pad session use-cases', () => {
     await expect(consumePadStrokes(ctx(owner()), sessionId, state.deps)).resolves.toEqual({
       ok: true,
       value: {
-        submittedStrokes: submitted(),
+        submittedStrokes: attributedSubmission(),
         lastPolledAt: '2026-08-04T10:00:00.000Z',
       },
     });
@@ -443,6 +455,27 @@ describe('pad session use-cases', () => {
       ok: true,
       value: undefined,
     });
+  });
+
+  it('attributes submitted ink from server identity and ignores a spoofed contributor', async () => {
+    const state = fake([
+      activeSession({ currentRequest: { requestId, documentTitle: 'Umowa' } }),
+    ]);
+    await expect(
+      submitPadStrokes(
+        ctx(otherOwner),
+        sessionId,
+        'pad_secret',
+        {
+          ...submitted(),
+          contributedBy: { accountId: 'user-spoofed', label: 'Spoofed' },
+        },
+        state.deps,
+      ),
+    ).resolves.toEqual({ ok: true, value: undefined });
+    expect(state.sessions[0]?.submittedStrokes).toEqual(
+      attributedSubmission(submitted(), otherOwner),
+    );
   });
 
   it('makes desktop close and pad disconnect idempotent', async () => {

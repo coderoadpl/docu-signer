@@ -231,7 +231,13 @@ describe('API route contract', () => {
     expect(padSessionSubmitInputSchema.safeParse(strokes).success).toBe(true);
     expect(padSessionSubmitOutputSchema.safeParse({ submitted: true }).success).toBe(true);
     expect(
-      padSessionConsumeOutputSchema.safeParse({ submittedStrokes: strokes, lastPolledAt: null })
+      padSessionConsumeOutputSchema.safeParse({
+        submittedStrokes: {
+          ...strokes,
+          contributedBy: { accountId: 'user-pad', label: 'Pad User' },
+        },
+        lastPolledAt: null,
+      })
         .success,
     ).toBe(true);
     expect(
@@ -456,6 +462,15 @@ describe('API route contract', () => {
       signatureRecordCreateInputSchema.safeParse({
         fileId: record.fileId,
         payload: record.payload,
+      }).success,
+    ).toBe(false);
+    expect(
+      signatureRecordCreateInputSchema.safeParse({
+        fileId: record.fileId,
+        payload: record.payload.map((stamp) => ({
+          ...stamp,
+          contributedBy: 'user-1',
+        })),
       }).success,
     ).toBe(true);
     expect(

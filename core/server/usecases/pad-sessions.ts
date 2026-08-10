@@ -4,7 +4,7 @@ import {
   notFound,
   ok,
   padSessionRequestInputSchema,
-  padSubmittedStrokesSchema,
+  padStrokeSubmissionSchema,
   PAD_SESSION_TTL_MS,
   unauthorized,
   validation,
@@ -190,7 +190,7 @@ export const submitPadStrokes = async (
 ): Promise<Result<void, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
-  const parsed = padSubmittedStrokesSchema.safeParse(input);
+  const parsed = padStrokeSubmissionSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid pad strokes', parsed.error.flatten()));
   const session = await findPadSession(
     scope.value,
@@ -204,7 +204,13 @@ export const submitPadStrokes = async (
   if (session.value.currentRequest?.requestId !== parsed.data.requestId) {
     return err(validation('Stale pad request'));
   }
-  await deps.padSessions.submitStrokes(scope.value, sessionId, parsed.data);
+  await deps.padSessions.submitStrokes(scope.value, sessionId, {
+    ...parsed.data,
+    contributedBy: {
+      accountId: ctx.identity.userId,
+      label: ctx.identity.name,
+    },
+  });
   return ok(undefined);
 };
 

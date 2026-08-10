@@ -385,6 +385,7 @@ describe('buildApp', () => {
         placement: { offsetX: 0.1, offsetY: 0.2, scale: 1 },
         inkColor: 'black' as const,
         inkSize: 2,
+        contributedBy: 'user-owner',
       },
     ];
     let storedSettings = true;
@@ -512,6 +513,7 @@ describe('buildApp', () => {
         requestId,
         inkColor: 'black',
         sourceSize: { width: 834, height: 620 },
+        contributedBy: { accountId: 'user-owner', label: 'Owner' },
         strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
       }),
       close: async () => true,

@@ -111,8 +111,9 @@ exemplar.
   never-store-ink rule (owner decision 2026-08-07, provenance in
   FOUNDATION.md) so the same document's signatures can be re-flattened onto a
   corrected source. No product surface offers applying stored ink to any
-  other document. A desktop signing
-  user has one global remote pad session shared by every signing surface at
+  other document. Each stored stamp records the account that contributed its
+  ink, including ink submitted from an authenticated remote pad. A desktop
+  signing user has one global remote pad session shared by every signing surface at
   `/pad/{sessionId}`; the pad requires a normal login plus either the session
   secret from the URL fragment (QR) or same-user identity (`/pad` join), and
   defaults to a touch-locked Piórko mode with an explicit Ręka mode for finger

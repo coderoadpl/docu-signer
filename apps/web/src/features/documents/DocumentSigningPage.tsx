@@ -830,6 +830,7 @@ export const DocumentSigningPage = ({
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
   const sourceQuery = useQuery(actions.documentFile(documentId, fileId));
+  const identityQuery = useQuery(actions.me);
   const activeRemotePadSession = useQuery({
     ...actions.activePadSession,
     refetchOnMount: 'always',
@@ -927,6 +928,12 @@ export const DocumentSigningPage = ({
   const sequenceTotal = signingSearch.razem ?? 0;
   const listSearch = documentsSearchFromSigningSearch(signingSearch);
   const activeSigningTargetKey = `${documentId}:${fileId}`;
+  const desktopContributor = identityQuery.data
+    ? {
+        accountId: identityQuery.data.userId,
+        label: identityQuery.data.name,
+      }
+    : undefined;
 
   const closeRemotePadSession = async () => {
     if (!remotePadSession) return;
@@ -1061,7 +1068,9 @@ export const DocumentSigningPage = ({
   );
   const canCommit = Boolean(
     pageReady &&
-      (massMode ? stamps.length > 0 : stamps.length > 0 || strokes.length > 0),
+      (massMode
+        ? stamps.length > 0
+        : stamps.length > 0 || (strokes.length > 0 && desktopContributor)),
   );
   const signingPadBlocked = !pageReady || committing;
   const signingPadBusy = !committing && !pageReady;
@@ -1256,6 +1265,7 @@ export const DocumentSigningPage = ({
     (
       padStrokes: InkStroke[],
       sourceSize: { width: number; height: number },
+      contributedBy: SigningStamp['contributedBy'],
       remoteInkColorId: SigningInkColorId = inkColorId,
     ): boolean => {
       if (!pageReady || !metrics || !padStrokes.length) return false;
@@ -1273,6 +1283,7 @@ export const DocumentSigningPage = ({
           strokes: fittedStrokes,
         }),
         inkColor: padInkColor,
+        contributedBy,
       });
       setInkColorId(remoteInkColorId);
       setStamps((current) => {
@@ -1343,6 +1354,7 @@ export const DocumentSigningPage = ({
           const materialized = materializePadStrokes(
             remoteStrokesToInkStrokes(submittedStrokes.strokes),
             submittedStrokes.sourceSize,
+            submittedStrokes.contributedBy,
             submittedStrokes.inkColor,
           );
           if (!materialized) return;
@@ -1565,16 +1577,19 @@ export const DocumentSigningPage = ({
       strokes: stampStrokes,
     });
 
-  const draftStamp = (targetPageIndex: number) =>
-    createSigningStamp({
+  const draftStamp = (targetPageIndex: number) => {
+    if (!desktopContributor) return undefined;
+    return createSigningStamp({
       pageIndex: targetPageIndex,
       strokes,
       placement,
       inkColor,
+      contributedBy: desktopContributor,
     });
+  };
 
   const stampCurrentPage = () => {
-    if (!pageReady || !strokes.length) return;
+    if (!pageReady || !strokes.length || !desktopContributor) return;
     const next = appendSigningStamp(
       stamps,
       createSigningStamp({
@@ -1582,6 +1597,7 @@ export const DocumentSigningPage = ({
         strokes,
         placement: defaultPlacementFor(strokes),
         inkColor,
+        contributedBy: desktopContributor,
       }),
     );
     setStamps(next);
@@ -1593,17 +1609,23 @@ export const DocumentSigningPage = ({
     padStrokes: InkStroke[],
     sourceSize: { width: number; height: number },
   ) => {
-    if (materializePadStrokes(padStrokes, sourceSize)) setSignaturePadOpen(false);
+    if (
+      desktopContributor &&
+      materializePadStrokes(padStrokes, sourceSize, desktopContributor)
+    ) {
+      setSignaturePadOpen(false);
+    }
   };
 
   const stampAllPages = () => {
-    if (!pageReady || !strokes.length || !pdf) return;
+    if (!pageReady || !strokes.length || !pdf || !desktopContributor) return;
     const next = stampEveryPage(
       stamps,
       {
         strokes,
         placement: defaultPlacementFor(strokes),
         inkColor,
+        contributedBy: desktopContributor,
       },
       pdf.numPages,
     );
@@ -1664,8 +1686,8 @@ export const DocumentSigningPage = ({
       bounds && bounds.width > 0 && bounds.height > 0
         ? { ...metrics, cssWidth: bounds.width, cssHeight: bounds.height }
         : metrics;
-    const committedStamps =
-      stamps.length > 0 ? stamps : [draftStamp(pageIndex)];
+    const draft = draftStamp(pageIndex);
+    const committedStamps = stamps.length > 0 ? stamps : draft ? [draft] : [];
     return Promise.all(
       committedStamps.map(async (stamp) => ({
         stamp,
@@ -2313,7 +2335,9 @@ export const DocumentSigningPage = ({
                 setSelectedStampIndex(undefined);
                 if (!pointerStartsPlacementDrag(event)) return;
                 if (!strokes.length) return;
-                if (!signingStampContainsPoint(draftStamp(pageIndex), point)) return;
+                const currentDraftStamp = draftStamp(pageIndex);
+                if (!currentDraftStamp) return;
+                if (!signingStampContainsPoint(currentDraftStamp, point)) return;
                 placementDragRef.current = {
                   pointerId: event.pointerId,
                   clientX: event.clientX,

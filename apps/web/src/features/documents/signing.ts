@@ -34,12 +34,18 @@ export interface InkSurfaceSize {
   height: number;
 }
 
+export interface SigningContributor {
+  accountId: string;
+  label: string;
+}
+
 export interface SigningStamp {
   pageIndex: number;
   strokes: InkStroke[];
   inkColor: SigningInkColor;
   placement: SignaturePlacement;
   inkSize?: number;
+  contributedBy: SigningContributor;
 }
 
 export interface CanvasPdfMetrics {
@@ -286,12 +292,14 @@ export const createSigningStamp = ({
   strokes,
   inkColor,
   placement,
+  contributedBy,
 }: SigningStamp): SigningStamp => ({
   pageIndex,
   strokes: cloneStrokes(strokes),
   inkColor,
   placement: { ...placement },
   inkSize: inkSize ?? DEFAULT_SIGNING_INK_SIZE,
+  contributedBy: { ...contributedBy },
 });
 
 export const centeredInkPlacement = (

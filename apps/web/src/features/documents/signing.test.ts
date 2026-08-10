@@ -39,6 +39,8 @@ import {
   type InkStroke,
 } from './signing.js';
 
+const contributor = { accountId: 'user-owner', label: 'Owner' };
+
 const metrics = (
   viewportTransform: CanvasPdfMetrics['viewportTransform'],
 ): CanvasPdfMetrics => ({
@@ -700,6 +702,7 @@ describe('pen signing geometry', () => {
       strokes: [stroke],
       inkColor: DEFAULT_SIGNING_INK_COLOR,
       placement: { offsetX: 0.1, offsetY: 0.2, scale: 0.8 },
+      contributedBy: contributor,
     });
     stroke.points[0] = { x: 0.9, y: 0.9, pressure: 1 };
 
@@ -813,6 +816,7 @@ describe('pen signing geometry', () => {
       strokes: [stroke],
       inkColor: SIGNING_INK_COLORS[1],
       placement: { offsetX: 0, offsetY: 0, scale: 1 },
+      contributedBy: contributor,
     };
     const stamps = stampEveryPage(
       [],
@@ -902,6 +906,7 @@ describe('pen signing geometry', () => {
       ],
       inkColor: DEFAULT_SIGNING_INK_COLOR,
       placement: { offsetX: -0.4, offsetY: 0.55, scale: 1 },
+      contributedBy: contributor,
     });
 
     const moved = moveSigningStampToPage([stamp], 0, 8, 3);
@@ -933,6 +938,7 @@ describe('pen signing geometry', () => {
       ],
       inkColor: DEFAULT_SIGNING_INK_COLOR,
       placement: { offsetX: 0.1, offsetY: -0.1, scale: 1 },
+      contributedBy: contributor,
     });
 
     expect(signingStampContainsPoint(stamp, { x: 0.55, y: 0.35 })).toBe(true);

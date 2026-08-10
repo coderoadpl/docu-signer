@@ -32,20 +32,31 @@ const padSurfaceSizeSchema = z.object({
   height: z.number().finite().positive(),
 });
 
+const padContributorSchema = z.object({
+  accountId: z.string().min(1),
+  label: z.string().trim().min(1),
+});
+
 const serializedSize = (value: unknown): number =>
   new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
-export const padSubmittedStrokesSchema = z
-  .object({
-    requestId: z.uuid(),
-    strokes: z.array(padInkStrokeSchema).min(1),
-    inkColor: padInkColorIdSchema,
-    sourceSize: padSurfaceSizeSchema,
-  })
-  .refine(
-    (value) => serializedSize(value) <= MAX_PAD_STROKES_BYTES,
-    PAD_STROKES_TOO_LARGE_MESSAGE,
-  );
+const padStrokeSubmissionObjectSchema = z.object({
+  requestId: z.uuid(),
+  strokes: z.array(padInkStrokeSchema).min(1),
+  inkColor: padInkColorIdSchema,
+  sourceSize: padSurfaceSizeSchema,
+});
+
+export const padStrokeSubmissionSchema = padStrokeSubmissionObjectSchema.refine(
+  (value) => serializedSize(value) <= MAX_PAD_STROKES_BYTES,
+  PAD_STROKES_TOO_LARGE_MESSAGE,
+);
+
+export type PadStrokeSubmission = z.infer<typeof padStrokeSubmissionSchema>;
+
+export const padSubmittedStrokesSchema = padStrokeSubmissionObjectSchema.extend({
+  contributedBy: padContributorSchema,
+});
 
 export type PadSubmittedStrokes = z.infer<typeof padSubmittedStrokesSchema>;
 

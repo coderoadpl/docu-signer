@@ -19,6 +19,7 @@ export const signatureRecordPayload = (
     placement: { ...stamp.placement },
     inkColor: stamp.inkColor.id,
     inkSize: stamp.inkSize ?? DEFAULT_SIGNING_INK_SIZE,
+    contributedBy: stamp.contributedBy.accountId,
   }));
 
 export const storeSignatureRecordAfterUpload = async ({

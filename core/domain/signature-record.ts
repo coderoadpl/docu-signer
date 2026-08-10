@@ -23,11 +23,16 @@ const signatureRecordStampSchema = z.object({
   placement: signatureRecordPlacementSchema,
   inkColor: z.enum(['black', 'navy']),
   inkSize: z.number().finite().positive(),
+  contributedBy: z.string().min(1).optional(),
 });
 
 export const signatureRecordPayloadSchema = z.array(signatureRecordStampSchema).min(1);
 
 export type SignatureRecordPayload = z.infer<typeof signatureRecordPayloadSchema>;
+
+const createSignatureRecordPayloadSchema = z
+  .array(signatureRecordStampSchema.required({ contributedBy: true }))
+  .min(1);
 
 export const signatureRecordSchema = z.object({
   id: z.uuid(),
@@ -43,7 +48,7 @@ export type SignatureRecord = z.infer<typeof signatureRecordSchema>;
 
 export const createSignatureRecordSchema = z.object({
   fileId: z.uuid(),
-  payload: signatureRecordPayloadSchema,
+  payload: createSignatureRecordPayloadSchema,
 });
 
 export type CreateSignatureRecord = z.infer<typeof createSignatureRecordSchema>;
