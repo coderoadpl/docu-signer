@@ -95,6 +95,8 @@ rejected.)
 
 - Dokumenty: archive metadata and PDF/image files by role, preview and export
   them, and hand-sign any source PDF in a full-screen pen/touch/mouse flow.
+  A full-screen mass-review queue shows each selected source or newest digital
+  signature and supports lightweight metadata editing without signing controls.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
   replaces the source or persists a reusable signature. A desktop signing
   user has one global remote pad session shared by every signing surface at

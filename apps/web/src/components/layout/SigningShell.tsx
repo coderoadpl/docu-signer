@@ -9,12 +9,14 @@ export const SigningShell = ({
   children,
   footer,
   fitMain,
+  selectionLocked = true,
 }: {
   header: ReactNode;
   controls: ReactNode;
   children: ReactNode;
   footer: ReactNode;
   fitMain?: boolean;
+  selectionLocked?: boolean;
 }) => (
   <SigningSurface
     sx={{
@@ -24,14 +26,18 @@ export const SigningShell = ({
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      WebkitTouchCallout: 'none',
-      WebkitUserSelect: 'none',
-      userSelect: 'none',
-      '& *': {
-        WebkitTouchCallout: 'none',
-        WebkitUserSelect: 'none',
-        userSelect: 'none',
-      },
+      ...(selectionLocked
+        ? {
+            WebkitTouchCallout: 'none',
+            WebkitUserSelect: 'none',
+            userSelect: 'none',
+            '& *': {
+              WebkitTouchCallout: 'none',
+              WebkitUserSelect: 'none',
+              userSelect: 'none',
+            },
+          }
+        : {}),
     }}
   >
     <Box component="header" sx={{ flex: '0 0 auto' }}>

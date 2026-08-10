@@ -7,6 +7,7 @@ import {
   DOCUMENT_TYPE_COLORS,
   documentFilterSummary,
   documentFiltersFromSearch,
+  documentReviewSearchSchema,
   documentsSearchFromSigningSearch,
   documentsSearchFromState,
   documentsSearchSchema,
@@ -21,8 +22,13 @@ import {
   groupDocumentsForTimeline,
   hasDocumentFilter,
   hasSignedDocumentFile,
+  massReviewQueueDocumentIds,
+  massReviewQueueSearch,
   massSigningQueueTargets,
+  newestDocumentFileByRole,
   newestSignablePdfFile,
+  reviewModeFromSearch,
+  reviewQueueFromSearch,
   signingQueueFromSearch,
   signingQueueSearch,
   suggestDocumentDate,
@@ -327,6 +333,28 @@ describe('document view logic', () => {
       },
       { documentId: protocol.id, fileId: newestSignedFile.id },
     ]);
+    expect(massReviewQueueDocumentIds([bill, protocol, contract])).toEqual([
+      contract.id,
+      protocol.id,
+      bill.id,
+    ]);
+    expect(newestDocumentFileByRole(protocol, 'signed-digital')?.id).toBe(
+      newestSignedFile.id,
+    );
+  });
+
+  it('round-trips the mass-review queue and defaults invalid modes to source', () => {
+    const queue = ['document-a', 'document-b', 'document-a'];
+    const search = documentReviewSearchSchema.parse({
+      ...massReviewQueueSearch(queue),
+      tryb: 'podpisany',
+    });
+
+    expect(reviewQueueFromSearch(search)).toEqual(['document-a', 'document-b']);
+    expect(reviewModeFromSearch(search)).toBe('signed');
+    expect(
+      reviewModeFromSearch(documentReviewSearchSchema.parse({ tryb: 'nieznany' })),
+    ).toBe('source');
   });
 
   it('groups filtered documents by canonical period, person and type order', () => {
