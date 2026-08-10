@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { z } from 'zod';
 
 /**
  * The unauthenticated client-config read fires on mount of the pre-auth pages
@@ -21,6 +22,38 @@ export const server = setupServer(
   http.get('*/api/me/preferences/:key', () =>
     HttpResponse.json({ ok: true, data: { preference: null } }),
   ),
+  http.get('*/api/tenant-settings', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        settings: {
+          tenantId: 'tenant-default',
+          storeSignatureRecords: true,
+        },
+      },
+    }),
+  ),
+  http.post('*/api/documents/:documentId/signature-records', async ({ params, request }) => {
+    const body = await request.json();
+    const parsed = z.object({
+      fileId: z.string(),
+      payload: z.array(z.unknown()),
+    }).parse(body);
+    return HttpResponse.json({
+      ok: true,
+      data: {
+        signatureRecord: {
+          id: '99999999-9999-4999-8999-999999999999',
+          tenantId: 'tenant-default',
+          documentId: params['documentId'],
+          fileId: parsed.fileId,
+          signedBy: 'user-owner',
+          payload: parsed.payload,
+          createdAt: '2026-08-07T10:00:00.000Z',
+        },
+      },
+    });
+  }),
   http.get('*/api/pad-sessions/active', () =>
     HttpResponse.json({ ok: true, data: { session: null } }),
   ),

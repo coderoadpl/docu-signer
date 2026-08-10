@@ -9,6 +9,8 @@ import { createApiTokenRepository } from './api-tokens-repository.js';
 import { createTenantAccessReader } from './repositories.js';
 import { createSavedSearchRepository } from './saved-searches-repository.js';
 import { createUserPreferenceRepository } from './user-preferences-repository.js';
+import { createTenantSettingsRepository } from './tenant-settings-repository.js';
+import { createSignatureRecordRepository } from './signature-records-repository.js';
 import { tenantAdmins, tenants, user } from './schema.js';
 import * as schema from './schema.js';
 import { closePoolAndDropIntegrationDatabase } from './test-support/integration-database.js';
@@ -336,6 +338,91 @@ describe('UserPreferenceRepository', () => {
   });
 });
 
+describe('TenantSettingsRepository', () => {
+  it('upserts the setting by tenant without leaking across tenants', async () => {
+    const repository = createTenantSettingsRepository(db);
+
+    await expect(repository.get('tenant-a')).resolves.toBeNull();
+    await expect(repository.set('tenant-a', false)).resolves.toEqual({
+      tenantId: 'tenant-a',
+      storeSignatureRecords: false,
+    });
+    await expect(repository.get('tenant-b')).resolves.toBeNull();
+    await expect(repository.set('tenant-a', true)).resolves.toEqual({
+      tenantId: 'tenant-a',
+      storeSignatureRecords: true,
+    });
+  });
+});
+
+describe('SignatureRecordRepository', () => {
+  it('round-trips tenant-scoped records and cascades them on document purge', async () => {
+    const documents = createDocumentRepository(db);
+    const repository = createSignatureRecordRepository(db);
+    const documentId = '23232323-2323-4232-8232-232323232323';
+    const fileId = '24242424-2424-4242-8242-242424242424';
+    await documents.create({
+      id: documentId,
+      tenantId: 'tenant-a',
+      title: 'Zapis podpisu',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-07',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: ['signature-record-itest'],
+    });
+    await documents.createFile('tenant-a', {
+      id: fileId,
+      documentId,
+      role: 'signed-digital',
+      fileName: 'podpisany.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-a/signature-record-itest/file',
+    });
+    const payload = [
+      {
+        strokes: [
+          {
+            points: [{ x: 0.2, y: 0.3, pressure: 0.8 }],
+            simulatePressure: false,
+          },
+        ],
+        pageIndex: 0,
+        placement: { offsetX: 0.1, offsetY: 0.2, scale: 1.1 },
+        inkColor: 'black' as const,
+        inkSize: 2,
+      },
+    ];
+    const input = {
+      id: '25252525-2525-4252-8252-252525252525',
+      tenantId: 'tenant-a',
+      documentId,
+      fileId,
+      signedBy: 'user-owner',
+      payload,
+    };
+
+    await expect(repository.create(input)).resolves.toMatchObject({
+      ...input,
+      createdAt: expect.any(String),
+    });
+    await expect(repository.create(input)).resolves.toBeNull();
+    await expect(
+      repository.listByDocument('tenant-b', documentId, null, 10),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.listByDocument('tenant-a', documentId, null, 10),
+    ).resolves.toMatchObject([{ id: input.id, payload }]);
+
+    await expect(documents.purge('tenant-a', documentId)).resolves.toBe(true);
+    await expect(
+      repository.listByDocument('tenant-a', documentId, null, 10),
+    ).resolves.toEqual([]);
+  });
+});
+
 describe('PadSessionRepository', () => {
   it('round-trips request, submit, consume and close by tenant', async () => {
     const repository = createPadSessionRepository(db);
@@ -527,6 +614,11 @@ describe('database invariants', () => {
         [`grant-${suffix}`, `tenant-${suffix}`, `user-${suffix}`],
       );
       await pool.query(
+        `INSERT INTO tenant_settings (tenant_id, store_signature_records)
+         VALUES ($1, true)`,
+        [`tenant-${suffix}`],
+      );
+      await pool.query(
         `INSERT INTO tenant_domains (id, tenant_id, domain, kind, verified)
          VALUES ($1, $2, $3, 'custom', true)`,
         [`domain-${suffix}`, `tenant-${suffix}`, `${suffix}.example.com`],
@@ -568,6 +660,24 @@ describe('database invariants', () => {
           `cascade/${suffix}`,
         ],
       );
+      await pool.query(
+        `INSERT INTO signature_records
+           (id, tenant_id, document_id, file_id, signed_by, payload)
+         VALUES ($1, $2, $3, $4, $5, '[{"strokes":[{"points":[{"x":0.1,"y":0.2,"pressure":0.5}]}],"pageIndex":0,"placement":{"offsetX":0,"offsetY":0,"scale":1},"inkColor":"black","inkSize":2}]'::jsonb)`,
+        [
+          suffix === 'offboard'
+            ? 'abababab-abab-4bab-8bab-abababababab'
+            : 'cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd',
+          `tenant-${suffix}`,
+          suffix === 'offboard'
+            ? '77777777-7777-4777-8777-777777777777'
+            : '88888888-8888-4888-8888-888888888888',
+          suffix === 'offboard'
+            ? '99999999-9999-4999-8999-999999999999'
+            : 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          `user-${suffix}`,
+        ],
+      );
     }
 
     await pool.query(`DELETE FROM tenants WHERE id = 'tenant-offboard'`);
@@ -588,6 +698,12 @@ describe('database invariants', () => {
       pool.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM saved_searches WHERE tenant_id = 'tenant-offboard'`,
       ),
+      pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM tenant_settings WHERE tenant_id = 'tenant-offboard'`,
+      ),
+      pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM signature_records WHERE tenant_id = 'tenant-offboard'`,
+      ),
     ]);
     const sibling = await Promise.all([
       pool.query<{ count: number }>(
@@ -605,9 +721,15 @@ describe('database invariants', () => {
       pool.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM saved_searches WHERE tenant_id = 'tenant-sibling'`,
       ),
+      pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM tenant_settings WHERE tenant_id = 'tenant-sibling'`,
+      ),
+      pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM signature_records WHERE tenant_id = 'tenant-sibling'`,
+      ),
     ]);
 
-    expect(removed.map((result) => result.rows[0]?.count)).toEqual([0, 0, 0, 0, 0]);
-    expect(sibling.map((result) => result.rows[0]?.count)).toEqual([1, 1, 1, 1, 1]);
+    expect(removed.map((result) => result.rows[0]?.count)).toEqual([0, 0, 0, 0, 0, 0, 0]);
+    expect(sibling.map((result) => result.rows[0]?.count)).toEqual([1, 1, 1, 1, 1, 1, 1]);
   });
 });

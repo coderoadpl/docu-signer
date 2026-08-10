@@ -61,17 +61,17 @@ rejected.)
 - `pnpm run e2e` = the **browser** gate: Playwright drives real browsers over
   the real stack (isolated `agentproofarch_e2e` DB, `localhost` registered as a
   single-tenant custom domain, `entry.node.ts` serving the built bundle): Chromium
-  covers all six spec files (16 tests), and WebKit reruns `documents.spec.ts` to
-  pin the Safari/pdf.js legacy regression (22 test executions total):
+  covers all six spec files (17 tests), and WebKit reruns `documents.spec.ts` to
+  pin the Safari/pdf.js legacy regression (24 test executions total):
   `app.spec.ts` (login → archive navigation →
   failed-login → cache headers → liveness/readiness → anonymous redirect to login),
   `documents.spec.ts` (create → role uploads → source-only preview link +
   content-type → export; trash → restore roundtrip; signature pad pen/touch
   stamp placement; QR remote pad two-context mass signing; draft-filter approve
-  roundtrip; mass signing with a signed-file target),
+  roundtrip; mass signing sign/skip and signed-file-target flows),
   `magic-link.spec.ts` (trusted-user sign-in), `passkey.spec.ts`
   (registration → passkey sign-in), `settings.spec.ts` (account security and
-  registration without tenant management), and `password-reset.spec.ts`
+  registration), and `password-reset.spec.ts`
   (password change + email reset link via Mailpit). The harness boots the
   server with `AUTH_RATE_LIMIT: 'off'` (`scripts/e2e-server.ts`) — the baseline
   is on (including dev), but the specs replay many logins that would otherwise
@@ -100,7 +100,13 @@ rejected.)
   A full-screen mass-review queue shows each selected source or newest digital
   signature and supports lightweight metadata editing without signing controls.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
-  replaces the source or persists a reusable signature. A desktop signing
+  replaces the source. With the tenant setting on, each signing session also
+  stores its signature ink (stroke geometry, placement, color, size) bound by
+  foreign key to that document — a deliberate reversal of the 2026-08-01
+  never-store-ink rule (owner decision 2026-08-07, provenance in
+  FOUNDATION.md) so the same document's signatures can be re-flattened onto a
+  corrected source. No product surface offers applying stored ink to any
+  other document. A desktop signing
   user has one global remote pad session shared by every signing surface at
   `/pad/{sessionId}`; the pad requires a normal login plus either the session
   secret from the URL fragment (QR) or same-user identity (`/pad` join), and
@@ -114,7 +120,8 @@ rejected.)
   Konto > Tokeny API only — token hygiene is that surface's purpose, and it is
   an account-security surface, not a document surface (agent decision
   2026-08-02, recorded in FOUNDATION.md).
-- Konto: personal passkeys, API tokens and two-factor authentication. Removed
+- Konto: personal passkeys, API tokens, two-factor authentication and the
+  tenant-wide signature-ink storage switch (Ustawienia organizacji). Removed
   upstream verticals stay removed.
 
 ## Layer rules (enforced, but know them anyway)

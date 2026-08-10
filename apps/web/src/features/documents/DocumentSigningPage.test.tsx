@@ -1285,6 +1285,65 @@ describe('DocumentSigningPage', () => {
     });
   });
 
+  it('navigates after upload without waiting for signature-record storage', async () => {
+    let recordStarted = false;
+    let releaseRecord: (() => void) | undefined;
+    const recordGate = new Promise<void>((resolve) => {
+      releaseRecord = resolve;
+    });
+    installUploadHandlers();
+    server.use(
+      http.post(
+        `/api/documents/${DOCUMENT_ID}/signature-records`,
+        async () => {
+          recordStarted = true;
+          await recordGate;
+          return HttpResponse.json({
+            ok: true,
+            data: {
+              signatureRecord: {
+                id: '99999999-9999-4999-8999-999999999999',
+                tenantId: 'tenant-default',
+                documentId: DOCUMENT_ID,
+                fileId: '44444444-4444-4444-8444-444444444444',
+                signedBy: 'user-owner',
+                payload: [
+                  {
+                    strokes: [
+                      {
+                        points: [{ x: 0.1, y: 0.2, pressure: 0.5 }],
+                      },
+                    ],
+                    pageIndex: 0,
+                    placement: { offsetX: 0, offsetY: 0, scale: 1 },
+                    inkColor: 'black',
+                    inkSize: 2,
+                  },
+                ],
+                createdAt: '2026-08-07T10:00:00.000Z',
+              },
+            },
+          });
+        },
+      ),
+    );
+
+    try {
+      const { router } = await renderPage();
+      await drawStroke();
+      fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+
+      await waitFor(() => expect(recordStarted).toBe(true));
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(
+          `/app/documents/${DOCUMENT_ID}`,
+        ),
+      );
+    } finally {
+      releaseRecord?.();
+    }
+  });
+
   it('skips a mass-signing document with zero stamps and shows the summary', async () => {
     await renderPage(
       `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,

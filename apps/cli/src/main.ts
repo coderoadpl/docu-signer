@@ -9,7 +9,11 @@ import { z } from 'zod';
 import { createCliAuthAdapter, followMagicLink } from '#adapters/auth/client-adapter.js';
 import type { AuthClientPort } from '#core/client/index.js';
 import { createApiClient, type ApiClient } from '#core/client/index.js';
-import { apiTokenCreateInputSchema, documentCreateInputSchema } from '#core/contract/index.js';
+import {
+  apiTokenCreateInputSchema,
+  documentCreateInputSchema,
+  tenantSettingsUpdateInputSchema,
+} from '#core/contract/index.js';
 import {
   canonicalSlugSchema,
   err,
@@ -118,6 +122,7 @@ const originUseArgsSchema = z.object({
 const tokenListFilterSchema = z.object({
   draft: z.enum(['true', 'false', 'all']).optional(),
 });
+const booleanOptionSchema = z.enum(['true', 'false']).transform((value) => value === 'true');
 
 /**
  * Thrown by cliCtx after it has already emitted a `validation` envelope for a
@@ -381,6 +386,40 @@ program.command('whoami').description('Current user and archive access').action(
   );
 });
 
+const tenantSettings = program
+  .command('tenant-settings')
+  .description('Manage settings for the active tenant');
+
+tenantSettings.command('show').description('Show tenant settings').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.getTenantSettings(), ctx.json, (data) =>
+    `store-signature-records=${String(data.settings.storeSignatureRecords)}`,
+  );
+});
+
+tenantSettings
+  .command('set')
+  .description('Update tenant settings')
+  .requiredOption('--store-signature-records <value>', 'true|false')
+  .action(async (options: { storeSignatureRecords: string }) => {
+    const ctx = cliCtx();
+    const storeSignatureRecords = parseArgs(
+      booleanOptionSchema,
+      options.storeSignatureRecords,
+      ctx.json,
+    );
+    if (storeSignatureRecords === undefined) return;
+    const input = parseArgs(
+      tenantSettingsUpdateInputSchema,
+      { storeSignatureRecords },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(await ctx.api.updateTenantSettings(input), ctx.json, (data) =>
+      `store-signature-records=${String(data.settings.storeSignatureRecords)}`,
+    );
+  });
+
 const origin = program.command('origin').description('API-origin profiles');
 
 origin.command('list').description('List configured API origins').action(() => {
@@ -468,16 +507,34 @@ document
     );
   });
 
+export const signatureRecordsProbeResult = (
+  recordsResult: { ok: true; value: { items: readonly unknown[] } } | { ok: false },
+): boolean | null => (recordsResult.ok ? recordsResult.value.items.length > 0 : null);
+
 document
   .command('show <id>')
   .description('Show a document and its attachments')
   .action(async (id: string) => {
     const ctx = cliCtx();
-    emit(await ctx.api.getDocument(id), ctx.json, (data) => {
-      const files = data.document.files
+    const documentResult = await ctx.api.getDocument(id);
+    if (!documentResult.ok) {
+      emit(documentResult, ctx.json, () => '');
+      return;
+    }
+    const recordsResult = await ctx.api.listSignatureRecords(id, { limit: 1 });
+    const data = {
+      document: documentResult.value.document,
+      signatureRecordsExist: signatureRecordsProbeResult(recordsResult),
+    };
+    emit(ok(data), ctx.json, (value) => {
+      const files = value.document.files
         .map((file) => `  - ${file.role}\t${file.fileName}\t(${file.id.slice(0, 8)})`)
         .join('\n');
-      return `${data.document.documentDate}\t${data.document.draft ? 'DRAFT\t' : ''}${data.document.title}\n${files || '  no files'}`;
+      const records =
+        value.signatureRecordsExist === null
+          ? ''
+          : `signature-records=${String(value.signatureRecordsExist)}\n`;
+      return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\n${records}${files || '  no files'}`;
     });
   });
 

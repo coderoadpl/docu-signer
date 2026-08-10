@@ -224,7 +224,8 @@ no server state) and a thin stateful composition (`AppLayout.tsx`, beside
 chrome — the **logout** action and primary navigation — and renders the active
 child through its `Outlet`. A caller without access to the fixed archive sees a
 no-access state. `/app` redirects to `/app/documents`; the archive lives there,
-and personal authentication controls live at `/app/settings`. Unknown routes
+and account controls plus the tenant's signature-record retention setting live
+at `/app/settings`. Unknown routes
 render a Polish not-found view inside the shell.
 Bare `/` redirects to `/app`. `/pad/{sessionId}` is a standalone authenticated
 signing-pad route outside the archive shell: it joins the user's global session
@@ -652,6 +653,8 @@ absent from a capability's list is denied.
 | `api-token:manage`    | allow | allow | deny                  |
 | `saved-search:manage` | allow | allow | deny                  |
 | `user-preference:manage` | allow | allow | deny               |
+| `tenant-settings:manage` | allow | allow | deny               |
+| `signature-record:manage` | allow | allow | deny              |
 
 Personal API tokens resolve from `Authorization: Bearer pat_...` before session
 auth. A valid token becomes the owning user's identity plus an `apiToken` scope
@@ -660,8 +663,8 @@ intersects the token scopes. `read` grants only document list/show/file/export
 reads. `write` grants document write operations except document/file deletion
 and approval. `write:draft` grants document writes only where the operation creates
 or targets a draft document. Token management, account/auth identity, saved
-search management, user-preference management, approval and all deletes are
-session-only.
+search management, user-preference management, tenant settings, signature
+records, approval and all deletes are session-only.
 
 **One line per use-case.** Every tenant-scoped use-case runs the predicate — via
 the `authorize` / `authorizeTenant` helpers in `core/server` — as its first
@@ -1104,6 +1107,8 @@ code.
   so there is no in-app dev route to keep off production. The auth mail senders
   in `create-auth.ts` are consumers of `sendMail`, not the port's shape.
 - `DocumentRepository`: tenant-scoped archive metadata and file records.
+- `TenantSettingsRepository`: tenant-scoped signature-record retention policy.
+- `SignatureRecordRepository`: write-once signing-session stamp data, listed by document.
 - `StoragePort`: private document bytes, metadata and upload targets.
 - `TenantDomainRepository`, `TenantRepository`, `TenantAccessReader`: read-only
   tenant-resolution and archive-access plumbing.

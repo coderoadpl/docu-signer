@@ -9,6 +9,7 @@ import {
   loginCredentialSelectionIsValid,
   normalizeStdinPassword,
   runLoginAction,
+  signatureRecordsProbeResult,
 } from './main.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
@@ -32,7 +33,8 @@ describe('CLI command surface', () => {
     expect(result.stdout).toContain('health');
     expect(result.stdout).toContain('origin');
     expect(result.stdout).toContain('public');
-    expect(result.stdout).not.toMatch(/^\s+(todo|card|member|staff|tenant|domain)\b/m);
+    expect(result.stdout).toContain('tenant-settings');
+    expect(result.stdout).not.toMatch(/^\s+(todo|card|member|staff|tenant(?!-settings)|domain)\b/m);
     expect(result.stdout).not.toContain('--tenant');
   }, CLI_TEST_TIMEOUT_MS);
 
@@ -102,6 +104,17 @@ describe('CLI command surface', () => {
     });
   }, CLI_TEST_TIMEOUT_MS);
 
+});
+
+describe('document show signature-records probe', () => {
+  it('reports existence from a permitted probe', () => {
+    expect(signatureRecordsProbeResult(ok({ items: [{}] }))).toBe(true);
+    expect(signatureRecordsProbeResult(ok({ items: [] }))).toBe(false);
+  });
+
+  it('degrades to null when the probe is denied, so token callers still get the document', () => {
+    expect(signatureRecordsProbeResult(err(appError('forbidden', 'denied')))).toBeNull();
+  });
 });
 
 describe('login action', () => {

@@ -28,6 +28,10 @@ import {
   publicVersionSchema,
   savedSearchCreateInputSchema,
   savedSearchListOutputSchema,
+  signatureRecordCreateInputSchema,
+  signatureRecordListOutputSchema,
+  tenantSettingsGetOutputSchema,
+  tenantSettingsUpdateInputSchema,
   userPreferenceGetOutputSchema,
   userPreferenceKeyInputSchema,
   userPreferenceSetInputSchema,
@@ -94,6 +98,14 @@ describe('API route contract', () => {
     expect(API_ROUTES.userPreferenceSet).toEqual({
       method: 'PUT',
       path: '/api/me/preferences/:key',
+    });
+    expect(API_ROUTES.tenantSettings).toEqual({
+      method: 'GET',
+      path: '/api/tenant-settings',
+    });
+    expect(API_ROUTES.signatureRecordsCreate).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/signature-records',
     });
     expect(PAD_SECRET_HEADER).toBe('x-pad-secret');
     expect(API_ROUTES.padSessionsCreate).toEqual({
@@ -358,6 +370,57 @@ describe('API route contract', () => {
         },
       }).success,
     ).toBe(true);
+  });
+
+  it('validates tenant settings and signature record payloads', () => {
+    expect(
+      tenantSettingsGetOutputSchema.safeParse({
+        settings: { tenantId: 'tenant-default', storeSignatureRecords: true },
+      }).success,
+    ).toBe(true);
+    expect(
+      tenantSettingsUpdateInputSchema.safeParse({ storeSignatureRecords: false }).success,
+    ).toBe(true);
+    expect(
+      tenantSettingsUpdateInputSchema.safeParse({ storeSignatureRecords: 'false' }).success,
+    ).toBe(false);
+    const record = {
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-default',
+      documentId: '11111111-1111-4111-8111-111111111111',
+      fileId: '22222222-2222-4222-8222-222222222222',
+      signedBy: 'user-1',
+      payload: [
+        {
+          strokes: [
+            {
+              points: [{ x: 0.2, y: 0.3, pressure: 0.8 }],
+              simulatePressure: false,
+            },
+          ],
+          pageIndex: 0,
+          placement: { offsetX: 0.1, offsetY: 0.2, scale: 1 },
+          inkColor: 'black',
+          inkSize: 2,
+        },
+      ],
+      createdAt: '2026-08-07T10:00:00.000Z',
+    };
+    expect(
+      signatureRecordCreateInputSchema.safeParse({
+        fileId: record.fileId,
+        payload: record.payload,
+      }).success,
+    ).toBe(true);
+    expect(
+      signatureRecordListOutputSchema.safeParse({ items: [record], nextCursor: null }).success,
+    ).toBe(true);
+    expect(
+      signatureRecordCreateInputSchema.safeParse({
+        fileId: record.fileId,
+        payload: [{ ...record.payload[0], pageIndex: -1 }],
+      }).success,
+    ).toBe(false);
   });
 
   it('validates saved search payloads and responses', () => {

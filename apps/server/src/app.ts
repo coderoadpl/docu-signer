@@ -19,6 +19,9 @@ import {
   padSessionSubmitInputSchema,
   savedSearchCreateInputSchema,
   serverUploadMetadataSchema,
+  signatureRecordCreateInputSchema,
+  signatureRecordListInputSchema,
+  tenantSettingsUpdateInputSchema,
   userPreferenceKeyInputSchema,
   userPreferenceSetInputSchema,
 } from '#core/contract/index.js';
@@ -40,6 +43,7 @@ import {
   createDocument,
   createPadSession,
   createSavedSearch,
+  createSignatureRecord,
   closePadSession,
   consumePadStrokes,
   disconnectPadSession,
@@ -51,6 +55,7 @@ import {
   getFileContent,
   getFileExport,
   getUserPreference,
+  getTenantSettings,
   getActivePadSession,
   getPadState,
   joinOwnPadSession,
@@ -58,6 +63,7 @@ import {
   listApiTokens,
   listTrashedDocuments,
   listSavedSearches,
+  listSignatureRecords,
   moveDocumentFile,
   purgeDocument,
   removeFile,
@@ -70,6 +76,7 @@ import {
   serverUpload,
   setUserPreference,
   submitPadStrokes,
+  updateTenantSettings,
   updateDocument,
   type Ctx,
 } from '#core/server/index.js';
@@ -174,14 +181,20 @@ export const buildApp = (deps: AppDeps) => {
     maxSize: 25 * 1024 * 1024,
     onError: () => respond(err(validation('Upload exceeds the 25MB limit'))),
   });
+  const signatureRecordBodyLimit = bodyLimit({
+    maxSize: 4 * 1024 * 1024,
+    onError: () => respond(err(validation('Signature record exceeds the 4MB limit'))),
+  });
   const jsonBodyRoutes = Object.values(API_ROUTES).filter(
     (route) =>
       route.method !== 'GET' &&
       route.path !== API_ROUTES.documentFileServerUpload.path &&
-      route.path !== API_ROUTES.padSessionSubmit.path,
+      route.path !== API_ROUTES.padSessionSubmit.path &&
+      route.path !== API_ROUTES.signatureRecordsCreate.path,
   );
   for (const route of jsonBodyRoutes) app.use(route.path, jsonBodyLimit);
   app.use(API_ROUTES.padSessionSubmit.path, padSubmitBodyLimit);
+  app.use(API_ROUTES.signatureRecordsCreate.path, signatureRecordBodyLimit);
   app.use(BETTER_AUTH_API_PATH_PATTERN, jsonBodyLimit);
   app.use(API_ROUTES.documentFileServerUpload.path, serverUploadBodyLimit);
 
@@ -310,6 +323,57 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ preference: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.tenantSettings.path, async (c) => {
+    const result = await getTenantSettings(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ settings: result.value }) : result);
+  });
+
+  app.put(API_ROUTES.tenantSettingsUpdate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = tenantSettingsUpdateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid tenant settings', parsed.error.flatten())));
+    }
+    const result = await updateTenantSettings(
+      ctxOf(c.get('identity')),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ settings: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.signatureRecords.path, async (c) => {
+    const parsed = signatureRecordListInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid signature record pagination', parsed.error.flatten())));
+    }
+    const result = await listSignatureRecords(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result);
+  });
+
+  app.post(API_ROUTES.signatureRecordsCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = signatureRecordCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid signature record', parsed.error.flatten())));
+    }
+    const result = await createSignatureRecord(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ signatureRecord: result.value }) : result);
   });
 
   app.post(API_ROUTES.padSessionsCreate.path, async (c) => {
