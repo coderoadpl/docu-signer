@@ -160,6 +160,13 @@ describe('DocumentRepository', () => {
     await expect(repository.approve('tenant-a', draft.id)).resolves.toMatchObject({
       draft: false,
     });
+    await expect(repository.unapprove('tenant-a', draft.id)).resolves.toMatchObject({
+      draft: true,
+    });
+    await expect(repository.listByTenant('tenant-a', { draft: 'true' })).resolves.toMatchObject([
+      { title: 'Szkic', draft: true },
+    ]);
+    await repository.approve('tenant-a', draft.id);
     await expect(repository.listByTenant('tenant-a', { draft: 'true' })).resolves.toEqual([]);
   });
 

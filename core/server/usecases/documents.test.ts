@@ -32,6 +32,7 @@ import {
   restoreDocument,
   serverUpload,
   type DocumentDeps,
+  unapproveDocument,
   updateDocument,
 } from './documents.js';
 
@@ -183,6 +184,16 @@ const fake = (
       const approved = { ...current, draft: false, updatedAt: '2026-07-02T10:00:00.000Z' };
       documents[index] = approved;
       return approved;
+    },
+    unapprove: async (tenantId, id) => {
+      const index = documents.findIndex(
+        (document) => document.tenantId === tenantId && document.id === id,
+      );
+      const current = documents[index];
+      if (!current) return null;
+      const unapproved = { ...current, draft: true, updatedAt: '2026-07-02T10:00:00.000Z' };
+      documents[index] = unapproved;
+      return unapproved;
     },
     delete: async (tenantId, id) => {
       const index = documents.findIndex(
@@ -371,6 +382,10 @@ describe('documents use-cases', () => {
         name: 'approveDocument',
         run: (deps) => approveDocument(ctx(member), documentId, deps),
       },
+      {
+        name: 'unapproveDocument',
+        run: (deps) => unapproveDocument(ctx(member), documentId, deps),
+      },
       { name: 'deleteDocument', run: (deps) => deleteDocument(ctx(member), documentId, deps) },
       { name: 'restoreDocument', run: (deps) => restoreDocument(ctx(member), documentId, deps) },
       { name: 'purgeDocument', run: (deps) => purgeDocument(ctx(member), documentId, deps) },
@@ -440,6 +455,7 @@ describe('documents use-cases', () => {
         vi.spyOn(state.deps.documents, 'create'),
         vi.spyOn(state.deps.documents, 'update'),
         vi.spyOn(state.deps.documents, 'approve'),
+        vi.spyOn(state.deps.documents, 'unapprove'),
         vi.spyOn(state.deps.documents, 'delete'),
         vi.spyOn(state.deps.documents, 'restore'),
         vi.spyOn(state.deps.documents, 'purge'),
@@ -496,6 +512,10 @@ describe('documents use-cases', () => {
     expect(await approveDocument(ctx(staff('tenant-acme')), draft.value.id, state.deps)).toMatchObject({
       ok: true,
       value: { draft: false },
+    });
+    expect(await unapproveDocument(ctx(staff('tenant-acme')), draft.value.id, state.deps)).toMatchObject({
+      ok: true,
+      value: { draft: true },
     });
     expect(await deleteDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toEqual({
       ok: true,
@@ -619,6 +639,10 @@ describe('documents use-cases', () => {
       error: { code: 'forbidden' },
     });
     expect(await approveDocument(ctx(draftToken), movedDocumentId, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(await unapproveDocument(ctx(draftToken), documentId, state.deps)).toMatchObject({
       ok: false,
       error: { code: 'forbidden' },
     });
@@ -938,6 +962,14 @@ describe('documents use-cases', () => {
   it('returns not_found for unknown entries, files and exports', async () => {
     const state = fake();
     expect(await getDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+    expect(await approveDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+    expect(await unapproveDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
       ok: false,
       error: { code: 'not_found' },
     });

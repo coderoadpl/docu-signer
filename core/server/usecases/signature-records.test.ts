@@ -95,6 +95,7 @@ const documents = (): DocumentRepository => ({
   create: async () => document,
   update: async () => document,
   approve: async () => document,
+  unapprove: async () => document,
   delete: async () => true,
   restore: async () => document,
   purge: async () => true,
