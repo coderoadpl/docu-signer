@@ -49,9 +49,23 @@ jobs:
           SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
           SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
           SMOKE_TENANT: ${{ secrets.SMOKE_TENANT }}
+      - name: Check browser-probe credentials
+        id: probe-creds
+        env:
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+        run: |
+          if [ -n "$SMOKE_EMAIL" ] && [ -n "$SMOKE_PASSWORD" ]; then
+            echo "armed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "armed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Browser probe UNARMED::Production browser login was NOT probed - set the SMOKE_EMAIL and SMOKE_PASSWORD repository secrets to a dedicated probe account to close the browser/2FA blind spot (P0 incident 2026-08-10)."
+          fi
       - name: Install Chromium
+        if: steps.probe-creds.outputs.armed == 'true'
         run: pnpm exec playwright install chromium --with-deps
       - name: Probe production browser login
+        if: steps.probe-creds.outputs.armed == 'true'
         run: pnpm run probe:browser
         env:
           BASE_URL: ${{ github.event.deployment.environment == 'Production' && 'https://docu-signer-nine.vercel.app' || github.event.deployment_status.environment_url }}
