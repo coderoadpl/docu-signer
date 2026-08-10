@@ -95,8 +95,10 @@ export const createSourceUpdateRequest = async (
   const approverIds = parsed.data.mode === 'transfer'
     ? [...new Set(
         records
-          .map((record) => record.signedBy)
-          .filter((signedBy) => signedBy !== ctx.identity.userId),
+          .flatMap((record) =>
+            record.payload.map((stamp) => stamp.contributedBy ?? record.signedBy),
+          )
+          .filter((contributorId) => contributorId !== ctx.identity.userId),
       )]
     : [];
   const created = await deps.sourceUpdateRequests.create({

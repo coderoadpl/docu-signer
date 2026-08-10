@@ -24,7 +24,7 @@ import {
   type FileUploadRequest,
   type FinalizeFileUpload,
   type MoveDocumentFile,
-  type PadSubmittedStrokes,
+  type PadStrokeSubmission,
   type SetUserPreference,
   type SignatureRecord,
   type UpdateDocument,
@@ -534,7 +534,7 @@ export const submitPadStrokesMutation = (api: ApiClient) =>
       secret,
       sessionId,
     }: {
-      input: PadSubmittedStrokes;
+      input: PadStrokeSubmission;
       secret: string;
       sessionId: string;
     }) => api.submitPadStrokes(sessionId, secret, input),

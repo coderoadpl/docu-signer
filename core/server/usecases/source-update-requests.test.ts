@@ -81,23 +81,29 @@ const file = (
   createdAt: '2026-08-08T10:00:00.000Z',
 });
 
-const payload = [
-  {
-    strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
-    pageIndex: 0,
-    placement: { offsetX: 0, offsetY: 0, scale: 1 },
-    inkColor: 'black' as const,
-    inkSize: 2,
-  },
-];
+const signatureStamp = (
+  contributedBy?: string,
+): SignatureRecord['payload'][number] => ({
+  strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
+  pageIndex: 0,
+  placement: { offsetX: 0, offsetY: 0, scale: 1 },
+  inkColor: 'black',
+  inkSize: 2,
+  ...(contributedBy === undefined ? {} : { contributedBy }),
+});
 
-const record = (signedBy = 'user-requester'): SignatureRecord => ({
+const payload: SignatureRecord['payload'] = [signatureStamp()];
+
+const record = (
+  signedBy = 'user-requester',
+  recordPayload: SignatureRecord['payload'] = payload,
+): SignatureRecord => ({
   id: recordId,
   tenantId: 'tenant-1',
   documentId,
   fileId: oldSignedFileId,
   signedBy,
-  payload,
+  payload: recordPayload,
   createdAt: '2026-08-08T10:00:00.000Z',
 });
 
@@ -306,6 +312,65 @@ describe('source update request use-cases', () => {
     await expect(
       getActiveSourceUpdateRequest({ identity: identity() }, documentId, deps),
     ).resolves.toMatchObject({ ok: true, value: { id: requestId } });
+  });
+
+  it.each([
+    {
+      name: 'uses signed_by for a legacy record owned by another account',
+      records: [record('user-desktop')],
+      approvals: ['user-desktop'],
+    },
+    {
+      name: 'does not require the desktop account when every stamp belongs to the requester',
+      records: [
+        record('user-desktop', [
+          signatureStamp('user-requester'),
+          signatureStamp('user-requester'),
+        ]),
+      ],
+      approvals: [],
+    },
+    {
+      name: 'requires the pad contributor when the requester flattened the session',
+      records: [record('user-requester', [signatureStamp('user-pad')])],
+      approvals: ['user-pad'],
+    },
+    {
+      name: 'uses signed_by only for stamps without contributor precision',
+      records: [
+        record('user-desktop', [
+          signatureStamp('user-requester'),
+          signatureStamp(),
+        ]),
+      ],
+      approvals: ['user-desktop'],
+    },
+    {
+      name: 'unions and deduplicates contributors across records',
+      records: [
+        record('user-desktop', [
+          signatureStamp('user-requester'),
+          signatureStamp('user-pad-a'),
+          signatureStamp('user-pad-b'),
+        ]),
+        { ...record('user-other-desktop', [signatureStamp('user-pad-a')]), id: approvalId },
+      ],
+      approvals: ['user-pad-a', 'user-pad-b'],
+    },
+  ])('$name', async ({ records, approvals }) => {
+    const { deps } = dependencies({ records });
+    const created = await createSourceUpdateRequest(
+      { identity: identity() },
+      documentId,
+      { newSourceFileId: stagedSourceFileId, mode: 'transfer' },
+      deps,
+    );
+    expect(created).toMatchObject({
+      ok: true,
+      value: {
+        approvals: approvals.map((approverId) => ({ approverId, decision: 'pending' })),
+      },
+    });
   });
 
   it('enforces the single-active constraint and validates staged files and legacy signatures', async () => {

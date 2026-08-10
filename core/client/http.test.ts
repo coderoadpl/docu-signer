@@ -282,7 +282,16 @@ describe('API client', () => {
         });
       }
       if (url.endsWith('/consume')) {
-        return json({ ok: true, data: { submittedStrokes, lastPolledAt: null } });
+        return json({
+          ok: true,
+          data: {
+            submittedStrokes: {
+              ...submittedStrokes,
+              contributedBy: { accountId: 'user-pad', label: 'Pad User' },
+            },
+            lastPolledAt: null,
+          },
+        });
       }
       return json({ ok: true, data: { closed: true } });
     });
@@ -382,6 +391,7 @@ describe('API client', () => {
           placement: { offsetX: 0.1, offsetY: 0.2, scale: 1 },
           inkColor: 'black' as const,
           inkSize: 2,
+          contributedBy: 'user-1',
         },
       ],
       createdAt: '2026-08-07T10:00:00.000Z',

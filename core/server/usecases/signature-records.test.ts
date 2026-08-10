@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { signatureRecordPayloadSchema } from '#core/domain/index.js';
 import type {
   ApiTokenScope,
   Document,
@@ -23,7 +24,7 @@ const fileId = '22222222-2222-4222-8222-222222222222';
 const otherFileId = '55555555-5555-4555-8555-555555555555';
 const recordId = '33333333-3333-4333-8333-333333333333';
 const otherRecordId = '66666666-6666-4666-8666-666666666666';
-const payload = [
+const legacyPayload = [
   {
     strokes: [
       {
@@ -37,6 +38,11 @@ const payload = [
     inkSize: 2,
   },
 ];
+
+const payload = legacyPayload.map((stamp) => ({
+  ...stamp,
+  contributedBy: 'user-1',
+}));
 
 const identity = (scopes: readonly ApiTokenScope[] | null = null): Identity => ({
   userId: 'user-1',
@@ -118,6 +124,11 @@ const records = (): SignatureRecordRepository => {
 };
 
 describe('signature record use-cases', () => {
+  it('parses legacy stamps without contributors and contributor-aware stamps', () => {
+    expect(signatureRecordPayloadSchema.parse(legacyPayload)).toEqual(legacyPayload);
+    expect(signatureRecordPayloadSchema.parse(payload)).toEqual(payload);
+  });
+
   it('creates and lists write-once records for signed-digital files', async () => {
     const deps = {
       documents: documents(),

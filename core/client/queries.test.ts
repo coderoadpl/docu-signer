@@ -410,6 +410,7 @@ describe('tenant settings and signature record descriptors', () => {
           placement: { offsetX: 0.1, offsetY: 0.2, scale: 1 },
           inkColor: 'black' as const,
           inkSize: 2,
+          contributedBy: 'user-1',
         },
       ],
       createdAt: '2026-08-07T10:00:00.000Z',

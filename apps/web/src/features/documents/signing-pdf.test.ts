@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SIGNING_INK_COLOR, signingInkColorById } from './signing.js';
 import { flattenSignedPdf } from './signing-pdf.js';
 
+const contributor = { accountId: 'user-owner', label: 'Owner' };
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -32,6 +34,7 @@ describe('PDF signature flattening', () => {
             ],
             placement: { offsetX: 0.1, offsetY: 0, scale: 0.75 },
             inkColor: DEFAULT_SIGNING_INK_COLOR,
+            contributedBy: contributor,
           },
           metrics: {
             cssWidth: 500,
@@ -76,6 +79,7 @@ describe('PDF signature flattening', () => {
             ],
             placement: { offsetX: 0, offsetY: 0, scale: 1 },
             inkColor,
+            contributedBy: contributor,
           },
           metrics: {
             cssWidth: 300,
@@ -123,6 +127,7 @@ describe('PDF signature flattening', () => {
           ],
           placement: { offsetX: 0, offsetY: 0, scale: 1 },
           inkColor: DEFAULT_SIGNING_INK_COLOR,
+          contributedBy: contributor,
         },
         metrics: {
           cssWidth: 200,
@@ -146,6 +151,7 @@ describe('PDF signature flattening', () => {
           ],
           placement: { offsetX: 0.1, offsetY: -0.1, scale: 0.8 },
           inkColor: signingInkColorById('navy'),
+          contributedBy: contributor,
         },
         metrics: {
           cssWidth: 250,

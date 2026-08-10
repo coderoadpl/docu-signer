@@ -68,7 +68,7 @@ import {
   type FileUploadRequest,
   type FinalizeFileUpload,
   type MoveDocumentFile,
-  type PadSubmittedStrokes,
+  type PadStrokeSubmission,
   type Result,
   type SetUserPreference,
   type CreateSignatureRecord,
@@ -692,7 +692,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
   submitPadStrokes: (
     sessionId: string,
     secret: string,
-    input: PadSubmittedStrokes,
+    input: PadStrokeSubmission,
     signal?: AbortSignal,
   ) =>
     request(

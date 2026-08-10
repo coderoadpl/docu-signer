@@ -21,7 +21,7 @@ import {
   padSessionRequestInputSchema as domainPadSessionRequestInputSchema,
   padSessionRequestOutputSchema as domainPadSessionRequestOutputSchema,
   padSessionStateOutputSchema as domainPadSessionStateOutputSchema,
-  padSubmittedStrokesSchema as domainPadSessionSubmitInputSchema,
+  padStrokeSubmissionSchema as domainPadSessionSubmitInputSchema,
   moveDocumentFileSchema,
   paginationQuerySchema,
   publicTenantProfileSchema,
