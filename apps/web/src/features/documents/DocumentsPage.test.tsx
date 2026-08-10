@@ -73,23 +73,14 @@ vi.mock('./DocumentTimelineView.js', async () => {
   const React = await import('react');
   const DocumentTimelineView = ({
     documents,
-    dateFrom,
-    dateTo,
     onOpenDocument,
   }: {
     documents: Array<{ id: string; title: string }>;
-    dateFrom: string;
-    dateTo: string;
     onOpenDocument: (documentId: string) => void;
   }) =>
     React.createElement(
       'div',
-      {
-        'aria-label': 'Oś czasu dokumentów',
-        'data-date-from': dateFrom,
-        'data-date-to': dateTo,
-        role: 'region',
-      },
+      { 'aria-label': 'Oś czasu dokumentów', role: 'region' },
       documents.map((item) =>
         React.createElement(
           'button',
