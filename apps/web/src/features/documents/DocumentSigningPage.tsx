@@ -1710,22 +1710,25 @@ export const DocumentSigningPage = ({
       server: (input) =>
         serverUpload.mutateAsync({ documentId, input }),
     });
-    try {
-      const settings = tenantSettings.data ??
-        await queryClient.fetchQuery(actions.tenantSettings);
-      const warning = await storeSignatureRecordAfterUpload({
-        create: (input) => createSignatureRecord.mutateAsync(input),
-        documentId,
-        fileId: uploadedFile.id,
-        stamps: committedStamps.map(({ stamp }) => stamp),
-        storeSignatureRecords: settings.settings.storeSignatureRecords,
-      });
-      if (warning) appNoticeStore.show(warning);
-    } catch {
-      appNoticeStore.show(
-        'Podpisany PDF zapisano, ale nie udało się sprawdzić ustawienia zapisu podpisów.',
-      );
-    }
+    const persistSignatureRecord = async () => {
+      try {
+        const settings = tenantSettings.data ??
+          await queryClient.fetchQuery(actions.tenantSettings);
+        const warning = await storeSignatureRecordAfterUpload({
+          create: (input) => createSignatureRecord.mutateAsync(input),
+          documentId,
+          fileId: uploadedFile.id,
+          stamps: committedStamps.map(({ stamp }) => stamp),
+          storeSignatureRecords: settings.settings.storeSignatureRecords,
+        });
+        if (warning) appNoticeStore.show(warning);
+      } catch {
+        appNoticeStore.show(
+          'Podpisany PDF zapisano, ale nie udało się sprawdzić ustawienia zapisu podpisów.',
+        );
+      }
+    };
+    void persistSignatureRecord();
     await queryClient.invalidateQueries(actions.documentsInvalidates());
   };
 
