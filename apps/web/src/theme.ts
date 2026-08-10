@@ -30,9 +30,9 @@ export const DEFAULT_PRIMARY = 'hsl(215, 35%, 34%)';
 // helper is barred from importing this module (boundary web-test ✕ web-theme),
 // so components must also render under Material's untouched default theme.
 const TABLE_SURFACE = {
-  head: 'hsl(215, 16%, 76%)',
-  periodBand: 'hsl(215, 14%, 84%)',
-  personBand: 'hsl(215, 12%, 91%)',
+  head: 'hsl(60, 5%, 87%)',
+  periodBand: 'hsl(60, 5%, 91%)',
+  personBand: 'hsl(60, 6%, 95%)',
 };
 
 const FONT_STACK = [
