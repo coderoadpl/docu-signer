@@ -28,7 +28,6 @@ import {
   SvgIcon,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -66,8 +65,8 @@ import {
   DocumentPeriodTitle,
   DocumentRecordTitleCell,
   DocumentsTable,
+  DocumentsTableContainer,
   DocumentTitleText,
-  StickyTableCell,
 } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
@@ -1025,15 +1024,13 @@ export const DocumentsPage = () => {
             </Box>
           ))}
         </Stack>
-        <TableContainer
-          component={Paper}
-          variant="outlined"
+        <DocumentsTableContainer
           sx={{ display: { xs: 'none', sm: 'block' }, mt: 4, maxWidth: '100%', overflowX: 'auto' }}
         >
           <DocumentsTable stickyHeader size="small">
             <TableHead>
               <TableRow>
-                <StickyTableCell
+                <TableCell
                   padding="checkbox"
                   sx={{ position: 'sticky', left: 0, zIndex: 2 }}
                 >
@@ -1058,7 +1055,7 @@ export const DocumentsPage = () => {
                       )
                     }
                   />
-                </StickyTableCell>
+                </TableCell>
                 {visibleColumnIds.map((column) => (
                   <DocumentColumnHeadCell key={column}>
                     {DOCUMENT_COLUMN_LABELS[column]}
@@ -1115,7 +1112,7 @@ export const DocumentsPage = () => {
                         padding="checkbox"
                         rowSpan={2}
                         onClick={(event) => event.stopPropagation()}
-                        sx={{ verticalAlign: 'top', pt: 1.25 }}
+                        sx={{ verticalAlign: 'middle' }}
                       >
                         <Checkbox
                           slotProps={{
@@ -1180,7 +1177,7 @@ export const DocumentsPage = () => {
               ]),
             ])}
           </DocumentsTable>
-        </TableContainer>
+        </DocumentsTableContainer>
         </>
       ) : null}
 
