@@ -29,10 +29,12 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 
+import { replaySignatureRecordsPdf } from '#core/client/index.js';
 import {
   documentTypeSchema,
   type DocumentFile,
   type DocumentFileRole,
+  type SourceUpdateRequest,
   type DocumentType,
 } from '#core/domain/index.js';
 
@@ -42,6 +44,7 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { formatPolishDate } from '../../lib/format-date.js';
 import { FileDropZone } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
+import { SourceUpdateDialog } from './SourceUpdateDialog.js';
 import {
   DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
@@ -58,6 +61,10 @@ import {
   uploadErrorMessage,
 } from './documents.logic.js';
 import { uploadDocumentFile } from './upload.logic.js';
+import {
+  sourceUpdateNeedsReplay,
+  sourceUpdateReadyToComplete,
+} from './source-update.logic.js';
 
 const FILE_ROLES: DocumentFileRole[] = [
   'source',
@@ -367,6 +374,11 @@ export const DocumentDetailPage = ({
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
   const folderDocuments = useQuery(actions.documents({}));
+  const identityQuery = useQuery(actions.me);
+  const signatureRecordsQuery = useQuery(actions.signatureRecords(documentId));
+  const sourceUpdateRequestQuery = useQuery(
+    actions.activeSourceUpdateRequest(documentId),
+  );
   const [editOpen, setEditOpen] = useState(false);
   const [deleteDocumentOpen, setDeleteDocumentOpen] = useState(false);
   const [purgeDocumentOpen, setPurgeDocumentOpen] = useState(false);
@@ -375,6 +387,9 @@ export const DocumentDetailPage = ({
   const [moveTitle, setMoveTitle] = useState('');
   const [moveDocType, setMoveDocType] = useState<DocumentType>('umowa-uod');
   const [uploadingRole, setUploadingRole] = useState<DocumentFileRole>();
+  const [sourceUpdateOpen, setSourceUpdateOpen] = useState(false);
+  const [sourceUpdatePending, setSourceUpdatePending] = useState(false);
+  const [sourceUpdateError, setSourceUpdateError] = useState<string>();
   const [uploadErrors, setUploadErrors] = useState<
     Partial<Record<DocumentFileRole, string>>
   >({});
@@ -439,6 +454,10 @@ export const DocumentDetailPage = ({
   const directUpload = useMutation(actions.directFileUpload);
   const finalizeUpload = useMutation(actions.finalizeFileUpload);
   const serverUpload = useMutation(actions.uploadDocumentFile);
+  const createSourceUpdate = useMutation(actions.createSourceUpdateRequest);
+  const decideSourceUpdate = useMutation(actions.decideSourceUpdateRequest);
+  const cancelSourceUpdate = useMutation(actions.cancelSourceUpdateRequest);
+  const completeSourceUpdate = useMutation(actions.completeSourceUpdateRequest);
 
   if (documentQuery.isPending) {
     return (
@@ -467,6 +486,24 @@ export const DocumentDetailPage = ({
   const document = documentQuery.data.document;
   const isTrashed = document.deletedAt !== null;
   const isDraft = document.draft;
+  const activeSourceUpdate = sourceUpdateRequestQuery.data?.request ?? null;
+  const signatureRecords = signatureRecordsQuery.data?.items ?? [];
+  const signedDigitalExists = document.files.some(
+    (file) => file.role === 'signed-digital',
+  );
+  const legacySignedWithoutRecords =
+    signedDigitalExists &&
+    signatureRecordsQuery.isSuccess &&
+    signatureRecords.length === 0;
+  const sourceUpdateEnabled =
+    !isTrashed &&
+    !activeSourceUpdate &&
+    signatureRecordsQuery.isSuccess &&
+    !legacySignedWithoutRecords;
+  const currentUserId = identityQuery.data?.userId;
+  const currentApproval = activeSourceUpdate?.approvals.find(
+    (approval) => approval.approverId === currentUserId,
+  );
   const grouped = filesByRole(document.files);
   const personOptions = uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]);
   const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
@@ -498,6 +535,107 @@ export const DocumentDetailPage = ({
       }));
     } finally {
       setUploadingRole(undefined);
+    }
+  };
+  const sourceUpdateTransport = {
+    request: (input: Parameters<typeof requestUpload.mutateAsync>[0]['input']) =>
+      requestUpload.mutateAsync({ documentId, input }),
+    direct: (input: Parameters<typeof directUpload.mutateAsync>[0]) =>
+      directUpload.mutateAsync(input),
+    finalize: (input: Parameters<typeof finalizeUpload.mutateAsync>[0]['input']) =>
+      finalizeUpload.mutateAsync({ documentId, input }),
+    server: (input: Parameters<typeof serverUpload.mutateAsync>[0]['input']) =>
+      serverUpload.mutateAsync({ documentId, input }),
+  };
+  const invalidateSourceUpdate = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.documentsInvalidates()),
+      queryClient.invalidateQueries(actions.signatureRecordsInvalidates(documentId)),
+      queryClient.invalidateQueries(actions.sourceUpdateRequestsInvalidates()),
+    ]);
+  };
+  const completeReadySourceUpdate = async (request: SourceUpdateRequest) => {
+    if (!sourceUpdateReadyToComplete(request)) return;
+    let signedFileId: string | undefined;
+    if (sourceUpdateNeedsReplay(request, signatureRecords.length)) {
+      const source = await queryClient.fetchQuery(
+        actions.documentFile(documentId, request.newSourceFileId),
+      );
+      const signedBytes = await replaySignatureRecordsPdf(
+        source.bytes,
+        signatureRecords,
+      );
+      const buffer = new ArrayBuffer(signedBytes.byteLength);
+      new Uint8Array(buffer).set(signedBytes);
+      const output = new File(
+        [buffer],
+        `${source.fileName.replace(/\.pdf$/iu, '') || 'dokument'}-podpisany.pdf`,
+        { type: 'application/pdf' },
+      );
+      const uploaded = await uploadDocumentFile(output, 'other', sourceUpdateTransport);
+      signedFileId = uploaded.id;
+    }
+    await completeSourceUpdate.mutateAsync({
+      requestId: request.id,
+      input: signedFileId ? { signedFileId } : {},
+    });
+    await invalidateSourceUpdate();
+  };
+  const submitSourceUpdate = async (
+    file: File,
+    mode: 'delete-signed' | 'transfer',
+  ) => {
+    setSourceUpdatePending(true);
+    setSourceUpdateError(undefined);
+    try {
+      const staged = await uploadDocumentFile(file, 'other', sourceUpdateTransport);
+      const created = await createSourceUpdate.mutateAsync({
+        documentId,
+        input: { newSourceFileId: staged.id, mode },
+      });
+      if (sourceUpdateReadyToComplete(created.request)) {
+        await completeReadySourceUpdate(created.request);
+      } else {
+        await invalidateSourceUpdate();
+      }
+      setSourceUpdateOpen(false);
+    } catch (error) {
+      setSourceUpdateError(uploadErrorMessage(error));
+    } finally {
+      setSourceUpdatePending(false);
+    }
+  };
+  const decideActiveSourceUpdate = async (decision: 'accept' | 'reject') => {
+    if (!activeSourceUpdate) return;
+    setSourceUpdatePending(true);
+    setSourceUpdateError(undefined);
+    try {
+      const decided = await decideSourceUpdate.mutateAsync({
+        requestId: activeSourceUpdate.id,
+        input: { decision },
+      });
+      if (decision === 'accept' && sourceUpdateReadyToComplete(decided.request)) {
+        await completeReadySourceUpdate(decided.request);
+      } else {
+        await invalidateSourceUpdate();
+      }
+    } catch (error) {
+      setSourceUpdateError(uploadErrorMessage(error));
+    } finally {
+      setSourceUpdatePending(false);
+    }
+  };
+  const cancelActiveSourceUpdate = async () => {
+    if (!activeSourceUpdate) return;
+    setSourceUpdatePending(true);
+    setSourceUpdateError(undefined);
+    try {
+      await cancelSourceUpdate.mutateAsync(activeSourceUpdate.id);
+      await invalidateSourceUpdate();
+    } catch (error) {
+      setSourceUpdateError(uploadErrorMessage(error));
+    } finally {
+      setSourceUpdatePending(false);
     }
   };
   const startMove = (file: DocumentFile) => {
@@ -588,6 +726,28 @@ export const DocumentDetailPage = ({
               <Button variant="contained" onClick={() => setEditOpen(true)}>
                 Edytuj
               </Button>
+              <Tooltip
+                title={
+                  legacySignedWithoutRecords
+                    ? 'Brak zapisu podpisów — dokumenty podpisane przed włączeniem zapisu wymagają ponownego podpisania.'
+                    : activeSourceUpdate
+                      ? 'Aktualizacja źródła jest już w toku.'
+                      : ''
+                }
+              >
+                <span>
+                  <Button
+                    variant="outlined"
+                    disabled={!sourceUpdateEnabled}
+                    onClick={() => {
+                      setSourceUpdateError(undefined);
+                      setSourceUpdateOpen(true);
+                    }}
+                  >
+                    Uaktualnij źródło
+                  </Button>
+                </span>
+              </Tooltip>
               <Button variant="outlined" color="error" onClick={() => setDeleteDocumentOpen(true)}>
                 Usuń dokument
               </Button>
@@ -607,6 +767,48 @@ export const DocumentDetailPage = ({
         <Alert severity="info" sx={{ mt: 3 }}>
           Szkic. Dokument jest widoczny w filtrze szkiców i czeka na zatwierdzenie.
         </Alert>
+      ) : null}
+      {!isTrashed && activeSourceUpdate ? (
+        <Alert
+          severity="info"
+          sx={{ mt: 3 }}
+          action={
+            <Stack direction="row" sx={{ gap: 1 }}>
+              {currentApproval?.decision === 'pending' ? (
+                <>
+                  <Button
+                    color="inherit"
+                    disabled={sourceUpdatePending}
+                    onClick={() => void decideActiveSourceUpdate('accept')}
+                  >
+                    Zaakceptuj
+                  </Button>
+                  <Button
+                    color="inherit"
+                    disabled={sourceUpdatePending}
+                    onClick={() => void decideActiveSourceUpdate('reject')}
+                  >
+                    Odrzuć
+                  </Button>
+                </>
+              ) : null}
+              {activeSourceUpdate.requestedBy === currentUserId ? (
+                <Button
+                  color="inherit"
+                  disabled={sourceUpdatePending}
+                  onClick={() => void cancelActiveSourceUpdate()}
+                >
+                  Anuluj wniosek
+                </Button>
+              ) : null}
+            </Stack>
+          }
+        >
+          Aktualizacja źródła oczekuje na akceptację wymaganych podpisujących.
+        </Alert>
+      ) : null}
+      {sourceUpdateError && !sourceUpdateOpen ? (
+        <Alert severity="error" sx={{ mt: 2 }}>{sourceUpdateError}</Alert>
       ) : null}
       {approveDocument.isError ? (
         <Alert severity="error" sx={{ mt: 2 }}>
@@ -676,6 +878,13 @@ export const DocumentDetailPage = ({
             input: toDocumentInput(values),
           })
         }
+      />
+      <SourceUpdateDialog
+        open={sourceUpdateOpen}
+        pending={sourceUpdatePending}
+        error={sourceUpdateError}
+        onClose={() => setSourceUpdateOpen(false)}
+        onSubmit={(file, mode) => void submitSourceUpdate(file, mode)}
       />
       <ConfirmDialog
         open={deleteDocumentOpen}

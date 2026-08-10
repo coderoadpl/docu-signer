@@ -37,6 +37,7 @@ import { PadRoute } from './routes/pad.js';
 import { RegisterRoute } from './routes/register.js';
 import { ResetPasswordRoute, resetPasswordSearchSchema } from './routes/reset-password.js';
 import { SettingsRoute } from './routes/settings.js';
+import { SourceUpdatesRoute } from './routes/source-updates.js';
 import { TrashRoute } from './routes/trash.js';
 import { useAppTheme } from './theme.js';
 
@@ -165,6 +166,11 @@ const settingsRoute = createRoute({
   path: 'settings',
   component: SettingsRoute,
 });
+const sourceUpdatesRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: 'source-updates',
+  component: SourceUpdatesRoute,
+});
 
 const router = createRouter({
   routeTree: rootRoute.addChildren([
@@ -181,6 +187,7 @@ const router = createRouter({
       documentDetailRoute,
       documentSigningRoute,
       documentReviewRoute,
+      sourceUpdatesRoute,
       settingsRoute,
     ]),
   ]),

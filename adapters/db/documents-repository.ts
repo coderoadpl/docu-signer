@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, ilike, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, exists, ilike, inArray, isNotNull, isNull, ne, notExists, sql, type SQL } from 'drizzle-orm';
 
 import {
   documentFileSchema,
@@ -9,7 +9,7 @@ import {
 import type { DocumentRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
-import { documentFiles, documents } from './schema.js';
+import { documentFiles, documents, sourceUpdateRequests } from './schema.js';
 
 const toDocument = (row: typeof documents.$inferSelect): Document =>
   documentSchema.parse({
@@ -114,7 +114,12 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     const rows = await db
       .select()
       .from(documents)
-      .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
+      .where(
+        and(
+          eq(documents.tenantId, tenantId),
+          eq(documents.id, documentId),
+        ),
+      )
       .limit(1);
     return rows[0] ? toDocument(rows[0]) : null;
   },
@@ -128,12 +133,48 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
           eq(documents.tenantId, tenantId),
           eq(documents.id, documentId),
           isNull(documents.deletedAt),
+          notExists(
+            db
+              .select({ id: sourceUpdateRequests.id })
+              .from(sourceUpdateRequests)
+              .where(
+                and(
+                  eq(sourceUpdateRequests.newSourceFileId, documentFiles.id),
+                  ne(sourceUpdateRequests.status, 'completed'),
+                ),
+              ),
+          ),
         ),
       )
       .orderBy(documentFiles.createdAt);
     return rows.map((row) => toDocumentFile(row.file));
   },
   listFilesIncludingDeleted: async (tenantId, documentId) => {
+    const rows = await db
+      .select({ file: documentFiles })
+      .from(documentFiles)
+      .innerJoin(documents, eq(documentFiles.documentId, documents.id))
+      .where(
+        and(
+          eq(documents.tenantId, tenantId),
+          eq(documents.id, documentId),
+          notExists(
+            db
+              .select({ id: sourceUpdateRequests.id })
+              .from(sourceUpdateRequests)
+              .where(
+                and(
+                  eq(sourceUpdateRequests.newSourceFileId, documentFiles.id),
+                  ne(sourceUpdateRequests.status, 'completed'),
+                ),
+              ),
+          ),
+        ),
+      )
+      .orderBy(documentFiles.createdAt);
+    return rows.map((row) => toDocumentFile(row.file));
+  },
+  listAllFilesIncludingDeleted: async (tenantId, documentId) => {
     const rows = await db
       .select({ file: documentFiles })
       .from(documentFiles)
@@ -153,6 +194,17 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
           eq(documents.tenantId, tenantId),
           inArray(documents.id, documentIds),
           isNull(documents.deletedAt),
+          notExists(
+            db
+              .select({ id: sourceUpdateRequests.id })
+              .from(sourceUpdateRequests)
+              .where(
+                and(
+                  eq(sourceUpdateRequests.newSourceFileId, documentFiles.id),
+                  ne(sourceUpdateRequests.status, 'completed'),
+                ),
+              ),
+          ),
         ),
       )
       .orderBy(documentFiles.createdAt);

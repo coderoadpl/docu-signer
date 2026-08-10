@@ -9,20 +9,26 @@ import type {
   QueryKey,
 } from '@tanstack/query-core';
 
-import type {
-  CreateApiToken,
-  CreateSavedSearch,
-  CreateSignatureRecord,
-  CreateDocument,
-  DocumentListFilter,
-  ExportDocuments,
-  FileUploadRequest,
-  FinalizeFileUpload,
-  MoveDocumentFile,
-  PadSubmittedStrokes,
-  SetUserPreference,
-  UpdateTenantSettings,
-  UpdateDocument,
+import {
+  MAX_PAGE_LIMIT,
+  ok,
+  type CompleteSourceUpdateRequest,
+  type CreateApiToken,
+  type CreateDocument,
+  type CreateSavedSearch,
+  type CreateSignatureRecord,
+  type CreateSourceUpdateRequest,
+  type DecideSourceUpdateRequest,
+  type DocumentListFilter,
+  type ExportDocuments,
+  type FileUploadRequest,
+  type FinalizeFileUpload,
+  type MoveDocumentFile,
+  type PadSubmittedStrokes,
+  type SetUserPreference,
+  type SignatureRecord,
+  type UpdateDocument,
+  type UpdateTenantSettings,
 } from '#core/domain/index.js';
 
 import type {
@@ -138,6 +144,13 @@ const tenantSettingsScopes = {
 const signatureRecordScopes = {
   all: () => ['signature-records'] as const,
   document: (documentId: string) => ['signature-records', documentId] as const,
+};
+
+const sourceUpdateRequestScopes = {
+  all: () => ['source-update-requests'] as const,
+  pending: () => ['source-update-requests', 'pending'] as const,
+  document: (documentId: string) =>
+    ['source-update-requests', 'document', documentId] as const,
 };
 
 const padSessionScopes = {
@@ -373,10 +386,33 @@ export const tenantSettingsInvalidates = () => ({
   queryKey: tenantSettingsScopes.all(),
 });
 
+const listAllSignatureRecords = async (
+  api: ApiClient,
+  documentId: string,
+  signal: AbortSignal,
+) => {
+  const items: SignatureRecord[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await api.listSignatureRecords(
+      documentId,
+      {
+        limit: MAX_PAGE_LIMIT,
+        ...(cursor === undefined ? {} : { cursor }),
+      },
+      signal,
+    );
+    if (!page.ok) return page;
+    items.push(...page.value.items);
+    cursor = page.value.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return ok({ items, nextCursor: null });
+};
+
 export const signatureRecordsQuery = (api: ApiClient, documentId: string) =>
   defineQuery({
     queryKey: signatureRecordScopes.document(documentId),
-    call: ({ signal }) => api.listSignatureRecords(documentId, {}, signal),
+    call: ({ signal }) => listAllSignatureRecords(api, documentId, signal),
   });
 
 export const createSignatureRecordMutation = (api: ApiClient) =>
@@ -388,6 +424,67 @@ export const createSignatureRecordMutation = (api: ApiClient) =>
 
 export const signatureRecordsInvalidates = (documentId: string) => ({
   queryKey: signatureRecordScopes.document(documentId),
+});
+
+export const activeSourceUpdateRequestQuery = (
+  api: ApiClient,
+  documentId: string,
+) =>
+  defineQuery({
+    queryKey: sourceUpdateRequestScopes.document(documentId),
+    call: ({ signal }) => api.getActiveSourceUpdateRequest(documentId, signal),
+  });
+
+export const pendingSourceUpdateRequestsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: sourceUpdateRequestScopes.pending(),
+    call: ({ signal }) => api.listPendingSourceUpdateRequests(signal),
+  });
+
+export const createSourceUpdateRequestMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...sourceUpdateRequestScopes.all(), 'create'],
+    call: ({
+      documentId,
+      input,
+    }: {
+      documentId: string;
+      input: CreateSourceUpdateRequest;
+    }) => api.createSourceUpdateRequest(documentId, input),
+  });
+
+export const decideSourceUpdateRequestMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...sourceUpdateRequestScopes.all(), 'decide'],
+    call: ({
+      requestId,
+      input,
+    }: {
+      requestId: string;
+      input: DecideSourceUpdateRequest;
+    }) => api.decideSourceUpdateRequest(requestId, input),
+  });
+
+export const cancelSourceUpdateRequestMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...sourceUpdateRequestScopes.all(), 'cancel'],
+    call: (requestId: string) => api.cancelSourceUpdateRequest(requestId),
+  });
+
+export const completeSourceUpdateRequestMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...sourceUpdateRequestScopes.all(), 'complete'],
+    call: ({
+      requestId,
+      input,
+    }: {
+      requestId: string;
+      input: CompleteSourceUpdateRequest;
+    }) => api.completeSourceUpdateRequest(requestId, input),
+  });
+
+export const sourceUpdateRequestsInvalidates = () => ({
+  queryKey: sourceUpdateRequestScopes.all(),
 });
 
 export const createPadSessionMutation = (api: ApiClient) =>

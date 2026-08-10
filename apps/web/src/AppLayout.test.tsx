@@ -160,6 +160,31 @@ describe('AppLayout', () => {
           },
         }),
       ),
+      http.get('/api/source-update-requests/pending', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            requests: [
+              {
+                id: '44444444-4444-4444-8444-444444444444',
+                tenantId: 'tenant-default',
+                documentId: '55555555-5555-4555-8555-555555555555',
+                requestedBy: 'user-owner',
+                newSourceFileId: '66666666-6666-4666-8666-666666666666',
+                mode: 'transfer',
+                status: 'pending',
+                approvals: [
+                  {
+                    id: '77777777-7777-4777-8777-777777777777',
+                    approverId: 'u1',
+                    decision: 'pending',
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      ),
       http.delete('/api/saved-searches/:id', ({ params }) => {
         removed(params.id);
         return HttpResponse.json({ ok: true, data: { deleted: true } });
@@ -178,6 +203,7 @@ describe('AppLayout', () => {
     expect((await screen.findAllByText('TECZKI')).length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'Odbiór' })).toHaveClass('active');
     expect(screen.getByRole('link', { name: /Kosz/u })).toHaveTextContent('1');
+    expect(screen.getByRole('link', { name: /Aktualizacje źródeł/u })).toHaveTextContent('1');
     fireEvent.click(screen.getByRole('button', { name: 'Więcej akcji dla teczki Odbiór' }));
     expect(screen.getByRole('menuitem', { name: 'Zmień nazwę' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Usuń' }));

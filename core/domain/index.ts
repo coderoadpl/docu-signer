@@ -12,3 +12,4 @@ export * from './pagination.js';
 export * from './pad-session.js';
 export * from './tenant-settings.js';
 export * from './signature-record.js';
+export * from './source-update-request.js';

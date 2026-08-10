@@ -84,6 +84,7 @@ const documents = (): DocumentRepository => ({
   findAnyById: async () => document,
   listFiles: async () => [file],
   listFilesIncludingDeleted: async () => [file],
+  listAllFilesIncludingDeleted: async () => [file],
   listFilesForDocuments: async () => [file],
   create: async () => document,
   update: async () => document,

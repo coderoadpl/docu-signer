@@ -282,6 +282,7 @@ export const signatureRecords = pgTable(
       .references(() => documentFiles.id, { onDelete: 'cascade' }),
     signedBy: text('signed_by').notNull(),
     payload: jsonb('payload').$type<SignatureRecordPayload>().notNull(),
+    replayedFromId: uuid('replayed_from_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -291,10 +292,84 @@ export const signatureRecords = pgTable(
       table.createdAt,
       table.id,
     ),
-    uniqueIndex('signature_records_file_uidx').on(table.fileId),
+    uniqueIndex('signature_records_file_uidx')
+      .on(table.fileId)
+      .where(sql`${table.replayedFromId} IS NULL`),
     check(
       'signature_records_payload_check',
       sql`jsonb_typeof(${table.payload}) = 'array' AND jsonb_array_length(${table.payload}) > 0`,
+    ),
+  ],
+);
+
+export const sourceUpdateRequests = pgTable(
+  'source_update_requests',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    requestedBy: text('requested_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    newSourceFileId: uuid('new_source_file_id').notNull(),
+    newSignedFileId: uuid('new_signed_file_id'),
+    mode: text('mode', { enum: ['delete-signed', 'transfer'] }).notNull(),
+    status: text('status', {
+      enum: ['pending', 'completed', 'rejected', 'cancelled'],
+    }).notNull().default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedBy: text('resolved_by').references(() => user.id, { onDelete: 'set null' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    priorSourceFileIds: uuid('prior_source_file_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
+    priorSignedFileIds: uuid('prior_signed_file_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
+  },
+  (table) => [
+    index('source_update_requests_tenant_status_idx').on(table.tenantId, table.status),
+    uniqueIndex('source_update_requests_document_pending_uidx')
+      .on(table.documentId)
+      .where(sql`${table.status} = 'pending'`),
+    check(
+      'source_update_requests_mode_check',
+      sql`${table.mode} IN ('delete-signed', 'transfer')`,
+    ),
+    check(
+      'source_update_requests_status_check',
+      sql`${table.status} IN ('pending', 'completed', 'rejected', 'cancelled')`,
+    ),
+  ],
+);
+
+export const sourceUpdateApprovals = pgTable(
+  'source_update_approvals',
+  {
+    id: uuid('id').primaryKey(),
+    requestId: uuid('request_id')
+      .notNull()
+      .references(() => sourceUpdateRequests.id, { onDelete: 'cascade' }),
+    approverId: text('approver_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    decision: text('decision', {
+      enum: ['pending', 'accepted', 'rejected'],
+    }).notNull().default('pending'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('source_update_approvals_approver_decision_idx').on(
+      table.approverId,
+      table.decision,
+    ),
+    uniqueIndex('source_update_approvals_request_approver_uidx').on(
+      table.requestId,
+      table.approverId,
+    ),
+    check(
+      'source_update_approvals_decision_check',
+      sql`${table.decision} IN ('pending', 'accepted', 'rejected')`,
     ),
   ],
 );

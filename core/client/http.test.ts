@@ -428,6 +428,63 @@ describe('API client', () => {
     });
   });
 
+  it('calls every source update request route through the contract', async () => {
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const requestId = '22222222-2222-4222-8222-222222222222';
+    const newSourceFileId = '33333333-3333-4333-8333-333333333333';
+    const request = {
+      id: requestId,
+      tenantId: 'tenant-default',
+      documentId,
+      requestedBy: 'user-owner',
+      newSourceFileId,
+      mode: 'transfer' as const,
+      status: 'pending' as const,
+      approvals: [],
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/pending')) {
+        return json({ ok: true, data: { requests: [request] } });
+      }
+      if (url.endsWith('/source-update-request')) {
+        return json({ ok: true, data: { request } });
+      }
+      return json({ ok: true, data: { request } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await api.getActiveSourceUpdateRequest(documentId);
+    await api.listPendingSourceUpdateRequests();
+    await api.createSourceUpdateRequest(documentId, {
+      newSourceFileId,
+      mode: 'transfer',
+    });
+    await api.decideSourceUpdateRequest(requestId, { decision: 'accept' });
+    await api.cancelSourceUpdateRequest(requestId);
+    await api.completeSourceUpdateRequest(requestId, {
+      signedFileId: newSourceFileId,
+    });
+
+    expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toEqual([
+      `/api/documents/${documentId}/source-update-request`,
+      '/api/source-update-requests/pending',
+      `/api/documents/${documentId}/source-update-requests`,
+      `/api/source-update-requests/${requestId}/decision`,
+      `/api/source-update-requests/${requestId}/cancel`,
+      `/api/source-update-requests/${requestId}/complete`,
+    ]);
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({
+      body: JSON.stringify({ newSourceFileId, mode: 'transfer' }),
+    });
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({
+      body: JSON.stringify({ decision: 'accept' }),
+    });
+    expect(fetchImpl.mock.calls[5]?.[1]).toMatchObject({
+      body: JSON.stringify({ signedFileId: newSourceFileId }),
+    });
+  });
+
   it('downloads a single exported document file', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       new Response('pdf', {

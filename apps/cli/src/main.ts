@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { basename, extname, resolve } from 'node:path';
 import { text as consumeText } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 
@@ -8,7 +8,11 @@ import { z } from 'zod';
 
 import { createCliAuthAdapter, followMagicLink } from '#adapters/auth/client-adapter.js';
 import type { AuthClientPort } from '#core/client/index.js';
-import { createApiClient, type ApiClient } from '#core/client/index.js';
+import {
+  createApiClient,
+  replaySignatureRecordsPdf,
+  type ApiClient,
+} from '#core/client/index.js';
 import {
   apiTokenCreateInputSchema,
   documentCreateInputSchema,
@@ -624,6 +628,109 @@ document
       if (input === undefined) return;
       emit(await ctx.api.uploadDocumentFile(id, input), ctx.json, (data) =>
         `uploaded: ${data.file.fileName} (${data.file.id})`,
+      );
+    },
+  );
+
+const sourceUpdateContentType = (path: string): string => {
+  const extension = extname(path).toLowerCase();
+  if (extension === '.png') return 'image/png';
+  if (extension === '.jpg' || extension === '.jpeg') return 'image/jpeg';
+  return 'application/pdf';
+};
+
+document
+  .command('update-source <id> <path>')
+  .description('Replace a document source and explicitly handle digital signatures')
+  .requiredOption('--signatures <mode>', 'delete|transfer')
+  .action(
+    async (
+      id: string,
+      path: string,
+      options: { signatures: string },
+    ) => {
+      const ctx = cliCtx();
+      const mode = parseArgs(
+        z.enum(['delete', 'transfer']),
+        options.signatures,
+        ctx.json,
+      );
+      if (mode === undefined) return;
+      const bytes = new Uint8Array(await readFile(path));
+      const fileName = basename(path);
+      const contentType = sourceUpdateContentType(path);
+      const uploaded = await ctx.api.uploadDocumentFile(id, {
+        fileName,
+        contentType,
+        role: 'other',
+        bytes,
+      });
+      if (!uploaded.ok) {
+        emit(uploaded, ctx.json, () => '');
+        return;
+      }
+      const created = await ctx.api.createSourceUpdateRequest(id, {
+        newSourceFileId: uploaded.value.file.id,
+        mode: mode === 'delete' ? 'delete-signed' : 'transfer',
+      });
+      if (!created.ok) {
+        emit(created, ctx.json, () => '');
+        return;
+      }
+      if (created.value.request.approvals.length > 0) {
+        emit(created, ctx.json, (data) =>
+          `pending approvals: ${data.request.approvals.length} (${data.request.id})`,
+        );
+        return;
+      }
+      if (mode === 'delete') {
+        emit(
+          await ctx.api.completeSourceUpdateRequest(created.value.request.id, {}),
+          ctx.json,
+          () => `source updated: ${id}`,
+        );
+        return;
+      }
+      const records = [];
+      let cursor: string | undefined;
+      do {
+        const page = await ctx.api.listSignatureRecords(id, {
+          limit: 100,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        if (!page.ok) {
+          emit(page, ctx.json, () => '');
+          return;
+        }
+        records.push(...page.value.items);
+        cursor = page.value.nextCursor ?? undefined;
+      } while (cursor !== undefined);
+      if (records.length === 0) {
+        emit(
+          await ctx.api.completeSourceUpdateRequest(created.value.request.id, {}),
+          ctx.json,
+          () => `source updated: ${id}`,
+        );
+        return;
+      }
+      const signedBytes = await replaySignatureRecordsPdf(bytes, records);
+      const signedName = `${fileName.replace(/\.pdf$/iu, '') || 'dokument'}-podpisany.pdf`;
+      const signed = await ctx.api.uploadDocumentFile(id, {
+        fileName: signedName,
+        contentType: 'application/pdf',
+        role: 'other',
+        bytes: signedBytes,
+      });
+      if (!signed.ok) {
+        emit(signed, ctx.json, () => '');
+        return;
+      }
+      emit(
+        await ctx.api.completeSourceUpdateRequest(created.value.request.id, {
+          signedFileId: signed.value.file.id,
+        }),
+        ctx.json,
+        () => `source updated with transferred signatures: ${id}`,
       );
     },
   );

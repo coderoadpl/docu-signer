@@ -16,6 +16,7 @@ import {
   type Document,
   type DocumentListFilter,
   type PadSession,
+  type SourceUpdateRequest,
 } from '#core/domain/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
 
@@ -60,6 +61,7 @@ const baseDeps = (): AppDeps => ({
     findAnyById: async () => null,
     listFiles: async () => [],
     listFilesIncludingDeleted: async () => [],
+    listAllFilesIncludingDeleted: async () => [],
     listFilesForDocuments: async () => [],
     create: async () => {
       throw new Error('not implemented');
@@ -126,6 +128,15 @@ const baseDeps = (): AppDeps => ({
       ...input,
       createdAt: '2026-08-07T10:00:00.000Z',
     }),
+  },
+  sourceUpdateRequests: {
+    create: async () => null,
+    findById: async () => null,
+    findActiveByDocument: async () => null,
+    listPendingByApprover: async () => [],
+    decide: async () => null,
+    cancel: async () => null,
+    complete: async () => null,
   },
   storage: {
     put: async () => ok(undefined),
@@ -863,6 +874,109 @@ describe('buildApp', () => {
     expect(await response.json()).toMatchObject({
       ok: false,
       error: { code: 'unauthorized' },
+    });
+  });
+
+  it('serves source update request creation, reads, and completion', async () => {
+    const deps = authorizedDeps();
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const stagedFileId = '22222222-2222-4222-8222-222222222222';
+    const requestId = '33333333-3333-4333-8333-333333333333';
+    const document: Document = {
+      id: documentId,
+      tenantId: tenant.id,
+      title: 'Umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-08',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      draft: false,
+      createdAt: '2026-08-08T10:00:00.000Z',
+      updatedAt: '2026-08-08T10:00:00.000Z',
+      deletedAt: null,
+    };
+    const stagedFile = {
+      id: stagedFileId,
+      documentId,
+      role: 'other' as const,
+      fileName: 'nowe.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 10,
+      storageKey: 'staged-key',
+      createdAt: '2026-08-08T10:00:00.000Z',
+    };
+    let request: SourceUpdateRequest = {
+      id: requestId,
+      tenantId: tenant.id,
+      documentId,
+      requestedBy: user.userId,
+      newSourceFileId: stagedFileId,
+      mode: 'delete-signed' as const,
+      status: 'pending',
+      approvals: [],
+    };
+    deps.ids = { nextId: () => requestId };
+    deps.documents.findById = async () => document;
+    deps.documents.findFile = async () => stagedFile;
+    deps.documents.listFiles = async () => [stagedFile];
+    deps.sourceUpdateRequests = {
+      create: async () => request,
+      findById: async () => request,
+      findActiveByDocument: async () =>
+        request.status === 'pending' ? request : null,
+      listPendingByApprover: async () => [],
+      decide: async () => null,
+      cancel: async () => null,
+      complete: async () => {
+        request = { ...request, status: 'completed' };
+        return request;
+      },
+    };
+    const app = buildApp(deps);
+    const headers = {
+      [TENANT_HEADER]: tenant.slug,
+      'content-type': 'application/json',
+    };
+    const created = await app.request(
+      API_ROUTES.sourceUpdateRequestsCreate.path.replace(':documentId', documentId),
+      {
+        method: API_ROUTES.sourceUpdateRequestsCreate.method,
+        headers,
+        body: JSON.stringify({
+          newSourceFileId: stagedFileId,
+          mode: 'delete-signed',
+        }),
+      },
+    );
+    expect(await created.json()).toMatchObject({
+      ok: true,
+      data: { request: { id: requestId, status: 'pending' } },
+    });
+    const active = await app.request(
+      API_ROUTES.sourceUpdateRequest.path.replace(':documentId', documentId),
+      { headers },
+    );
+    expect(await active.json()).toMatchObject({
+      ok: true,
+      data: { request: { id: requestId } },
+    });
+    const pending = await app.request(API_ROUTES.sourceUpdateRequestsPending.path, {
+      headers,
+    });
+    expect(await pending.json()).toEqual({ ok: true, data: { requests: [] } });
+    const completed = await app.request(
+      API_ROUTES.sourceUpdateRequestComplete.path.replace(':requestId', requestId),
+      {
+        method: API_ROUTES.sourceUpdateRequestComplete.method,
+        headers,
+        body: JSON.stringify({}),
+      },
+    );
+    expect(await completed.json()).toMatchObject({
+      ok: true,
+      data: { request: { status: 'completed' } },
     });
   });
 

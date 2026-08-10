@@ -835,6 +835,9 @@ export const DocumentSigningPage = ({
     refetchOnMount: 'always',
   });
   const tenantSettings = useQuery(actions.tenantSettings);
+  const sourceUpdateRequest = useQuery(
+    actions.activeSourceUpdateRequest(documentId),
+  );
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const inkCanvasRef = useRef<HTMLCanvasElement>(null);
   const fitBoxRef = useRef<HTMLDivElement>(null);
@@ -1421,7 +1424,11 @@ export const DocumentSigningPage = ({
     );
   }
 
-  if (documentQuery.isPending || sourceQuery.isPending) {
+  if (
+    documentQuery.isPending ||
+    sourceQuery.isPending ||
+    sourceUpdateRequest.isPending
+  ) {
     return (
       <SigningShell
         header={<PageHeader fileName="PDF" onClose={close} />}
@@ -1433,7 +1440,7 @@ export const DocumentSigningPage = ({
     );
   }
 
-  if (documentQuery.isError || sourceQuery.isError) {
+  if (documentQuery.isError || sourceQuery.isError || sourceUpdateRequest.isError) {
     return (
       <SigningShell
         header={<PageHeader fileName="PDF" onClose={close} />}
@@ -1446,9 +1453,29 @@ export const DocumentSigningPage = ({
             message:
               documentQuery.error?.message ??
               sourceQuery.error?.message ??
+              sourceUpdateRequest.error?.message ??
               'Nie udało się pobrać dokumentu.',
           }}
         />
+      </SigningShell>
+    );
+  }
+
+  if (sourceUpdateRequest.data.request) {
+    return (
+      <SigningShell
+        header={<PageHeader fileName={sourceFile?.fileName ?? 'PDF'} onClose={close} />}
+        controls={<EmptyControls />}
+        footer={<EmptyControls />}
+      >
+        <Box sx={{ width: '100%', maxWidth: 720, mx: 'auto', p: 3 }}>
+          <Alert severity="warning">
+            Podpisywanie jest zablokowane, ponieważ trwa aktualizacja źródła tego dokumentu.
+          </Alert>
+          <Button sx={{ mt: 2 }} variant="contained" onClick={close}>
+            Wróć do dokumentu
+          </Button>
+        </Box>
       </SigningShell>
     );
   }
@@ -1721,6 +1748,9 @@ export const DocumentSigningPage = ({
           stamps: committedStamps.map(({ stamp }) => stamp),
           storeSignatureRecords: settings.settings.storeSignatureRecords,
         });
+        await queryClient.invalidateQueries(
+          actions.signatureRecordsInvalidates(documentId),
+        );
         if (warning) appNoticeStore.show(warning);
       } catch {
         appNoticeStore.show(

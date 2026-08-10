@@ -6,6 +6,7 @@ import {
   createDocumentSchema,
   createSavedSearchSchema,
   createSignatureRecordSchema,
+  createSourceUpdateRequestSchema,
   documentFileSchema,
   documentListFilterSchema,
   documentSchema,
@@ -26,6 +27,9 @@ import {
   publicTenantProfileSchema,
   savedSearchSchema,
   signatureRecordSchema,
+  sourceUpdateRequestSchema,
+  decideSourceUpdateRequestSchema,
+  completeSourceUpdateRequestSchema,
   setUserPreferenceSchema,
   staffRoleSchema,
   updateDocumentSchema,
@@ -215,6 +219,24 @@ export const signatureRecordCreateOutputSchema = z.object({
   signatureRecord: signatureRecordSchema,
 });
 
+export const sourceUpdateRequestGetOutputSchema = z.object({
+  request: sourceUpdateRequestSchema.nullable(),
+});
+
+export const sourceUpdateRequestListOutputSchema = z.object({
+  requests: z.array(sourceUpdateRequestSchema),
+});
+
+export const sourceUpdateRequestCreateInputSchema = createSourceUpdateRequestSchema;
+
+export const sourceUpdateRequestDecisionInputSchema = decideSourceUpdateRequestSchema;
+
+export const sourceUpdateRequestCompleteInputSchema = completeSourceUpdateRequestSchema;
+
+export const sourceUpdateRequestOutputSchema = z.object({
+  request: sourceUpdateRequestSchema,
+});
+
 export const padSessionCreateOutputSchema = domainPadSessionCreateOutputSchema;
 
 export const padSessionActiveOutputSchema = domainPadSessionActiveOutputSchema;
@@ -331,6 +353,30 @@ export const API_ROUTES = {
   signatureRecordsCreate: {
     method: 'POST',
     path: '/api/documents/:documentId/signature-records',
+  },
+  sourceUpdateRequest: {
+    method: 'GET',
+    path: '/api/documents/:documentId/source-update-request',
+  },
+  sourceUpdateRequestsPending: {
+    method: 'GET',
+    path: '/api/source-update-requests/pending',
+  },
+  sourceUpdateRequestsCreate: {
+    method: 'POST',
+    path: '/api/documents/:documentId/source-update-requests',
+  },
+  sourceUpdateRequestDecision: {
+    method: 'POST',
+    path: '/api/source-update-requests/:requestId/decision',
+  },
+  sourceUpdateRequestCancel: {
+    method: 'POST',
+    path: '/api/source-update-requests/:requestId/cancel',
+  },
+  sourceUpdateRequestComplete: {
+    method: 'POST',
+    path: '/api/source-update-requests/:requestId/complete',
   },
   padSessionsCreate: { method: 'POST', path: '/api/pad-sessions' },
   padSessionActive: { method: 'GET', path: '/api/pad-sessions/active' },
