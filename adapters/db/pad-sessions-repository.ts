@@ -26,28 +26,30 @@ const toSubmittedStrokes = (value: unknown): PadSubmittedStrokes =>
 
 export const createPadSessionRepository = (db: Db): PadSessionRepository => ({
   create: async (input) => {
-    return db.transaction(async (transaction) => {
-      await transaction
-        .update(padSessions)
-        .set({ status: 'closed', currentRequest: null, submittedStrokes: null })
-        .where(
-          and(
-            eq(padSessions.tenantId, input.tenantId),
-            eq(padSessions.createdBy, input.createdBy),
-            eq(padSessions.status, 'active'),
-          ),
-        );
-      const rows = await transaction
-        .insert(padSessions)
-        .values({
-          ...input,
-          expiresAt: new Date(input.expiresAt),
-        })
-        .returning();
-      const row = rows[0];
-      if (!row) throw new Error('Pad session insert returned no row');
-      return toPadSession(row);
-    });
+    // WHY: the production neon-http driver has no transaction support, so
+    // supersede-then-insert runs as two statements; the partial unique index
+    // on (tenant_id, created_by) WHERE status = 'active' still guarantees a
+    // single active session if the two steps race.
+    await db
+      .update(padSessions)
+      .set({ status: 'closed', currentRequest: null, submittedStrokes: null })
+      .where(
+        and(
+          eq(padSessions.tenantId, input.tenantId),
+          eq(padSessions.createdBy, input.createdBy),
+          eq(padSessions.status, 'active'),
+        ),
+      );
+    const rows = await db
+      .insert(padSessions)
+      .values({
+        ...input,
+        expiresAt: new Date(input.expiresAt),
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('Pad session insert returned no row');
+    return toPadSession(row);
   },
   findById: async (tenantId, sessionId) => {
     const rows = await db
