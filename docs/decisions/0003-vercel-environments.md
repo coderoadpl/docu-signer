@@ -50,8 +50,7 @@ fixed cost (Vercel Hobby + Neon Free), without fighting the platform.
 3. **Migration and admin bootstrap at build time.** The Vercel build runs
    `db:migrate`, then the admin-only `db:seed:deploy`, against that shared
    database before building the SPA. The deploy seed creates no demo data and
-   is a no-op unless the `SEED_ADMIN1_*` pair is configured and the database has
-   zero users. On that same first-run gate,
+   is a no-op unless the `SEED_ADMIN1_*` pair is configured. On that same gate,
    it binds `APP_BASE_DOMAIN` as a verified custom domain for the seeded
    `default` tenant. All deployed migrations are forward-only; destructive
    changes ship expand → contract across two deploys.

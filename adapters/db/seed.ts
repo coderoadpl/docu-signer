@@ -4,12 +4,17 @@ import { createAuth } from '#adapters/auth/create-auth.js';
 import { seedEnvSchema } from '#core/server/config.js';
 
 import { createDb } from './client.js';
+import { configuredSeedAdmins, ensureSeedAdmins } from './seed-admins.js';
 import { tenantAdmins, tenantDomains, tenants, user } from './schema.js';
 
 const {
   DATABASE_URL: connectionString,
   DB_DRIVER: driver,
   BETTER_AUTH_SECRET,
+  SEED_ADMIN1_EMAIL,
+  SEED_ADMIN1_PASSWORD,
+  SEED_ADMIN2_EMAIL,
+  SEED_ADMIN2_PASSWORD,
 } = seedEnvSchema.parse(process.env);
 
 const db = createDb(driver, connectionString);
@@ -89,7 +94,18 @@ await db
   })
   .onConflictDoNothing();
 
+const configuredAdmins = configuredSeedAdmins({
+  SEED_ADMIN1_EMAIL,
+  SEED_ADMIN1_PASSWORD,
+  SEED_ADMIN2_EMAIL,
+  SEED_ADMIN2_PASSWORD,
+});
+const adminResults = await ensureSeedAdmins(db, configuredAdmins);
+
 console.log('Seed applied:');
 console.log(`  archive  ${DEMO_EMAIL}`);
 console.log('  tenant   http://default.localhost:47100');
+for (const result of adminResults) {
+  console.log(`  archive  ${result.email} (${result.role}) ${result.status}`);
+}
 process.exit(0);

@@ -13,10 +13,8 @@ import {
   MAX_PAGE_LIMIT,
   ok,
   type CompleteSourceUpdateRequest,
-  type AcceptInvitation,
   type CreateApiToken,
   type CreateDocument,
-  type CreateInvitation,
   type CreateSavedSearch,
   type CreateSignatureRecord,
   type CreateSourceUpdateRequest,
@@ -134,12 +132,6 @@ const savedSearchScopes = {
 const apiTokenScopes = {
   all: () => ['api-tokens'] as const,
   lists: () => ['api-tokens', 'list'] as const,
-};
-
-const invitationScopes = {
-  all: () => ['invitations'] as const,
-  lists: () => ['invitations', 'list'] as const,
-  public: (token: string) => ['invitations', 'public', token] as const,
 };
 
 const userPreferenceScopes = {
@@ -362,40 +354,6 @@ export const revokeApiTokenMutation = (api: ApiClient) =>
   });
 
 export const apiTokensInvalidates = () => ({ queryKey: apiTokenScopes.all() });
-
-export const invitationsQuery = (api: ApiClient) =>
-  defineQuery({
-    queryKey: invitationScopes.lists(),
-    call: ({ signal }) => api.listInvitations(signal),
-  });
-
-export const createInvitationMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...invitationScopes.all(), 'create'],
-    call: (input: CreateInvitation) => api.createInvitation(input),
-  });
-
-export const revokeInvitationMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...invitationScopes.all(), 'revoke'],
-    call: (invitationId: string) => api.revokeInvitation(invitationId),
-  });
-
-export const publicInvitationQuery = (api: ApiClient, token: string) =>
-  defineQuery({
-    queryKey: invitationScopes.public(token),
-    call: ({ signal }) => api.publicInvitation(token, signal),
-    retry: false,
-  });
-
-export const acceptInvitationMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...invitationScopes.all(), 'accept'],
-    call: ({ token, input }: { token: string; input: AcceptInvitation }) =>
-      api.acceptInvitation(token, input),
-  });
-
-export const invitationsInvalidates = () => ({ queryKey: invitationScopes.all() });
 
 export const userPreferenceQuery = (api: ApiClient, key: string) =>
   defineQuery({

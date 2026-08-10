@@ -155,13 +155,6 @@
       "when": 1786299161525,
       "tag": "0021_gifted_captain_universe",
       "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "7",
-      "when": 1786349282206,
-      "tag": "0022_slow_warbound",
-      "breakpoints": true
     }
   ]
 }

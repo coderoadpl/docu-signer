@@ -32,7 +32,7 @@ Two forces reshaped that sketch:
    and passes the raw URL as the optional `link` field. `link` is a general
    transactional-mail concept (a primary call-to-action URL), not a dev hack: a
    transport embeds it in the body and otherwise ignores the field. No
-   `tenantId` — one verified sender domain (`MAIL_FROM`).
+   `tenantId` — one verified sender domain (`EMAIL_FROM`).
 
 2. **Two adapters in `adapters/email/`, selected by `EMAIL_TRANSPORT`** in the
    composition root, exactly like `DOMAIN_PROVISIONER`:

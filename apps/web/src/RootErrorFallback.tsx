@@ -23,8 +23,6 @@ const headingFor = (error: unknown): string => {
       return 'Eksport jest zbyt duży';
     case 'unavailable':
       return 'Usługa jest tymczasowo niedostępna';
-    case 'rate_limited':
-      return 'Zbyt wiele prób';
     case 'internal':
       return 'Wystąpił błąd';
   }
