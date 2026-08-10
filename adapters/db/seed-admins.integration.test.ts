@@ -63,7 +63,7 @@ afterAll(async () => {
 });
 
 describe('deploy admin seed', () => {
-  it('gates on admin 1, is row-idempotent, refreshes configured passwords, and creates no demo data', async () => {
+  it('creates one bootstrap owner only in a zero-user database and never refreshes it later', async () => {
     const absent = configuredSeedAdmins({});
     expect(absent).toEqual([]);
     expect(await ensureSeedAdmins(db, absent)).toEqual([]);
@@ -77,67 +77,47 @@ describe('deploy admin seed', () => {
     const initial = configuredSeedAdmins({
       SEED_ADMIN1_EMAIL: 'owner@deploy.example',
       SEED_ADMIN1_PASSWORD: 'first-password',
-      SEED_ADMIN2_EMAIL: 'admin@deploy.example',
-      SEED_ADMIN2_PASSWORD: 'admin-password',
     });
-    expect(await ensureSeedAdmins(db, initial)).toEqual([
-      { email: 'owner@deploy.example', role: 'owner', status: 'created' },
-      { email: 'admin@deploy.example', role: 'admin', status: 'created' },
-    ]);
+    expect(await ensureDeploySeed(db, initial, 'docu-signer-nine.vercel.app')).toEqual({
+      admins: [{ email: 'owner@deploy.example', role: 'owner', status: 'created' }],
+      domain: {
+        domain: 'docu-signer-nine.vercel.app',
+        status: 'created',
+      },
+    });
 
     const rerun = configuredSeedAdmins({
       SEED_ADMIN1_EMAIL: 'owner@deploy.example',
       SEED_ADMIN1_PASSWORD: 'second-password',
-      SEED_ADMIN2_EMAIL: 'admin@deploy.example',
-      SEED_ADMIN2_PASSWORD: 'admin-password',
     });
-    expect(await ensureSeedAdmins(db, rerun)).toEqual([
-      { email: 'owner@deploy.example', role: 'owner', status: 'exists' },
-      { email: 'admin@deploy.example', role: 'admin', status: 'exists' },
-    ]);
+    expect(await ensureDeploySeed(db, rerun, 'changed.example')).toEqual({
+      admins: [],
+      domain: null,
+    });
 
     const tenantRows = await db.select().from(tenants);
     expect(tenantRows).toHaveLength(1);
     expect(tenantRows[0]).toMatchObject({ id: 'tenant-default', slug: 'default' });
 
     const userRows = await db.select().from(user);
-    expect(userRows.map((row) => row.email).sort()).toEqual([
-      'admin@deploy.example',
-      'owner@deploy.example',
-    ]);
+    expect(userRows.map((row) => row.email)).toEqual(['owner@deploy.example']);
     const grantRows = await db.select().from(tenantAdmins);
-    expect(grantRows.map((row) => row.role).sort()).toEqual(['admin', 'owner']);
+    expect(grantRows.map((row) => row.role)).toEqual(['owner']);
 
     const accountRows = await db.select().from(account);
-    expect(accountRows).toHaveLength(2);
+    expect(accountRows).toHaveLength(1);
     const owner = userRows.find((row) => row.email === 'owner@deploy.example');
     const ownerCredential = accountRows.find((row) => row.userId === owner?.id);
     if (!ownerCredential?.password) throw new Error('Owner credential was not seeded');
     expect(
-      await verifyPassword({ hash: ownerCredential.password, password: 'second-password' }),
+      await verifyPassword({ hash: ownerCredential.password, password: 'first-password' }),
     ).toBe(true);
     expect(
-      await verifyPassword({ hash: ownerCredential.password, password: 'first-password' }),
+      await verifyPassword({ hash: ownerCredential.password, password: 'second-password' }),
     ).toBe(false);
 
     expect(await db.select().from(members)).toEqual([]);
     expect(await db.select().from(todos)).toEqual([]);
-    expect(await db.select().from(tenantDomains)).toEqual([]);
-
-    const withoutDomain = await ensureDeploySeed(db, rerun);
-    expect(withoutDomain.domain).toBeNull();
-    expect(await db.select().from(tenantDomains)).toEqual([]);
-
-    const withDomain = await ensureDeploySeed(db, rerun, 'docu-signer-nine.vercel.app');
-    expect(withDomain.domain).toEqual({
-      domain: 'docu-signer-nine.vercel.app',
-      status: 'created',
-    });
-    const repeated = await ensureDeploySeed(db, rerun, 'docu-signer-nine.vercel.app');
-    expect(repeated.domain).toEqual({
-      domain: 'docu-signer-nine.vercel.app',
-      status: 'exists',
-    });
 
     const domainRows = await db.select().from(tenantDomains);
     expect(domainRows).toHaveLength(1);

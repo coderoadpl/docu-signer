@@ -5,7 +5,7 @@ import { magicLink } from 'better-auth/plugins/magic-link';
 import { twoFactor } from 'better-auth/plugins/two-factor';
 import { passkey } from '@better-auth/passkey';
 
-import type { AuthPort, EmailPort } from '#core/server/index.js';
+import type { AuthPort, EmailPort, InvitationAuthPort } from '#core/server/index.js';
 import type { Db } from '#adapters/db/client.js';
 
 export interface GoogleSettings {
@@ -102,5 +102,12 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
       email: session.user.email,
       name: session.user.name,
     };
+  },
+});
+
+export const createInvitationAuthPort = (auth: Auth): InvitationAuthPort => ({
+  createAccount: async (input) => {
+    const result = await auth.api.signUpEmail({ body: input });
+    return { userId: result.user.id };
   },
 });

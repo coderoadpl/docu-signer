@@ -6,6 +6,10 @@ import {
   apiTokenListOutputSchema,
   apiTokenRevokeOutputSchema,
   authConfigOutputSchema,
+  invitationAcceptOutputSchema,
+  invitationCreateOutputSchema,
+  invitationListOutputSchema,
+  invitationRevokeOutputSchema,
   documentApproveOutputSchema,
   documentCreateOutputSchema,
   documentDeleteOutputSchema,
@@ -41,6 +45,9 @@ import {
   publicTenantDiscoveryPath,
   publicTenantProfileOutputSchema,
   publicTenantProfilePath,
+  publicInvitationAcceptPath,
+  publicInvitationOutputSchema,
+  publicInvitationPath,
   savedSearchCreateOutputSchema,
   savedSearchDeleteOutputSchema,
   savedSearchListOutputSchema,
@@ -63,6 +70,8 @@ import {
   ok,
   type AppError,
   type CreateApiToken,
+  type AcceptInvitation,
+  type CreateInvitation,
   type CreateSavedSearch,
   type CreateDocument,
   type DocumentListFilter,
@@ -515,6 +524,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  createInvitation: (input: CreateInvitation, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.invitationsCreate.method,
+      API_ROUTES.invitationsCreate.path,
+      invitationCreateOutputSchema,
+      input,
+      signal,
+    ),
+  listInvitations: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.invitations.method,
+      API_ROUTES.invitations.path,
+      invitationListOutputSchema,
+      undefined,
+      signal,
+    ),
+  revokeInvitation: (invitationId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.invitationRevoke.method,
+      pathWith(API_ROUTES.invitationRevoke.path, { invitationId }),
+      invitationRevokeOutputSchema,
+      {},
+      signal,
+    ),
   getUserPreference: (key: string, signal?: AbortSignal) =>
     request(
       options,
@@ -784,6 +820,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       publicTenantProfilePath(slug, version),
       publicTenantProfileOutputSchema,
       undefined,
+      signal,
+    ),
+  publicInvitation: (token: string, signal?: AbortSignal) =>
+    request(
+      options,
+      PUBLIC_API_ROUTES.invitation.method,
+      publicInvitationPath(token),
+      publicInvitationOutputSchema,
+      undefined,
+      signal,
+    ),
+  acceptInvitation: (token: string, input: AcceptInvitation, signal?: AbortSignal) =>
+    request(
+      options,
+      PUBLIC_API_ROUTES.invitationAccept.method,
+      publicInvitationAcceptPath(token),
+      invitationAcceptOutputSchema,
+      input,
       signal,
     ),
 });

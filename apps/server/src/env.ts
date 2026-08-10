@@ -61,6 +61,31 @@ const envSchema = serverEnvSchema.superRefine((data, ctx) => {
       message: 'Configure either seal PEM variables or SEAL_P12_BASE64, not both',
     });
   }
+  if (data.EMAIL_TRANSPORT === 'smtp') {
+    const smtpValues = [data.SMTP_HOST, data.SMTP_PORT, data.MAIL_FROM];
+    const smtpCount = smtpValues.filter((value) => value !== undefined).length;
+    if (smtpCount !== 0 && smtpCount !== smtpValues.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SMTP_HOST'],
+        message: 'SMTP_HOST, SMTP_PORT and MAIL_FROM must be set together',
+      });
+    }
+    if ((data.SMTP_USER === undefined) !== (data.SMTP_PASS === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SMTP_USER'],
+        message: 'SMTP_USER and SMTP_PASS must be set together',
+      });
+    }
+  }
+  if (data.EMAIL_TRANSPORT === 'ses' && !data.MAIL_FROM) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['MAIL_FROM'],
+      message: 'MAIL_FROM is required for the SES transport',
+    });
+  }
 });
 
 export type Env = ServerEnvParsed & { APP_BASE_URL: string };

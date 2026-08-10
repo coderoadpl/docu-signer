@@ -83,20 +83,19 @@ export const serverEnvSchema = z.object({
   SEAL_KEY_PEM: z.string().min(1).optional(),
   SEAL_P12_BASE64: z.string().min(1).optional(),
   SEAL_P12_PASSPHRASE: z.string().default(''),
-  // Email transport selector (composition root). `smtp`
-  // (default): any RFC SMTP relay via the SMTP_* block — Amazon SES SMTP creds
-  // included, and in dev/CI a local Mailpit that captures real sends instead of
-  // delivering (no separate dev transport). `ses`: Amazon SES directly over the
-  // SESv2 HTTP API via the AWS_* block. The block for the selected transport is
-  // required only when that transport is selected (fail-fast in composition);
-  // SMTP auth is optional so an open local Mailpit needs no user/pass.
+  // Email transport selector (composition root). `smtp` uses any explicitly
+  // configured RFC SMTP relay; when its settings are absent, composition uses a
+  // no-op port by design so invitations remain creatable through the UI's
+  // copy-link fallback. `ses` selects Amazon SES directly over the SESv2 HTTP API.
   EMAIL_TRANSPORT: z.enum(['smtp', 'ses']).default('smtp'),
-  EMAIL_FROM: z.string().default('Agentproofarch <no-reply@localhost>'),
-  // Defaults point at the dev Mailpit (docker-compose.dev.yml, SMTP on 47925), so
-  // a plain local boot captures auth links with no extra config; a real deploy
-  // overrides host/port/creds explicitly.
-  SMTP_HOST: z.string().default('localhost'),
-  SMTP_PORT: z.coerce.number().int().positive().default(47925),
+  MAIL_FROM: z.string().trim().min(1).optional(),
+  // SMTP settings are optional as a complete block; authentication stays
+  // optional because local capture servers and other open relays need no creds.
+  SMTP_HOST: z.string().trim().min(1).optional(),
+  SMTP_PORT: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.coerce.number().int().positive().optional(),
+  ),
   SMTP_SECURE: z
     .enum(['true', 'false'])
     .default('false')
@@ -128,44 +127,21 @@ export const databaseEnvSchema = z.object({
 const seedAdminEnvFields = {
   SEED_ADMIN1_EMAIL: z.email().optional(),
   SEED_ADMIN1_PASSWORD: z.string().min(8).optional(),
-  SEED_ADMIN2_EMAIL: z.email().optional(),
-  SEED_ADMIN2_PASSWORD: z.string().min(8).optional(),
 };
 
 interface SeedAdminEnv {
   SEED_ADMIN1_EMAIL?: string | undefined;
   SEED_ADMIN1_PASSWORD?: string | undefined;
-  SEED_ADMIN2_EMAIL?: string | undefined;
-  SEED_ADMIN2_PASSWORD?: string | undefined;
 }
 
 const validateSeedAdminEnv = (data: SeedAdminEnv, ctx: z.RefinementCtx): void => {
-  for (const slot of ['1', '2'] as const) {
-    const email = data[`SEED_ADMIN${slot}_EMAIL`];
-    const password = data[`SEED_ADMIN${slot}_PASSWORD`];
-    if ((email === undefined) === (password === undefined)) continue;
+  const email = data.SEED_ADMIN1_EMAIL;
+  const password = data.SEED_ADMIN1_PASSWORD;
+  if ((email === undefined) !== (password === undefined)) {
     ctx.addIssue({
       code: 'custom',
-      path: [`SEED_ADMIN${slot}_${email === undefined ? 'EMAIL' : 'PASSWORD'}`],
-      message: `SEED_ADMIN${slot}_EMAIL and SEED_ADMIN${slot}_PASSWORD must be set together`,
-    });
-  }
-  if (data.SEED_ADMIN2_EMAIL && !data.SEED_ADMIN1_EMAIL) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['SEED_ADMIN1_EMAIL'],
-      message: 'SEED_ADMIN1 must be configured before SEED_ADMIN2',
-    });
-  }
-  if (
-    data.SEED_ADMIN1_EMAIL &&
-    data.SEED_ADMIN2_EMAIL &&
-    data.SEED_ADMIN1_EMAIL === data.SEED_ADMIN2_EMAIL
-  ) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['SEED_ADMIN2_EMAIL'],
-      message: 'Seed admin emails must be different',
+      path: [`SEED_ADMIN1_${email === undefined ? 'EMAIL' : 'PASSWORD'}`],
+      message: 'SEED_ADMIN1_EMAIL and SEED_ADMIN1_PASSWORD must be set together',
     });
   }
 };
@@ -179,14 +155,12 @@ export const deploySeedEnvSchema = z
   })
   .superRefine(validateSeedAdminEnv);
 
-/** Dev seed subset: deploy seed fields + the auth secret used for demo signup. */
+/** Dev seed subset: connection selection + the auth secret used for demo signup. */
 export const seedEnvSchema = z
   .object({
     ...databaseEnvSchema.shape,
     BETTER_AUTH_SECRET: z.string().default(DEV_ONLY_SECRET),
-    ...seedAdminEnvFields,
-  })
-  .superRefine(validateSeedAdminEnv);
+  });
 
 export const backupEnvSchema = z.object({
   NEON_DATABASE_URL_UNPOOLED: z.url(),

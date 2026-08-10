@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_DATABASE_URL,
   databaseEnvSchema,
+  deploySeedEnvSchema,
   observabilityEnvSchema,
   seedEnvSchema,
 } from '#core/server/config.js';
@@ -177,32 +178,15 @@ describe('config subsets', () => {
     expect(parsed.BETTER_AUTH_SECRET).toBe(DEV_ONLY_SECRET);
   });
 
-  it('the seed subset accepts complete admin pairs and refuses partial pairs', () => {
+  it('the deploy seed subset accepts one complete bootstrap pair and refuses a partial pair', () => {
     expect(
-      seedEnvSchema.safeParse({
+      deploySeedEnvSchema.safeParse({
         SEED_ADMIN1_EMAIL: 'admin@example.com',
         SEED_ADMIN1_PASSWORD: 'password-1',
       }).success,
     ).toBe(true);
     expect(
-      seedEnvSchema.safeParse({ SEED_ADMIN1_EMAIL: 'admin@example.com' }).success,
-    ).toBe(false);
-    expect(
-      seedEnvSchema.safeParse({ SEED_ADMIN2_PASSWORD: 'password-2' }).success,
-    ).toBe(false);
-    expect(
-      seedEnvSchema.safeParse({
-        SEED_ADMIN2_EMAIL: 'admin2@example.com',
-        SEED_ADMIN2_PASSWORD: 'password-2',
-      }).success,
-    ).toBe(false);
-    expect(
-      seedEnvSchema.safeParse({
-        SEED_ADMIN1_EMAIL: 'same@example.com',
-        SEED_ADMIN1_PASSWORD: 'password-1',
-        SEED_ADMIN2_EMAIL: 'same@example.com',
-        SEED_ADMIN2_PASSWORD: 'password-2',
-      }).success,
+      deploySeedEnvSchema.safeParse({ SEED_ADMIN1_EMAIL: 'admin@example.com' }).success,
     ).toBe(false);
   });
 

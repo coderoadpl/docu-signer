@@ -13,6 +13,7 @@ describe('SettingsPage', () => {
     expect(screen.getByText(/klucze dostępu/i)).toBeInTheDocument();
     expect(screen.getByText(/tokeny API/i)).toBeInTheDocument();
     expect(screen.getByText(/ustawienia organizacji/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Zaproszenia$/i)).toBeInTheDocument();
     expect(
       await screen.findByRole('switch', { name: /przechowuj zapis podpisów/i }),
     ).toBeChecked();

@@ -40,6 +40,7 @@ export default defineConfig({
         'scripts/smoke.ts',
         'scripts/smoke-cli.ts',
         'scripts/smoke-remote.ts',
+        'scripts/browser-probe.ts',
         'scripts/server-harness.ts',
         // Gate-adjacent orchestration too: it shells out to `docker ps` and
         // process.exit()s, so it has no database-free unit surface either.

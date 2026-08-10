@@ -131,6 +131,7 @@ const bootServer = (): ChildProcess => {
       SMTP_HOST: 'localhost',
       SMTP_PORT: String(MAILPIT_SMTP_PORT),
       SMTP_SECURE: 'false',
+      MAIL_FROM: 'Podpisy <no-reply@localhost>',
       // The suite fires many sign-ins from one shared bucket (no client IP
       // behind the harness) — production keeps the limiter on.
       AUTH_RATE_LIMIT: 'off',

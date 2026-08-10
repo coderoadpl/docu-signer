@@ -11,6 +11,7 @@ export const CAPABILITIES = [
   'signature-record:manage',
   'source-update:read',
   'source-update:manage',
+  'invitation:manage',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -33,6 +34,7 @@ const GRANTS: Record<Capability, readonly Principal[]> = {
   'signature-record:manage': ['owner', 'admin'],
   'source-update:read': ['owner', 'admin'],
   'source-update:manage': ['owner', 'admin'],
+  'invitation:manage': ['owner', 'admin'],
 };
 
 const tokenAllows = (identity: Identity, capability: Capability): Verdict => {

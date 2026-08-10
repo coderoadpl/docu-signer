@@ -43,7 +43,7 @@ describe('ForgotPasswordPage', () => {
 
   it('blocks the form when reset email is not configured', async () => {
     server.use(
-      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: false, passwordResetEnabled: false } })),
+      http.get('*/api/config', () => HttpResponse.json({ ok: true, data: { googleEnabled: false, passwordResetEnabled: false, emailConfigured: false } })),
     );
 
     await renderForgotPasswordPage();

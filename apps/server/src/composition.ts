@@ -10,14 +10,24 @@ import {
   createTenantDomainRepository,
   createTenantRepository,
 } from '#adapters/db/repositories.js';
-import { createAuth, createAuthPort, type Auth, type GoogleSettings } from '#adapters/auth/create-auth.js';
+import {
+  createAuth,
+  createAuthPort,
+  createInvitationAuthPort,
+  type Auth,
+  type GoogleSettings,
+} from '#adapters/auth/create-auth.js';
 import {
   createApiTokenSecrets,
+  createInvitationSecrets,
   createPadSessionSecrets,
 } from '#adapters/auth/api-token-secrets.js';
 import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js';
+import { createInvitationRepository } from '#adapters/db/invitations-repository.js';
+import { createRateLimitPort } from '#adapters/db/rate-limit.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
+import { createNoopEmailPort } from '#adapters/email/noop.js';
 import { createLocalFsStorage } from '#adapters/storage/local-fs.js';
 import { createVercelBlobStorage } from '#adapters/storage/vercel-blob.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
@@ -37,9 +47,13 @@ import type {
   EmailPort,
   HealthPort,
   IdGenerator,
+  InvitationAuthPort,
+  InvitationRepository,
+  InvitationSecretPort,
   PadSessionRepository,
   PadSessionSecretPort,
   PdfSealingDeps,
+  RateLimitPort,
   SavedSearchRepository,
   SignatureRecordRepository,
   SourceUpdateRequestRepository,
@@ -70,11 +84,17 @@ export interface AppDeps {
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
-   * Outbound email: the real `smtp` relay (dev/CI point it at a local Mailpit
-   * that captures sends) or Amazon SES direct (`ses`). There is no dev transport;
-   * dev auth links are read from Mailpit's UI/API, not an in-app route.
+   * Outbound email uses configured SMTP/SES or a deliberate no-op fallback;
+   * invitationEmail exposes only configured delivery to the invitation use-case.
    */
   email: EmailPort;
+  invitationEmail: EmailPort | null;
+  invitations: InvitationRepository;
+  invitationSecrets: InvitationSecretPort;
+  invitationAuth: InvitationAuthPort;
+  invitationRateLimit: RateLimitPort;
+  invitationRateLimitEnabled: boolean;
+  emailConfigured: boolean;
   /** Whether Google social sign-in is wired (FR-26); surfaced to the login page. */
   googleEnabled: boolean;
   /** Whether password-reset email is safe to offer in this environment. */
@@ -84,16 +104,16 @@ export interface AppDeps {
   health: HealthPort;
   ids: IdGenerator;
   baseDomain: string;
+  baseUrl: string;
+  now: () => Date;
   /** Build attestation surfaced by the health routes; 'unknown' outside a deploy. */
   commitSha: string;
 }
 
 /**
- * Selects the outbound-email transport (composition root). `ses` (Amazon SES
- * direct) fails fast when its AWS credential block is absent — selecting it
- * without keys is a composition error, not a silent no-delivery. `smtp` (the
- * default) needs only a host, which is defaulted to the dev/CI Mailpit; an open
- * relay authenticates no one, so SMTP user/pass are optional.
+ * Unconfigured SMTP deliberately degrades to a no-op port so invitation creation
+ * still succeeds and the UI can surface its copy-link fallback. Explicit SES
+ * remains fail-fast because selecting it declares an intent to deliver.
  */
 export const selectEmailPort = (env: Env): EmailPort => {
   if (env.EMAIL_TRANSPORT === 'ses') {
@@ -104,19 +124,29 @@ export const selectEmailPort = (env: Env): EmailPort => {
       region: env.AWS_REGION,
       accessKeyId: env.AWS_ACCESS_KEY_ID,
       secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-      from: env.EMAIL_FROM,
+      from: env.MAIL_FROM ?? '',
     });
   }
-  if (!env.SMTP_HOST) throw new Error('EMAIL_TRANSPORT=smtp requires SMTP_HOST');
+  if (!env.SMTP_HOST || !env.SMTP_PORT || !env.MAIL_FROM) return createNoopEmailPort();
   return createSmtpEmailPort({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
     secure: env.SMTP_SECURE,
     ...(env.SMTP_USER === undefined ? {} : { user: env.SMTP_USER }),
     ...(env.SMTP_PASS === undefined ? {} : { pass: env.SMTP_PASS }),
-    from: env.EMAIL_FROM,
+    from: env.MAIL_FROM,
   });
 };
+
+export const selectEmailConfigured = (env: Env): boolean =>
+  env.EMAIL_TRANSPORT === 'ses'
+    ? Boolean(
+        env.AWS_REGION &&
+        env.AWS_ACCESS_KEY_ID &&
+        env.AWS_SECRET_ACCESS_KEY &&
+        env.MAIL_FROM,
+      )
+    : Boolean(env.SMTP_HOST && env.SMTP_PORT && env.MAIL_FROM);
 
 /** Google is wired only when BOTH keys are present (FR-26), else it stays dormant. */
 export const selectGoogleSettings = (env: Env): GoogleSettings | undefined =>
@@ -125,12 +155,7 @@ export const selectGoogleSettings = (env: Env): GoogleSettings | undefined =>
     : undefined;
 
 export const selectPasswordResetEnabled = (env: Env): boolean => {
-  const deployed = env.VERCEL !== undefined || env.SECURE_COOKIES;
-  if (!deployed) return true;
-  if (env.EMAIL_TRANSPORT === 'ses') {
-    return Boolean(env.AWS_REGION && env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY);
-  }
-  return env.SMTP_HOST !== 'localhost' && env.EMAIL_FROM !== 'Agentproofarch <no-reply@localhost>';
+  return selectEmailConfigured(env);
 };
 
 export const selectStoragePort = (env: Env): StoragePort => {
@@ -164,12 +189,18 @@ export const createDeps = (env: Env): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
   const email = selectEmailPort(env);
+  const emailConfigured = selectEmailConfigured(env);
   const google = selectGoogleSettings(env);
   const passwordResetEnabled = selectPasswordResetEnabled(env);
   const storage = selectStoragePort(env);
   const tenantSettings = createTenantSettingsRepository(db);
   const signatureRecords = createSignatureRecordRepository(db);
   const warnings = createConsoleWarningLogger();
+  if (!emailConfigured) {
+    warnings.warn(
+      'Outbound email is not configured; using the no-op email port so invitations remain creatable through the UI copy-link fallback.',
+    );
+  }
 
   const baseTrustedOrigins = [
     env.APP_BASE_URL,
@@ -184,6 +215,14 @@ export const createDeps = (env: Env): AppDeps => {
     `https://*.${env.APP_BASE_DOMAIN}:${env.PORT}`,
   ];
 
+  const trustedOrigins = async () => {
+    const domains = await tenantDomains.listVerifiedDomains();
+    return [
+      ...baseTrustedOrigins,
+      ...domains.map((domain) => `https://${domain.domain}`),
+      ...domains.map((domain) => `http://${domain.domain}`),
+    ];
+  };
   const auth = createAuth(db, {
     secret: env.BETTER_AUTH_SECRET,
     baseUrl: env.APP_BASE_URL,
@@ -193,19 +232,28 @@ export const createDeps = (env: Env): AppDeps => {
     disableSignUp: env.AUTH_DISABLE_SIGNUP,
     email,
     ...(google ? { google } : {}),
-    trustedOrigins: async () => {
-      const domains = await tenantDomains.listVerifiedDomains();
-      return [
-        ...baseTrustedOrigins,
-        ...domains.map((domain) => `https://${domain.domain}`),
-        ...domains.map((domain) => `http://${domain.domain}`),
-      ];
-    },
+    trustedOrigins,
+  });
+  const invitationProvisioningAuth = createAuth(db, {
+    secret: env.BETTER_AUTH_SECRET,
+    baseUrl: env.APP_BASE_URL,
+    baseDomain: env.APP_BASE_DOMAIN,
+    secureCookies: env.SECURE_COOKIES,
+    rateLimitEnabled: env.AUTH_RATE_LIMIT,
+    disableSignUp: false,
+    email,
+    ...(google ? { google } : {}),
+    trustedOrigins,
   });
 
   return {
     auth,
     authPort: createAuthPort(auth),
+    invitationAuth: createInvitationAuthPort(invitationProvisioningAuth),
+    invitations: createInvitationRepository(db),
+    invitationSecrets: createInvitationSecrets(),
+    invitationRateLimit: createRateLimitPort(db),
+    invitationRateLimitEnabled: env.AUTH_RATE_LIMIT,
     apiTokens: createApiTokenRepository(db),
     apiTokenSecrets: createApiTokenSecrets(),
     documents: createDocumentRepository(db),
@@ -226,6 +274,8 @@ export const createDeps = (env: Env): AppDeps => {
     storage,
     tenantDomains,
     email,
+    invitationEmail: emailConfigured ? email : null,
+    emailConfigured,
     googleEnabled: google !== undefined,
     passwordResetEnabled,
     tenants: createTenantRepository(db),
@@ -233,6 +283,8 @@ export const createDeps = (env: Env): AppDeps => {
     health: createHealthPort(db),
     ids: { nextId: () => randomUUID() },
     baseDomain: env.APP_BASE_DOMAIN,
+    baseUrl: env.APP_BASE_URL,
+    now: () => new Date(),
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
   };
 };
