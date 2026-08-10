@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -15,7 +15,7 @@ const renderLoginPage = async () => {
     history: createMemoryHistory({ initialEntries: ['/login'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return { router, ...renderWithProviders(<RouterProvider router={router} />) };
 };
 
 const fillCredentials = async () => {
@@ -62,6 +62,25 @@ describe('LoginPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zaloguj się' }));
 
     expect(await screen.findByRole('button', { name: 'Logowanie…' })).toBeDisabled();
+  });
+
+  it('completes a TOTP challenge before navigating to the app', async () => {
+    server.use(
+      http.post('*/sign-in/email', () => HttpResponse.json({ twoFactorRedirect: true })),
+      http.post('*/two-factor/verify-totp', () => HttpResponse.json({ status: true })),
+    );
+
+    const { router } = await renderLoginPage();
+    await fillCredentials();
+    await userEvent.click(screen.getByRole('button', { name: 'Zaloguj się' }));
+
+    expect(await screen.findByLabelText('Kod jednorazowy')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/login');
+
+    await userEvent.type(screen.getByLabelText('Kod jednorazowy'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Potwierdź kod' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app'));
   });
 
   it('requests a passwordless magic link and confirms delivery (US-026)', async () => {
