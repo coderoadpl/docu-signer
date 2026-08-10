@@ -83,18 +83,14 @@ export const serverEnvSchema = z.object({
   SEAL_KEY_PEM: z.string().min(1).optional(),
   SEAL_P12_BASE64: z.string().min(1).optional(),
   SEAL_P12_PASSPHRASE: z.string().default(''),
-  // Email transport selector (composition root). `smtp`
-  // (default): any RFC SMTP relay via the SMTP_* block — Amazon SES SMTP creds
-  // included, and in dev/CI a local Mailpit that captures real sends instead of
-  // delivering (no separate dev transport). `ses`: Amazon SES directly over the
-  // SESv2 HTTP API via the AWS_* block. The block for the selected transport is
-  // required only when that transport is selected (fail-fast in composition);
-  // SMTP auth is optional so an open local Mailpit needs no user/pass.
+  // Email transport selector (composition root). `smtp` uses any explicitly
+  // configured RFC SMTP relay; when its settings are absent, composition uses a
+  // no-op port by design so invitations remain creatable through the UI's
+  // copy-link fallback. `ses` selects Amazon SES directly over the SESv2 HTTP API.
   EMAIL_TRANSPORT: z.enum(['smtp', 'ses']).default('smtp'),
   MAIL_FROM: z.string().trim().min(1).optional(),
-  // Defaults point at the dev Mailpit (docker-compose.dev.yml, SMTP on 47925), so
-  // a plain local boot captures auth links with no extra config; a real deploy
-  // overrides host/port/creds explicitly.
+  // SMTP settings are optional as a complete block; authentication stays
+  // optional because local capture servers and other open relays need no creds.
   SMTP_HOST: z.string().trim().min(1).optional(),
   SMTP_PORT: z.preprocess(
     (value) => value === '' ? undefined : value,

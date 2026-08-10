@@ -84,9 +84,8 @@ export interface AppDeps {
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
-   * Outbound email: the real `smtp` relay (dev/CI point it at a local Mailpit
-   * that captures sends) or Amazon SES direct (`ses`). There is no dev transport;
-   * dev auth links are read from Mailpit's UI/API, not an in-app route.
+   * Outbound email uses configured SMTP/SES or a deliberate no-op fallback;
+   * invitationEmail exposes only configured delivery to the invitation use-case.
    */
   email: EmailPort;
   invitationEmail: EmailPort | null;
@@ -112,11 +111,9 @@ export interface AppDeps {
 }
 
 /**
- * Selects the outbound-email transport (composition root). `ses` (Amazon SES
- * direct) fails fast when its AWS credential block is absent — selecting it
- * without keys is a composition error, not a silent no-delivery. `smtp` (the
- * default) needs only a host, which is defaulted to the dev/CI Mailpit; an open
- * relay authenticates no one, so SMTP user/pass are optional.
+ * Unconfigured SMTP deliberately degrades to a no-op port so invitation creation
+ * still succeeds and the UI can surface its copy-link fallback. Explicit SES
+ * remains fail-fast because selecting it declares an intent to deliver.
  */
 export const selectEmailPort = (env: Env): EmailPort => {
   if (env.EMAIL_TRANSPORT === 'ses') {
@@ -199,6 +196,11 @@ export const createDeps = (env: Env): AppDeps => {
   const tenantSettings = createTenantSettingsRepository(db);
   const signatureRecords = createSignatureRecordRepository(db);
   const warnings = createConsoleWarningLogger();
+  if (!emailConfigured) {
+    warnings.warn(
+      'Outbound email is not configured; using the no-op email port so invitations remain creatable through the UI copy-link fallback.',
+    );
+  }
 
   const baseTrustedOrigins = [
     env.APP_BASE_URL,
