@@ -56,12 +56,15 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { PolishDatePicker } from '../../components/ui/PolishDatePicker.js';
 import { formatPolishDate } from '../../lib/format-date.js';
 import {
+  DOCUMENTS_TABLE_HEAD_HEIGHT,
+  DocumentColumnHeadCell,
   DocumentMetadataCell,
   DocumentMetadataText,
   DocumentPersonTableCell,
+  DocumentPersonTitle,
   DocumentPeriodTableCell,
   DocumentPeriodTitle,
-  DocumentRecordPrimaryCell,
+  DocumentRecordTitleCell,
   DocumentsTable,
   DocumentTitleText,
   StickyTableCell,
@@ -561,7 +564,7 @@ export const DocumentsPage = () => {
   };
 
   return (
-    <PageContainer>
+    <PageContainer wide>
       <Stack
         direction="row"
         sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
@@ -584,7 +587,10 @@ export const DocumentsPage = () => {
       ) : null}
 
       {hasDocuments ? <Paper variant="outlined" sx={{ mt: 3, p: 2.5 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 2, flexWrap: 'wrap' }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          sx={{ gap: 2, flexWrap: 'wrap', '& > *': { maxWidth: { sm: '22rem' } } }}
+        >
           <TextField
             label="Szukaj po tytule"
             value={textFilter}
@@ -696,13 +702,7 @@ export const DocumentsPage = () => {
       {hasDocuments ? (
         <Stack
           direction="row"
-          sx={{
-            mt: 3,
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 1,
-            flexWrap: 'wrap',
-          }}
+          sx={{ mt: 3, alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}
         >
           <ToggleButtonGroup
             exclusive
@@ -721,7 +721,13 @@ export const DocumentsPage = () => {
           {view === 'list' ? (
             <Stack
               direction="row"
-              sx={{ alignItems: 'center', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}
+              sx={{
+                flex: '1 1 0',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: 1,
+                flexWrap: 'wrap',
+              }}
             >
               <Button
                 variant="contained"
@@ -1024,11 +1030,7 @@ export const DocumentsPage = () => {
           variant="outlined"
           sx={{ display: { xs: 'none', sm: 'block' }, mt: 4, maxWidth: '100%', overflowX: 'auto' }}
         >
-          <DocumentsTable
-            stickyHeader
-            size="small"
-            sx={{ minWidth: '90rem' }}
-          >
+          <DocumentsTable stickyHeader size="small">
             <TableHead>
               <TableRow>
                 <StickyTableCell
@@ -1058,9 +1060,13 @@ export const DocumentsPage = () => {
                   />
                 </StickyTableCell>
                 {visibleColumnIds.map((column) => (
-                  <TableCell key={column}>{DOCUMENT_COLUMN_LABELS[column]}</TableCell>
-              ))}
-                <TableCell align="right">Akcje</TableCell>
+                  <DocumentColumnHeadCell key={column}>
+                    {DOCUMENT_COLUMN_LABELS[column]}
+                  </DocumentColumnHeadCell>
+                ))}
+                <DocumentColumnHeadCell align="right" sx={{ width: '1%' }}>
+                  Akcje
+                </DocumentColumnHeadCell>
               </TableRow>
             </TableHead>
             {groupedVisibleDocuments.flatMap((periodGroup) => [
@@ -1068,12 +1074,7 @@ export const DocumentsPage = () => {
                 <TableRow>
                   <DocumentPeriodTableCell
                     colSpan={visibleColumnIds.length + 2}
-                    sx={{
-                      py: 1.25,
-                      position: 'sticky',
-                      top: '3.25rem',
-                      zIndex: 1,
-                    }}
+                    sx={{ position: 'sticky', top: DOCUMENTS_TABLE_HEAD_HEIGHT, zIndex: 1 }}
                   >
                     <DocumentPeriodTitle variant="subtitle2">
                       {formatCanonicalDocumentInterval(periodGroup)}
@@ -1086,13 +1087,10 @@ export const DocumentsPage = () => {
                   key={`${periodGroup.start}|${periodGroup.end}|${personGroup.person}`}
                 >
                   <TableRow>
-                    <DocumentPersonTableCell
-                      colSpan={visibleColumnIds.length + 2}
-                      sx={{ py: 1, pl: 4 }}
-                    >
-                      <Typography variant="overline" color="text.secondary">
+                    <DocumentPersonTableCell colSpan={visibleColumnIds.length + 2}>
+                      <DocumentPersonTitle variant="overline">
                         {personGroup.person}
-                      </Typography>
+                      </DocumentPersonTitle>
                     </DocumentPersonTableCell>
                   </TableRow>
                 </TableBody>,
@@ -1113,11 +1111,11 @@ export const DocumentsPage = () => {
                       }
                       sx={{ cursor: 'pointer' }}
                     >
-                      <DocumentRecordPrimaryCell
+                      <TableCell
                         padding="checkbox"
                         rowSpan={2}
                         onClick={(event) => event.stopPropagation()}
-                        sx={{ verticalAlign: 'top', pt: 1.5 }}
+                        sx={{ verticalAlign: 'top', pt: 1.25 }}
                       >
                         <Checkbox
                           slotProps={{
@@ -1134,29 +1132,16 @@ export const DocumentsPage = () => {
                             )
                           }
                         />
-                      </DocumentRecordPrimaryCell>
-                      <DocumentRecordPrimaryCell
+                      </TableCell>
+                      <DocumentRecordTitleCell
                         component="th"
                         scope="rowgroup"
                         colSpan={visibleColumnIds.length}
-                        sx={{ pt: 1.25, pb: 0.25 }}
+                        sx={{ pt: 1.25, pb: 0.5 }}
                       >
-                        <Box
-                          sx={{
-                            position: 'sticky',
-                            left: 0,
-                            width: 'fit-content',
-                            maxWidth: '100%',
-                          }}
-                        >
-                          <DocumentTitleText
-                            component="span"
-                          >
-                            {document.title}
-                          </DocumentTitleText>
-                        </Box>
-                      </DocumentRecordPrimaryCell>
-                      <DocumentRecordPrimaryCell
+                        <DocumentTitleText component="span">{document.title}</DocumentTitleText>
+                      </DocumentRecordTitleCell>
+                      <TableCell
                         align="right"
                         rowSpan={2}
                         onClick={(event) => event.stopPropagation()}
@@ -1172,7 +1157,7 @@ export const DocumentsPage = () => {
                         >
                           <MoreVertIcon />
                         </IconButton>
-                      </DocumentRecordPrimaryCell>
+                      </TableCell>
                     </TableRow>
                     <TableRow
                       onClick={() =>
@@ -1185,10 +1170,7 @@ export const DocumentsPage = () => {
                       sx={{ cursor: 'pointer' }}
                     >
                       {visibleColumnIds.map((column) => (
-                        <DocumentMetadataCell
-                          key={column}
-                          sx={{ pt: 0, pb: 1.25 }}
-                        >
+                        <DocumentMetadataCell key={column} sx={{ pt: 0, pb: 1.25 }}>
                           {renderDocumentCell(column, document)}
                         </DocumentMetadataCell>
                       ))}

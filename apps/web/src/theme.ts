@@ -246,19 +246,45 @@ export const DocumentsTable = styled(Table)(({ theme }) => ({
   },
 }));
 
+const TABLE_CELL_INSET = '1rem';
+const RECORD_TEXT_INDENT = '4rem';
+
+export const DOCUMENTS_TABLE_HEAD_HEIGHT = '2.3125rem';
+
 export const DocumentPeriodTableCell = styled(TableCell)(({ theme }) => ({
-  borderBottom: 0,
   backgroundColor: theme.palette.background.default,
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  paddingTop: theme.spacing(1.5),
+  paddingBottom: theme.spacing(1.5),
 }));
 
-export const DocumentPeriodTitle = styled(Typography)({ fontWeight: 600 });
+export const DocumentPeriodTitle = styled(Typography)({
+  position: 'sticky',
+  left: TABLE_CELL_INSET,
+  width: 'fit-content',
+  fontWeight: 600,
+});
 
-export const DocumentPersonTableCell = styled(TableCell)({ borderBottom: 0 });
+export const DocumentPersonTableCell = styled(TableCell)(({ theme }) => ({
+  borderBottom: 0,
+  paddingLeft: RECORD_TEXT_INDENT,
+  paddingTop: theme.spacing(1.5),
+  paddingBottom: 0,
+}));
 
-export const DocumentRecordPrimaryCell = styled(TableCell)({ borderBottom: 0 });
+export const DocumentPersonTitle = styled(Typography)({
+  position: 'sticky',
+  left: RECORD_TEXT_INDENT,
+  display: 'block',
+  width: 'fit-content',
+});
 
 export const DocumentTitleText = styled(Typography)<AsElement>(({ theme }) => ({
+  position: 'sticky',
+  left: RECORD_TEXT_INDENT,
   display: 'block',
+  width: 'fit-content',
+  maxWidth: '100%',
   overflow: 'hidden',
   whiteSpace: 'nowrap',
   textOverflow: 'clip',
@@ -267,9 +293,21 @@ export const DocumentTitleText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.primary,
 }));
 
+export const DocumentRecordTitleCell = styled(TableCell)(({ theme }) => ({
+  borderBottom: 0,
+  maxWidth: 0,
+  paddingLeft: theme.spacing(1.5),
+}));
+
+export const DocumentColumnHeadCell = styled(TableCell)(({ theme }) => ({
+  paddingInline: theme.spacing(1.5),
+}));
+
 export const DocumentMetadataCell = styled(TableCell)(({ theme }) => ({
   borderTop: 0,
+  paddingInline: theme.spacing(1.5),
   fontSize: '0.8125rem',
+  whiteSpace: 'nowrap',
   color: theme.palette.text.secondary,
 }));
 
