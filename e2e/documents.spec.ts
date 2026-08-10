@@ -221,6 +221,47 @@ const createSourceDocument = async (
   await expect(sourceSection.getByText(sourceName)).toBeVisible();
 };
 
+const createDocumentWithFilesViaApi = async ({
+  page,
+  title,
+  docType,
+  files,
+}: {
+  page: Page;
+  title: string;
+  docType: 'umowa-uod' | 'protokol' | 'rachunek';
+  files: Array<{
+    fileName: string;
+    role: 'source' | 'signed-digital';
+  }>;
+}) => {
+  const response = await page.request.post('/api/documents', {
+    data: {
+      title,
+      docType,
+      documentDate: '2026-01-01',
+      person: 'Jan Kowalski',
+      tags: [],
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const created = documentCreateResponseSchema.parse(await response.json());
+
+  await Promise.all(
+    files.map(async ({ fileName, role }) => {
+      const upload = await page.request.post(
+        `/api/documents/${created.data.document.id}/files/upload?fileName=${encodeURIComponent(fileName)}&role=${role}`,
+        {
+          headers: { 'content-type': 'application/pdf' },
+          data: await validPdfBuffer(),
+        },
+      );
+      expect(upload.ok()).toBe(true);
+    }),
+  );
+  return created.data.document.id;
+};
+
 const placeSignaturePadStroke = async ({
   page,
   pointerType,
@@ -395,8 +436,6 @@ test('creates, uploads, previews and exports an archived document', async ({
   const stamp = Date.now();
   const title = `Umowa e2e ${stamp}`;
   const sourceName = `umowa-${stamp}.pdf`;
-  const signedName = `umowa-${stamp}-podpisany.pdf`;
-  const signedAgainName = `umowa-${stamp}-podpisany-2.pdf`;
   const scanName = `umowa-${stamp}-podpisana.png`;
 
   await signIn(page);
@@ -450,19 +489,6 @@ test('creates, uploads, previews and exports an archived document', async ({
   });
   await expect(sourceSection.getByText(sourceName)).toBeVisible();
 
-  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
-  await signVisiblePdf(page);
-  await expect(page.getByRole('heading', { name: title })).toBeVisible();
-
-  const signedSection = page
-    .locator('section')
-    .filter({ has: page.getByRole('heading', { name: /Podpis cyfrowy/ }) });
-  await expect(signedSection.getByText(signedName)).toBeVisible();
-  await signedSection.getByRole('button', { name: 'Podpisz' }).click();
-  await signVisiblePdf(page);
-  await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  await expect(signedSection.getByText(signedAgainName)).toBeVisible();
-
   const scanSection = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: /Podpisany skan/ }) });
@@ -508,6 +534,34 @@ test('creates, uploads, previews and exports an archived document', async ({
   await expect(
     page.getByRole('heading', { name: sourceName.replace(/\.pdf$/u, '') }),
   ).toBeVisible();
+});
+
+test('signs a source document from the detail page', async ({ page }) => {
+  const stamp = Date.now();
+  const title = `Podpis e2e ${stamp}`;
+  const sourceName = `podpis-${stamp}.pdf`;
+  const signedName = `podpis-${stamp}-podpisany.pdf`;
+  const signedAgainName = `podpis-${stamp}-podpisany-2.pdf`;
+
+  await signIn(page);
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
+  await createSourceDocument(page, title, sourceName);
+
+  const sourceSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Źródło/ }) });
+  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
+  await signVisiblePdf(page);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  const signedSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: /Podpis cyfrowy/ }) });
+  await expect(signedSection.getByText(signedName)).toBeVisible();
+  await signedSection.getByRole('button', { name: 'Podpisz' }).click();
+  await signVisiblePdf(page);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(signedSection.getByText(signedAgainName)).toBeVisible();
 });
 
 test('moves a document to trash and restores it', async ({ page }) => {
@@ -708,9 +762,13 @@ test('mass signing can receive a signature from a QR pad browser context', async
   const sourceName = `qr-pad-${stamp}.pdf`;
 
   await signIn(page);
+  await createDocumentWithFilesViaApi({
+    page,
+    title,
+    docType: 'umowa-uod',
+    files: [{ fileName: sourceName, role: 'source' }],
+  });
   await page.getByRole('link', { name: 'Dokumenty' }).click();
-  await createSourceDocument(page, title, sourceName, 'Umowa UoD');
-  await page.getByRole('button', { name: '← Dokumenty' }).click();
   await page.getByLabel('Szukaj po tytule').fill(title);
   await expect
     .poll(() => new URL(page.url()).searchParams.get('q'))
@@ -775,11 +833,21 @@ test('mass signing signs and skips documents', async ({ page }) => {
   const secondTitle = `${titlePrefix} rachunek`;
 
   await signIn(page);
+  await Promise.all([
+    createDocumentWithFilesViaApi({
+      page,
+      title: firstTitle,
+      docType: 'protokol',
+      files: [{ fileName: `masowe-a-${stamp}.pdf`, role: 'source' }],
+    }),
+    createDocumentWithFilesViaApi({
+      page,
+      title: secondTitle,
+      docType: 'rachunek',
+      files: [{ fileName: `masowe-b-${stamp}.pdf`, role: 'source' }],
+    }),
+  ]);
   await page.getByRole('link', { name: 'Dokumenty' }).click();
-  await createSourceDocument(page, firstTitle, `masowe-a-${stamp}.pdf`, 'Protokół');
-  await page.getByRole('button', { name: '← Dokumenty' }).click();
-  await createSourceDocument(page, secondTitle, `masowe-b-${stamp}.pdf`, 'Rachunek');
-  await page.getByRole('button', { name: '← Dokumenty' }).click();
 
   await page.getByLabel('Szukaj po tytule').fill(titlePrefix);
   await expect
@@ -815,16 +883,19 @@ test('mass signing passes through an already signed document', async ({ page }) 
   const stamp = Date.now();
   const titlePrefix = `Masowe podpisane e2e ${stamp}`;
   const title = `${titlePrefix} umowa`;
+  const signedName = `masowe-podpisane-${stamp}.pdf`;
 
   await signIn(page);
-  await page.getByRole('link', { name: 'Dokumenty' }).click();
-  await createSourceDocument(page, title, `masowe-podpisane-${stamp}.pdf`, 'Umowa UoD');
-
-  const sourceSection = page
-    .locator('section')
-    .filter({ has: page.getByRole('heading', { name: /Źródło/ }) });
-  await sourceSection.getByRole('button', { name: 'Podpisz' }).click();
-  await signVisiblePdf(page);
+  const documentId = await createDocumentWithFilesViaApi({
+    page,
+    title,
+    docType: 'umowa-uod',
+    files: [
+      { fileName: `masowe-zrodlo-${stamp}.pdf`, role: 'source' },
+      { fileName: signedName, role: 'signed-digital' },
+    ],
+  });
+  await page.goto(`/app/documents/${documentId}`);
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
   await page.getByRole('button', { name: '← Dokumenty' }).click();
 
