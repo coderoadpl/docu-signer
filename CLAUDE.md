@@ -61,14 +61,14 @@ rejected.)
 - `pnpm run e2e` = the **browser** gate: Playwright drives real browsers over
   the real stack (isolated `agentproofarch_e2e` DB, `localhost` registered as a
   single-tenant custom domain, `entry.node.ts` serving the built bundle): Chromium
-  covers all six spec files (16 tests), and WebKit reruns `documents.spec.ts` to
-  pin the Safari/pdf.js legacy regression (22 test executions total):
+  covers all six spec files (17 tests), and WebKit reruns `documents.spec.ts` to
+  pin the Safari/pdf.js legacy regression (24 test executions total):
   `app.spec.ts` (login → archive navigation →
   failed-login → cache headers → liveness/readiness → anonymous redirect to login),
   `documents.spec.ts` (create → role uploads → source-only preview link +
   content-type → export; trash → restore roundtrip; signature pad pen/touch
   stamp placement; QR remote pad two-context mass signing; draft-filter approve
-  roundtrip; mass signing with a signed-file target),
+  roundtrip; mass signing sign/skip and signed-file-target flows),
   `magic-link.spec.ts` (trusted-user sign-in), `passkey.spec.ts`
   (registration → passkey sign-in), `settings.spec.ts` (account security and
   registration without tenant management), and `password-reset.spec.ts`
