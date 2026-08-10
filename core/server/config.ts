@@ -155,7 +155,7 @@ export const deploySeedEnvSchema = z
   })
   .superRefine(validateSeedAdminEnv);
 
-/** Dev seed subset: deploy seed fields + the auth secret used for demo signup. */
+/** Dev seed subset: connection selection + the auth secret used for demo signup. */
 export const seedEnvSchema = z
   .object({
     ...databaseEnvSchema.shape,

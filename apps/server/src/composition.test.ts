@@ -87,7 +87,7 @@ describe('selectPasswordResetEnabled', () => {
     expect(selectPasswordResetEnabled(env({}))).toBe(false);
   });
 
-  it('is hidden on deploys that still point at the local Mailpit defaults', () => {
+  it('is hidden on deploys without SMTP configured', () => {
     expect(selectPasswordResetEnabled(env({ VERCEL: '1', SECURE_COOKIES: true }))).toBe(false);
   });
 
