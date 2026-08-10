@@ -1,6 +1,6 @@
 import { useMemo, type ElementType } from 'react';
-import { Box, Table, TableCell, Typography } from '@mui/material';
-import { createTheme, styled, type Theme, type ThemeOptions } from '@mui/material/styles';
+import { Box, Table, TableCell, TableContainer, Typography } from '@mui/material';
+import { alpha, createTheme, styled, type Theme, type ThemeOptions } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 
 const reducedMotionTransitions = {
@@ -25,6 +25,15 @@ interface AppThemeOptions {
 const reducedMotionMediaQuery = '(prefers-reduced-motion: reduce)';
 
 export const DEFAULT_PRIMARY = 'hsl(215, 35%, 34%)';
+
+// WHY: the documents table ladder cannot live in `palette` — the test render
+// helper is barred from importing this module (boundary web-test ✕ web-theme),
+// so components must also render under Material's untouched default theme.
+const TABLE_SURFACE = {
+  head: 'hsl(60, 12%, 82%)',
+  periodBand: 'hsl(60, 11%, 88%)',
+  personBand: 'hsl(60, 10%, 94%)',
+};
 
 const FONT_STACK = [
   '-apple-system',
@@ -233,16 +242,23 @@ export const SigningSurface = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.background.default,
 }));
 
-export const StickyTableCell = styled(TableCell)(({ theme }) => ({
+export const DocumentsTableContainer = styled(TableContainer)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  boxShadow: theme.shadows[1],
 }));
 
 export const DocumentsTable = styled(Table)(({ theme }) => ({
+  '& thead th': {
+    backgroundColor: TABLE_SURFACE.head,
+    color: theme.palette.text.primary,
+  },
   '& tbody[data-document-record]:hover td, & tbody[data-document-record]:hover th': {
-    backgroundColor: theme.palette.action.hover,
+    backgroundColor: alpha(theme.palette.primary.main, 0.06),
   },
   '& tbody[data-selected] td, & tbody[data-selected] th': {
-    backgroundColor: theme.palette.action.selected,
+    backgroundColor: alpha(theme.palette.primary.main, 0.12),
   },
 }));
 
@@ -252,7 +268,7 @@ const RECORD_TEXT_INDENT = '4rem';
 export const DOCUMENTS_TABLE_HEAD_HEIGHT = '2.3125rem';
 
 export const DocumentPeriodTableCell = styled(TableCell)(({ theme }) => ({
-  backgroundColor: theme.palette.background.default,
+  backgroundColor: TABLE_SURFACE.periodBand,
   borderBottom: `1px solid ${theme.palette.divider}`,
   paddingTop: theme.spacing(1.5),
   paddingBottom: theme.spacing(1.5),
@@ -266,10 +282,11 @@ export const DocumentPeriodTitle = styled(Typography)({
 });
 
 export const DocumentPersonTableCell = styled(TableCell)(({ theme }) => ({
+  backgroundColor: TABLE_SURFACE.personBand,
   borderBottom: 0,
   paddingLeft: RECORD_TEXT_INDENT,
-  paddingTop: theme.spacing(1.5),
-  paddingBottom: 0,
+  paddingTop: theme.spacing(1),
+  paddingBottom: theme.spacing(0.5),
 }));
 
 export const DocumentPersonTitle = styled(Typography)({
