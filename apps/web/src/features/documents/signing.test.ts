@@ -13,6 +13,7 @@ import {
   inkToCanvasOutlines,
   inkToPdfPaths,
   isPalmSizedTouch,
+  moveSigningStampToPage,
   outlinePointsToSvgPath,
   placeInkPoint,
   penPriorityActive,
@@ -30,6 +31,8 @@ import {
   updateSigningStampPlacement,
   DEFAULT_SIGNING_INK_SIZE,
   DEFAULT_SIGNING_INK_COLOR,
+  MAX_SIGNING_INK_SIZE,
+  MIN_SIGNING_INK_SIZE,
   SIGNING_INK_COLORS,
   type CanvasPdfMetrics,
   type InkOutlinePoint,
@@ -552,6 +555,17 @@ describe('pen signing geometry', () => {
     expect((thickBounds?.bottom ?? 0) - (thickBounds?.top ?? 0)).toBeGreaterThan(
       (baseBounds?.bottom ?? 0) - (baseBounds?.top ?? 0),
     );
+    expect(DEFAULT_SIGNING_INK_SIZE).toBe(2);
+    expect(MIN_SIGNING_INK_SIZE).toBe(1);
+    expect(MAX_SIGNING_INK_SIZE).toBe(6);
+    expect(
+      inkToCanvasOutlines(
+        [stroke],
+        { offsetX: 0, offsetY: 0, scale: 1 },
+        surface,
+        MIN_SIGNING_INK_SIZE,
+      )[0]?.points.length,
+    ).toBeGreaterThan(4);
   });
 
   it('keeps fallback geometry paths deterministic', () => {
@@ -873,6 +887,37 @@ describe('pen signing geometry', () => {
         scale: 6,
       }),
     );
+  });
+
+  it('moves a stamp to a clamped page while preserving and clamping its placement', () => {
+    const stamp = createSigningStamp({
+      pageIndex: 0,
+      strokes: [
+        {
+          points: [
+            { x: 0.3, y: 0.4, pressure: 0.5 },
+            { x: 0.5, y: 0.6, pressure: 0.5 },
+          ],
+        },
+      ],
+      inkColor: DEFAULT_SIGNING_INK_COLOR,
+      placement: { offsetX: -0.4, offsetY: 0.55, scale: 1 },
+    });
+
+    const moved = moveSigningStampToPage([stamp], 0, 8, 3);
+
+    expect(moved[0]).toMatchObject({
+      pageIndex: 2,
+      placement: {
+        offsetX: expect.closeTo(-0.3, 5),
+        offsetY: expect.closeTo(0.4, 5),
+        scale: 1,
+      },
+    });
+    expect(stamp).toMatchObject({
+      pageIndex: 0,
+      placement: { offsetX: -0.4, offsetY: 0.55, scale: 1 },
+    });
   });
 
   it('hit-tests placed stamps with touch-friendly padding', () => {

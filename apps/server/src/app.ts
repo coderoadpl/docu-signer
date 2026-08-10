@@ -26,8 +26,10 @@ import {
   err,
   forbidden,
   internal,
+  MAX_PAD_STROKES_BYTES,
   notFound,
   ok,
+  PAD_STROKES_TOO_LARGE_MESSAGE,
   unavailable,
   validation,
   type Identity,
@@ -165,8 +167,8 @@ export const buildApp = (deps: AppDeps) => {
     onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
   });
   const padSubmitBodyLimit = bodyLimit({
-    maxSize: 200 * 1024,
-    onError: () => respond(err(validation('Pad strokes exceed the 200KB limit'))),
+    maxSize: MAX_PAD_STROKES_BYTES,
+    onError: () => respond(err(validation(PAD_STROKES_TOO_LARGE_MESSAGE))),
   });
   const serverUploadBodyLimit = bodyLimit({
     maxSize: 25 * 1024 * 1024,
@@ -354,6 +356,15 @@ export const buildApp = (deps: AppDeps) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = padSessionSubmitInputSchema.safeParse(body);
     if (!parsed.success) {
+      if (
+        parsed.error.issues.some(
+          (issue) => issue.message === PAD_STROKES_TOO_LARGE_MESSAGE,
+        )
+      ) {
+        return respond(
+          err(validation(PAD_STROKES_TOO_LARGE_MESSAGE, parsed.error.flatten())),
+        );
+      }
       return respond(err(validation('Invalid pad strokes', parsed.error.flatten())));
     }
     const result = await submitPadStrokes(
