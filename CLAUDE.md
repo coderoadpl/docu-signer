@@ -85,7 +85,9 @@ rejected.)
   (`visual/`, `playwright.visual.config.ts`) so a moved screenshot can never
   redden `e2e`. It is **not a required check** — the required set is
   `check`/`smoke`/`e2e`/`ai-review` (procedurally — see FOUNDATION.md), and
-  `visual` stays out of it until the owner arms it. Baselines
+  `visual` stays out of it until the owner arms it. The `visual` workflow runs
+  only when dispatched, nightly at 03:17 UTC, and on pushes to `main`; pull
+  requests do not trigger it. Baselines
   (`visual/__screenshots__/<platform>/`) are rendered by the linux CI runner via
   the `visual-baselines` workflow and committed; a mac run compares nothing
   (`ignoreSnapshots`), so it can neither author nor overwrite them. Changing the

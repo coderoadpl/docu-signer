@@ -41,6 +41,14 @@ describe('workflow code and credential trust boundaries', () => {
     }
   });
 
+  it('cancels superseded PR runs without cancelling pushes to main', () => {
+    for (const workflowName of ['ci.yml', 'ai-review.yml']) {
+      const workflow = readWorkflow(workflowName);
+      expect(workflow).toContain('group: ${{ github.workflow }}-${{ github.ref }}');
+      expect(workflow).toContain("cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}");
+    }
+  });
+
   it('proves the production deployment is on main before exposing smoke secrets', () => {
     const workflow = readWorkflow('post-deploy-smoke.yml');
     const mainCheckout = workflow.indexOf('ref: main');

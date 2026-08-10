@@ -95,3 +95,12 @@ correct.
   commit is informational.
 - `visual-reports` is intentionally force-written and holds only review images;
   its history is disposable.
+
+## Status update (2026-08-08)
+
+Superseded in part. The PR-triggered loop — the sticky gallery comment, the
+`visual-report` publisher and the advisory AI read — was removed when Actions
+minutes became metered under GitHub Pro. `visual` now runs from its own
+workflow on manual dispatch, a nightly schedule and pushes to `main`;
+`/approve-visuals` and the `visual-baselines` dispatch remain the baseline
+update path. The non-required status of `visual` is unchanged.
