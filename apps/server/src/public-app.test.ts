@@ -108,6 +108,20 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
       updatedAt: '2026-08-02T10:00:00.000Z',
     }),
   },
+  tenantSettings: {
+    get: async () => null,
+    set: async (tenantId, storeSignatureRecords) => ({
+      tenantId,
+      storeSignatureRecords,
+    }),
+  },
+  signatureRecords: {
+    listByDocument: async () => [],
+    create: async (input) => ({
+      ...input,
+      createdAt: '2026-08-07T10:00:00.000Z',
+    }),
+  },
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),

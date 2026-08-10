@@ -366,6 +366,68 @@ describe('API client', () => {
     );
   });
 
+  it('calls tenant settings and signature record routes through the contract', async () => {
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const fileId = '22222222-2222-4222-8222-222222222222';
+    const record = {
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-default',
+      documentId,
+      fileId,
+      signedBy: 'user-1',
+      payload: [
+        {
+          strokes: [{ points: [{ x: 0.2, y: 0.3, pressure: 0.8 }] }],
+          pageIndex: 0,
+          placement: { offsetX: 0.1, offsetY: 0.2, scale: 1 },
+          inkColor: 'black' as const,
+          inkSize: 2,
+        },
+      ],
+      createdAt: '2026-08-07T10:00:00.000Z',
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/tenant-settings') && init?.method === 'GET') {
+        return json({
+          ok: true,
+          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: true } },
+        });
+      }
+      if (url.endsWith('/api/tenant-settings') && init?.method === 'PUT') {
+        return json({
+          ok: true,
+          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: false } },
+        });
+      }
+      if (init?.method === 'GET') {
+        return json({ ok: true, data: { items: [record], nextCursor: null } });
+      }
+      return json({ ok: true, data: { signatureRecord: record } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(api.getTenantSettings()).resolves.toMatchObject({
+      ok: true,
+      value: { settings: { storeSignatureRecords: true } },
+    });
+    await api.updateTenantSettings({ storeSignatureRecords: false });
+    await api.listSignatureRecords(documentId, { cursor: 'opaque', limit: 1 });
+    await api.createSignatureRecord(documentId, { fileId, payload: record.payload });
+
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
+      method: 'PUT',
+      body: JSON.stringify({ storeSignatureRecords: false }),
+    });
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      `/api/documents/${documentId}/signature-records?cursor=opaque&limit=1`,
+    );
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ fileId, payload: record.payload }),
+    });
+  });
+
   it('downloads a single exported document file', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       new Response('pdf', {

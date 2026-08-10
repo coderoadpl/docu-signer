@@ -113,6 +113,20 @@ const baseDeps = (): AppDeps => ({
       updatedAt: '2026-08-02T10:00:00.000Z',
     }),
   },
+  tenantSettings: {
+    get: async () => null,
+    set: async (tenantId, storeSignatureRecords) => ({
+      tenantId,
+      storeSignatureRecords,
+    }),
+  },
+  signatureRecords: {
+    listByDocument: async () => [],
+    create: async (input) => ({
+      ...input,
+      createdAt: '2026-08-07T10:00:00.000Z',
+    }),
+  },
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),
@@ -321,6 +335,119 @@ describe('buildApp', () => {
 
     const anonymous = await buildApp(baseDeps()).request(API_ROUTES.documentsTrash.path);
     expect(anonymous.status).toBe(401);
+  });
+
+  it('serves tenant settings and write-once signature records', async () => {
+    const deps = authorizedDeps();
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const fileId = '22222222-2222-4222-8222-222222222222';
+    const recordId = '33333333-3333-4333-8333-333333333333';
+    const document: Document = {
+      id: documentId,
+      tenantId: tenant.id,
+      title: 'Umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-07',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      draft: false,
+      createdAt: '2026-08-07T10:00:00.000Z',
+      updatedAt: '2026-08-07T10:00:00.000Z',
+      deletedAt: null,
+    };
+    const file = {
+      id: fileId,
+      documentId,
+      role: 'signed-digital' as const,
+      fileName: 'umowa-podpisana.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-default/document/file',
+      createdAt: '2026-08-07T10:00:00.000Z',
+    };
+    const payload = [
+      {
+        strokes: [{ points: [{ x: 0.2, y: 0.3, pressure: 0.8 }] }],
+        pageIndex: 0,
+        placement: { offsetX: 0.1, offsetY: 0.2, scale: 1 },
+        inkColor: 'black' as const,
+        inkSize: 2,
+      },
+    ];
+    let storedSettings = true;
+    const records: Array<{
+      id: string;
+      tenantId: string;
+      documentId: string;
+      fileId: string;
+      signedBy: string;
+      payload: typeof payload;
+      createdAt: string;
+    }> = [];
+    deps.ids = { nextId: () => recordId };
+    deps.documents.findById = async () => document;
+    deps.documents.findFile = async () => file;
+    deps.tenantSettings = {
+      get: async (tenantId) => ({
+        tenantId,
+        storeSignatureRecords: storedSettings,
+      }),
+      set: async (tenantId, storeSignatureRecords) => {
+        storedSettings = storeSignatureRecords;
+        return { tenantId, storeSignatureRecords };
+      },
+    };
+    deps.signatureRecords = {
+      listByDocument: async () => records,
+      create: async (input) => {
+        const record = {
+          ...input,
+          payload,
+          createdAt: '2026-08-07T10:00:00.000Z',
+        };
+        records.push(record);
+        return record;
+      },
+    };
+    const app = buildApp(deps);
+    const headers = { [TENANT_HEADER]: tenant.slug };
+
+    const settings = await app.request(API_ROUTES.tenantSettings.path, { headers });
+    expect(await settings.json()).toMatchObject({
+      ok: true,
+      data: { settings: { storeSignatureRecords: true } },
+    });
+    const updated = await app.request(API_ROUTES.tenantSettingsUpdate.path, {
+      method: API_ROUTES.tenantSettingsUpdate.method,
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ storeSignatureRecords: false }),
+    });
+    expect(await updated.json()).toMatchObject({
+      ok: true,
+      data: { settings: { storeSignatureRecords: false } },
+    });
+    const created = await app.request(
+      API_ROUTES.signatureRecordsCreate.path.replace(':documentId', documentId),
+      {
+        method: API_ROUTES.signatureRecordsCreate.method,
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ fileId, payload }),
+      },
+    );
+    expect(await created.json()).toMatchObject({
+      ok: true,
+      data: { signatureRecord: { id: recordId, fileId } },
+    });
+    const listed = await app.request(
+      API_ROUTES.signatureRecords.path.replace(':documentId', documentId),
+      { headers },
+    );
+    expect(await listed.json()).toMatchObject({
+      ok: true,
+      data: { items: [{ id: recordId }], nextCursor: null },
+    });
   });
 
   it('drives pad session routes through the contract handlers', async () => {

@@ -12,6 +12,7 @@ import type {
 import type {
   CreateApiToken,
   CreateSavedSearch,
+  CreateSignatureRecord,
   CreateDocument,
   DocumentListFilter,
   ExportDocuments,
@@ -20,6 +21,7 @@ import type {
   MoveDocumentFile,
   PadSubmittedStrokes,
   SetUserPreference,
+  UpdateTenantSettings,
   UpdateDocument,
 } from '#core/domain/index.js';
 
@@ -127,6 +129,15 @@ const apiTokenScopes = {
 const userPreferenceScopes = {
   all: () => ['user-preferences'] as const,
   detail: (key: string) => ['user-preferences', key] as const,
+};
+
+const tenantSettingsScopes = {
+  all: () => ['tenant-settings'] as const,
+};
+
+const signatureRecordScopes = {
+  all: () => ['signature-records'] as const,
+  document: (documentId: string) => ['signature-records', documentId] as const,
 };
 
 const padSessionScopes = {
@@ -344,6 +355,39 @@ export const setUserPreferenceMutation = (api: ApiClient) =>
 
 export const userPreferenceInvalidates = (key: string) => ({
   queryKey: userPreferenceScopes.detail(key),
+});
+
+export const tenantSettingsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: tenantSettingsScopes.all(),
+    call: ({ signal }) => api.getTenantSettings(signal),
+  });
+
+export const updateTenantSettingsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSettingsScopes.all(), 'update'],
+    call: (input: UpdateTenantSettings) => api.updateTenantSettings(input),
+  });
+
+export const tenantSettingsInvalidates = () => ({
+  queryKey: tenantSettingsScopes.all(),
+});
+
+export const signatureRecordsQuery = (api: ApiClient, documentId: string) =>
+  defineQuery({
+    queryKey: signatureRecordScopes.document(documentId),
+    call: ({ signal }) => api.listSignatureRecords(documentId, {}, signal),
+  });
+
+export const createSignatureRecordMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...signatureRecordScopes.all(), 'create'],
+    call: ({ documentId, input }: { documentId: string; input: CreateSignatureRecord }) =>
+      api.createSignatureRecord(documentId, input),
+  });
+
+export const signatureRecordsInvalidates = (documentId: string) => ({
+  queryKey: signatureRecordScopes.document(documentId),
 });
 
 export const createPadSessionMutation = (api: ApiClient) =>

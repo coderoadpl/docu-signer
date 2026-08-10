@@ -1,5 +1,6 @@
 import type {
   DocumentFileRole,
+  DocumentFile,
   FileUploadRequest,
   FinalizeFileUpload,
 } from '#core/domain/index.js';
@@ -29,8 +30,8 @@ export interface UploadTransport {
     headers: Record<string, string>;
     bytes: Uint8Array;
   }): Promise<void>;
-  finalize(input: FinalizeFileUpload): Promise<unknown>;
-  server(input: FileUploadRequest & { bytes: Uint8Array }): Promise<unknown>;
+  finalize(input: FinalizeFileUpload): Promise<{ file: DocumentFile }>;
+  server(input: FileUploadRequest & { bytes: Uint8Array }): Promise<{ file: DocumentFile }>;
 }
 
 const isAcceptedDocumentFile = (file: Pick<UploadFile, 'type'>): boolean =>
@@ -40,7 +41,7 @@ export const uploadDocumentFile = async (
   file: UploadFile,
   role: DocumentFileRole,
   transport: UploadTransport,
-): Promise<void> => {
+): Promise<DocumentFile> => {
   if (!isAcceptedDocumentFile(file)) {
     throw new Error('Dozwolone są pliki PDF i obrazy.');
   }
@@ -49,15 +50,14 @@ export const uploadDocumentFile = async (
   const requested = await transport.request(request);
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (requested.upload.kind === 'server') {
-    await transport.server({ ...request, bytes });
-    return;
+    return (await transport.server({ ...request, bytes })).file;
   }
   await transport.direct({ ...requested.upload.target, bytes });
-  await transport.finalize({
+  return (await transport.finalize({
     key: requested.upload.key,
     fileName: file.name,
     contentType,
     sizeBytes: file.size,
     role,
-  });
+  })).file;
 };

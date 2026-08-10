@@ -54,5 +54,7 @@ describe('document authorization', () => {
     expect(decide(scoped(['write']), 'document:approve')).toMatchObject({ allowed: false });
     expect(decide(scoped(['read']), 'api-token:manage')).toMatchObject({ allowed: false });
     expect(decide(scoped(['read']), 'saved-search:manage')).toMatchObject({ allowed: false });
+    expect(decide(scoped(['read']), 'tenant-settings:manage')).toMatchObject({ allowed: false });
+    expect(decide(scoped(['write:draft']), 'signature-record:manage')).toMatchObject({ allowed: false });
   });
 });

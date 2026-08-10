@@ -10,11 +10,12 @@ const signIn = async (page: Page): Promise<void> => {
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
 };
 
-test('account settings contains only personal security controls', async ({ page }) => {
+test('account settings contains personal security controls and the archive-wide record setting', async ({ page }) => {
   await signIn(page);
   await page.getByRole('link', { name: 'Konto' }).click();
 
   await expect(page.getByRole('heading', { name: 'Konto', level: 1 })).toBeVisible();
+  await expect(page.getByText(/przechowuj zapis podpisów/i)).toBeVisible();
   await expect(page.getByText(/^Hasło$/i)).toBeVisible();
   await expect(page.getByText(/uwierzytelnianie dwuskładnikowe/i)).toBeVisible();
   await expect(page.getByText(/klucze dostępu/i)).toBeVisible();

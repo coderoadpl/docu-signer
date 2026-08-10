@@ -42,6 +42,10 @@ import {
   savedSearchCreateOutputSchema,
   savedSearchDeleteOutputSchema,
   savedSearchListOutputSchema,
+  signatureRecordCreateOutputSchema,
+  signatureRecordListOutputSchema,
+  tenantSettingsGetOutputSchema,
+  tenantSettingsUpdateOutputSchema,
   userPreferenceGetOutputSchema,
   userPreferenceSetOutputSchema,
   type HttpMethod,
@@ -64,6 +68,8 @@ import {
   type PadSubmittedStrokes,
   type Result,
   type SetUserPreference,
+  type CreateSignatureRecord,
+  type UpdateTenantSettings,
   type UpdateDocument,
 } from '#core/domain/index.js';
 
@@ -156,6 +162,17 @@ const queryString = (filter: DocumentListFilter): string => {
   for (const [key, value] of Object.entries(filter)) {
     if (value !== undefined) params.set(key, value);
   }
+  const encoded = params.toString();
+  return encoded.length > 0 ? `?${encoded}` : '';
+};
+
+const paginationQueryString = (input: {
+  cursor?: string | undefined;
+  limit?: number | undefined;
+}): string => {
+  const params = new URLSearchParams();
+  if (input.cursor !== undefined) params.set('cursor', input.cursor);
+  if (input.limit !== undefined) params.set('limit', String(input.limit));
   const encoded = params.toString();
   return encoded.length > 0 ? `?${encoded}` : '';
 };
@@ -503,6 +520,50 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.userPreferenceSet.method,
       pathWith(API_ROUTES.userPreferenceSet.path, { key }),
       userPreferenceSetOutputSchema,
+      input,
+      signal,
+    ),
+  getTenantSettings: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantSettings.method,
+      API_ROUTES.tenantSettings.path,
+      tenantSettingsGetOutputSchema,
+      undefined,
+      signal,
+    ),
+  updateTenantSettings: (input: UpdateTenantSettings, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantSettingsUpdate.method,
+      API_ROUTES.tenantSettingsUpdate.path,
+      tenantSettingsUpdateOutputSchema,
+      input,
+      signal,
+    ),
+  listSignatureRecords: (
+    documentId: string,
+    input: { cursor?: string | undefined; limit?: number | undefined } = {},
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.signatureRecords.method,
+      `${pathWith(API_ROUTES.signatureRecords.path, { documentId })}${paginationQueryString(input)}`,
+      signatureRecordListOutputSchema,
+      undefined,
+      signal,
+    ),
+  createSignatureRecord: (
+    documentId: string,
+    input: CreateSignatureRecord,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.signatureRecordsCreate.method,
+      pathWith(API_ROUTES.signatureRecordsCreate.path, { documentId }),
+      signatureRecordCreateOutputSchema,
       input,
       signal,
     ),

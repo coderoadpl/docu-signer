@@ -8,3 +8,5 @@ export * from './usecases/saved-searches.js';
 export * from './usecases/user-preferences.js';
 export * from './usecases/public.js';
 export * from './usecases/pad-sessions.js';
+export * from './usecases/tenant-settings.js';
+export * from './usecases/signature-records.js';

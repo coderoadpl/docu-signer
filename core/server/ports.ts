@@ -8,10 +8,14 @@ import type {
   PadSignatureRequest,
   PadSubmittedStrokes,
   SavedSearch,
+  SignatureRecord,
+  SignatureRecordCursor,
+  SignatureRecordPayload,
   Result,
   StaffRole,
   Tenant,
   TenantDomain,
+  TenantSettings,
   UserPreference,
   UserPreferenceValue,
 } from '#core/domain/index.js';
@@ -93,6 +97,28 @@ export interface SavedSearchRepository {
 export interface UserPreferenceRepository {
   get(userId: string, key: string): Promise<UserPreference | null>;
   set(userId: string, key: string, value: UserPreferenceValue): Promise<UserPreference>;
+}
+
+export interface TenantSettingsRepository {
+  get(tenantId: string): Promise<TenantSettings | null>;
+  set(tenantId: string, storeSignatureRecords: boolean): Promise<TenantSettings>;
+}
+
+export interface SignatureRecordRepository {
+  listByDocument(
+    tenantId: string,
+    documentId: string,
+    cursor: SignatureRecordCursor | null,
+    limit: number,
+  ): Promise<SignatureRecord[]>;
+  create(input: {
+    id: string;
+    tenantId: string;
+    documentId: string;
+    fileId: string;
+    signedBy: string;
+    payload: SignatureRecordPayload;
+  }): Promise<SignatureRecord | null>;
 }
 
 export interface PadSessionRepository {

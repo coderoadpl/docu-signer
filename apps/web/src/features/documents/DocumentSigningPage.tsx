@@ -33,6 +33,7 @@ import type { PadSubmittedStrokes } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { SigningShell } from '../../components/layout/SigningShell.js';
 import { StatusView } from '../../components/layout/StatusView.js';
+import { appNoticeStore } from '../../lib/app-notice.js';
 import { InkSurface, PadStatusDot, SigningPageSurface } from '../../theme.js';
 import {
   DEFAULT_SIGNING_INK_COLOR,
@@ -85,6 +86,7 @@ import {
   sourcePageMetrics,
 } from './signing-pdf.js';
 import { uploadDocumentFile } from './upload.logic.js';
+import { storeSignatureRecordAfterUpload } from './signature-record.logic.js';
 
 type LoadedPdf = Awaited<ReturnType<typeof loadSourcePdf>>;
 
@@ -832,6 +834,7 @@ export const DocumentSigningPage = ({
     ...actions.activePadSession,
     refetchOnMount: 'always',
   });
+  const tenantSettings = useQuery(actions.tenantSettings);
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const inkCanvasRef = useRef<HTMLCanvasElement>(null);
   const fitBoxRef = useRef<HTMLDivElement>(null);
@@ -893,6 +896,7 @@ export const DocumentSigningPage = ({
   const directUpload = useMutation(actions.directFileUpload);
   const finalizeUpload = useMutation(actions.finalizeFileUpload);
   const serverUpload = useMutation(actions.uploadDocumentFile);
+  const createSignatureRecord = useMutation(actions.createSignatureRecord);
   const createRemotePadSession = useMutation(actions.createPadSession);
   const requestRemotePadSignature = useMutation(actions.requestPadSignature);
   const consumeRemotePadStrokes = useMutation(actions.consumePadStrokes);
@@ -1687,16 +1691,17 @@ export const DocumentSigningPage = ({
   };
 
   const saveSignedPdf = async () => {
+    const committedStamps = await flattenedStamps();
     const signedBytes = await flattenSignedPdf(
       sourceQuery.data.bytes,
-      await flattenedStamps(),
+      committedStamps,
     );
     const output = new File(
       [bytesAsArrayBuffer(signedBytes)],
       signedFileName(sourceFile.fileName),
       { type: 'application/pdf' },
     );
-    await uploadDocumentFile(output, 'signed-digital', {
+    const uploadedFile = await uploadDocumentFile(output, 'signed-digital', {
       request: (input) =>
         requestUpload.mutateAsync({ documentId, input }),
       direct: (input) => directUpload.mutateAsync(input),
@@ -1705,6 +1710,25 @@ export const DocumentSigningPage = ({
       server: (input) =>
         serverUpload.mutateAsync({ documentId, input }),
     });
+    const persistSignatureRecord = async () => {
+      try {
+        const settings = tenantSettings.data ??
+          await queryClient.fetchQuery(actions.tenantSettings);
+        const warning = await storeSignatureRecordAfterUpload({
+          create: (input) => createSignatureRecord.mutateAsync(input),
+          documentId,
+          fileId: uploadedFile.id,
+          stamps: committedStamps.map(({ stamp }) => stamp),
+          storeSignatureRecords: settings.settings.storeSignatureRecords,
+        });
+        if (warning) appNoticeStore.show(warning);
+      } catch {
+        appNoticeStore.show(
+          'Podpisany PDF zapisano, ale nie udało się sprawdzić ustawienia zapisu podpisów.',
+        );
+      }
+    };
+    void persistSignatureRecord();
     await queryClient.invalidateQueries(actions.documentsInvalidates());
   };
 

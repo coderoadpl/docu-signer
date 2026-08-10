@@ -5,6 +5,7 @@ import {
   createApiTokenSchema,
   createDocumentSchema,
   createSavedSearchSchema,
+  createSignatureRecordSchema,
   documentFileSchema,
   documentListFilterSchema,
   documentSchema,
@@ -21,14 +22,20 @@ import {
   padSessionStateOutputSchema as domainPadSessionStateOutputSchema,
   padSubmittedStrokesSchema as domainPadSessionSubmitInputSchema,
   moveDocumentFileSchema,
+  paginationQuerySchema,
   publicTenantProfileSchema,
   savedSearchSchema,
+  signatureRecordSchema,
   setUserPreferenceSchema,
   staffRoleSchema,
   updateDocumentSchema,
+  updateTenantSettingsSchema,
   userPreferenceKeySchema,
   userPreferenceSchema,
+  tenantSettingsSchema,
 } from '#core/domain/index.js';
+
+import { paginatedOutputSchema } from './pagination.js';
 
 const attestationSchema = z.object({
   version: z.string(),
@@ -188,6 +195,26 @@ export const userPreferenceSetOutputSchema = z.object({
   preference: userPreferenceSchema,
 });
 
+export const tenantSettingsGetOutputSchema = z.object({
+  settings: tenantSettingsSchema,
+});
+
+export const tenantSettingsUpdateInputSchema = updateTenantSettingsSchema;
+
+export const tenantSettingsUpdateOutputSchema = z.object({
+  settings: tenantSettingsSchema,
+});
+
+export const signatureRecordListInputSchema = paginationQuerySchema;
+
+export const signatureRecordListOutputSchema = paginatedOutputSchema(signatureRecordSchema);
+
+export const signatureRecordCreateInputSchema = createSignatureRecordSchema;
+
+export const signatureRecordCreateOutputSchema = z.object({
+  signatureRecord: signatureRecordSchema,
+});
+
 export const padSessionCreateOutputSchema = domainPadSessionCreateOutputSchema;
 
 export const padSessionActiveOutputSchema = domainPadSessionActiveOutputSchema;
@@ -295,6 +322,16 @@ export const API_ROUTES = {
   apiTokenRevoke: { method: 'POST', path: '/api/api-tokens/:apiTokenId/revoke' },
   userPreference: { method: 'GET', path: '/api/me/preferences/:key' },
   userPreferenceSet: { method: 'PUT', path: '/api/me/preferences/:key' },
+  tenantSettings: { method: 'GET', path: '/api/tenant-settings' },
+  tenantSettingsUpdate: { method: 'PUT', path: '/api/tenant-settings' },
+  signatureRecords: {
+    method: 'GET',
+    path: '/api/documents/:documentId/signature-records',
+  },
+  signatureRecordsCreate: {
+    method: 'POST',
+    path: '/api/documents/:documentId/signature-records',
+  },
   padSessionsCreate: { method: 'POST', path: '/api/pad-sessions' },
   padSessionActive: { method: 'GET', path: '/api/pad-sessions/active' },
   padSessionJoin: { method: 'POST', path: '/api/pad-sessions/join' },
