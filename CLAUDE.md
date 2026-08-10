@@ -98,11 +98,13 @@ rejected.)
   A full-screen mass-review queue shows each selected source or newest digital
   signature and supports lightweight metadata editing without signing controls.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
-  replaces the source, and no stored artifact can be applied to a different
-  document (no reusable signature). With the tenant setting on (owner decision
-  2026-08-07, recorded in FOUNDATION.md), each signing session additionally
-  stores its own per-document stamp geometry solely so the SAME document's
-  signatures can be re-flattened onto a corrected source. A desktop signing
+  replaces the source. With the tenant setting on, each signing session also
+  stores its signature ink (stroke geometry, placement, color, size) bound by
+  foreign key to that document — a deliberate reversal of the 2026-08-01
+  never-store-ink rule (owner decision 2026-08-07, provenance in
+  FOUNDATION.md) so the same document's signatures can be re-flattened onto a
+  corrected source. No product surface offers applying stored ink to any
+  other document. A desktop signing
   user has one global remote pad session shared by every signing surface at
   `/pad/{sessionId}`; the pad requires a normal login plus either the session
   secret from the URL fragment (QR) or same-user identity (`/pad` join), and
@@ -116,7 +118,8 @@ rejected.)
   Konto > Tokeny API only — token hygiene is that surface's purpose, and it is
   an account-security surface, not a document surface (agent decision
   2026-08-02, recorded in FOUNDATION.md).
-- Konto: personal passkeys, API tokens and two-factor authentication. Removed
+- Konto: personal passkeys, API tokens, two-factor authentication and the
+  tenant-wide signature-ink storage switch (Ustawienia organizacji). Removed
   upstream verticals stay removed.
 
 ## Layer rules (enforced, but know them anyway)

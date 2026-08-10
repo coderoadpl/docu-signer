@@ -64,7 +64,7 @@ each.
   and top navigation (owner decision 2026-07-27).
 - The shell and system states are Polish-first, including upstream demo surfaces.
 - Upstream demo verticals removed; only documents and account settings remain (owner decision 2026-08-01).
-- Hand-drawn PDF signatures are flattened client-side into new archive files. Owner ruling 2026-08-07 (issued in the working session, confirmed by the owner on PR #65): a tenant setting — on for the single live tenant — additionally stores per-document, per-session stamp geometry so the same document's signatures can be re-flattened onto a corrected source (planned "Uaktualnij źródło"). This narrows the earlier never-store-ink stance (2026-08-01); the records are bound to one document and are not reusable signatures, so the no-reusable-signature rule stays intact.
+- Hand-drawn PDF signatures are flattened client-side into new archive files. Owner ruling 2026-08-07 REVERSES the 2026-08-01 decision that signature ink is never stored separately: with a tenant setting (on for the single live tenant), each signing session stores its signature ink per document so the same document's signatures can be re-flattened onto a corrected source (planned "Uaktualnij źródło"). The stored ink is bound to one document by foreign key and no surface applies it elsewhere; provenance: the owner's confirming comment on PR #65.
 - The fresh-clone `quickstart:probe` and its CI step were removed with the demo
   verticals they drove; the README quickstart is now convention, not enforced.
 - `scripts/backup.ts` is a sanctioned standalone composition site because the CI cron backup runs without the server.
