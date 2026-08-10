@@ -9,6 +9,7 @@ import {
   loginCredentialSelectionIsValid,
   normalizeStdinPassword,
   runLoginAction,
+  signatureRecordsProbeResult,
 } from './main.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
@@ -103,6 +104,17 @@ describe('CLI command surface', () => {
     });
   }, CLI_TEST_TIMEOUT_MS);
 
+});
+
+describe('document show signature-records probe', () => {
+  it('reports existence from a permitted probe', () => {
+    expect(signatureRecordsProbeResult(ok({ items: [{}] }))).toBe(true);
+    expect(signatureRecordsProbeResult(ok({ items: [] }))).toBe(false);
+  });
+
+  it('degrades to null when the probe is denied, so token callers still get the document', () => {
+    expect(signatureRecordsProbeResult(err(appError('forbidden', 'denied')))).toBeNull();
+  });
 });
 
 describe('login action', () => {

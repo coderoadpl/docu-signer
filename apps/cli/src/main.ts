@@ -507,6 +507,10 @@ document
     );
   });
 
+export const signatureRecordsProbeResult = (
+  recordsResult: { ok: true; value: { items: readonly unknown[] } } | { ok: false },
+): boolean | null => (recordsResult.ok ? recordsResult.value.items.length > 0 : null);
+
 document
   .command('show <id>')
   .description('Show a document and its attachments')
@@ -518,19 +522,19 @@ document
       return;
     }
     const recordsResult = await ctx.api.listSignatureRecords(id, { limit: 1 });
-    if (!recordsResult.ok) {
-      emit(recordsResult, ctx.json, () => '');
-      return;
-    }
     const data = {
       document: documentResult.value.document,
-      signatureRecordsExist: recordsResult.value.items.length > 0,
+      signatureRecordsExist: signatureRecordsProbeResult(recordsResult),
     };
     emit(ok(data), ctx.json, (value) => {
       const files = value.document.files
         .map((file) => `  - ${file.role}\t${file.fileName}\t(${file.id.slice(0, 8)})`)
         .join('\n');
-      return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\nsignature-records=${String(value.signatureRecordsExist)}\n${files || '  no files'}`;
+      const records =
+        value.signatureRecordsExist === null
+          ? ''
+          : `signature-records=${String(value.signatureRecordsExist)}\n`;
+      return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\n${records}${files || '  no files'}`;
     });
   });
 
