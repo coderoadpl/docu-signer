@@ -59,7 +59,7 @@ export interface DocumentRepository {
     tenantId: string,
     input: Omit<DocumentFile, 'createdAt'>,
   ): Promise<DocumentFile | null>;
-  updateFileSize?(
+  updateFileSize(
     tenantId: string,
     documentId: string,
     fileId: string,
@@ -136,7 +136,7 @@ export interface SignatureRecordRepository {
     signedBy: string;
     payload: SignatureRecordPayload;
   }): Promise<SignatureRecord | null>;
-  recordSeal?(input: {
+  recordSeal(input: {
     id: string;
     tenantId: string;
     documentId: string;

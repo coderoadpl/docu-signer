@@ -7,9 +7,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   attemptPdfSeal,
+  preparePdfSeal,
   recordPdfSeal,
   type PdfSealingDeps,
 } from '#core/server/index.js';
+import { MAX_DOCUMENT_FILE_BYTES } from '#core/domain/index.js';
 
 import { createSignPdfSeal } from './signpdf.js';
 import { verifyPdfSeal } from './verify.js';
@@ -151,7 +153,7 @@ describe('signpdf PAdES adapter', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-09T14:15:16.789Z'));
     const sealed = await attemptPdfSeal(
-      { tenantId: 'tenant-1', document, bytes: await samplePdf() },
+      { tenantId: 'tenant-1', document, bytes: await samplePdf(), dateMode },
       await sealingDeps(dateMode),
     );
     expect(sealed).not.toBeNull();
@@ -399,15 +401,15 @@ describe('signpdf PAdES adapter', () => {
     expect(createSignPdfSeal(null)).toEqual({ configured: false });
     const disabled = await sealingDeps('declared');
     disabled.tenantSettings.get = async () => null;
-    await expect(attemptPdfSeal(
-      { tenantId: 'tenant-1', document, bytes: await samplePdf() },
+    await expect(preparePdfSeal(
+      { tenantId: 'tenant-1', documentId: document.id },
       disabled,
     )).resolves.toBeNull();
 
     const absent = await sealingDeps('declared');
     absent.pdfSeal = { configured: false };
-    await expect(attemptPdfSeal(
-      { tenantId: 'tenant-1', document, bytes: await samplePdf() },
+    await expect(preparePdfSeal(
+      { tenantId: 'tenant-1', documentId: document.id },
       absent,
     )).resolves.toBeNull();
     expect(absent.warnings.warn).toHaveBeenCalledWith(
@@ -417,7 +419,12 @@ describe('signpdf PAdES adapter', () => {
 
     const failed = await sealingDeps('declared');
     await expect(attemptPdfSeal(
-      { tenantId: 'tenant-1', document, bytes: new Uint8Array([1, 2, 3]) },
+      {
+        tenantId: 'tenant-1',
+        document,
+        bytes: new Uint8Array([1, 2, 3]),
+        dateMode: 'declared',
+      },
       failed,
     )).resolves.toBeNull();
     expect(failed.warnings.warn).toHaveBeenCalledWith(
@@ -431,9 +438,27 @@ describe('signpdf PAdES adapter', () => {
       seal: async () => { throw new Error('fixture failure'); },
     };
     await expect(attemptPdfSeal(
-      { tenantId: 'tenant-1', document, bytes: await samplePdf() },
+      { tenantId: 'tenant-1', document, bytes: await samplePdf(), dateMode: 'declared' },
       exploded,
     )).rejects.toThrow('fixture failure');
+
+    const oversized = await sealingDeps('declared');
+    oversized.pdfSeal = {
+      configured: true,
+      seal: async () => ({
+        kind: 'sealed',
+        bytes: new Uint8Array(MAX_DOCUMENT_FILE_BYTES + 1),
+        subject: 'Fixture',
+      }),
+    };
+    await expect(attemptPdfSeal(
+      { tenantId: 'tenant-1', document, bytes: await samplePdf(), dateMode: 'declared' },
+      oversized,
+    )).resolves.toBeNull();
+    expect(oversized.warnings.warn).toHaveBeenCalledWith(
+      expect.stringContaining('preserving the uploaded PDF'),
+      expect.objectContaining({ reason: 'size-limit' }),
+    );
 
     const record = vi.fn(async () => {});
     failed.signatureRecords.recordSeal = record;
@@ -461,17 +486,5 @@ describe('signpdf PAdES adapter', () => {
         appliedAt: '2026-08-09T14:15:16.789Z',
       },
     }, failed)).rejects.toThrow('db failure');
-    delete failed.signatureRecords.recordSeal;
-    await expect(recordPdfSeal({
-      tenantId: 'tenant-1',
-      documentId: document.id,
-      fileId: '33333333-3333-4333-8333-333333333333',
-      signedBy: 'user-1',
-      metadata: {
-        subject: 'Fixture',
-        declaredAt: '2026-08-09T14:15:16.000Z',
-        appliedAt: '2026-08-09T14:15:16.789Z',
-      },
-    }, failed)).resolves.toBeUndefined();
   });
 });

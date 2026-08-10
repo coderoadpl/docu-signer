@@ -276,6 +276,7 @@ export default tseslint.config(
         { type: 'core-client', pattern: 'core/client/**', mode: 'full' },
         { type: 'adapter-db', pattern: 'adapters/db/**', mode: 'full' },
         { type: 'adapter-auth', pattern: 'adapters/auth/**', mode: 'full' },
+        { type: 'adapter-pdf-verify', pattern: 'adapters/pdf-seal/verify.ts', mode: 'full' },
         { type: 'adapter-pdf', pattern: 'adapters/pdf-seal/**', mode: 'full' },
         { type: 'adapter-logging', pattern: 'adapters/logging/**', mode: 'full' },
         // Reserved for US-009 (DomainPort): the directory does not exist yet;
@@ -334,7 +335,14 @@ export default tseslint.config(
             },
             { from: ['core-client'], allow: ['core-domain', 'core-contract', 'core-client'] },
             {
-              from: ['adapter-db', 'adapter-auth', 'adapter-pdf', 'adapter-logging', 'adapter-domains'],
+              from: [
+                'adapter-db',
+                'adapter-auth',
+                'adapter-pdf',
+                'adapter-pdf-verify',
+                'adapter-logging',
+                'adapter-domains',
+              ],
               allow: [
                 'core-domain',
                 'core-server',
@@ -342,6 +350,7 @@ export default tseslint.config(
                 'adapter-db',
                 'adapter-auth',
                 'adapter-pdf',
+                'adapter-pdf-verify',
                 'adapter-logging',
                 'adapter-domains',
               ],
@@ -355,6 +364,7 @@ export default tseslint.config(
                 'adapter-db',
                 'adapter-auth',
                 'adapter-pdf',
+                'adapter-pdf-verify',
                 'adapter-logging',
                 'adapter-domains',
                 'app-server',
@@ -447,7 +457,14 @@ export default tseslint.config(
             },
             {
               from: ['app-cli'],
-              allow: ['core-domain', 'core-contract', 'core-client', 'adapter-auth', 'adapter-pdf', 'app-cli'],
+              allow: [
+                'core-domain',
+                'core-contract',
+                'core-client',
+                'adapter-auth',
+                'adapter-pdf-verify',
+                'app-cli',
+              ],
             },
           ],
         },

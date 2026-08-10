@@ -145,7 +145,7 @@ pnpm run test:integration   # repositories, against a real Postgres
 pnpm run e2e                # Chromium all specs + WebKit documents over the real stack
 ```
 
-<!--count:config-regression-->41<!--/count--> config-regression probes guard the
+<!--count:config-regression-->42<!--/count--> config-regression probes guard the
 covered boundary rules — most feed a violating fixture and
 assert the gate still goes red, a few are structural rule-presence checks rather
 than fixture-feeding probes — so you can't silently delete one of those rules and

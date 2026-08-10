@@ -1,3 +1,4 @@
+import { MAX_DOCUMENT_FILE_BYTES } from '#core/domain/index.js';
 import type {
   Document,
   PdfSealMetadata,
@@ -29,22 +30,35 @@ export const sealSigningTime = (
     ? appliedAt
     : new Date(`${documentDate}T${appliedAt.toISOString().slice(11, 19)}.000Z`);
 
-export const attemptPdfSeal = async (
-  input: { tenantId: string; document: Document; bytes: Uint8Array },
+export const preparePdfSeal = async (
+  input: { tenantId: string; documentId: string },
   deps: PdfSealingDeps,
-): Promise<{ bytes: Uint8Array; metadata: PdfSealMetadata } | null> => {
+): Promise<TenantDateMode | null> => {
   const settings = await deps.tenantSettings.get(input.tenantId);
   if (!settings?.pdfSealEnabled) return null;
   if (!deps.pdfSeal.configured) {
     deps.warnings.warn('PDF seal skipped because certificate environment variables are absent', {
       tenantId: input.tenantId,
-      documentId: input.document.id,
+      documentId: input.documentId,
     });
     return null;
   }
+  return settings.dateMode;
+};
+
+export const attemptPdfSeal = async (
+  input: {
+    tenantId: string;
+    document: Document;
+    bytes: Uint8Array;
+    dateMode: TenantDateMode;
+  },
+  deps: PdfSealingDeps,
+): Promise<{ bytes: Uint8Array; metadata: PdfSealMetadata } | null> => {
+  if (!deps.pdfSeal.configured) return null;
   const appliedAt = new Date();
   const signingTime = sealSigningTime(
-    settings.dateMode,
+    input.dateMode,
     input.document.documentDate,
     appliedAt,
   );
@@ -52,18 +66,21 @@ export const attemptPdfSeal = async (
     bytes: input.bytes,
     signingTime,
   });
-  if (sealed.kind === 'failed') {
+  const outcome = sealed.kind === 'sealed' && sealed.bytes.byteLength > MAX_DOCUMENT_FILE_BYTES
+    ? { kind: 'failed', reason: 'size-limit' } as const
+    : sealed;
+  if (outcome.kind === 'failed') {
     deps.warnings.warn('PDF seal failed; preserving the uploaded PDF without a seal', {
       tenantId: input.tenantId,
       documentId: input.document.id,
-      reason: sealed.reason,
+      reason: outcome.reason,
     });
     return null;
   }
   return {
-    bytes: sealed.bytes,
+    bytes: outcome.bytes,
     metadata: {
-      subject: sealed.subject,
+      subject: outcome.subject,
       declaredAt: signingTime.toISOString(),
       appliedAt: appliedAt.toISOString(),
     },
@@ -80,7 +97,6 @@ export const recordPdfSeal = async (
   },
   deps: Pick<PdfSealingDeps, 'ids' | 'signatureRecords'>,
 ): Promise<void> => {
-  if (!deps.signatureRecords.recordSeal) return;
   await deps.signatureRecords.recordSeal({
     id: deps.ids.nextId(),
     tenantId: input.tenantId,

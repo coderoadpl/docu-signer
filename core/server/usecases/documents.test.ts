@@ -243,6 +243,20 @@ const fake = (
       files.push(created);
       return created;
     },
+    updateFileSize: async (tenantId, id, idOfFile, sizeBytes) => {
+      const index = files.findIndex(
+        (file) =>
+          file.id === idOfFile &&
+          file.documentId === id &&
+          documents.some(
+            (document) => document.id === id && document.tenantId === tenantId,
+          ),
+      );
+      const current = files[index];
+      if (!current) return false;
+      files[index] = { ...current, sizeBytes };
+      return true;
+    },
     findFile: async (tenantId, id, idOfFile) =>
       files.find(
         (file) =>
@@ -701,6 +715,97 @@ describe('documents use-cases', () => {
     expect(warn).toHaveBeenCalledWith(
       'PDF seal skipped because certificate environment variables are absent',
       expect.objectContaining({ tenantId: 'tenant-acme', documentId }),
+    );
+  });
+
+  it('checks the tenant seal flag before downloading a signed upload', async () => {
+    const state = fake([documentRow()]);
+    const get = vi.spyOn(state.deps.storage, 'get');
+    state.deps.pdfSealing = {
+      ids: state.deps.ids,
+      pdfSeal: {
+        configured: true,
+        seal: async () => ({ kind: 'failed', reason: 'unexpected' }),
+      },
+      signatureRecords: {
+        listByDocument: async () => [],
+        create: async () => null,
+        recordSeal: async () => {},
+      },
+      tenantSettings: {
+        get: async () => ({
+          tenantId: 'tenant-acme',
+          storeSignatureRecords: true,
+          pdfSealEnabled: false,
+          dateMode: 'declared',
+        }),
+        set: async (tenantId, settings) => ({ tenantId, ...settings }),
+      },
+      warnings: { warn: vi.fn() },
+    };
+    await expect(serverUpload(
+      ctx(staff('tenant-acme')),
+      documentId,
+      {
+        fileName: 'agreement-signed.pdf',
+        contentType: 'application/pdf',
+        role: 'signed-digital',
+        bytes: new Uint8Array([1, 2, 3]),
+      },
+      state.deps,
+    )).resolves.toMatchObject({ ok: true });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('keeps the original upload when the sealed PDF exceeds the file limit', async () => {
+    const state = fake([documentRow()]);
+    const warn = vi.fn();
+    const recordSeal = vi.fn(async () => {});
+    state.deps.pdfSealing = {
+      ids: state.deps.ids,
+      pdfSeal: {
+        configured: true,
+        seal: async () => ({
+          kind: 'sealed',
+          bytes: new Uint8Array(MAX_DOCUMENT_FILE_BYTES + 1),
+          subject: 'Fixture',
+        }),
+      },
+      signatureRecords: {
+        listByDocument: async () => [],
+        create: async () => null,
+        recordSeal,
+      },
+      tenantSettings: {
+        get: async () => ({
+          tenantId: 'tenant-acme',
+          storeSignatureRecords: true,
+          pdfSealEnabled: true,
+          dateMode: 'declared',
+        }),
+        set: async (tenantId, settings) => ({ tenantId, ...settings }),
+      },
+      warnings: { warn },
+    };
+    const original = new Uint8Array([1, 2, 3]);
+    const uploaded = await serverUpload(
+      ctx(staff('tenant-acme')),
+      documentId,
+      {
+        fileName: 'agreement-signed.pdf',
+        contentType: 'application/pdf',
+        role: 'signed-digital',
+        bytes: original,
+      },
+      state.deps,
+    );
+    expect(uploaded).toMatchObject({ ok: true, value: { sizeBytes: original.byteLength } });
+    if (!uploaded.ok) return;
+    expect(state.blobs.get(uploaded.value.storageKey)).toEqual(original);
+    expect(recordSeal).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('preserving the uploaded PDF'),
+      expect.objectContaining({ reason: 'size-limit' }),
     );
   });
 

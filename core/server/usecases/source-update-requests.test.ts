@@ -125,6 +125,7 @@ const documentRepository = (files: DocumentFile[]): DocumentRepository => ({
   restore: async () => document,
   purge: async () => true,
   createFile: async () => null,
+  updateFileSize: async () => true,
   findFile: async (tenantId, id, candidateFileId) =>
     tenantId === document.tenantId && id === document.id
       ? files.find((candidate) => candidate.id === candidateFileId) ?? null
@@ -138,6 +139,7 @@ const signatureRepository = (
 ): SignatureRecordRepository => ({
   listByDocument: async () => records,
   create: async () => null,
+  recordSeal: async () => {},
 });
 
 const requestRepository = () => {

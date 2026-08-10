@@ -73,6 +73,7 @@ const baseDeps = (): AppDeps => ({
     restore: async () => null,
     purge: async () => false,
     createFile: async () => null,
+    updateFileSize: async () => false,
     findFile: async () => null,
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
@@ -138,6 +139,7 @@ const baseDeps = (): AppDeps => ({
       ...input,
       createdAt: '2026-08-07T10:00:00.000Z',
     }),
+    recordSeal: async () => {},
   },
   sourceUpdateRequests: {
     create: async () => null,
@@ -434,6 +436,7 @@ describe('buildApp', () => {
         records.push(record);
         return record;
       },
+      recordSeal: async () => {},
     };
     const app = buildApp(deps);
     const headers = { [TENANT_HEADER]: tenant.slug };

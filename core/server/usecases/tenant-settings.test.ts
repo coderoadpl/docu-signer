@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { ApiTokenScope, Identity, TenantSettings } from '#core/domain/index.js';
 import type { TenantSettingsRepository } from '../ports.js';
-import { signingDocumentDate } from '#core/domain/index.js';
 import { sealSigningTime } from './pdf-sealing.js';
 import { getTenantSettings, updateTenantSettings } from './tenant-settings.js';
 
@@ -79,8 +78,6 @@ describe('tenant settings use-cases', () => {
       '2020-02-03T14:15:16.000Z',
     );
     expect(sealSigningTime('actual', '2020-02-03', now)).toBe(now);
-    expect(signingDocumentDate('actual', '', now)).toBe('2026-08-09');
-    expect(signingDocumentDate('declared', '', now)).toBe('');
   });
 
   it('rejects a non-boolean setting without touching the repository', async () => {

@@ -99,6 +99,7 @@ const documents = (): DocumentRepository => ({
   restore: async () => document,
   purge: async () => true,
   createFile: async () => file,
+  updateFileSize: async () => true,
   findFile: async (tenantId, id, candidateFileId) =>
     tenantId === document.tenantId && id === document.id && candidateFileId === file.id
       ? file
@@ -120,6 +121,7 @@ const records = (): SignatureRecordRepository => {
       values.push(record);
       return record;
     },
+    recordSeal: async () => {},
   };
 };
 
@@ -237,6 +239,7 @@ describe('signature record use-cases', () => {
           return stored.slice(start, start + limit);
         },
         create: async () => null,
+        recordSeal: async () => {},
       } satisfies SignatureRecordRepository,
     };
     const ctx = { identity: identity() };

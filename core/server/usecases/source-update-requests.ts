@@ -28,6 +28,7 @@ import type {
 } from '../ports.js';
 import {
   attemptPdfSeal,
+  preparePdfSeal,
   recordPdfSeal,
   type PdfSealingDeps,
 } from './pdf-sealing.js';
@@ -304,12 +305,18 @@ export const completeSourceUpdateRequest = async (
   }
   if (signedFile && deps.pdfSealing) {
     const document = await deps.documents.findById(scope.value, request.documentId);
-    const bytes = await deps.storage.get(signedFile.storageKey);
-    if (document && bytes.ok && bytes.value) {
-      const sealed = await attemptPdfSeal(
-        { tenantId: scope.value, document, bytes: bytes.value },
-        deps.pdfSealing,
-      );
+    const dateMode = await preparePdfSeal(
+      { tenantId: scope.value, documentId: request.documentId },
+      deps.pdfSealing,
+    );
+    if (document && dateMode) {
+      const bytes = await deps.storage.get(signedFile.storageKey);
+      const sealed = bytes.ok && bytes.value
+        ? await attemptPdfSeal(
+          { tenantId: scope.value, document, bytes: bytes.value, dateMode },
+          deps.pdfSealing,
+        )
+        : null;
       if (sealed) {
         const replaced = await deps.storage.put(
           signedFile.storageKey,
@@ -317,7 +324,7 @@ export const completeSourceUpdateRequest = async (
           signedFile.contentType,
         );
         if (replaced.ok) {
-          await deps.documents.updateFileSize?.(
+          await deps.documents.updateFileSize(
             scope.value,
             request.documentId,
             signedFile.id,

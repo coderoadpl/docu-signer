@@ -33,6 +33,7 @@ import type { Ctx } from '../context.js';
 import type { DocumentRepository, IdGenerator, StoragePort, UploadTarget } from '../ports.js';
 import {
   attemptPdfSeal,
+  preparePdfSeal,
   recordPdfSeal,
   type PdfSealingDeps,
 } from './pdf-sealing.js';
@@ -317,37 +318,43 @@ const finalizeUpload = async (
   let sizeBytes = metadata.value.sizeBytes;
   let sealMetadata;
   if (parsed.data.role === 'signed-digital' && deps.pdfSealing) {
-    const storedBytes = await deps.storage.get(parsed.data.key);
-    if (storedBytes.ok && storedBytes.value) {
-      const sealed = await attemptPdfSeal(
-        { tenantId, document, bytes: storedBytes.value },
-        deps.pdfSealing,
-      );
-      if (sealed) {
-        const replaced = await deps.storage.put(
-          parsed.data.key,
-          sealed.bytes,
-          metadata.value.contentType,
+    const dateMode = await preparePdfSeal(
+      { tenantId, documentId },
+      deps.pdfSealing,
+    );
+    if (dateMode) {
+      const storedBytes = await deps.storage.get(parsed.data.key);
+      if (storedBytes.ok && storedBytes.value) {
+        const sealed = await attemptPdfSeal(
+          { tenantId, document, bytes: storedBytes.value, dateMode },
+          deps.pdfSealing,
         );
-        if (replaced.ok) {
-          sizeBytes = sealed.bytes.byteLength;
-          sealMetadata = sealed.metadata;
-        } else {
-          deps.pdfSealing.warnings.warn('Sealed PDF could not replace the uploaded artifact', {
-            tenantId,
-            documentId,
-            storageKey: parsed.data.key,
-            error: replaced.error.message,
-          });
+        if (sealed) {
+          const replaced = await deps.storage.put(
+            parsed.data.key,
+            sealed.bytes,
+            metadata.value.contentType,
+          );
+          if (replaced.ok) {
+            sizeBytes = sealed.bytes.byteLength;
+            sealMetadata = sealed.metadata;
+          } else {
+            deps.pdfSealing.warnings.warn('Sealed PDF could not replace the uploaded artifact', {
+              tenantId,
+              documentId,
+              storageKey: parsed.data.key,
+              error: replaced.error.message,
+            });
+          }
         }
+      } else if (!storedBytes.ok) {
+        deps.pdfSealing.warnings.warn('Uploaded PDF could not be read for sealing', {
+          tenantId,
+          documentId,
+          storageKey: parsed.data.key,
+          error: storedBytes.error.message,
+        });
       }
-    } else if (!storedBytes.ok) {
-      deps.pdfSealing.warnings.warn('Uploaded PDF could not be read for sealing', {
-        tenantId,
-        documentId,
-        storageKey: parsed.data.key,
-        error: storedBytes.error.message,
-      });
     }
   }
   const fileId = deps.ids.nextId();

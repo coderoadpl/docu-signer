@@ -23,12 +23,3 @@ export const updateTenantSettingsSchema = z.object({
 );
 
 export type UpdateTenantSettings = z.infer<typeof updateTenantSettingsSchema>;
-
-export const signingDocumentDate = (
-  dateMode: TenantDateMode,
-  documentDate: string,
-  now: Date,
-): string =>
-  dateMode === 'actual' && documentDate.length === 0
-    ? now.toISOString().slice(0, 10)
-    : documentDate;

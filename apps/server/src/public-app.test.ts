@@ -66,6 +66,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     restore: async () => null,
     purge: async () => false,
     createFile: async () => null,
+    updateFileSize: async () => false,
     findFile: async () => null,
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
@@ -131,6 +132,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
       ...input,
       createdAt: '2026-08-07T10:00:00.000Z',
     }),
+    recordSeal: async () => {},
   },
   sourceUpdateRequests: {
     create: async () => null,

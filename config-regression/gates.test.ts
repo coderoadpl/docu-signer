@@ -20,6 +20,7 @@ const token = `__aparch_probe_${process.pid}_${Date.now()}__`;
 const coreDir = join('core', 'domain', token);
 const featureDir = join('apps', 'web', 'src', 'features', token);
 const webDir = join('apps', 'web', 'src', token);
+const cliDir = join('apps', 'cli', token);
 const dcDir = join('core', 'domain', `${token}_dc`);
 const featureCoreDir = join('apps', 'web', 'src', 'features', `${token}_core`, 'core');
 const layoutDir = join('apps', 'web', 'src', 'components', 'layout', `${token}_layout`);
@@ -29,6 +30,7 @@ const SWEEP_BASES = [
   join(demoRoot, 'apps', 'web', 'src'),
   join(demoRoot, 'apps', 'web', 'src', 'features'),
   join(demoRoot, 'apps', 'web', 'src', 'components', 'layout'),
+  join(demoRoot, 'apps', 'cli'),
 ];
 
 const sweep = () => {
@@ -49,6 +51,10 @@ const fixtures = {
   coreImportsAdapters: {
     rel: join(coreDir, 'adapters-probe.ts'),
     content: "import '../../../adapters/db/client.js';\n",
+  },
+  cliImportsPdfSigner: {
+    rel: join(cliDir, 'pdf-signer-probe.ts'),
+    content: "import '../../../adapters/pdf-seal/signpdf.js';\n",
   },
   restrictedImport: {
     rel: join(featureDir, 'axios-probe.ts'),
@@ -155,6 +161,7 @@ afterAll(() => {
   rmSync(join(demoRoot, coreDir), { recursive: true, force: true });
   rmSync(join(demoRoot, featureDir), { recursive: true, force: true });
   rmSync(join(demoRoot, webDir), { recursive: true, force: true });
+  rmSync(join(demoRoot, cliDir), { recursive: true, force: true });
   rmSync(join(demoRoot, dcDir), { recursive: true, force: true });
   rmSync(join(demoRoot, 'apps', 'web', 'src', 'features', `${token}_core`), {
     recursive: true,
@@ -197,6 +204,12 @@ describe('ESLint gate still rejects violations', () => {
     const message = findMessage('coreImportsAdapters', 'boundaries/element-types');
     expect(message).toBeDefined();
     expect(message?.message).toContain('core-domain');
+  });
+
+  it('limits the CLI PDF adapter exception to seal verification', () => {
+    const message = findMessage('cliImportsPdfSigner', 'boundaries/element-types');
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('app-cli');
   });
 
   it('bans queryClient.setQueryData OUTSIDE features/ (app-wide, not feature-scoped)', () => {
