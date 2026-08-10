@@ -19,6 +19,10 @@ storage (`storage/`). This is the only place framework and vendor SDKs live.
   `@neondatabase/*` (these vendors are permitted **only** here and in the
   platform entry `api/index.ts`).
 - Never `apps/**`. Never `core/client`.
+- Repositories must not use `db.transaction` — production runs the
+  `neon-http` driver, which has no transaction support (a transactional
+  repository 500s only in production; incident 2026-08-07, pad sessions).
+  Enforce multi-statement invariants with constraints/unique indexes.
 
 ## What may import it
 
