@@ -57,12 +57,20 @@ export const tenantAdmins = pgTable(
   ],
 );
 
-export const tenantSettings = pgTable('tenant_settings', {
-  tenantId: text('tenant_id')
-    .primaryKey()
-    .references(() => tenants.id, { onDelete: 'cascade' }),
-  storeSignatureRecords: boolean('store_signature_records').notNull().default(true),
-});
+export const tenantSettings = pgTable(
+  'tenant_settings',
+  {
+    tenantId: text('tenant_id')
+      .primaryKey()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    storeSignatureRecords: boolean('store_signature_records').notNull().default(true),
+    pdfSealEnabled: boolean('pdf_seal_enabled').notNull().default(false),
+    dateMode: text('date_mode', { enum: ['declared', 'actual'] }).notNull().default('declared'),
+  },
+  (table) => [
+    check('tenant_settings_date_mode_check', sql`${table.dateMode} IN ('declared', 'actual')`),
+  ],
+);
 
 // The end-customer aggregate. `members` predates the §Data conventions ruling
 // and is on its GRANDFATHER list (text id + text ISO `created_at`), so — unlike
@@ -344,8 +352,11 @@ export const signatureRecords = pgTable(
       .notNull()
       .references(() => documentFiles.id, { onDelete: 'cascade' }),
     signedBy: text('signed_by').notNull(),
-    payload: jsonb('payload').$type<SignatureRecordPayload>().notNull(),
+    payload: jsonb('payload').$type<SignatureRecordPayload>(),
     replayedFromId: uuid('replayed_from_id'),
+    sealSubject: text('seal_subject'),
+    sealDeclaredAt: timestamp('seal_declared_at', { withTimezone: true }),
+    sealAppliedAt: timestamp('seal_applied_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -360,7 +371,11 @@ export const signatureRecords = pgTable(
       .where(sql`${table.replayedFromId} IS NULL`),
     check(
       'signature_records_payload_check',
-      sql`jsonb_typeof(${table.payload}) = 'array' AND jsonb_array_length(${table.payload}) > 0`,
+      sql`${table.payload} IS NULL OR (jsonb_typeof(${table.payload}) = 'array' AND jsonb_array_length(${table.payload}) > 0)`,
+    ),
+    check(
+      'signature_records_seal_metadata_check',
+      sql`(${table.sealSubject} IS NULL AND ${table.sealDeclaredAt} IS NULL AND ${table.sealAppliedAt} IS NULL) OR (${table.sealSubject} IS NOT NULL AND ${table.sealDeclaredAt} IS NOT NULL AND ${table.sealAppliedAt} IS NOT NULL)`,
     ),
   ],
 );

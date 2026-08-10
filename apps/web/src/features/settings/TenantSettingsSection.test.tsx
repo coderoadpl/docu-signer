@@ -18,6 +18,8 @@ describe('TenantSettingsSection', () => {
             settings: {
               tenantId: 'tenant-default',
               storeSignatureRecords: false,
+              pdfSealEnabled: false,
+              dateMode: 'declared',
             },
           },
         }),
@@ -31,6 +33,8 @@ describe('TenantSettingsSection', () => {
             settings: {
               tenantId: 'tenant-default',
               storeSignatureRecords: true,
+              pdfSealEnabled: true,
+              dateMode: 'actual',
             },
           },
         });
@@ -47,5 +51,13 @@ describe('TenantSettingsSection', () => {
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith({ storeSignatureRecords: true }),
     );
+
+    const seal = screen.getByRole('switch', { name: /pieczęć cyfrowa pdf/i });
+    await userEvent.click(seal);
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ pdfSealEnabled: true }));
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Tryb dat' }));
+    await userEvent.click(screen.getByRole('option', { name: /daty rzeczywiste/i }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ dateMode: 'actual' }));
   });
 });

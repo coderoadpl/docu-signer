@@ -427,7 +427,12 @@ describe('API route contract', () => {
   it('validates tenant settings and signature record payloads', () => {
     expect(
       tenantSettingsGetOutputSchema.safeParse({
-        settings: { tenantId: 'tenant-default', storeSignatureRecords: true },
+        settings: {
+          tenantId: 'tenant-default',
+          storeSignatureRecords: true,
+          pdfSealEnabled: false,
+          dateMode: 'declared',
+        },
       }).success,
     ).toBe(true);
     expect(

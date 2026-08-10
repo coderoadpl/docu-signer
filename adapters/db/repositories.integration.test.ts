@@ -345,14 +345,26 @@ describe('TenantSettingsRepository', () => {
     const repository = createTenantSettingsRepository(db);
 
     await expect(repository.get('tenant-a')).resolves.toBeNull();
-    await expect(repository.set('tenant-a', false)).resolves.toEqual({
+    await expect(repository.set('tenant-a', {
+      storeSignatureRecords: false,
+      pdfSealEnabled: true,
+      dateMode: 'actual',
+    })).resolves.toEqual({
       tenantId: 'tenant-a',
       storeSignatureRecords: false,
+      pdfSealEnabled: true,
+      dateMode: 'actual',
     });
     await expect(repository.get('tenant-b')).resolves.toBeNull();
-    await expect(repository.set('tenant-a', true)).resolves.toEqual({
+    await expect(repository.set('tenant-a', {
+      storeSignatureRecords: true,
+      pdfSealEnabled: false,
+      dateMode: 'declared',
+    })).resolves.toEqual({
       tenantId: 'tenant-a',
       storeSignatureRecords: true,
+      pdfSealEnabled: false,
+      dateMode: 'declared',
     });
   });
 });
@@ -406,8 +418,28 @@ describe('SignatureRecordRepository', () => {
       payload,
     };
 
+    await repository.recordSeal?.({
+      id: input.id,
+      tenantId: input.tenantId,
+      documentId,
+      fileId,
+      signedBy: input.signedBy,
+      seal: {
+        subject: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+        declaredAt: '2020-02-03T14:15:16.000Z',
+        appliedAt: '2026-08-09T14:15:16.789Z',
+      },
+    });
+    await expect(
+      repository.listByDocument('tenant-a', documentId, null, 10),
+    ).resolves.toEqual([]);
     await expect(repository.create(input)).resolves.toMatchObject({
       ...input,
+      seal: {
+        subject: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+        declaredAt: '2020-02-03T14:15:16.000Z',
+        appliedAt: '2026-08-09T14:15:16.789Z',
+      },
       createdAt: expect.any(String),
     });
     await expect(repository.create(input)).resolves.toBeNull();
@@ -752,6 +784,12 @@ describe('database invariants', () => {
       `INSERT INTO tenants (id, slug, name, created_at)
        VALUES ('tenant-constraints', 'constraints', 'Constraints', '2026-08-01T00:00:00.000Z')`,
     );
+    await expect(
+      pool.query(
+        `INSERT INTO tenant_settings (tenant_id, date_mode)
+         VALUES ('tenant-constraints', 'inferred')`,
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
     await expect(
       pool.query(
         `INSERT INTO tenant_admins (id, tenant_id, user_id, role)

@@ -16,6 +16,12 @@ export interface TenantSettingsDeps {
   tenantSettings: TenantSettingsRepository;
 }
 
+export const DEFAULT_TENANT_SETTINGS = {
+  storeSignatureRecords: true,
+  pdfSealEnabled: false,
+  dateMode: 'declared',
+} as const;
+
 export const getTenantSettings = async (
   ctx: Ctx,
   deps: TenantSettingsDeps,
@@ -23,7 +29,7 @@ export const getTenantSettings = async (
   const scope = authorizeTenant(ctx, 'tenant-settings:manage');
   if (!scope.ok) return scope;
   const settings = await deps.tenantSettings.get(scope.value);
-  return ok(settings ?? { tenantId: scope.value, storeSignatureRecords: true });
+  return ok(settings ?? { tenantId: scope.value, ...DEFAULT_TENANT_SETTINGS });
 };
 
 export const updateTenantSettings = async (
@@ -37,7 +43,12 @@ export const updateTenantSettings = async (
   if (!parsed.success) {
     return err(validation('Invalid tenant settings', parsed.error.flatten()));
   }
-  return ok(
-    await deps.tenantSettings.set(scope.value, parsed.data.storeSignatureRecords),
-  );
+  const current = await deps.tenantSettings.get(scope.value);
+  const base = current ?? { tenantId: scope.value, ...DEFAULT_TENANT_SETTINGS };
+  return ok(await deps.tenantSettings.set(scope.value, {
+    storeSignatureRecords:
+      parsed.data.storeSignatureRecords ?? base.storeSignatureRecords,
+    pdfSealEnabled: parsed.data.pdfSealEnabled ?? base.pdfSealEnabled,
+    dateMode: parsed.data.dateMode ?? base.dateMode,
+  }));
 };

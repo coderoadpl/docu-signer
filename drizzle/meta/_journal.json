@@ -148,6 +148,13 @@
       "when": 1786294198535,
       "tag": "0020_mature_mysterio",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786299161525,
+      "tag": "0021_gifted_captain_universe",
+      "breakpoints": true
     }
   ]
 }

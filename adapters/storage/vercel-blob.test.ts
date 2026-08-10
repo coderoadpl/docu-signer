@@ -59,7 +59,7 @@ describe('Vercel Blob storage', () => {
     );
   });
 
-  it('puts bytes with private immutable-key options and deletes by key', async () => {
+  it('puts overwriteable private bytes and deletes by key', async () => {
     const storage = createVercelBlobStorage('vercel_blob_rw_store_secret');
     expect(
       await storage.put('documents/t/doc/file', new Uint8Array([1, 2, 3]), 'application/pdf'),
@@ -71,6 +71,7 @@ describe('Vercel Blob storage', () => {
         access: 'private',
         contentType: 'application/pdf',
         addRandomSuffix: false,
+        allowOverwrite: true,
         token: 'vercel_blob_rw_store_secret',
       },
     );

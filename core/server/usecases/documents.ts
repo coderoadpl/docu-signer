@@ -31,11 +31,18 @@ import {
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { DocumentRepository, IdGenerator, StoragePort, UploadTarget } from '../ports.js';
+import {
+  attemptPdfSeal,
+  preparePdfSeal,
+  recordPdfSeal,
+  type PdfSealingDeps,
+} from './pdf-sealing.js';
 
 export interface DocumentDeps {
   documents: DocumentRepository;
   storage: StoragePort;
   ids: IdGenerator;
+  pdfSealing?: PdfSealingDeps;
 }
 
 export type FileUploadTarget =
@@ -289,6 +296,7 @@ export const requestFileUpload = async (
 const finalizeUpload = async (
   tenantId: string,
   documentId: string,
+  signedBy: string,
   input: FinalizeFileUpload,
   deps: DocumentDeps,
 ): Promise<Result<DocumentFile, AppError>> => {
@@ -305,15 +313,66 @@ const finalizeUpload = async (
   ) {
     return err(validation('Uploaded file metadata does not match the declared upload'));
   }
+  const document = await deps.documents.findById(tenantId, documentId);
+  if (!document) return err(notFound('Document not found'));
+  let sizeBytes = metadata.value.sizeBytes;
+  let sealMetadata;
+  if (parsed.data.role === 'signed-digital' && deps.pdfSealing) {
+    const dateMode = await preparePdfSeal(
+      { tenantId, documentId },
+      deps.pdfSealing,
+    );
+    if (dateMode) {
+      const storedBytes = await deps.storage.get(parsed.data.key);
+      if (storedBytes.ok && storedBytes.value) {
+        const sealed = await attemptPdfSeal(
+          { tenantId, document, bytes: storedBytes.value, dateMode },
+          deps.pdfSealing,
+        );
+        if (sealed) {
+          const replaced = await deps.storage.put(
+            parsed.data.key,
+            sealed.bytes,
+            metadata.value.contentType,
+          );
+          if (replaced.ok) {
+            sizeBytes = sealed.bytes.byteLength;
+            sealMetadata = sealed.metadata;
+          } else {
+            deps.pdfSealing.warnings.warn('Sealed PDF could not replace the uploaded artifact', {
+              tenantId,
+              documentId,
+              storageKey: parsed.data.key,
+              error: replaced.error.message,
+            });
+          }
+        }
+      } else if (!storedBytes.ok) {
+        deps.pdfSealing.warnings.warn('Uploaded PDF could not be read for sealing', {
+          tenantId,
+          documentId,
+          storageKey: parsed.data.key,
+          error: storedBytes.error.message,
+        });
+      }
+    }
+  }
+  const fileId = deps.ids.nextId();
   const created = await deps.documents.createFile(tenantId, {
-    id: deps.ids.nextId(),
+    id: fileId,
     documentId,
     role: parsed.data.role,
     fileName: parsed.data.fileName,
     contentType: metadata.value.contentType,
-    sizeBytes: metadata.value.sizeBytes,
+    sizeBytes,
     storageKey: parsed.data.key,
   });
+  if (created && sealMetadata && deps.pdfSealing) {
+    await recordPdfSeal(
+      { tenantId, documentId, fileId, signedBy, metadata: sealMetadata },
+      deps.pdfSealing,
+    );
+  }
   return created ? ok(created) : err(notFound('Document not found'));
 };
 
@@ -327,7 +386,7 @@ export const finalizeFileUpload = async (
   if (!scope.ok) return scope;
   const document = await requireDraftDocumentForToken(ctx, scope.value, documentId, deps);
   if (!document.ok) return document;
-  return finalizeUpload(scope.value, documentId, input, deps);
+  return finalizeUpload(scope.value, documentId, ctx.identity.userId, input, deps);
 };
 
 export const serverUpload = async (
@@ -347,6 +406,7 @@ export const serverUpload = async (
   const finalized = await finalizeUpload(
     scope.value,
     documentId,
+    ctx.identity.userId,
     {
       key: requested.value.key,
       fileName: input.fileName,

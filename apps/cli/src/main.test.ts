@@ -10,6 +10,7 @@ import {
   normalizeStdinPassword,
   runLoginAction,
   signatureRecordsProbeResult,
+  verifySealBytes,
 } from './main.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
@@ -80,6 +81,7 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('restore');
     expect(documentHelp.stdout).toContain('purge');
     expect(documentHelp.stdout).toContain('update-source');
+    expect(documentHelp.stdout).toContain('verify-seal');
   }, CLI_TEST_TIMEOUT_MS);
 
   it('requires an explicit signature policy for source updates', () => {
@@ -120,6 +122,15 @@ describe('CLI command surface', () => {
     });
   }, CLI_TEST_TIMEOUT_MS);
 
+});
+
+describe('document verify-seal', () => {
+  it('maps verifier failures through the CLI taxonomy', () => {
+    expect(verifySealBytes(new TextEncoder().encode('%PDF-1.7'))).toMatchObject({
+      ok: false,
+      error: { code: 'validation', message: expect.stringContaining('could not be verified') },
+    });
+  });
 });
 
 describe('document show signature-records probe', () => {

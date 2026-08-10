@@ -64,7 +64,7 @@ core/domain     entities, Result, error taxonomy, zod schemas   → zod only
 core/contract   API routes + I/O schemas + error envelope       → domain
 core/server     use-cases + ports (interfaces)                  → domain, contract
 core/client     typed HTTP client + query definitions           → contract
-adapters/*      implement ports (db, auth, storage, email)     → core
+adapters/*      implement ports (db, auth, storage, email, PDF seal) → core
 apps/server     HTTP wiring + composition root                  → everything server-side
 apps/web        SPA (no SSR)                                    → core/client (+ auth client adapter)
 apps/cli        commands                                        → core/client
@@ -81,7 +81,8 @@ Dependency rules (enforced):
   (`DB_DRIVER` selects the db driver). The
   one deliberate exception is the
   auth *client* adapter, constructed in `apps/web/src/api.ts` (web) and the
-  CLI's `cliCtx`; the standalone DB/ops entrypoints
+  CLI's `cliCtx`; the CLI's read-only `document verify-seal` command constructs
+  the PDF seal verification adapter; the standalone DB/ops entrypoints
   `adapters/db/migrate.ts`, `adapters/db/seed.ts`,
   `adapters/db/seed-deploy.ts`, and `scripts/backup.ts` are also sanctioned
   composition points outside the server root. Backup runs in CI cron without
@@ -224,8 +225,8 @@ no server state) and a thin stateful composition (`AppLayout.tsx`, beside
 chrome — the **logout** action and primary navigation — and renders the active
 child through its `Outlet`. A caller without access to the fixed archive sees a
 no-access state. `/app` redirects to `/app/documents`; the archive lives there,
-and account controls plus the tenant's signature-record retention setting live
-at `/app/settings`. Unknown routes
+and account controls plus the tenant's signature-record retention, PDF-seal and
+Tryb dat settings live at `/app/settings`. Unknown routes
 render a Polish not-found view inside the shell.
 Bare `/` redirects to `/app`. `/pad/{sessionId}` is a standalone authenticated
 signing-pad route outside the archive shell. Private sessions are same-account;
@@ -919,6 +920,8 @@ raw insert, a forgotten code path, or a future adapter.
 | `documents.doc_type ∈ {umowa-uod, uchwala, protokol, rachunek, inny}` | **DB + app** | closed set → DB `CHECK` (`documents_doc_type_check`); the adapter zod-parses on read. Test: raw-SQL bad type → rejected. |
 | `document_files.role ∈ {source, signed-scan, signed-digital, other}` | **DB + app** | closed set → DB `CHECK` (`document_files_role_check`); the adapter zod-parses on read. Test: raw-SQL bad role → rejected. |
 | `document_files.size_bytes ∈ [0, 25 MiB]` | **DB + app** | upload policy → DB `CHECK` (`document_files_size_check`), server body limit, direct-upload token constraint and finalize schema. Test: raw-SQL oversized file → rejected. |
+| `tenant_settings.date_mode ∈ {declared, actual}` | **DB + app** | closed set → DB `CHECK` (`tenant_settings_date_mode_check`); the domain schema parses every read and update. Core and integration tests cover both modes and reject invalid raw values. |
+| `signature_records` seal subject, declared time and true applied time are all null or all present | **DB + app** | the three fields form one evidence record → DB `CHECK` (`signature_records_seal_metadata_check`) and the domain seal schema. Repository integration covers a seal-only record gaining stamp payload later. |
 | `pad_sessions.status ∈ {active, closed}` and submitted strokes ≤ 200 KiB | **DB + app** | closed set → DB `CHECK` (`pad_sessions_status_check`); strokes parse through the contract/domain schema and the submit route has its own body limit. Test: pad session use-cases, route handlers and repository integration cover request → submit → consume → close. |
 | `pad_sessions.mode ∈ {private, shared}`; participant and queued-submission rows are session children | **DB + app** | closed set → DB `CHECK` (`pad_sessions_mode_check`); child rows FK to tenant/session/account and are deleted on close/supersede. Core tests cover the authorization matrix and proactive tray consumption; repository integration covers tenant isolation and cleanup. |
 | every tenant-scoped row cascades from `tenants(id)` | **DB (FK `ON DELETE CASCADE`)** | see §Data lifecycle (tenant offboarding is a schema invariant). Test: the offboarding-cascade integration test. |
@@ -1109,8 +1112,12 @@ code.
   so there is no in-app dev route to keep off production. The auth mail senders
   in `create-auth.ts` are consumers of `sendMail`, not the port's shape.
 - `DocumentRepository`: tenant-scoped archive metadata and file records.
-- `TenantSettingsRepository`: tenant-scoped signature-record retention policy.
-- `SignatureRecordRepository`: write-once signing-session stamp data, listed by document.
+- `TenantSettingsRepository`: tenant-scoped signature-record retention, PDF-seal
+  enablement and declared/actual date policy.
+- `SignatureRecordRepository`: signing-session stamp data and PDF-seal evidence,
+  listed by document.
+- `PdfSealPort`: vendor-contained PAdES/CMS signing selected from environment
+  credentials in server composition; verification is a read-only CLI adapter.
 - `StoragePort`: private document bytes, metadata and upload targets.
 - `TenantDomainRepository`, `TenantRepository`, `TenantAccessReader`: read-only
   tenant-resolution and archive-access plumbing.

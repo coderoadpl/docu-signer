@@ -10,6 +10,7 @@ import type {
   PadQueuedSubmission,
   PadSignatureRequest,
   PadSubmittedStrokes,
+  PdfSealMetadata,
   SavedSearch,
   SignatureRecord,
   SignatureRecordCursor,
@@ -58,6 +59,12 @@ export interface DocumentRepository {
     tenantId: string,
     input: Omit<DocumentFile, 'createdAt'>,
   ): Promise<DocumentFile | null>;
+  updateFileSize(
+    tenantId: string,
+    documentId: string,
+    fileId: string,
+    sizeBytes: number,
+  ): Promise<boolean>;
   findFile(
     tenantId: string,
     documentId: string,
@@ -108,7 +115,10 @@ export interface UserPreferenceRepository {
 
 export interface TenantSettingsRepository {
   get(tenantId: string): Promise<TenantSettings | null>;
-  set(tenantId: string, storeSignatureRecords: boolean): Promise<TenantSettings>;
+  set(
+    tenantId: string,
+    settings: Omit<TenantSettings, 'tenantId'>,
+  ): Promise<TenantSettings>;
 }
 
 export interface SignatureRecordRepository {
@@ -126,6 +136,31 @@ export interface SignatureRecordRepository {
     signedBy: string;
     payload: SignatureRecordPayload;
   }): Promise<SignatureRecord | null>;
+  recordSeal(input: {
+    id: string;
+    tenantId: string;
+    documentId: string;
+    fileId: string;
+    signedBy: string;
+    seal: PdfSealMetadata;
+  }): Promise<void>;
+}
+
+export type PdfSealPort =
+  | { configured: false }
+  | {
+      configured: true;
+      seal(input: {
+        bytes: Uint8Array;
+        signingTime: Date;
+      }): Promise<
+        | { kind: 'sealed'; bytes: Uint8Array; subject: string }
+        | { kind: 'failed'; reason: string }
+      >;
+    };
+
+export interface WarningLoggerPort {
+  warn(message: string, details?: Record<string, unknown>): void;
 }
 
 export interface SourceUpdateRequestRepository {

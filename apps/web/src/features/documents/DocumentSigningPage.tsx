@@ -29,10 +29,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 
-import type {
-  PadParticipant,
-  PadQueuedSubmission,
-  PadSubmittedStrokes,
+import {
+  type DocumentWithFiles,
+  type PadParticipant,
+  type PadQueuedSubmission,
+  type PadSubmittedStrokes,
 } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
@@ -1968,6 +1969,10 @@ export const DocumentSigningPage = ({
   };
 
   const saveSignedPdf = async () => {
+    const settings = tenantSettings.data ??
+      await queryClient.fetchQuery(actions.tenantSettings);
+    const currentDocument: DocumentWithFiles | undefined = documentQuery.data?.document;
+    if (!currentDocument) throw new Error('Nie udało się odczytać danych dokumentu.');
     const committedStamps = await flattenedStamps();
     const signedBytes = await flattenSignedPdf(
       sourceQuery.data.bytes,
@@ -1989,8 +1994,6 @@ export const DocumentSigningPage = ({
     });
     const persistSignatureRecord = async () => {
       try {
-        const settings = tenantSettings.data ??
-          await queryClient.fetchQuery(actions.tenantSettings);
         const warning = await storeSignatureRecordAfterUpload({
           create: (input) => createSignatureRecord.mutateAsync(input),
           documentId,

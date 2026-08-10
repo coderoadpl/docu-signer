@@ -1,7 +1,12 @@
 import {
   Alert,
+  FormControl,
   FormControlLabel,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
+  Stack,
   Switch,
   Typography,
 } from '@mui/material';
@@ -27,28 +32,62 @@ export const TenantSettingsSection = () => {
       await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
     },
   });
-  const checked = settings.data?.settings.storeSignatureRecords ?? true;
+  const stored = settings.data?.settings;
+  const disabled = settings.isPending || settings.isError || update.isPending;
 
   return (
     <Paper variant="outlined" sx={{ p: '1.25rem', mt: '1.5rem' }}>
       <Typography variant="overline">Ustawienia organizacji</Typography>
-      <FormControlLabel
-        sx={{ mt: '0.35rem', alignItems: 'flex-start' }}
-        control={
-          <Switch
-            checked={checked}
-            disabled={settings.isPending || settings.isError || update.isPending}
+      <Stack sx={{ mt: '0.35rem', gap: 1.5 }}>
+        <FormControlLabel
+          sx={{ alignItems: 'flex-start' }}
+          control={
+            <Switch
+              checked={stored?.storeSignatureRecords ?? true}
+              disabled={disabled}
+              onChange={(event) =>
+                update.mutate({ storeSignatureRecords: event.target.checked })
+              }
+            />
+          }
+          label={
+            <Typography variant="body2" sx={{ pt: '0.5rem' }}>
+              Przechowuj zapis podpisów (umożliwia przyszłe uaktualnianie źródła)
+            </Typography>
+          }
+        />
+        <FormControlLabel
+          sx={{ alignItems: 'flex-start' }}
+          control={
+            <Switch
+              checked={stored?.pdfSealEnabled ?? false}
+              disabled={disabled}
+              onChange={(event) =>
+                update.mutate({ pdfSealEnabled: event.target.checked })
+              }
+            />
+          }
+          label={
+            <Typography variant="body2" sx={{ pt: '0.5rem' }}>
+              Pieczęć cyfrowa PDF (weryfikowalna w czytnikach PDF)
+            </Typography>
+          }
+        />
+        <FormControl size="small" disabled={disabled} sx={{ maxWidth: 520 }}>
+          <InputLabel id="tenant-date-mode-label">Tryb dat</InputLabel>
+          <Select
+            labelId="tenant-date-mode-label"
+            label="Tryb dat"
+            value={stored?.dateMode ?? 'declared'}
             onChange={(event) =>
-              update.mutate({ storeSignatureRecords: event.target.checked })
+              update.mutate({ dateMode: event.target.value === 'actual' ? 'actual' : 'declared' })
             }
-          />
-        }
-        label={
-          <Typography variant="body2" sx={{ pt: '0.5rem' }}>
-            Przechowuj zapis podpisów (umożliwia przyszłe uaktualnianie źródła)
-          </Typography>
-        }
-      />
+          >
+            <MenuItem value="declared">Daty deklarowane (wpisywane ręcznie)</MenuItem>
+            <MenuItem value="actual">Daty rzeczywiste (program zapisuje bieżącą datę)</MenuItem>
+          </Select>
+        </FormControl>
+      </Stack>
       {settings.isError ? (
         <Alert severity="error" sx={{ mt: '0.8rem' }}>
           {errorText(settings.error)}

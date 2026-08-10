@@ -6,6 +6,7 @@ import {
   selectEmailPort,
   selectGoogleSettings,
   selectPasswordResetEnabled,
+  selectPdfSealCredentials,
   selectStoragePort,
 } from './composition.js';
 import type { Env } from './env.js';
@@ -115,5 +116,33 @@ describe('selectStoragePort', () => {
     expect(() => selectStoragePort(env({ STORAGE_DRIVER: 'vercel-blob' }))).toThrow(
       /BLOB_READ_WRITE_TOKEN/,
     );
+  });
+});
+
+describe('selectPdfSealCredentials', () => {
+  it('leaves sealing unconfigured when no credential block is present', () => {
+    expect(selectPdfSealCredentials(env({}))).toBeNull();
+  });
+
+  it('selects a complete PEM pair', () => {
+    expect(selectPdfSealCredentials(env({
+      SEAL_CERT_PEM: 'certificate',
+      SEAL_KEY_PEM: 'private-key',
+    }))).toEqual({
+      kind: 'pem',
+      certificate: 'certificate',
+      privateKey: 'private-key',
+    });
+  });
+
+  it('prefers a PKCS#12 bundle with its passphrase', () => {
+    expect(selectPdfSealCredentials(env({
+      SEAL_P12_BASE64: 'bundle',
+      SEAL_P12_PASSPHRASE: 'passphrase',
+    }))).toEqual({
+      kind: 'p12',
+      base64: 'bundle',
+      passphrase: 'passphrase',
+    });
   });
 });

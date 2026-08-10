@@ -56,7 +56,9 @@ pnpm --silent run cli login --email demo@agentproofarch.dev --password demo1234
 pnpm --silent run cli document list
 pnpm --silent run cli document add "Signed agreement" --date 2026-08-01 --type umowa-uod
 pnpm --silent run cli document upload <id> agreement.pdf --role source
+pnpm --silent run cli document verify-seal <id>
 pnpm --silent run cli document export <id> --output agreement.zip
+pnpm --silent run cli tenant-settings set --pdf-seal-enabled true --date-mode declared
 pnpm --silent run cli --json whoami                    # single JSON document on stdout
 pnpm --silent run cli logout                           # drops the stored token
 ```
@@ -69,7 +71,7 @@ Full command set (<!--count:cli-command-groups-->12<!--/count--> top-level group
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
 `origin list|use`, `account change-password|request-password-reset`,
 `tenant-settings show|set`,
-`document list|trash-list|search|show|add|approve|upload|export|remove|restore|purge`,
+`document list|trash-list|search|show|add|approve|upload|verify-seal|export|remove|restore|purge`,
 `token create|list|revoke`, `public profile`.
 
 Every command also accepts `--token <value>` (or the `APP_CLI_TOKEN` env var)
@@ -120,7 +122,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`,
   server ↔ Vercel CSP sync, dead links), and vitest with coverage across
-  **<!--count:test-files-->100<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->101<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → document archive →
@@ -143,7 +145,7 @@ pnpm run test:integration   # repositories, against a real Postgres
 pnpm run e2e                # Chromium all specs + WebKit documents over the real stack
 ```
 
-<!--count:config-regression-->41<!--/count--> config-regression probes guard the
+<!--count:config-regression-->42<!--/count--> config-regression probes guard the
 covered boundary rules — most feed a violating fixture and
 assert the gate still goes red, a few are structural rule-presence checks rather
 than fixture-feeding probes — so you can't silently delete one of those rules and

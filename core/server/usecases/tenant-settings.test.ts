@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { ApiTokenScope, Identity, TenantSettings } from '#core/domain/index.js';
 import type { TenantSettingsRepository } from '../ports.js';
+import { sealSigningTime } from './pdf-sealing.js';
 import { getTenantSettings, updateTenantSettings } from './tenant-settings.js';
 
 const identity = (scopes: readonly ApiTokenScope[] | null = null): Identity => ({
@@ -19,8 +20,8 @@ const repository = (): TenantSettingsRepository => {
   let value: TenantSettings | null = null;
   return {
     get: async () => value,
-    set: async (tenantId, storeSignatureRecords) => {
-      value = { tenantId, storeSignatureRecords };
+    set: async (tenantId, settings) => {
+      value = { tenantId, ...settings };
       return value;
     },
   };
@@ -33,18 +34,50 @@ describe('tenant settings use-cases', () => {
 
     await expect(getTenantSettings(ctx, { tenantSettings })).resolves.toEqual({
       ok: true,
-      value: { tenantId: 'tenant-1', storeSignatureRecords: true },
+      value: {
+        tenantId: 'tenant-1',
+        storeSignatureRecords: true,
+        pdfSealEnabled: false,
+        dateMode: 'declared',
+      },
     });
     await expect(
       updateTenantSettings(ctx, { storeSignatureRecords: false }, { tenantSettings }),
     ).resolves.toEqual({
       ok: true,
-      value: { tenantId: 'tenant-1', storeSignatureRecords: false },
+      value: {
+        tenantId: 'tenant-1',
+        storeSignatureRecords: false,
+        pdfSealEnabled: false,
+        dateMode: 'declared',
+      },
     });
     await expect(getTenantSettings(ctx, { tenantSettings })).resolves.toMatchObject({
       ok: true,
       value: { storeSignatureRecords: false },
     });
+    await expect(
+      updateTenantSettings(
+        ctx,
+        { pdfSealEnabled: true, dateMode: 'actual' },
+        { tenantSettings },
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        storeSignatureRecords: false,
+        pdfSealEnabled: true,
+        dateMode: 'actual',
+      },
+    });
+  });
+
+  it('applies declared and actual date policies at signing time', () => {
+    const now = new Date('2026-08-09T14:15:16.789Z');
+    expect(sealSigningTime('declared', '2020-02-03', now).toISOString()).toBe(
+      '2020-02-03T14:15:16.000Z',
+    );
+    expect(sealSigningTime('actual', '2020-02-03', now)).toBe(now);
   });
 
   it('rejects a non-boolean setting without touching the repository', async () => {

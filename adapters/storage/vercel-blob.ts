@@ -46,6 +46,7 @@ export const createVercelBlobStorage = (token: string): StoragePort => ({
         access: 'private',
         contentType,
         addRandomSuffix: false,
+        allowOverwrite: true,
         token,
       });
     }),

@@ -7,6 +7,7 @@ import { Command, CommanderError } from 'commander';
 import { z } from 'zod';
 
 import { createCliAuthAdapter, followMagicLink } from '#adapters/auth/client-adapter.js';
+import { verifyPdfSeal, type PdfSealVerification } from '#adapters/pdf-seal/verify.js';
 import type { AuthClientPort } from '#core/client/index.js';
 import {
   createApiClient,
@@ -22,6 +23,7 @@ import {
   canonicalSlugSchema,
   err,
   internal,
+  notFound,
   ok,
   unauthorized,
   validation,
@@ -127,6 +129,27 @@ const tokenListFilterSchema = z.object({
   draft: z.enum(['true', 'false', 'all']).optional(),
 });
 const booleanOptionSchema = z.enum(['true', 'false']).transform((value) => value === 'true');
+const tenantDateModeOptionSchema = z.enum(['declared', 'actual']);
+
+export const verifySealBytes = (
+  bytes: Uint8Array,
+) => {
+  try {
+    const verification = verifyPdfSeal(bytes);
+    return verification.integrity
+      ? ok(verification)
+      : err(validation('PDF seal integrity check failed', verification));
+  } catch (cause) {
+    return err(validation(`PDF seal could not be verified: ${String(cause)}`));
+  }
+};
+
+const formatSealVerification = (verification: PdfSealVerification): string =>
+  [
+    `subject: ${verification.subject}`,
+    `declared-time: ${verification.declaredAt}`,
+    `integrity: ${verification.integrity ? 'valid' : 'invalid'}`,
+  ].join('\n');
 
 /**
  * Thrown by cliCtx after it has already emitted a `validation` envelope for a
@@ -397,30 +420,54 @@ const tenantSettings = program
 tenantSettings.command('show').description('Show tenant settings').action(async () => {
   const ctx = cliCtx();
   emit(await ctx.api.getTenantSettings(), ctx.json, (data) =>
-    `store-signature-records=${String(data.settings.storeSignatureRecords)}`,
+    [
+      `store-signature-records=${String(data.settings.storeSignatureRecords)}`,
+      `pdf-seal-enabled=${String(data.settings.pdfSealEnabled)}`,
+      `date-mode=${data.settings.dateMode}`,
+    ].join('\n'),
   );
 });
 
 tenantSettings
   .command('set')
   .description('Update tenant settings')
-  .requiredOption('--store-signature-records <value>', 'true|false')
-  .action(async (options: { storeSignatureRecords: string }) => {
+  .option('--store-signature-records <value>', 'true|false')
+  .option('--pdf-seal-enabled <value>', 'true|false')
+  .option('--date-mode <mode>', 'declared|actual')
+  .action(async (options: {
+    storeSignatureRecords?: string;
+    pdfSealEnabled?: string;
+    dateMode?: string;
+  }) => {
     const ctx = cliCtx();
-    const storeSignatureRecords = parseArgs(
-      booleanOptionSchema,
-      options.storeSignatureRecords,
-      ctx.json,
-    );
-    if (storeSignatureRecords === undefined) return;
+    const storeSignatureRecords = options.storeSignatureRecords === undefined
+      ? undefined
+      : parseArgs(booleanOptionSchema, options.storeSignatureRecords, ctx.json);
+    if (options.storeSignatureRecords !== undefined && storeSignatureRecords === undefined) return;
+    const pdfSealEnabled = options.pdfSealEnabled === undefined
+      ? undefined
+      : parseArgs(booleanOptionSchema, options.pdfSealEnabled, ctx.json);
+    if (options.pdfSealEnabled !== undefined && pdfSealEnabled === undefined) return;
+    const dateMode = options.dateMode === undefined
+      ? undefined
+      : parseArgs(tenantDateModeOptionSchema, options.dateMode, ctx.json);
+    if (options.dateMode !== undefined && dateMode === undefined) return;
     const input = parseArgs(
       tenantSettingsUpdateInputSchema,
-      { storeSignatureRecords },
+      {
+        ...(storeSignatureRecords === undefined ? {} : { storeSignatureRecords }),
+        ...(pdfSealEnabled === undefined ? {} : { pdfSealEnabled }),
+        ...(dateMode === undefined ? {} : { dateMode }),
+      },
       ctx.json,
     );
     if (input === undefined) return;
     emit(await ctx.api.updateTenantSettings(input), ctx.json, (data) =>
-      `store-signature-records=${String(data.settings.storeSignatureRecords)}`,
+      [
+        `store-signature-records=${String(data.settings.storeSignatureRecords)}`,
+        `pdf-seal-enabled=${String(data.settings.pdfSealEnabled)}`,
+        `date-mode=${data.settings.dateMode}`,
+      ].join('\n'),
     );
   });
 
@@ -540,6 +587,34 @@ document
           : `signature-records=${String(value.signatureRecordsExist)}\n`;
       return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\n${records}${files || '  no files'}`;
     });
+  });
+
+document
+  .command('verify-seal <id>')
+  .description('Download the newest signed-digital PDF and verify its organization seal')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    const documentResult = await ctx.api.getDocument(id);
+    if (!documentResult.ok) {
+      emit(documentResult, ctx.json, () => '');
+      return;
+    }
+    const newest = documentResult.value.document.files
+      .filter((file) => file.role === 'signed-digital')
+      .reduce<(typeof documentResult.value.document.files)[number] | undefined>(
+        (current, file) => !current || file.createdAt > current.createdAt ? file : current,
+        undefined,
+      );
+    if (!newest) {
+      emit(err(notFound('Signed-digital PDF not found')), ctx.json, () => '');
+      return;
+    }
+    const downloaded = await ctx.api.downloadDocumentFile(id, newest.id);
+    if (!downloaded.ok) {
+      emit(downloaded, ctx.json, () => '');
+      return;
+    }
+    emit(verifySealBytes(downloaded.value.bytes), ctx.json, formatSealVerification);
   });
 
 document
