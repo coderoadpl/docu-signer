@@ -1185,8 +1185,6 @@ export const DocumentsPage = () => {
         <Suspense fallback={<LinearProgress aria-label="Ładowanie osi czasu" sx={{ mt: 3 }} />}>
           <LazyDocumentTimelineView
             documents={visibleDocuments}
-            dateFrom={filters.dateFrom}
-            dateTo={filters.dateTo}
             onOpenDocument={(id) =>
               void navigate({
                 to: '/app/documents/$id',

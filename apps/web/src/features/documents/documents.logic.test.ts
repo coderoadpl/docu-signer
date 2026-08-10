@@ -35,7 +35,7 @@ import {
   uniqueDocumentPersons,
   uniqueDocumentTags,
   uploadErrorMessage,
-  visTimelineWindowForRange,
+  visTimelineFittedWindow,
 } from './documents.logic.js';
 
 describe('document view logic', () => {
@@ -674,8 +674,7 @@ describe('document view logic', () => {
         start: '2026-01-01',
         end: '2026-01-31',
         type: 'range',
-        content:
-          '<span class="doc-mark" aria-label="Podpisane">✓</span><span class="doc-title">Umowa &lt;pierwsza&gt;</span>',
+        content: '<span>✓</span><span>Umowa &lt;pierwsza&gt;</span>',
         className: 'doc doc--umowa-uod is-signed',
         title: 'Umowa &lt;pierwsza&gt;\nUmowa UoD\n01.01.2026 - 31.01.2026\nPodpisane',
       },
@@ -684,29 +683,38 @@ describe('document view logic', () => {
         group: 'Żaneta <&>"\'',
         start: '2026-02-10',
         type: 'point',
-        content:
-          '<span class="doc-mark" aria-label="Do podpisania">○</span><span class="doc-title">Punkt &lt;&amp;&gt;&quot;&#39;</span>',
+        content: '<span>○</span><span>Punkt &lt;&amp;&gt;&quot;&#39;</span>',
         className: 'doc doc--inny is-unsigned',
         title: 'Punkt &lt;&amp;&gt;&quot;&#39;\nInny\n10.02.2026\nDo podpisania',
       },
     ]);
   });
 
-  it('keeps timeline colors exhaustive and builds deterministic range presets', () => {
+  it('keeps timeline colors exhaustive and fits the window to the visible items', () => {
     expect(Object.keys(DOCUMENT_TYPE_COLORS).sort()).toEqual(
       [...documentTypeSchema.options].sort(),
     );
 
-    const today = new Date(2026, 0, 15, 12);
-    const threeMonths = visTimelineWindowForRange('three-months', today);
-    expect(threeMonths).not.toBeNull();
-    expect(threeMonths?.start).toEqual(new Date(2025, 11, 1));
-    expect(threeMonths?.end).toEqual(new Date(2026, 1, 28, 23, 59, 59, 999));
-    expect(visTimelineWindowForRange('year', today)).toEqual({
-      start: new Date(2026, 0, 1),
-      end: new Date(2026, 11, 31, 23, 59, 59, 999),
-    });
-    expect(visTimelineWindowForRange('all', today)).toBeNull();
+    expect(visTimelineFittedWindow([], 1000)).toBeNull();
+
+    const day = 86_400_000;
+    const single = visTimelineFittedWindow([{ start: '2026-02-10' }], 1000);
+    expect(single?.start).toEqual(new Date(Date.UTC(2026, 1, 10) - 7 * day));
+    expect(single?.end).toEqual(new Date(Date.UTC(2026, 1, 10) + 30 * day));
+
+    const many = visTimelineFittedWindow(
+      [
+        { start: '2026-06-01', end: '2026-07-31' },
+        { start: '2026-01-01', end: '2026-03-31' },
+        { start: '2026-12-01', end: '2027-01-01' },
+      ],
+      1000,
+    );
+    const windowStart = Date.UTC(2026, 0, 1) - (Date.UTC(2027, 0, 1) - Date.UTC(2026, 0, 1)) * 0.05;
+    expect(many?.start).toEqual(new Date(windowStart));
+    expect(many?.end).toEqual(
+      new Date(windowStart + (Date.UTC(2026, 11, 1) - windowStart) / (1 - 320 / 1000)),
+    );
   });
 
   it('formats vis axis labels with Polish Intl rules', () => {

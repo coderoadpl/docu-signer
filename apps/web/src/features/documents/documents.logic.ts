@@ -664,9 +664,9 @@ export const toVisTimelineData = (
         start: document.start,
         ...(document.instant ? {} : { end: document.end }),
         type: document.instant ? 'point' : 'range',
-        content: `<span class="doc-mark" aria-label="${
-          document.signed ? 'Podpisane' : 'Do podpisania'
-        }">${document.signed ? '✓' : '○'}</span><span class="doc-title">${escapeHtml(
+        // WHY bare spans: vis-timeline sanitizes item HTML and drops every
+        // attribute, so the mark and the title are addressed structurally.
+        content: `<span>${document.signed ? '✓' : '○'}</span><span>${escapeHtml(
           document.title,
         )}</span>`,
         className: `doc doc--${document.docType} ${
@@ -678,24 +678,28 @@ export const toVisTimelineData = (
   };
 };
 
-export type VisTimelineRange = 'three-months' | 'year' | 'all';
+const DAY_MS = 86_400_000;
+const LABEL_BUDGET_PX = 320;
 
-export const visTimelineWindowForRange = (
-  range: VisTimelineRange,
-  today: Date,
+export const visTimelineFittedWindow = (
+  items: Pick<VisTimelineItem, 'start' | 'end'>[],
+  viewportWidth: number,
 ): { start: Date; end: Date } | null => {
-  if (range === 'all') return null;
-  const year = today.getFullYear();
-  if (range === 'year') {
-    return {
-      start: new Date(year, 0, 1),
-      end: new Date(year, 11, 31, 23, 59, 59, 999),
-    };
-  }
-  return {
-    start: new Date(year, today.getMonth() - 1, 1),
-    end: new Date(year, today.getMonth() + 2, 0, 23, 59, 59, 999),
-  };
+  if (items.length === 0) return null;
+  const starts = items.map((item) => dateMs(item.start));
+  const first = Math.min(...starts);
+  const lastStart = Math.max(...starts);
+  const lastEnd = Math.max(...items.map((item) => dateMs(item.end ?? item.start)));
+  const start = first - Math.max((lastEnd - first) * 0.05, 7 * DAY_MS);
+  // WHY the viewport takes part in the maths: a title is drawn from its item's
+  // start rightwards, so the window has to reach far enough past the last item
+  // to keep that label inside the panel instead of clipped by its edge.
+  const labelShare = Math.min(LABEL_BUDGET_PX / Math.max(viewportWidth, 1), 0.5);
+  const span = Math.max(
+    (lastStart - start) / (1 - labelShare),
+    lastEnd - start + 30 * DAY_MS,
+  );
+  return { start: new Date(start), end: new Date(start + span) };
 };
 
 export const formatVisTimelineMinorLabel = (date: Date, scale: string): string => {
