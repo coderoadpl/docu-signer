@@ -83,6 +83,7 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('purge');
     expect(documentHelp.stdout).toContain('update-source');
     expect(documentHelp.stdout).toContain('verify-seal');
+    expect(documentHelp.stdout).toContain('unapprove');
   }, CLI_TEST_TIMEOUT_MS);
 
   it('documents the minimal invitation commands', () => {

@@ -232,7 +232,7 @@ type BulkDialog = 'add-tags' | 'remove-tag' | 'person' | 'type';
 interface BulkSummary {
   changed: number;
   errors: number;
-  kind: 'approved' | 'changed';
+  kind: 'approved' | 'changed' | 'unapproved';
 }
 
 const toUpdateDocumentInput = (
@@ -307,6 +307,7 @@ export const DocumentsPage = () => {
     onSuccess: saveDownload,
   });
   const bulkApproveDocument = useMutation(actions.approveDocument);
+  const bulkUnapproveDocument = useMutation(actions.unapproveDocument);
   const bulkUpdateDocument = useMutation(actions.updateDocument);
   const bulkDeleteDocument = useMutation(actions.deleteDocument);
   const createSavedSearch = useMutation({
@@ -365,6 +366,7 @@ export const DocumentsPage = () => {
     selectedIds.includes(document.id),
   );
   const selectedDraftDocuments = selectedDocuments.filter((document) => document.draft);
+  const selectedApprovedDocuments = selectedDocuments.filter((document) => !document.draft);
   const massReviewDocumentIds = massReviewQueueDocumentIds(selectedDocuments);
   const massSigningTargets = massSigningQueueTargets(selectedDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
@@ -778,6 +780,22 @@ export const DocumentsPage = () => {
               >
                 Zatwierdź ({selectedDraftDocuments.length})
               </Button>
+              {selectedApprovedDocuments.length > 0 ? (
+                <Button
+                  variant="outlined"
+                  disabled={bulkBusy}
+                  onClick={() =>
+                    void runBulk(
+                      async (document) => {
+                        await bulkUnapproveDocument.mutateAsync(document.id);
+                      },
+                      { documents: selectedApprovedDocuments, summaryKind: 'unapproved' },
+                    )
+                  }
+                >
+                  Cofnij do szkicu ({selectedApprovedDocuments.length})
+                </Button>
+              ) : null}
               <Button
                 variant="outlined"
                 color="error"
@@ -847,6 +865,8 @@ export const DocumentsPage = () => {
         <Alert severity={bulkSummary.errors > 0 ? 'warning' : 'success'} sx={{ mt: 2 }}>
           {bulkSummary.kind === 'approved'
             ? `Zatwierdzono ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
+            : bulkSummary.kind === 'unapproved'
+              ? `Cofnięto do szkicu ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
             : `Operacje zbiorcze: ${bulkSummary.changed} zmieniono, ${bulkSummary.errors} błędów.`}
         </Alert>
       ) : null}

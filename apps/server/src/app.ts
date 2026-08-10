@@ -95,6 +95,7 @@ import {
   submitPadStrokes,
   updateTenantSettings,
   updateDocument,
+  unapproveDocument,
   type Ctx,
 } from '#core/server/index.js';
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
@@ -667,6 +668,15 @@ export const buildApp = (deps: AppDeps) => {
 
   app.post(API_ROUTES.documentApprove.path, async (c) => {
     const result = await approveDocument(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentUnapprove.path, async (c) => {
+    const result = await unapproveDocument(
       ctxOf(c.get('identity')),
       c.req.param('documentId'),
       deps,

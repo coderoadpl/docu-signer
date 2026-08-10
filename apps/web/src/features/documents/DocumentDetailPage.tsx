@@ -410,6 +410,12 @@ export const DocumentDetailPage = ({
       await queryClient.invalidateQueries(actions.documentsInvalidates());
     },
   });
+  const unapproveDocument = useMutation({
+    ...actions.unapproveDocument,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+    },
+  });
   const deleteDocument = useMutation({
     ...actions.deleteDocument,
     onSuccess: async () => {
@@ -722,7 +728,15 @@ export const DocumentDetailPage = ({
                 >
                   Zatwierdź
                 </Button>
-              ) : null}
+              ) : (
+                <Button
+                  variant="outlined"
+                  disabled={unapproveDocument.isPending}
+                  onClick={() => unapproveDocument.mutate(documentId)}
+                >
+                  Cofnij do szkicu
+                </Button>
+              )}
               <Button variant="contained" onClick={() => setEditOpen(true)}>
                 Edytuj
               </Button>
@@ -813,6 +827,11 @@ export const DocumentDetailPage = ({
       {approveDocument.isError ? (
         <Alert severity="error" sx={{ mt: 2 }}>
           {approveDocument.error.message}
+        </Alert>
+      ) : null}
+      {unapproveDocument.isError ? (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {unapproveDocument.error.message}
         </Alert>
       ) : null}
       {restoreDocument.isError ? (

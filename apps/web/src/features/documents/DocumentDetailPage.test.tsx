@@ -598,6 +598,31 @@ describe('DocumentDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Zatwierdź' })).not.toBeInTheDocument();
   });
 
+  it('reverts an approved document to draft from the secondary action', async () => {
+    const unapprove = vi.fn();
+    let currentDocument = { ...document, draft: false };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document: currentDocument } }),
+      ),
+      http.post(`/api/documents/${DOCUMENT_ID}/unapprove`, () => {
+        unapprove();
+        currentDocument = { ...document, draft: true };
+        return HttpResponse.json({ ok: true, data: { document: currentDocument } });
+      }),
+    );
+    await renderPage();
+
+    const action = await screen.findByRole('button', { name: 'Cofnij do szkicu' });
+    expect(action).toHaveClass('MuiButton-outlined');
+    await userEvent.click(action);
+
+    await waitFor(() => expect(unapprove).toHaveBeenCalledOnce());
+    expect(await screen.findByText(/czeka na zatwierdzenie/u)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cofnij do szkicu' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeInTheDocument();
+  });
+
   it('renders a trashed document as read-only with restore and purge actions', async () => {
     const restore = vi.fn();
     const purge = vi.fn();

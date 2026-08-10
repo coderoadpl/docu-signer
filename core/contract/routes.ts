@@ -117,6 +117,10 @@ export const documentApproveOutputSchema = z.object({
   document: documentSchema,
 });
 
+export const documentUnapproveOutputSchema = z.object({
+  document: documentSchema,
+});
+
 export const documentDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
@@ -356,6 +360,7 @@ export const API_ROUTES = {
   document: { method: 'GET', path: '/api/documents/:documentId' },
   documentUpdate: { method: 'PATCH', path: '/api/documents/:documentId' },
   documentApprove: { method: 'POST', path: '/api/documents/:documentId/approve' },
+  documentUnapprove: { method: 'POST', path: '/api/documents/:documentId/unapprove' },
   documentDelete: { method: 'DELETE', path: '/api/documents/:documentId' },
   documentRestore: { method: 'POST', path: '/api/documents/:documentId/restore' },
   documentPurge: { method: 'DELETE', path: '/api/documents/:documentId/purge' },

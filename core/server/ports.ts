@@ -54,6 +54,7 @@ export interface DocumentRepository {
     >,
   ): Promise<Document | null>;
   approve(tenantId: string, documentId: string): Promise<Document | null>;
+  unapprove(tenantId: string, documentId: string): Promise<Document | null>;
   delete(tenantId: string, documentId: string): Promise<boolean>;
   restore(tenantId: string, documentId: string): Promise<Document | null>;
   purge(tenantId: string, documentId: string): Promise<boolean>;
