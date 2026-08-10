@@ -2188,7 +2188,12 @@ export const DocumentSigningPage = ({
       fitMain={massMode}
     >
       {pdfError ? <Alert severity="error" sx={{ mb: 2 }}>{pdfError}</Alert> : null}
-      {pageRendering ? <LinearProgress aria-label="Renderowanie strony PDF" /> : null}
+      {/* WHY: the reserved height keeps the bar out of the layout — mounting it
+          shrank the measured fit box, whose ResizeObserver re-ran the render
+          effect and re-raised `pageRendering`: an endless render loop. */}
+      <Box sx={{ flex: '0 0 auto', width: '100%', height: 4 }}>
+        {pageRendering ? <LinearProgress aria-label="Renderowanie strony PDF" /> : null}
+      </Box>
       <Box
         ref={fitBoxRef}
         sx={{
