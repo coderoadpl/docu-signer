@@ -935,40 +935,26 @@ test('mass signing can receive a signature from a QR pad browser context', async
   }
 });
 
-test('mass signing signs and skips documents', async ({ page }) => {
+test('mass signing signs a document', async ({ page }) => {
   const stamp = Date.now();
-  const titlePrefix = `Masowe e2e ${stamp}`;
-  const firstTitle = `${titlePrefix} protokół`;
-  const secondTitle = `${titlePrefix} rachunek`;
+  const title = `Mass sign e2e ${stamp}`;
 
   await signIn(page);
-  await Promise.all([
-    createDocumentWithFilesViaApi({
-      page,
-      title: firstTitle,
-      docType: 'protokol',
-      files: [{ fileName: `masowe-a-${stamp}.pdf`, role: 'source' }],
-    }),
-    createDocumentWithFilesViaApi({
-      page,
-      title: secondTitle,
-      docType: 'rachunek',
-      files: [{ fileName: `masowe-b-${stamp}.pdf`, role: 'source' }],
-    }),
-  ]);
+  await createDocumentWithFilesViaApi({
+    page,
+    title,
+    docType: 'protokol',
+    files: [{ fileName: `mass-sign-${stamp}.pdf`, role: 'source' }],
+  });
   await page.getByRole('link', { name: 'Dokumenty' }).click();
 
-  await page.getByLabel('Szukaj po tytule').fill(titlePrefix);
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get('q'))
-    .toBe(titlePrefix);
-  await expect(page.getByRole('rowheader', { name: firstTitle, exact: true })).toBeVisible();
-  await expect(page.getByRole('rowheader', { name: secondTitle, exact: true })).toBeVisible();
-  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${firstTitle}` }).click();
-  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${secondTitle}` }).click();
-  await page.getByRole('button', { name: 'Masowe podpisywanie (2)' }).click();
+  await page.getByLabel('Szukaj po tytule').fill(title);
+  await expect.poll(() => new URL(page.url()).searchParams.get('q')).toBe(title);
+  await expect(page.getByRole('rowheader', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${title}` }).click();
+  await page.getByRole('button', { name: 'Masowe podpisywanie (1)' }).click();
 
-  await expect(page.getByRole('heading', { name: firstTitle })).toBeVisible();
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
   await expectReviewPdfFitsViewport(page);
   await placeMassSignature(page, [
     { x: 0.18, y: 0.5 },
@@ -977,15 +963,41 @@ test('mass signing signs and skips documents', async ({ page }) => {
   ]);
   await page.getByRole('button', { name: 'Dalej' }).click();
 
-  await expect(page.getByRole('heading', { name: secondTitle })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Podsumowanie' })).toBeVisible();
+  await expect(page.getByText('Podpisano 1')).toBeVisible();
+  await expect(page.getByText('Pominięto 0')).toBeVisible();
+  await page.getByRole('button', { name: 'Wróć do listy' }).click();
+  await expect(page.getByLabel('Szukaj po tytule')).toHaveValue(title);
+});
+
+test('mass signing skips a document', async ({ page }) => {
+  const stamp = Date.now();
+  const title = `Mass skip e2e ${stamp}`;
+
+  await signIn(page);
+  await createDocumentWithFilesViaApi({
+    page,
+    title,
+    docType: 'rachunek',
+    files: [{ fileName: `mass-skip-${stamp}.pdf`, role: 'source' }],
+  });
+  await page.getByRole('link', { name: 'Dokumenty' }).click();
+
+  await page.getByLabel('Szukaj po tytule').fill(title);
+  await expect.poll(() => new URL(page.url()).searchParams.get('q')).toBe(title);
+  await expect(page.getByRole('rowheader', { name: title, exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: `Zaznacz dokument: ${title}` }).click();
+  await page.getByRole('button', { name: 'Masowe podpisywanie (1)' }).click();
+
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
   await expectReviewPdfFitsViewport(page);
   await page.getByRole('button', { name: 'Dalej' }).click();
 
   await expect(page.getByRole('heading', { name: 'Podsumowanie' })).toBeVisible();
-  await expect(page.getByText('Podpisano 1')).toBeVisible();
+  await expect(page.getByText('Podpisano 0')).toBeVisible();
   await expect(page.getByText('Pominięto 1')).toBeVisible();
   await page.getByRole('button', { name: 'Wróć do listy' }).click();
-  await expect(page.getByLabel('Szukaj po tytule')).toHaveValue(titlePrefix);
+  await expect(page.getByLabel('Szukaj po tytule')).toHaveValue(title);
 });
 
 test('mass signing passes through an already signed document', async ({ page }) => {
