@@ -30,9 +30,9 @@ export const DEFAULT_PRIMARY = 'hsl(215, 35%, 34%)';
 // helper is barred from importing this module (boundary web-test ✕ web-theme),
 // so components must also render under Material's untouched default theme.
 const TABLE_SURFACE = {
-  head: 'hsl(60, 5%, 87%)',
-  periodBand: 'hsl(60, 5%, 91%)',
-  personBand: 'hsl(60, 6%, 95%)',
+  head: 'hsl(60, 5%, 89%)',
+  periodBand: 'hsl(60, 5%, 93%)',
+  personBand: 'hsl(60, 6%, 96%)',
 };
 
 const FONT_STACK = [
@@ -252,6 +252,7 @@ export const DocumentsTableContainer = styled(TableContainer)(({ theme }) => ({
 export const DocumentsTable = styled(Table)(({ theme }) => ({
   '& thead th': {
     backgroundColor: TABLE_SURFACE.head,
+    borderBottom: `1px solid ${theme.palette.grey[400]}`,
     color: theme.palette.text.primary,
   },
   '& tbody[data-document-record]:hover td, & tbody[data-document-record]:hover th': {
@@ -269,7 +270,7 @@ export const DOCUMENTS_TABLE_HEAD_HEIGHT = '2.3125rem';
 
 export const DocumentPeriodTableCell = styled(TableCell)(({ theme }) => ({
   backgroundColor: TABLE_SURFACE.periodBand,
-  borderBottom: `1px solid ${theme.palette.divider}`,
+  borderBottom: 0,
   paddingTop: theme.spacing(1.5),
   paddingBottom: theme.spacing(1.5),
 }));
