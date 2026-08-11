@@ -281,6 +281,7 @@ edit is needed — the slots are already wired and skip cleanly while absent.
 ## License
 
 [FSL-1.1-ALv2](LICENSE.md) — the Functional Source License. You may self-host
-and modify it freely, but you may not offer it as a competing hosted service.
+and modify it freely; competing commercial use is not permitted (see the
+license for what counts as a Competing Use).
 Every release automatically converts to Apache-2.0 two years after publication.
 More: [fsl.software](https://fsl.software/) and [fair.io](https://fair.io/).

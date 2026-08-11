@@ -36,9 +36,9 @@ value.
 
 This ADR remains authoritative for browser-side rendering, placement and ink
 flattening, but is superseded in part by the owner's
-[2026-08-09 ruling recorded on PR #73](https://github.com/chomamateusz/docu-signer/pull/73#issuecomment-5233452249).
-Signature-ink storage had already been reversed by the 2026-08-07 owner ruling
-recorded in the PR #65 comment referenced by `FOUNDATION.md`.
+[2026-08-09 ruling](../owner-rulings.md).
+Signature-ink storage had already been reversed by the 2026-08-07 owner ruling,
+archived in [docs/owner-rulings.md](../owner-rulings.md).
 
 When the tenant PAdES seal flag is on (it defaults off), the server replaces the
 just-uploaded `signed-digital` blob at the same storage key with a PDF carrying

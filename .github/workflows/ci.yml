@@ -122,9 +122,9 @@ jobs:
       # against an isolated agentproofarch_e2e database and serves this bundle.
       - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm run e2e
-      # Failure evidence for the #79 family: retry traces are the only way to
-      # see WHICH action ate the budget on a slow runner (learned 2026-08-13
-      # when run 31717871593 left nothing to download).
+      # Retry traces are the only way to see WHICH action ate the budget when a
+      # test times out on a slow runner; without this upload the evidence dies
+      # with the job.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
