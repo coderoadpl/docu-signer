@@ -59,8 +59,8 @@ REVIEW+AI: the PR-template line; a rerun-to-green merge without a filed P1 is
 rejected.)
 
 Security-relevant rule reversals require an owner-visible artifact in the repo
-before ai-review may accept them; the owner's confirming PR #65 comment is the
-exemplar.
+before ai-review may accept them; the rulings are archived verbatim in
+[docs/owner-rulings.md](docs/owner-rulings.md).
 
 - `pnpm run e2e` = the **browser** gate: Playwright drives real browsers over
   the real stack (isolated `agentproofarch_e2e` DB, `localhost` registered as a
