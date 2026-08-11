@@ -277,3 +277,10 @@ does not merge a PR whose `ai-review` check is red.
 **Adding slot `_2` / `_3` later.** Create repo Actions secrets
 `CLAUDE_CODE_OAUTH_TOKEN_2` / `_3` (each its own `claude setup-token`). No workflow
 edit is needed — the slots are already wired and skip cleanly while absent.
+
+## License
+
+[FSL-1.1-ALv2](LICENSE.md) — the Functional Source License. You may self-host
+and modify it freely, but you may not offer it as a competing hosted service.
+Every release automatically converts to Apache-2.0 two years after publication.
+More: [fsl.software](https://fsl.software/) and [fair.io](https://fair.io/).
