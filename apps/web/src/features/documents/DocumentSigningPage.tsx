@@ -17,7 +17,6 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
-  LinearProgress,
   Paper,
   Popover,
   Slider,
@@ -101,6 +100,21 @@ const DEFAULT_PLACEMENT: SignaturePlacement = {
   offsetY: 0,
   scale: 1,
 };
+
+const FileLoadingOverlay = () => (
+  <Box
+    sx={{
+      position: 'absolute',
+      inset: 0,
+      display: 'grid',
+      placeItems: 'center',
+      zIndex: 2,
+      pointerEvents: 'none',
+    }}
+  >
+    <CircularProgress aria-label="Ładowanie podglądu pliku" />
+  </Box>
+);
 
 const detectDefaultGestureMode = (): SigningGestureMode =>
   defaultSigningGestureMode({
@@ -1272,6 +1286,7 @@ export const DocumentSigningPage = ({
       setMassFitBox(undefined);
       return;
     }
+    if (!pdf) return;
     const element = fitBoxRef.current;
     if (!element) return;
     const updateFitBox = () => {
@@ -1280,6 +1295,7 @@ export const DocumentSigningPage = ({
         width: bounds.width > 0 ? Math.floor(bounds.width) : 0,
         height: bounds.height > 0 ? Math.floor(bounds.height) : 0,
       };
+      if (next.width === 0 || next.height === 0) return;
       setMassFitBox((current) =>
         current?.width === next.width && current.height === next.height
           ? current
@@ -1307,7 +1323,7 @@ export const DocumentSigningPage = ({
       window.removeEventListener('resize', updateFitBox);
       window.removeEventListener('orientationchange', updateFitBox);
     };
-  }, [massMode, signable, sourceFile, sourceQuery.data]);
+  }, [massMode, pdf]);
 
   useEffect(() => {
     const pdfCanvas = pdfCanvasRef.current;
@@ -2529,60 +2545,62 @@ export const DocumentSigningPage = ({
       fitMain={massMode}
     >
       {pdfError ? <Alert severity="error" sx={{ mb: 2 }}>{pdfError}</Alert> : null}
-      {/* WHY: the reserved height keeps the bar out of the layout — mounting it
-          shrank the measured fit box, whose ResizeObserver re-ran the render
-          effect and re-raised `pageRendering`: an endless render loop. */}
-      <Box sx={{ flex: '0 0 auto', width: '100%', height: 4 }}>
-        {pageRendering ? <LinearProgress aria-label="Renderowanie strony PDF" /> : null}
-      </Box>
       <Box
-        ref={fitBoxRef}
         sx={{
+          position: 'relative',
           width: '100%',
           flex: massMode ? '1 1 auto' : undefined,
           alignSelf: massMode ? 'stretch' : undefined,
           height: massMode ? '100%' : undefined,
-          display: massMode ? 'flex' : 'block',
-          alignItems: massMode ? 'center' : undefined,
-          justifyContent: massMode ? 'center' : undefined,
         }}
       >
-        <SigningPageSurface
+        {!pageReady && !pdfError ? <FileLoadingOverlay /> : null}
+        <Box
+          ref={fitBoxRef}
           sx={{
-            position: 'relative',
-            width: 'fit-content',
-            maxWidth: '100%',
-            maxHeight: massMode ? '100%' : undefined,
-            mx: 'auto',
+            width: '100%',
+            height: massMode ? '100%' : undefined,
+            display: massMode ? 'flex' : 'block',
+            alignItems: massMode ? 'center' : undefined,
+            justifyContent: massMode ? 'center' : undefined,
           }}
         >
-          <canvas
-            ref={pdfCanvasRef}
-            aria-label={`Strona ${pageNumber} dokumentu PDF`}
-            style={{
-              display: 'block',
-              maxHeight: massMode ? '100%' : undefined,
-              maxWidth: '100%',
-              height: 'auto',
-            }}
-          />
-          <InkSurface
-            ref={setInkCanvasRef}
-            role="application"
-            aria-label="Powierzchnia do rysowania podpisu"
-            aria-busy={!pageReady}
-            tabIndex={0}
+          <SigningPageSurface
             sx={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              cursor: gestureMode === 'draw' ? 'crosshair' : 'grab',
-              touchAction:
-                gestureMode === 'draw' || stampTouchActionLocked
-                  ? 'none'
-                  : 'pan-x pan-y pinch-zoom',
+              position: 'relative',
+              width: 'fit-content',
+              maxWidth: '100%',
+              maxHeight: massMode ? '100%' : undefined,
+              mx: 'auto',
             }}
+          >
+            <canvas
+              ref={pdfCanvasRef}
+              aria-label={`Strona ${pageNumber} dokumentu PDF`}
+              style={{
+                display: 'block',
+                maxHeight: massMode ? '100%' : undefined,
+                maxWidth: '100%',
+                height: 'auto',
+              }}
+            />
+            <InkSurface
+              ref={setInkCanvasRef}
+              role="application"
+              aria-label="Powierzchnia do rysowania podpisu"
+              aria-busy={!pageReady}
+              tabIndex={0}
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                cursor: gestureMode === 'draw' ? 'crosshair' : 'grab',
+                touchAction:
+                  gestureMode === 'draw' || stampTouchActionLocked
+                    ? 'none'
+                    : 'pan-x pan-y pinch-zoom',
+              }}
             onPointerDown={(event) => {
               if (committing) return;
               if (event.pointerType === 'pen') {
@@ -2709,7 +2727,8 @@ export const DocumentSigningPage = ({
             onPointerUp={finishPointer}
             onPointerCancel={finishPointer}
           />
-        </SigningPageSurface>
+          </SigningPageSurface>
+        </Box>
       </Box>
       <PadQrDialog
         open={remotePadQrOpen}

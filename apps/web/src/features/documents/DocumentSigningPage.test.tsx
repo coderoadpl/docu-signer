@@ -14,7 +14,11 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentSigningPage } from './DocumentSigningPage.js';
 import { documentSigningSearchSchema, documentsSearchSchema } from './documents.logic.js';
-import { renderSourcePage, type SigningStampWithMetrics } from './signing-pdf.js';
+import {
+  loadSourcePdf,
+  renderSourcePage,
+  type SigningStampWithMetrics,
+} from './signing-pdf.js';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const SOURCE_ID = '22222222-2222-4222-8222-222222222222';
@@ -250,10 +254,14 @@ const installUploadHandlers = () => {
 beforeEach(() => {
   pdfMocks.flatten.mockClear();
   pdfMocks.destroy.mockClear();
+  vi.mocked(loadSourcePdf).mockClear();
   vi.mocked(renderSourcePage).mockClear();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue(
     new DOMRect(0, 0, 200, 300),
+  );
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+    new DOMRect(0, 0, 640, 480),
   );
   Object.defineProperty(HTMLCanvasElement.prototype, 'setPointerCapture', {
     configurable: true,
@@ -1534,6 +1542,55 @@ describe('DocumentSigningPage', () => {
         expect(vi.mocked(renderSourcePage)).toHaveBeenCalledTimes(renderCount),
       );
     } finally {
+      elementBounds.mockRestore();
+    }
+  });
+
+  it('remeasures the mass-signing surface after the PDF resolves', async () => {
+    let releasePdf: (() => void) | undefined;
+    const pdfGate = new Promise<void>((resolve) => {
+      releasePdf = resolve;
+    });
+    const loadImplementation = vi.mocked(loadSourcePdf).getMockImplementation();
+    if (!loadImplementation) throw new Error('Missing PDF loader mock');
+    vi.mocked(loadSourcePdf).mockImplementationOnce(async (bytes) => {
+      await pdfGate;
+      return loadImplementation(bytes);
+    });
+    const elementBounds = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValueOnce(new DOMRect(0, 0, 0, 0))
+      .mockReturnValue(new DOMRect(0, 0, 800, 600));
+
+    try {
+      await renderPage(
+        `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}?tryb=masowe&podpisane=0&pominiete=0&razem=1`,
+      );
+      const progress = await screen.findByRole('progressbar', {
+        name: 'Ładowanie podglądu pliku',
+      });
+      expect(progress.parentElement).toHaveStyle({ position: 'absolute' });
+      const measurementsBeforeLoad = elementBounds.mock.calls.length;
+
+      releasePdf?.();
+      await waitFor(() =>
+        expect(elementBounds.mock.calls.length).toBeGreaterThan(measurementsBeforeLoad),
+      );
+      await waitFor(() =>
+        expect(vi.mocked(renderSourcePage)).toHaveBeenCalledWith(
+          expect.anything(),
+          2,
+          expect.any(HTMLCanvasElement),
+          { width: 800, height: 600 },
+        ),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('progressbar', { name: 'Ładowanie podglądu pliku' }),
+        ).not.toBeInTheDocument(),
+      );
+    } finally {
+      releasePdf?.();
       elementBounds.mockRestore();
     }
   });
