@@ -147,6 +147,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
       ...settings,
     }),
   },
+  tenantAccounts: { listByTenant: async () => [] },
   signatureRecords: {
     listByDocument: async () => [],
     create: async (input) => ({

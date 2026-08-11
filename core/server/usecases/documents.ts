@@ -19,6 +19,7 @@ import {
   type Document,
   type DocumentFile,
   type DocumentListFilter,
+  type DocumentListItem,
   type DocumentWithFiles,
   type ExportDocuments,
   type FileUploadRequest,
@@ -127,7 +128,7 @@ export const listDocuments = async (
   ctx: Ctx,
   filter: DocumentListFilter,
   deps: DocumentDeps,
-): Promise<Result<DocumentWithFiles[], AppError>> => {
+): Promise<Result<DocumentListItem[], AppError>> => {
   const scope = authorizeTenant(ctx, 'document:read');
   if (!scope.ok) return scope;
   const parsed = documentListFilterSchema.safeParse(filter);

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { tenantAccountSchema } from './tenant-account.js';
+
 export const MAX_DOCUMENT_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_DOCUMENT_EXPORT_DOCUMENTS = 100;
 export const MAX_DOCUMENT_EXPORT_FILES = 100;
@@ -78,6 +80,23 @@ export const documentWithFilesSchema = documentFieldsSchema
 
 export type DocumentWithFiles = z.infer<typeof documentWithFilesSchema>;
 
+export const documentWithSignersSchema = documentFieldsSchema
+  .extend({
+    signers: z.array(tenantAccountSchema),
+  })
+  .refine(periodIsOrdered, 'periodStart must not be after periodEnd');
+
+export type DocumentWithSigners = z.infer<typeof documentWithSignersSchema>;
+
+export const documentListItemSchema = documentFieldsSchema
+  .extend({
+    files: z.array(documentFileSchema),
+    signers: z.array(tenantAccountSchema),
+  })
+  .refine(periodIsOrdered, 'periodStart must not be after periodEnd');
+
+export type DocumentListItem = z.infer<typeof documentListItemSchema>;
+
 const createDocumentFieldsSchema = z.object({
   title: z.string().trim().min(1, 'Title must not be empty').max(300, 'Title too long'),
   docType: documentTypeSchema,
@@ -115,6 +134,7 @@ const documentListFilterSchemaOf = () =>
       dateFrom: z.iso.date().optional(),
       dateTo: z.iso.date().optional(),
       signatureStatus: documentSignatureStatusSchema.optional(),
+      signerAccountId: z.string().trim().min(1).optional(),
       draft: z.enum(['true', 'false', 'all']).optional(),
     })
     .refine(
@@ -132,6 +152,7 @@ export interface DocumentListFilter {
   dateFrom?: string | undefined;
   dateTo?: string | undefined;
   signatureStatus?: DocumentSignatureStatus | undefined;
+  signerAccountId?: string | undefined;
   draft?: 'true' | 'false' | 'all' | undefined;
 }
 

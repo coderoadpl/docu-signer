@@ -102,7 +102,9 @@ const fake = (
 
   const repo: DocumentRepository = {
     listByTenant: async (tenantId) =>
-      documents.filter((document) => document.tenantId === tenantId && document.deletedAt === null),
+      documents
+        .filter((document) => document.tenantId === tenantId && document.deletedAt === null)
+        .map((document) => ({ ...document, signers: [] })),
     listDeletedByTenant: async (tenantId) =>
       documents.filter((document) => document.tenantId === tenantId && document.deletedAt !== null),
     findById: async (tenantId, id) =>
@@ -484,11 +486,22 @@ describe('documents use-cases', () => {
     const listSpy = vi.spyOn(state.deps.documents, 'listByTenant');
     await listDocuments(
       ctx(staff('tenant-acme')),
-      { signatureStatus: 'needs-signature' },
+      { signatureStatus: 'needs-signature', signerAccountId: 'account-1' },
       state.deps,
     );
     expect(listSpy).toHaveBeenCalledWith('tenant-acme', {
       signatureStatus: 'needs-signature',
+      signerAccountId: 'account-1',
+    });
+    state.deps.documents.listByTenant = async () => [
+      {
+        ...documentRow(),
+        signers: [{ accountId: 'account-1', name: 'Maria Choma' }],
+      },
+    ];
+    await expect(listDocuments(ctx(staff('tenant-acme')), {}, state.deps)).resolves.toMatchObject({
+      ok: true,
+      value: [{ signers: [{ accountId: 'account-1', name: 'Maria Choma' }] }],
     });
     expect(await getDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toMatchObject({
       ok: true,

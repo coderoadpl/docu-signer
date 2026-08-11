@@ -14,6 +14,7 @@ import { createDocumentRepository } from '#adapters/db/documents-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
+import { createTenantAccountRepository } from '#adapters/db/tenant-accounts-repository.js';
 import { createSignatureRecordRepository } from '#adapters/db/signature-records-repository.js';
 import { createSourceUpdateRequestRepository } from '#adapters/db/source-update-requests-repository.js';
 import {
@@ -162,6 +163,7 @@ beforeAll(async () => {
     padSessionSecrets: createPadSessionSecrets(),
     userPreferences: createUserPreferenceRepository(db),
     tenantSettings: createTenantSettingsRepository(db),
+    tenantAccounts: createTenantAccountRepository(db),
     signatureRecords: createSignatureRecordRepository(db),
     sourceUpdateRequests: createSourceUpdateRequestRepository(db),
     savedSearches: {

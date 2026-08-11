@@ -108,7 +108,7 @@ const record = (
 });
 
 const documentRepository = (files: DocumentFile[]): DocumentRepository => ({
-  listByTenant: async () => [document],
+  listByTenant: async () => [{ ...document, signers: [] }],
   listDeletedByTenant: async () => [],
   findById: async (tenantId, id) =>
     tenantId === document.tenantId && id === document.id ? document : null,

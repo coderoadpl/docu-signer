@@ -68,6 +68,7 @@ export interface DocumentFilterValues {
   dateFrom: string;
   dateTo: string;
   signatureStatus: DocumentSignatureStatus | '';
+  signerAccountId: string;
   draft: 'false' | 'true' | 'all';
 }
 
@@ -93,6 +94,7 @@ const documentsSearchInputSchema = z.object({
   osoba: textParamSchema,
   tag: textParamSchema,
   status: documentSignatureStatusSchema.optional().catch(undefined),
+  podpisal: textParamSchema,
   szkice: draftParamSchema,
   od: dateParamSchema,
   do: dateParamSchema,
@@ -151,6 +153,7 @@ export const emptyDocumentFilters = (): DocumentFilterValues => ({
   dateFrom: '',
   dateTo: '',
   signatureStatus: '',
+  signerAccountId: '',
   draft: 'false',
 });
 
@@ -168,6 +171,7 @@ export const documentFiltersFromSearch = (
   dateFrom: search.od ?? '',
   dateTo: search.do ?? '',
   signatureStatus: search.status ?? '',
+  signerAccountId: search.podpisal ?? '',
   draft: search.szkice === true ? 'true' : search.szkice ?? 'false',
 });
 
@@ -181,6 +185,7 @@ export const documentsSearchFromState = (
   ...(values.person.trim() ? { osoba: values.person.trim() } : {}),
   ...(values.tag.trim() ? { tag: values.tag.trim() } : {}),
   ...(values.signatureStatus ? { status: values.signatureStatus } : {}),
+  ...(values.signerAccountId ? { podpisal: values.signerAccountId } : {}),
   ...(values.draft === 'true' ? { szkice: true as const } : {}),
   ...(values.draft === 'all' ? { szkice: 'all' as const } : {}),
   ...(values.dateFrom ? { od: values.dateFrom } : {}),
@@ -233,6 +238,7 @@ export const toDocumentFilter = (values: {
   dateFrom: string;
   dateTo: string;
   signatureStatus: DocumentSignatureStatus | '';
+  signerAccountId: string;
   draft: 'false' | 'true' | 'all';
 }): DocumentListFilter => ({
   ...(values.text.trim() ? { text: values.text.trim() } : {}),
@@ -242,6 +248,9 @@ export const toDocumentFilter = (values: {
   ...(values.dateFrom ? { dateFrom: values.dateFrom } : {}),
   ...(values.dateTo ? { dateTo: values.dateTo } : {}),
   ...(values.signatureStatus ? { signatureStatus: values.signatureStatus } : {}),
+  ...(values.signerAccountId.trim()
+    ? { signerAccountId: values.signerAccountId.trim() }
+    : {}),
   ...(values.draft === 'false' ? {} : { draft: values.draft }),
 });
 
@@ -253,6 +262,7 @@ export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilte
   dateFrom: filter.dateFrom ?? '',
   dateTo: filter.dateTo ?? '',
   signatureStatus: filter.signatureStatus ?? '',
+  signerAccountId: filter.signerAccountId ?? '',
   draft: filter.draft ?? 'false',
 });
 
@@ -384,6 +394,7 @@ export const documentFilterSummary = (filter: SavedSearchFilter): string => {
     filter.signatureStatus
       ? `Status podpisu: ${SIGNATURE_STATUS_LABELS[filter.signatureStatus]}`
       : '',
+    filter.signerAccountId ? `Podpisał(a): ${filter.signerAccountId}` : '',
     filter.draft === 'true' ? 'Szkice: tylko szkice' : '',
     filter.draft === 'all' ? 'Szkice: razem z zatwierdzonymi' : '',
   ].filter(Boolean);
@@ -556,6 +567,7 @@ export const documentsSearchFromSigningSearch = (
     osoba: search.osoba,
     tag: search.tag,
     status: search.status,
+    podpisal: search.podpisal,
     szkice: search.szkice,
     od: search.od,
     do: search.do,
@@ -571,6 +583,7 @@ export const documentsSearchFromReviewSearch = (
     osoba: search.osoba,
     tag: search.tag,
     status: search.status,
+    podpisal: search.podpisal,
     szkice: search.szkice,
     od: search.od,
     do: search.do,

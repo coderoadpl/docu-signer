@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appError, err, ok } from '#core/domain/index.js';
 
 import {
+  documentListFilterFromOptions,
   loginCredentialSelectionIsValid,
   normalizeStdinPassword,
   runLoginAction,
@@ -84,7 +85,17 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('update-source');
     expect(documentHelp.stdout).toContain('verify-seal');
     expect(documentHelp.stdout).toContain('unapprove');
+    const listHelp = run('document', 'list', '--help');
+    expect(listHelp.status).toBe(0);
+    expect(listHelp.stdout).toContain('--signer <accountId>');
   }, CLI_TEST_TIMEOUT_MS);
+
+  it('maps the signer option to the document list contract filter', () => {
+    expect(documentListFilterFromOptions({ signer: 'account-1' })).toEqual({
+      signerAccountId: 'account-1',
+    });
+    expect(documentListFilterFromOptions({})).toEqual({});
+  });
 
   it('documents the minimal invitation commands', () => {
     const invitationHelp = run('invitation', '--help');

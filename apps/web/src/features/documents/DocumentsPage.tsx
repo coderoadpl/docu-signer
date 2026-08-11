@@ -43,6 +43,7 @@ import { z } from 'zod';
 import {
   documentSignatureStatusSchema,
   documentTypeSchema,
+  type DocumentListItem,
   type DocumentType,
   type DocumentWithFiles,
   type UpdateDocument,
@@ -157,7 +158,7 @@ const MoreVertIcon = () => (
 
 const DOCUMENT_COLUMNS_KEY = 'documents.columns';
 const TEXT_FILTER_DEBOUNCE_MS = 300;
-const EMPTY_DOCUMENT_LIST: DocumentWithFiles[] = [];
+const EMPTY_DOCUMENT_LIST: DocumentListItem[] = [];
 
 const DOCUMENT_COLUMN_IDS = [
   'documentDate',
@@ -166,6 +167,7 @@ const DOCUMENT_COLUMN_IDS = [
   'tags',
   'period',
   'signatureStatus',
+  'signers',
   'files',
   'draft',
 ] as const;
@@ -184,18 +186,20 @@ const DOCUMENT_COLUMN_LABELS: Record<DocumentColumnId, string> = {
   tags: 'Tagi',
   period: 'Okres',
   signatureStatus: 'Status podpisu',
+  signers: 'Podpisali',
   files: 'Pliki',
   draft: 'Szkic',
 };
 
 const documentColumnPreferenceSchema = z.object({
+  version: z.literal(2).optional(),
   order: z.array(z.string()),
   visible: z.array(z.string()),
 });
 
 const defaultDocumentColumnSettings = (): DocumentColumnSettings => ({
   order: Array.from(DOCUMENT_COLUMN_IDS),
-  visible: ['documentDate', 'docType', 'person', 'files', 'draft'],
+  visible: ['documentDate', 'docType', 'person', 'signers', 'files', 'draft'],
 });
 
 const normalizeDocumentColumnSettings = (value: unknown): DocumentColumnSettings => {
@@ -208,7 +212,12 @@ const normalizeDocumentColumnSettings = (value: unknown): DocumentColumnSettings
     ...parsed.data.order.filter(isKnownColumn),
     ...DOCUMENT_COLUMN_IDS.filter((column) => !parsed.data.order.includes(column)),
   ];
-  const visible = parsed.data.visible.filter(isKnownColumn);
+  const visible = [
+    ...parsed.data.visible.filter(isKnownColumn),
+    ...(parsed.data.version === 2 || parsed.data.visible.includes('signers')
+      ? []
+      : ['signers' as const]),
+  ];
   return {
     order,
     visible: visible.length > 0 ? visible : fallback.visible,
@@ -218,6 +227,7 @@ const normalizeDocumentColumnSettings = (value: unknown): DocumentColumnSettings
 const toColumnPreferenceValue = (
   settings: DocumentColumnSettings,
 ): UserPreferenceValue => ({
+  version: 2,
   order: settings.order,
   visible: settings.visible,
 });
@@ -226,6 +236,14 @@ const signedStatus = (document: DocumentWithFiles) =>
   hasSignedDocumentFile(document)
     ? 'signed'
     : 'needs-signature';
+
+const signerInitials = (name: string): string => {
+  const parts = name.trim().split(/\s+/u);
+  const selected = parts.length > 1 ? [parts[0], parts.at(-1)] : parts;
+  return selected
+    .map((part) => Array.from(part ?? '')[0]?.toLocaleUpperCase('pl-PL') ?? '')
+    .join('');
+};
 
 type BulkDialog = 'add-tags' | 'remove-tag' | 'person' | 'type';
 
@@ -279,7 +297,7 @@ export const DocumentsPage = () => {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [bulkSummary, setBulkSummary] = useState<BulkSummary | null>(null);
   const [rowMenuAnchor, setRowMenuAnchor] = useState<HTMLElement | null>(null);
-  const [rowMenuDocument, setRowMenuDocument] = useState<DocumentWithFiles | null>(null);
+  const [rowMenuDocument, setRowMenuDocument] = useState<DocumentListItem | null>(null);
   const [columnSettings, setColumnSettings] = useState<DocumentColumnSettings>(
     defaultDocumentColumnSettings,
   );
@@ -290,6 +308,7 @@ export const DocumentsPage = () => {
   const documentFilter = toDocumentFilter(filters);
   const documents = useQuery(actions.documents(documentFilter));
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
+  const tenantAccounts = useQuery(actions.tenantAccounts);
   const columnPreference = useQuery(preferenceActions.userPreference(DOCUMENT_COLUMNS_KEY));
   const createDocument = useMutation({
     ...actions.createDocument,
@@ -362,6 +381,7 @@ export const DocumentsPage = () => {
   const hasDocuments = allDocuments.length > 0;
   const personOptions = uniqueDocumentPersons(allDocuments);
   const tagOptions = uniqueDocumentTags(allDocuments);
+  const signerOptions = tenantAccounts.data?.accounts ?? [];
   const selectedDocuments = visibleDocuments.filter((document) =>
     selectedIds.includes(document.id),
   );
@@ -521,7 +541,7 @@ export const DocumentsPage = () => {
 
   const renderDocumentCell = (
     column: DocumentColumnId,
-    document: DocumentWithFiles,
+    document: DocumentListItem,
   ) => {
     if (column === 'documentDate') {
       return (
@@ -573,6 +593,22 @@ export const DocumentsPage = () => {
           label={SIGNATURE_STATUS_LABELS[status]}
         />
       );
+    }
+    if (column === 'signers') {
+      return document.signers.length > 0 ? (
+        <Stack direction="row" sx={{ gap: 0.5, flexWrap: 'wrap' }}>
+          {document.signers.map((signer) => (
+            <Tooltip key={signer.accountId} title={signer.name} describeChild disableInteractive>
+              <Chip
+                size="small"
+                variant="outlined"
+                label={signerInitials(signer.name)}
+                aria-label={signer.name}
+              />
+            </Tooltip>
+          ))}
+        </Stack>
+      ) : null;
     }
     if (column === 'files') return <FileCounts files={document.files} />;
     return document.draft ? (
@@ -702,6 +738,22 @@ export const DocumentsPage = () => {
               <MenuItem value="false">Tylko zatwierdzone</MenuItem>
               <MenuItem value="true">Tylko szkice</MenuItem>
               <MenuItem value="all">Wszystkie</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl sx={{ minWidth: '11rem', flex: { sm: '1 1 11rem' } }}>
+            <InputLabel id="filter-signer-account">Podpisał(a)</InputLabel>
+            <Select
+              labelId="filter-signer-account"
+              label="Podpisał(a)"
+              value={filters.signerAccountId}
+              onChange={(event) => updateFilter('signerAccountId', String(event.target.value))}
+            >
+              <MenuItem value="">Wszyscy</MenuItem>
+              {signerOptions.map((tenantAccount) => (
+                <MenuItem key={tenantAccount.accountId} value={tenantAccount.accountId}>
+                  {tenantAccount.name}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Stack>

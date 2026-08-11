@@ -13,3 +13,4 @@ export * from './usecases/signature-records.js';
 export * from './usecases/source-update-requests.js';
 export * from './usecases/pdf-sealing.js';
 export * from './usecases/invitations.js';
+export * from './usecases/tenant-accounts.js';

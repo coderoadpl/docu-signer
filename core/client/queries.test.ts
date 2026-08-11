@@ -47,6 +47,7 @@ import {
   userPreferenceQuery,
   tenantSettingsInvalidates,
   tenantSettingsQuery,
+  tenantAccountsQuery,
 } from './queries.js';
 import { ok, type Result, type AppError } from '#core/domain/index.js';
 import type { AuthClientPort, AuthSessionResult, PasskeyInfo } from './auth-port.js';
@@ -489,6 +490,21 @@ describe('tenant settings and signature record descriptors', () => {
       appError: { code: 'unauthorized', message: 'Sign in' },
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('tenant account query descriptors', () => {
+  it('executes the tenant account list through its cache scope', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      response({ accounts: [{ accountId: 'account-1', name: 'Maria Choma' }] }),
+    );
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+    const query = tenantAccountsQuery(api);
+
+    expect(query.queryKey).toEqual(['tenant-accounts']);
+    await expect(newClient().fetchQuery(query)).resolves.toEqual({
+      accounts: [{ accountId: 'account-1', name: 'Maria Choma' }],
+    });
   });
 });
 

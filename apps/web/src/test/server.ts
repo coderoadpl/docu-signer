@@ -54,6 +54,12 @@ export const server = setupServer(
       },
     }),
   ),
+  http.get('*/api/tenant-accounts', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { accounts: [{ accountId: 'user-owner', name: 'Owner' }] },
+    }),
+  ),
   http.get('*/api/documents/:documentId/signature-records', () =>
     HttpResponse.json({ ok: true, data: { items: [], nextCursor: null } }),
   ),

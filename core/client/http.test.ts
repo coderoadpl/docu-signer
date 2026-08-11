@@ -65,6 +65,7 @@ describe('API client', () => {
       tag: 'podpis',
       dateFrom: '2026-01-01',
       signatureStatus: 'needs-signature',
+      signerAccountId: 'account-1',
     });
     await api.createDocument({
       title: 'Umowa',
@@ -79,7 +80,7 @@ describe('API client', () => {
     await api.purgeDocument('11111111-1111-4111-8111-111111111111');
 
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(
-      '/api/documents?person=Jan&tag=podpis&dateFrom=2026-01-01&signatureStatus=needs-signature',
+      '/api/documents?person=Jan&tag=podpis&dateFrom=2026-01-01&signatureStatus=needs-signature&signerAccountId=account-1',
     );
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
       method: 'POST',
@@ -101,6 +102,22 @@ describe('API client', () => {
       '/api/documents/11111111-1111-4111-8111-111111111111/purge',
     );
     expect(fetchImpl.mock.calls[4]?.[1]).toMatchObject({ method: 'DELETE' });
+  });
+
+  it('lists tenant accounts through the contract', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      Promise.resolve(json({
+        ok: true,
+        data: { accounts: [{ accountId: 'account-1', name: 'Maria Choma' }] },
+      })),
+    );
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(api.listTenantAccounts()).resolves.toEqual({
+      ok: true,
+      value: { accounts: [{ accountId: 'account-1', name: 'Maria Choma' }] },
+    });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('/api/tenant-accounts');
   });
 
   it('calls saved search routes through the contract', async () => {
