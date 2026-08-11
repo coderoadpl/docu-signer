@@ -1,5 +1,5 @@
 import { useMemo, type ElementType } from 'react';
-import { Box, Table, TableCell, TableContainer, Typography } from '@mui/material';
+import { Box, Button, Table, TableCell, TableContainer, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme, type ThemeOptions } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 
@@ -218,6 +218,8 @@ export const Wordmark = styled(CardTitle)({ letterSpacing: '-0.015em' });
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
 export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
+
+export const NoWrapButton = styled(Button)({ whiteSpace: 'nowrap' });
 
 export const PadStatusDot = styled('span')(({ theme }) => ({
   display: 'inline-block',

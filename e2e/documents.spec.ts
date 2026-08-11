@@ -614,7 +614,8 @@ test('updates the source and immediately transfers the current account signature
   await signVisiblePdf(page);
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
-  const updateSource = page.getByRole('button', { name: 'Uaktualnij źródło' });
+  await page.getByRole('button', { name: 'Więcej akcji', exact: true }).click();
+  const updateSource = page.getByRole('menuitem', { name: 'Uaktualnij źródło' });
   await expect(updateSource).toBeEnabled();
   await updateSource.click();
   const updateDialog = page.getByRole('dialog', { name: 'Uaktualnij źródło' });
@@ -657,7 +658,8 @@ test('moves a document to trash and restores it', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
 
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  await page.getByRole('button', { name: 'Usuń dokument' }).click();
+  await page.getByRole('button', { name: 'Więcej akcji', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Usuń dokument' }).click();
   const deleteDialog = page.getByRole('dialog', { name: 'Przenieść dokument do kosza?' });
   await expect(
     deleteDialog.getByText('Dokument trafi do kosza. Możesz go później przywrócić.'),
