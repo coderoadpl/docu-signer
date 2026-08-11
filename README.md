@@ -198,7 +198,7 @@ humans who own the platform; the architecture (`docs/architecture.md`
   documented "please don't" is not.
 - **Production release is an owner-approved PR gate.** Vercel Production Branch
   Tracking points at the `production` branch. There is no server-enforced
-  ruleset in this fork (private repo on GitHub Free — see FOUNDATION.md); the
+  ruleset armed in this fork yet (see FOUNDATION.md); the
   gate is procedural: an agent (a Write-not-Admin machine account) merges to
   `main` only on green checks and the owner's word, and the production build is
   triggered only by a `main → production` PR the **owner** approves and merges

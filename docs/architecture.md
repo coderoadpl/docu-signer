@@ -1239,7 +1239,7 @@ process must supply and verify its own long-lived Node packaging.
 
 > **Fork caveat (docu-signer, 2026-07-27).** Everything below about the public
 > repo and the two rulesets describes the **upstream** wall. This fork is a
-> private repo on GitHub Free where rulesets are unavailable; protection is
+> public repo where no rulesets are armed yet; protection is
 > procedural — see FOUNDATION.md. The section is kept as the pattern the
 > discipline substitutes for.
 

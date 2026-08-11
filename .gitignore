@@ -1,4 +1,14 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+.turbo/
+*.log
+
 .vercel
 .pnpm-store/
 .env*
 !.env.example
+
+.claude/state.md

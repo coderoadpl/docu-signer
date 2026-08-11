@@ -28,8 +28,10 @@ each.
 
 - Self-host stack dropped (Dockerfile, compose.prod, Caddyfile, ops/) — deploy
   target is Vercel + Neon + Blob only.
-- No branch rulesets — GitHub Free private repo; gate discipline is
-  procedural (agent merges only on green checks and the owner's word).
+- No branch rulesets armed yet — the repo is public, so rulesets are
+  available on GitHub Free; arming them is a pending owner task and gate
+  discipline is procedural until then (agent merges only on green checks and
+  the owner's word).
   architecture.md §Environments still describes the upstream ruleset wall —
   read it as the substituted-for pattern, not this repo's state.
 - Remote post-deploy smoke runs on Production only — previews sit behind
