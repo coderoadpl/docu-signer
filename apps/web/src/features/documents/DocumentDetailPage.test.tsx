@@ -137,7 +137,8 @@ describe('DocumentDetailPage', () => {
     );
     await renderPage();
 
-    const action = await screen.findByRole('button', { name: 'Uaktualnij źródło' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Więcej akcji' }));
+    const action = screen.getByRole('menuitem', { name: 'Uaktualnij źródło' });
     expect(action).toBeEnabled();
     await userEvent.click(action);
     const dialog = screen.getByRole('dialog', { name: 'Uaktualnij źródło' });
@@ -153,8 +154,9 @@ describe('DocumentDetailPage', () => {
     );
     await renderPage();
 
-    const action = await screen.findByRole('button', { name: 'Uaktualnij źródło' });
-    expect(action).toBeDisabled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Więcej akcji' }));
+    const action = screen.getByRole('menuitem', { name: 'Uaktualnij źródło' });
+    expect(action).toHaveAttribute('aria-disabled', 'true');
     await userEvent.hover(action.parentElement ?? action);
     expect(
       await screen.findByText(
@@ -446,9 +448,8 @@ describe('DocumentDetailPage', () => {
       ).not.toBeInTheDocument(),
     );
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Usuń dokument' }),
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Więcej akcji' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Usuń dokument' }));
     const deleteDialog = screen.getByRole('dialog');
     expect(
       within(deleteDialog).getByText('Dokument trafi do kosza. Możesz go później przywrócić.'),
@@ -685,9 +686,8 @@ describe('DocumentDetailPage', () => {
     );
     await renderPage();
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Usuń dokument' }),
-    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Więcej akcji' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Usuń dokument' }));
     await userEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Przenieś do kosza' }),
     );

@@ -42,7 +42,7 @@ import { actions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { formatPolishDate } from '../../lib/format-date.js';
-import { FileDropZone } from '../../theme.js';
+import { FileDropZone, NoWrapButton } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import { SourceUpdateDialog } from './SourceUpdateDialog.js';
 import {
@@ -86,7 +86,7 @@ const DownloadIcon = () => (
 );
 
 const MoreVertIcon = () => (
-  <SvgIcon>
+  <SvgIcon fontSize="small">
     <path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
   </SvgIcon>
 );
@@ -380,6 +380,7 @@ export const DocumentDetailPage = ({
     actions.activeSourceUpdateRequest(documentId),
   );
   const [editOpen, setEditOpen] = useState(false);
+  const [detailActionsAnchor, setDetailActionsAnchor] = useState<HTMLElement | null>(null);
   const [deleteDocumentOpen, setDeleteDocumentOpen] = useState(false);
   const [purgeDocumentOpen, setPurgeDocumentOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<DocumentFile>();
@@ -721,54 +722,76 @@ export const DocumentDetailPage = ({
           ) : (
             <>
               {isDraft ? (
-                <Button
+                <NoWrapButton
                   variant="contained"
                   disabled={approveDocument.isPending}
                   onClick={() => approveDocument.mutate(documentId)}
                 >
                   Zatwierdź
-                </Button>
+                </NoWrapButton>
               ) : (
-                <Button
+                <NoWrapButton
                   variant="outlined"
                   disabled={unapproveDocument.isPending}
                   onClick={() => unapproveDocument.mutate(documentId)}
                 >
                   Cofnij do szkicu
-                </Button>
+                </NoWrapButton>
               )}
-              <Button variant="contained" onClick={() => setEditOpen(true)}>
+              <NoWrapButton variant="contained" onClick={() => setEditOpen(true)}>
                 Edytuj
-              </Button>
-              <Tooltip
-                title={
-                  legacySignedWithoutRecords
-                    ? 'Brak zapisu podpisów — dokumenty podpisane przed włączeniem zapisu wymagają ponownego podpisania.'
-                    : activeSourceUpdate
-                      ? 'Aktualizacja źródła jest już w toku.'
-                      : ''
-                }
+              </NoWrapButton>
+              <IconButton
+                size="small"
+                aria-label="Więcej akcji"
+                onClick={(event) => setDetailActionsAnchor(event.currentTarget)}
               >
-                <span>
-                  <Button
-                    variant="outlined"
-                    disabled={!sourceUpdateEnabled}
-                    onClick={() => {
-                      setSourceUpdateError(undefined);
-                      setSourceUpdateOpen(true);
-                    }}
-                  >
-                    Uaktualnij źródło
-                  </Button>
-                </span>
-              </Tooltip>
-              <Button variant="outlined" color="error" onClick={() => setDeleteDocumentOpen(true)}>
-                Usuń dokument
-              </Button>
+                <MoreVertIcon />
+              </IconButton>
             </>
           )}
         </Stack>
       </Stack>
+
+      <Menu
+        anchorEl={detailActionsAnchor}
+        open={Boolean(detailActionsAnchor)}
+        onClose={() => setDetailActionsAnchor(null)}
+      >
+        {sourceUpdateEnabled ? (
+          <MenuItem
+            onClick={() => {
+              setDetailActionsAnchor(null);
+              setSourceUpdateError(undefined);
+              setSourceUpdateOpen(true);
+            }}
+          >
+            Uaktualnij źródło
+          </MenuItem>
+        ) : (
+          <Tooltip
+            title={
+              legacySignedWithoutRecords
+                ? 'Brak zapisu podpisów — dokumenty podpisane przed włączeniem zapisu wymagają ponownego podpisania.'
+                : activeSourceUpdate
+                  ? 'Aktualizacja źródła jest już w toku.'
+                  : ''
+            }
+          >
+            <span>
+              <MenuItem disabled>Uaktualnij źródło</MenuItem>
+            </span>
+          </Tooltip>
+        )}
+        <MenuItem
+          onClick={() => {
+            setDetailActionsAnchor(null);
+            setDeleteDocumentOpen(true);
+          }}
+        >
+          <Typography color="error">Usuń dokument</Typography>
+        </MenuItem>
+      </Menu>
 
       {isTrashed ? (
         <Alert severity="warning" sx={{ mt: 3 }}>
