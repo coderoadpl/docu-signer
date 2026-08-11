@@ -3,13 +3,19 @@ import { and, desc, eq, exists, ilike, inArray, isNotNull, isNull, ne, notExists
 import {
   documentFileSchema,
   documentSchema,
+  documentWithSignersSchema,
   type Document,
   type DocumentFile,
+  type DocumentWithSigners,
 } from '#core/domain/index.js';
 import type { DocumentRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
-import { documentFiles, documents, sourceUpdateRequests } from './schema.js';
+import {
+  documentFiles,
+  documents,
+  sourceUpdateRequests,
+} from './schema.js';
 
 const toDocument = (row: typeof documents.$inferSelect): Document =>
   documentSchema.parse({
@@ -21,6 +27,45 @@ const toDocument = (row: typeof documents.$inferSelect): Document =>
 
 const toDocumentFile = (row: typeof documentFiles.$inferSelect): DocumentFile =>
   documentFileSchema.parse({ ...row, createdAt: row.createdAt.toISOString() });
+
+const toDocumentWithSigners = (row: {
+  document: typeof documents.$inferSelect;
+  signers: unknown;
+}): DocumentWithSigners =>
+  documentWithSignersSchema.parse({
+    ...toDocument(row.document),
+    signers: row.signers,
+  });
+
+const documentSigners = sql<unknown>`
+  coalesce(
+    (
+      SELECT jsonb_agg(
+        jsonb_build_object('accountId', contributor.account_id, 'name', contributor.name)
+        ORDER BY contributor.name, contributor.account_id
+      )
+      FROM (
+        SELECT DISTINCT
+          coalesce(stamp.value ->> 'contributedBy', record.signed_by) AS account_id,
+          account.name AS name
+        FROM signature_records record
+        CROSS JOIN LATERAL jsonb_array_elements(
+          coalesce(record.payload, '[]'::jsonb)
+        ) AS stamp(value)
+        INNER JOIN tenant_admins grant_row
+          ON grant_row.tenant_id = record.tenant_id
+          AND grant_row.user_id = coalesce(
+            stamp.value ->> 'contributedBy',
+            record.signed_by
+          )
+        INNER JOIN "user" account ON account.id = grant_row.user_id
+        WHERE record.tenant_id = documents.tenant_id
+          AND record.document_id = documents.id
+      ) contributor
+    ),
+    '[]'::jsonb
+  )
+`.as('signers');
 
 export const createDocumentRepository = (db: Db): DocumentRepository => ({
   listByTenant: async (tenantId, filter) => {
@@ -63,16 +108,34 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     if (filter.signatureStatus === 'signed') {
       conditions.push(hasSignedFile);
     }
+    if (filter.signerAccountId) {
+      conditions.push(sql`exists (
+        SELECT 1
+        FROM signature_records record
+        CROSS JOIN LATERAL jsonb_array_elements(
+          coalesce(record.payload, '[]'::jsonb)
+        ) AS stamp(value)
+        INNER JOIN tenant_admins grant_row
+          ON grant_row.tenant_id = record.tenant_id
+          AND grant_row.user_id = coalesce(
+            stamp.value ->> 'contributedBy',
+            record.signed_by
+          )
+        WHERE record.tenant_id = documents.tenant_id
+          AND record.document_id = documents.id
+          AND grant_row.user_id = ${filter.signerAccountId}
+      )`);
+    }
     if (filter.draft === 'true') conditions.push(eq(documents.draft, true));
     if (filter.draft === undefined || filter.draft === 'false') {
       conditions.push(eq(documents.draft, false));
     }
     const rows = await db
-      .select()
+      .select({ document: documents, signers: documentSigners })
       .from(documents)
       .where(and(...conditions))
       .orderBy(desc(documents.documentDate), desc(documents.createdAt));
-    return rows.map(toDocument);
+    return rows.map(toDocumentWithSigners);
   },
   listDeletedByTenant: async (tenantId) => {
     const rows = await db

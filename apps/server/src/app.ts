@@ -78,6 +78,7 @@ import {
   listTrashedDocuments,
   listSavedSearches,
   listSignatureRecords,
+  listTenantAccounts,
   listPendingSourceUpdateRequests,
   moveDocumentFile,
   purgeDocument,
@@ -622,6 +623,7 @@ export const buildApp = (deps: AppDeps) => {
       dateFrom: c.req.query('dateFrom'),
       dateTo: c.req.query('dateTo'),
       signatureStatus: c.req.query('signatureStatus'),
+      signerAccountId: c.req.query('signerAccountId'),
       draft: c.req.query('draft'),
     });
     if (!parsed.success) {
@@ -629,6 +631,11 @@ export const buildApp = (deps: AppDeps) => {
     }
     const result = await listDocuments(ctxOf(c.get('identity')), parsed.data, deps);
     return respond(result.ok ? ok({ documents: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.tenantAccounts.path, async (c) => {
+    const result = await listTenantAccounts(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ accounts: result.value }) : result);
   });
 
   app.post(API_PATHS.documents, async (c) => {

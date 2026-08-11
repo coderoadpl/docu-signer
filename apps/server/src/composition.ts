@@ -32,6 +32,7 @@ import { createLocalFsStorage } from '#adapters/storage/local-fs.js';
 import { createVercelBlobStorage } from '#adapters/storage/vercel-blob.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
+import { createTenantAccountRepository } from '#adapters/db/tenant-accounts-repository.js';
 import { createSignatureRecordRepository } from '#adapters/db/signature-records-repository.js';
 import { createSourceUpdateRequestRepository } from '#adapters/db/source-update-requests-repository.js';
 import {
@@ -62,6 +63,7 @@ import type {
   TenantDomainRepository,
   TenantRepository,
   TenantSettingsRepository,
+  TenantAccountRepository,
   UserPreferenceRepository,
 } from '#core/server/index.js';
 
@@ -78,6 +80,7 @@ export interface AppDeps {
   savedSearches: SavedSearchRepository;
   userPreferences: UserPreferenceRepository;
   tenantSettings: TenantSettingsRepository;
+  tenantAccounts: TenantAccountRepository;
   signatureRecords: SignatureRecordRepository;
   sourceUpdateRequests: SourceUpdateRequestRepository;
   pdfSealing?: PdfSealingDeps;
@@ -262,6 +265,7 @@ export const createDeps = (env: Env): AppDeps => {
     savedSearches: createSavedSearchRepository(db),
     userPreferences: createUserPreferenceRepository(db),
     tenantSettings,
+    tenantAccounts: createTenantAccountRepository(db),
     signatureRecords,
     sourceUpdateRequests: createSourceUpdateRequestRepository(db),
     pdfSealing: {

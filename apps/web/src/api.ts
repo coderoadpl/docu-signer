@@ -76,6 +76,7 @@ import {
   submitPadStrokesMutation,
   tenantSettingsInvalidates,
   tenantSettingsQuery,
+  tenantAccountsQuery,
   updateDocumentMutation,
   updateTenantSettingsMutation,
   unapproveDocumentMutation,
@@ -142,6 +143,7 @@ export const actions = {
   consumePadSubmission: consumePadSubmissionMutation(apiClient),
   closePadSession: closePadSessionMutation(apiClient),
   tenantSettings: tenantSettingsQuery(apiClient),
+  tenantAccounts: tenantAccountsQuery(apiClient),
   updateTenantSettings: updateTenantSettingsMutation(apiClient),
   tenantSettingsInvalidates,
   signatureRecords: (documentId: string) =>

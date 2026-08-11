@@ -41,6 +41,7 @@ describe('document schemas', () => {
           tag: ' odbiór ',
           dateFrom: '2026-01-01',
           signatureStatus: 'signed',
+          signerAccountId: ' account-1 ',
         },
       }),
     ).toEqual({
@@ -52,6 +53,7 @@ describe('document schemas', () => {
         tag: 'odbiór',
         dateFrom: '2026-01-01',
         signatureStatus: 'signed',
+        signerAccountId: 'account-1',
       },
     });
     expect(createSavedSearchSchema.safeParse({ name: '', filter: {} }).success).toBe(false);

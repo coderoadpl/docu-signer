@@ -128,6 +128,7 @@ describe('document view logic', () => {
       dateFrom: '',
       dateTo: '',
       signatureStatus: '',
+      signerAccountId: '',
       draft: 'false',
     });
     expect(
@@ -139,6 +140,7 @@ describe('document view logic', () => {
         dateFrom: '',
         dateTo: '2026-12-31',
         signatureStatus: '',
+        signerAccountId: '',
         draft: 'false',
       }),
     ).toEqual({ text: 'umowa', dateTo: '2026-12-31' });
@@ -151,6 +153,7 @@ describe('document view logic', () => {
         dateFrom: '2026-01-01',
         dateTo: '',
         signatureStatus: 'needs-signature',
+        signerAccountId: 'account-1',
         draft: 'all',
       }),
     ).toEqual({
@@ -159,6 +162,7 @@ describe('document view logic', () => {
       tag: 'ważne',
       dateFrom: '2026-01-01',
       signatureStatus: 'needs-signature',
+      signerAccountId: 'account-1',
       draft: 'all',
     });
     expect(hasDocumentFilter({})).toBe(false);
@@ -171,6 +175,7 @@ describe('document view logic', () => {
       dateFrom: '',
       dateTo: '',
       signatureStatus: 'signed',
+      signerAccountId: '',
       draft: 'false',
     });
     const file = {
@@ -200,6 +205,20 @@ describe('document view logic', () => {
         draft: 'true',
       }),
     ).toEqual({ q: 'Szkic', szkice: true });
+  });
+
+  it('round-trips the signer account through URLs and saved filters', () => {
+    const parsed = documentsSearchSchema.parse({ podpisal: 'account-1' });
+    expect(documentFiltersFromSearch(parsed)).toMatchObject({ signerAccountId: 'account-1' });
+    expect(
+      documentsSearchFromState('list', {
+        ...emptyDocumentFilters(),
+        signerAccountId: 'account-1',
+      }),
+    ).toEqual({ podpisal: 'account-1' });
+    expect(toDocumentFilterValues({ signerAccountId: 'account-1' })).toMatchObject({
+      signerAccountId: 'account-1',
+    });
   });
 
   it('serializes and parses client-side signing queue state', () => {

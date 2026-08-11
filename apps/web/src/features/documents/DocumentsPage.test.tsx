@@ -107,6 +107,7 @@ const document = {
   tags: ['ważne'],
   createdAt: '2026-07-18T10:00:00.000Z',
   updatedAt: '2026-07-18T10:00:00.000Z',
+  signers: [],
   files: [],
 };
 
@@ -115,6 +116,7 @@ const signedDocument = {
   id: '22222222-2222-4222-8222-222222222222',
   title: 'Podpisana umowa',
   tags: ['podpisane'],
+  signers: [{ accountId: 'account-mc', name: 'Mateusz Choma' }],
   files: [
     {
       id: '44444444-4444-4444-8444-444444444444',
@@ -384,6 +386,36 @@ describe('DocumentsPage', () => {
         signatureStatus: 'signed',
         draft: 'true',
       }),
+    );
+  });
+
+  it('renders signer initials with a full-name tooltip and filters by tenant account', async () => {
+    const user = userEvent.setup();
+    const seen = vi.fn();
+    server.use(
+      http.get('/api/tenant-accounts', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { accounts: [{ accountId: 'account-mc', name: 'Mateusz Choma' }] },
+        }),
+      ),
+      http.get('/api/documents', ({ request }) => {
+        seen(Object.fromEntries(new URL(request.url).searchParams.entries()));
+        return HttpResponse.json({ ok: true, data: { documents: [signedDocument] } });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByRole('columnheader', { name: 'Podpisali' })).toBeInTheDocument();
+    const signerChip = screen.getByLabelText('Mateusz Choma');
+    expect(signerChip).toHaveTextContent('MC');
+    await user.hover(signerChip);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Mateusz Choma');
+
+    await user.click(screen.getByLabelText('Podpisał(a)'));
+    await user.click(await screen.findByRole('option', { name: 'Mateusz Choma' }));
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({ signerAccountId: 'account-mc' }),
     );
   });
 
@@ -967,9 +999,11 @@ describe('DocumentsPage', () => {
             'person',
             'period',
             'signatureStatus',
+            'signers',
             'draft',
           ],
-          visible: ['tags', 'files'],
+          visible: ['tags', 'signers', 'files'],
+          version: 2,
         },
       }),
     );
@@ -986,9 +1020,11 @@ describe('DocumentsPage', () => {
             'person',
             'period',
             'signatureStatus',
+            'signers',
             'draft',
           ],
-          visible: ['tags', 'files'],
+          visible: ['tags', 'signers', 'files'],
+          version: 2,
         },
       }),
     );
@@ -1194,10 +1230,12 @@ describe('DocumentsPage', () => {
     await user.click(await screen.findByRole('option', { name: 'Podpisane' }));
     await user.click(screen.getByLabelText('Szkice'));
     await user.click(await screen.findByRole('option', { name: 'Wszystkie' }));
+    await user.click(screen.getByLabelText('Podpisał(a)'));
+    await user.click(await screen.findByRole('option', { name: 'Owner' }));
     await user.click(screen.getByRole('button', { name: 'Zapisz teczkę' }));
     const dialog = await screen.findByRole('dialog', { name: 'Zapisz teczkę' });
     expect(
-      within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane · Szkice: razem z zatwierdzonymi'),
+      within(dialog).getByText('Tag: odbiór · Status podpisu: Podpisane · Podpisał(a): user-owner · Szkice: razem z zatwierdzonymi'),
     ).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Nazwa'), {
       target: { value: 'Odbiór' },
@@ -1207,7 +1245,12 @@ describe('DocumentsPage', () => {
     await waitFor(() =>
       expect(savedCreate).toHaveBeenCalledWith({
         name: 'Odbiór',
-        filter: { tag: 'odbiór', signatureStatus: 'signed', draft: 'all' },
+        filter: {
+          tag: 'odbiór',
+          signatureStatus: 'signed',
+          signerAccountId: 'user-owner',
+          draft: 'all',
+        },
       }),
     );
     await waitFor(() =>

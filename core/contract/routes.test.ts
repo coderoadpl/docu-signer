@@ -9,6 +9,7 @@ import {
   documentCreateInputSchema,
   documentGetOutputSchema,
   documentListInputSchema,
+  documentListOutputSchema,
   documentRestoreOutputSchema,
   documentTrashListOutputSchema,
   exportDocumentsInputSchema,
@@ -36,6 +37,7 @@ import {
   sourceUpdateRequestOutputSchema,
   tenantSettingsGetOutputSchema,
   tenantSettingsUpdateInputSchema,
+  tenantAccountListOutputSchema,
   userPreferenceGetOutputSchema,
   userPreferenceKeyInputSchema,
   userPreferenceSetInputSchema,
@@ -110,6 +112,10 @@ describe('API route contract', () => {
     expect(API_ROUTES.tenantSettings).toEqual({
       method: 'GET',
       path: '/api/tenant-settings',
+    });
+    expect(API_ROUTES.tenantAccounts).toEqual({
+      method: 'GET',
+      path: '/api/tenant-accounts',
     });
     expect(API_ROUTES.signatureRecordsCreate).toEqual({
       method: 'POST',
@@ -276,6 +282,28 @@ describe('API route contract', () => {
       deletedAt: '2026-08-02T00:00:00.000Z',
     };
     expect(documentGetOutputSchema.safeParse({ document: { ...document, files: [] } }).success).toBe(true);
+    expect(
+      documentListOutputSchema.safeParse({
+        documents: [
+          {
+            ...document,
+            deletedAt: null,
+            files: [],
+            signers: [{ accountId: 'account-1', name: 'Maria Choma' }],
+          },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      documentListOutputSchema.safeParse({
+        documents: [{ ...document, deletedAt: null, files: [] }],
+      }).success,
+    ).toBe(false);
+    expect(
+      tenantAccountListOutputSchema.safeParse({
+        accounts: [{ accountId: 'account-1', name: 'Maria Choma' }],
+      }).success,
+    ).toBe(true);
     expect(documentTrashListOutputSchema.safeParse({ documents: [{ ...document, files: [] }] }).success).toBe(true);
     expect(documentRestoreOutputSchema.safeParse({ document: { ...document, deletedAt: null } }).success).toBe(true);
     expect(
@@ -344,6 +372,9 @@ describe('API route contract', () => {
       documentListInputSchema.safeParse({ signatureStatus: 'needs-signature' }).success,
     ).toBe(true);
     expect(documentListInputSchema.safeParse({ draft: 'all' }).success).toBe(true);
+    expect(
+      documentListInputSchema.safeParse({ signerAccountId: 'account-1' }).success,
+    ).toBe(true);
     expect(documentListInputSchema.safeParse({ draft: true }).success).toBe(false);
     expect(
       documentListInputSchema.safeParse({ signatureStatus: 'unknown' }).success,

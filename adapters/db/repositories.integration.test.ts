@@ -12,6 +12,7 @@ import { createTenantAccessReader } from './repositories.js';
 import { createSavedSearchRepository } from './saved-searches-repository.js';
 import { createUserPreferenceRepository } from './user-preferences-repository.js';
 import { createTenantSettingsRepository } from './tenant-settings-repository.js';
+import { createTenantAccountRepository } from './tenant-accounts-repository.js';
 import { createSignatureRecordRepository } from './signature-records-repository.js';
 import { createSourceUpdateRequestRepository } from './source-update-requests-repository.js';
 import { tenantAdmins, tenants, user } from './schema.js';
@@ -276,6 +277,116 @@ describe('DocumentRepository', () => {
         signatureStatus: 'signed',
       }),
     ).resolves.toMatchObject([{ title: 'Podpisany' }]);
+  });
+
+  it('aggregates distinct signer accounts and filters without crossing tenants', async () => {
+    const repository = createDocumentRepository(db);
+    const signatures = createSignatureRecordRepository(db);
+    await db.insert(user).values({
+      id: 'user-cosigner',
+      email: 'cosigner@example.com',
+      name: 'Maria Choma',
+    });
+    await db.insert(tenantAdmins).values({
+      id: 'grant-cosigner',
+      tenantId: 'tenant-a',
+      userId: 'user-cosigner',
+      role: 'admin',
+    });
+    await db.insert(user).values({
+      id: 'user-foreign-signer',
+      email: 'foreign-signer@example.com',
+      name: 'Foreign Signer',
+    });
+    await db.insert(tenantAdmins).values({
+      id: 'grant-foreign-signer',
+      tenantId: 'tenant-b',
+      userId: 'user-foreign-signer',
+      role: 'admin',
+    });
+    const signedDocumentId = '31313131-3131-4313-8313-313131313131';
+    const unsignedDocumentId = '32323232-3232-4323-8323-323232323232';
+    const signedFileId = '33333333-3333-4333-8333-333333333333';
+    for (const input of [
+      { id: signedDocumentId, title: 'Z podpisami' },
+      { id: unsignedDocumentId, title: 'Bez zapisu podpisu' },
+    ]) {
+      await repository.create({
+        ...input,
+        tenantId: 'tenant-a',
+        docType: 'umowa-uod',
+        documentDate: '2026-08-05',
+        periodStart: null,
+        periodEnd: null,
+        person: null,
+        tags: ['signer-attribution'],
+      });
+    }
+    await repository.createFile('tenant-a', {
+      id: signedFileId,
+      documentId: signedDocumentId,
+      role: 'signed-digital',
+      fileName: 'podpisany.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-a/signer-attribution/signed',
+    });
+    const stamp = {
+      strokes: [{ points: [{ x: 0.2, y: 0.3, pressure: 0.8 }] }],
+      pageIndex: 0,
+      placement: { offsetX: 0.1, offsetY: 0.2, scale: 1 },
+      inkColor: 'black' as const,
+      inkSize: 2,
+    };
+    await signatures.create({
+      id: '34343434-3434-4343-8343-343434343434',
+      tenantId: 'tenant-a',
+      documentId: signedDocumentId,
+      fileId: signedFileId,
+      signedBy: 'user-owner',
+      payload: [
+        stamp,
+        { ...stamp, contributedBy: 'user-owner' },
+        { ...stamp, contributedBy: 'user-cosigner' },
+        { ...stamp, contributedBy: 'user-foreign-signer' },
+      ],
+    });
+
+    await expect(
+      repository.listByTenant('tenant-a', { tag: 'signer-attribution', draft: 'all' }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: signedDocumentId,
+          signers: [
+            { accountId: 'user-cosigner', name: 'Maria Choma' },
+            { accountId: 'user-owner', name: 'Owner' },
+          ],
+        }),
+        expect.objectContaining({ id: unsignedDocumentId, signers: [] }),
+      ]),
+    );
+    await expect(
+      repository.listByTenant('tenant-a', {
+        tag: 'signer-attribution',
+        signerAccountId: 'user-cosigner',
+        draft: 'all',
+      }),
+    ).resolves.toMatchObject([{ id: signedDocumentId }]);
+    await expect(
+      repository.listByTenant('tenant-a', {
+        tag: 'signer-attribution',
+        signerAccountId: 'user-foreign-signer',
+        draft: 'all',
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      createTenantAccountRepository(db).listByTenant('tenant-a'),
+    ).resolves.toEqual([
+      { accountId: 'user-admin', name: 'Admin' },
+      { accountId: 'user-cosigner', name: 'Maria Choma' },
+      { accountId: 'user-owner', name: 'Owner' },
+    ]);
   });
 
   it('soft-deletes, restores and purges documents while active reads exclude trash', async () => {

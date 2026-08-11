@@ -10,6 +10,7 @@ import {
   createSignatureRecordSchema,
   createSourceUpdateRequestSchema,
   documentFileSchema,
+  documentListItemSchema,
   documentListFilterSchema,
   documentSchema,
   documentWithFilesSchema,
@@ -44,6 +45,7 @@ import {
   userPreferenceKeySchema,
   userPreferenceSchema,
   tenantSettingsSchema,
+  tenantAccountSchema,
 } from '#core/domain/index.js';
 
 import { paginatedOutputSchema } from './pagination.js';
@@ -90,7 +92,11 @@ export const meOutputSchema = z.object({
 export const documentListInputSchema = documentListFilterSchema;
 
 export const documentListOutputSchema = z.object({
-  documents: z.array(documentWithFilesSchema),
+  documents: z.array(documentListItemSchema),
+});
+
+export const tenantAccountListOutputSchema = z.object({
+  accounts: z.array(tenantAccountSchema),
 });
 
 export const documentTrashListOutputSchema = z.object({
@@ -405,6 +411,7 @@ export const API_ROUTES = {
   userPreference: { method: 'GET', path: '/api/me/preferences/:key' },
   userPreferenceSet: { method: 'PUT', path: '/api/me/preferences/:key' },
   tenantSettings: { method: 'GET', path: '/api/tenant-settings' },
+  tenantAccounts: { method: 'GET', path: '/api/tenant-accounts' },
   tenantSettingsUpdate: { method: 'PUT', path: '/api/tenant-settings' },
   signatureRecords: {
     method: 'GET',

@@ -28,6 +28,8 @@ import {
   ok,
   unauthorized,
   validation,
+  type DocumentListFilter,
+  type DocumentListItem,
 } from '#core/domain/index.js';
 
 import {
@@ -129,6 +131,13 @@ const originUseArgsSchema = z.object({
 const tokenListFilterSchema = z.object({
   draft: z.enum(['true', 'false', 'all']).optional(),
 });
+const documentListOptionsSchema = z.object({
+  signer: z.string().trim().min(1).optional(),
+});
+export const documentListFilterFromOptions = (
+  options: z.output<typeof documentListOptionsSchema>,
+): DocumentListFilter =>
+  options.signer === undefined ? {} : { signerAccountId: options.signer };
 const booleanOptionSchema = z.enum(['true', 'false']).transform((value) => value === 'true');
 const tenantDateModeOptionSchema = z.enum(['declared', 'actual']);
 
@@ -396,6 +405,17 @@ account
     );
   });
 
+account.command('list').description('List accounts in the active tenant').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.listTenantAccounts(), ctx.json, (data) =>
+    data.accounts.length === 0
+      ? 'no tenant accounts'
+      : data.accounts
+          .map((tenantAccount) => `${tenantAccount.name}\t(${tenantAccount.accountId})`)
+          .join('\n'),
+  );
+});
+
 program.command('logout').description('Drop the stored session token').action(async () => {
   const ctx = cliCtx();
   // Revoke the session server-side FIRST (the CLI is bearer-authenticated, so a
@@ -511,19 +531,28 @@ const document = program
   .command('document')
   .description('Documents in the active tenant — staff only (owner/admin)');
 
-document.command('list').description('List documents').action(async () => {
-  const ctx = cliCtx();
-  emit(await ctx.api.listDocuments(), ctx.json, (data) =>
-    data.documents.length === 0
-      ? 'no documents'
-      : data.documents
-          .map(
-            (row) =>
-              `- ${row.documentDate}\t${row.draft ? 'DRAFT\t' : ''}${row.title}\t${row.docType}\t(${row.id.slice(0, 8)})`,
-          )
-          .join('\n'),
-  );
-});
+const formatDocumentRows = (documents: DocumentListItem[]): string =>
+  documents.length === 0
+    ? 'no documents'
+    : documents
+        .map((row) => {
+          const signers = row.signers.map((signer) => signer.name).join(', ');
+          return `- ${row.documentDate}\t${row.draft ? 'DRAFT\t' : ''}${row.title}\t${row.docType}\t(${row.id.slice(0, 8)})${signers ? `\t${signers}` : ''}`;
+        })
+        .join('\n');
+
+document
+  .command('list')
+  .description('List documents')
+  .option('--signer <accountId>', 'filter by contributing account ID')
+  .action(async (options: { signer?: string }) => {
+    const ctx = cliCtx();
+    const parsed = parseArgs(documentListOptionsSchema, options, ctx.json);
+    if (parsed === undefined) return;
+    emit(await ctx.api.listDocuments(documentListFilterFromOptions(parsed)), ctx.json, (data) =>
+      formatDocumentRows(data.documents),
+    );
+  });
 
 document.command('trash-list').description('List soft-deleted documents').action(async () => {
   const ctx = cliCtx();
@@ -548,14 +577,7 @@ document
     const filter = parseArgs(tokenListFilterSchema, options, ctx.json);
     if (filter === undefined) return;
     emit(await ctx.api.listDocuments(filter), ctx.json, (data) =>
-      data.documents.length === 0
-        ? 'no documents'
-        : data.documents
-            .map(
-              (row) =>
-                `- ${row.documentDate}\t${row.draft ? 'DRAFT\t' : ''}${row.title}\t${row.docType}\t(${row.id.slice(0, 8)})`,
-            )
-            .join('\n'),
+      formatDocumentRows(data.documents),
     );
   });
 

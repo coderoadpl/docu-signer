@@ -151,6 +151,10 @@ const tenantSettingsScopes = {
   all: () => ['tenant-settings'] as const,
 };
 
+const tenantAccountScopes = {
+  all: () => ['tenant-accounts'] as const,
+};
+
 const signatureRecordScopes = {
   all: () => ['signature-records'] as const,
   document: (documentId: string) => ['signature-records', documentId] as const,
@@ -424,6 +428,12 @@ export const tenantSettingsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: tenantSettingsScopes.all(),
     call: ({ signal }) => api.getTenantSettings(signal),
+  });
+
+export const tenantAccountsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: tenantAccountScopes.all(),
+    call: ({ signal }) => api.listTenantAccounts(signal),
   });
 
 export const updateTenantSettingsMutation = (api: ApiClient) =>

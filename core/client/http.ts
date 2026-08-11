@@ -59,6 +59,7 @@ import {
   sourceUpdateRequestOutputSchema,
   tenantSettingsGetOutputSchema,
   tenantSettingsUpdateOutputSchema,
+  tenantAccountListOutputSchema,
   userPreferenceGetOutputSchema,
   userPreferenceSetOutputSchema,
   type HttpMethod,
@@ -585,6 +586,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.tenantSettings.method,
       API_ROUTES.tenantSettings.path,
       tenantSettingsGetOutputSchema,
+      undefined,
+      signal,
+    ),
+  listTenantAccounts: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantAccounts.method,
+      API_ROUTES.tenantAccounts.path,
+      tenantAccountListOutputSchema,
       undefined,
       signal,
     ),

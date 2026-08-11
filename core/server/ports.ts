@@ -4,6 +4,7 @@ import type {
   Document,
   DocumentFile,
   DocumentListFilter,
+  DocumentWithSigners,
   Invitation,
   PadSession,
   PadCurrentDocument,
@@ -25,12 +26,13 @@ import type {
   Tenant,
   TenantDomain,
   TenantSettings,
+  TenantAccount,
   UserPreference,
   UserPreferenceValue,
 } from '#core/domain/index.js';
 
 export interface DocumentRepository {
-  listByTenant(tenantId: string, filter: DocumentListFilter): Promise<Document[]>;
+  listByTenant(tenantId: string, filter: DocumentListFilter): Promise<DocumentWithSigners[]>;
   listDeletedByTenant(tenantId: string): Promise<Document[]>;
   findById(tenantId: string, documentId: string): Promise<Document | null>;
   findDeletedById(tenantId: string, documentId: string): Promise<Document | null>;
@@ -80,6 +82,10 @@ export interface DocumentRepository {
     targetDocumentId: string,
   ): Promise<DocumentFile | null>;
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
+}
+
+export interface TenantAccountRepository {
+  listByTenant(tenantId: string): Promise<TenantAccount[]>;
 }
 
 export interface ApiTokenWithHash extends ApiToken {

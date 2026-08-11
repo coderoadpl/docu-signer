@@ -154,6 +154,7 @@ const baseDeps = (): AppDeps => ({
       ...settings,
     }),
   },
+  tenantAccounts: { listByTenant: async () => [] },
   signatureRecords: {
     listByDocument: async () => [],
     create: async (input) => ({
@@ -377,10 +378,10 @@ describe('buildApp', () => {
     deps.documents.listByTenant = async (tenantId, filter) => {
       seenTenant = tenantId;
       seenFilter = filter;
-      return [row];
+      return [{ ...row, signers: [{ accountId: 'account-1', name: 'Maria Choma' }] }];
     };
     const response = await buildApp(deps).request(
-      `${API_PATHS.documents}?signatureStatus=needs-signature`,
+      `${API_PATHS.documents}?signatureStatus=needs-signature&signerAccountId=account-1`,
       {
         headers: { [TENANT_HEADER]: tenant.slug },
       },
@@ -388,10 +389,38 @@ describe('buildApp', () => {
 
     expect(response.status).toBe(200);
     expect(seenTenant).toBe(tenant.id);
-    expect(seenFilter).toEqual({ signatureStatus: 'needs-signature' });
+    expect(seenFilter).toEqual({
+      signatureStatus: 'needs-signature',
+      signerAccountId: 'account-1',
+    });
     expect(await response.json()).toMatchObject({
       ok: true,
-      data: { documents: [{ title: 'Umowa' }] },
+      data: {
+        documents: [
+          {
+            title: 'Umowa',
+            signers: [{ accountId: 'account-1', name: 'Maria Choma' }],
+          },
+        ],
+      },
+    });
+  });
+
+  it('lists tenant accounts through the read-only contract route', async () => {
+    const deps = authorizedDeps();
+    deps.tenantAccounts.listByTenant = async (tenantId) =>
+      tenantId === tenant.id
+        ? [{ accountId: 'account-1', name: 'Maria Choma' }]
+        : [];
+
+    const response = await buildApp(deps).request(API_ROUTES.tenantAccounts.path, {
+      headers: { [TENANT_HEADER]: tenant.slug },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { accounts: [{ accountId: 'account-1', name: 'Maria Choma' }] },
     });
   });
 
