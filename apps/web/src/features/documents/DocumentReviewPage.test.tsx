@@ -18,6 +18,7 @@ import {
   documentReviewSearchSchema,
   documentsSearchSchema,
 } from './documents.logic.js';
+import { renderSourcePage } from './signing-pdf.js';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const NEXT_DOCUMENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -126,6 +127,7 @@ const renderPage = async (initialEntry: string) => {
 
 beforeEach(() => {
   pdfMocks.destroy.mockClear();
+  vi.mocked(renderSourcePage).mockClear();
   vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue(
     new DOMRect(0, 0, 200, 300),
   );
@@ -237,7 +239,11 @@ describe('DocumentReviewPage', () => {
       `/app/documents/${DOCUMENT_ID}/review?q=umowa&kolejka=${DOCUMENT_ID}`,
     );
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Podpisany' }));
+    expect(await screen.findByRole('button', { name: 'Podpisany', pressed: true })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Źródło' }));
+    await waitFor(() => expect(router.state.location.search.tryb).toBe('zrodlo'));
+    expect(await screen.findByRole('button', { name: 'Źródło', pressed: true })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Podpisany' }));
     expect(await screen.findByRole('button', { name: 'Podpisany', pressed: true })).toBeVisible();
     expect(await screen.findByText('Strona 1 z 2')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Następna strona' }));
@@ -279,7 +285,52 @@ describe('DocumentReviewPage', () => {
         `/app/documents/${DOCUMENT_ID}/review`,
       ),
     );
+    expect(await screen.findByRole('button', { name: 'Podpisany', pressed: true })).toBeVisible();
     expect(screen.getByText('Dokument 2 z 2')).toBeVisible();
+  });
+
+  it('remeasures after PDF data loads while the loading indicator stays out of flow', async () => {
+    let releaseFile: (() => void) | undefined;
+    const fileGate = new Promise<void>((resolve) => {
+      releaseFile = resolve;
+    });
+    const elementBounds = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue(new DOMRect(0, 0, 800, 600));
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}/files/${SOURCE_ID}/content`, async () => {
+        await fileGate;
+        return new HttpResponse(new Uint8Array([37, 80, 68, 70]), {
+          headers: { 'content-type': 'application/pdf' },
+        });
+      }),
+    );
+
+    try {
+      const { unmount } = await renderPage(
+        `/app/documents/${DOCUMENT_ID}/review?kolejka=${DOCUMENT_ID}`,
+      );
+      const progress = await screen.findByRole('progressbar', {
+        name: 'Ładowanie podglądu pliku',
+      });
+      expect(progress.parentElement).toHaveStyle({ position: 'absolute' });
+      const measurementsBeforeLoad = elementBounds.mock.calls.length;
+
+      releaseFile?.();
+      await waitFor(() => expect(elementBounds.mock.calls.length).toBeGreaterThan(measurementsBeforeLoad));
+      await waitFor(() =>
+        expect(vi.mocked(renderSourcePage)).toHaveBeenCalledWith(
+          expect.anything(),
+          1,
+          expect.any(HTMLCanvasElement),
+          { width: 800, height: 600 },
+        ),
+      );
+      unmount();
+    } finally {
+      releaseFile?.();
+      elementBounds.mockRestore();
+    }
   });
 
   it('returns to the list when the current document is absent from the queue', async () => {
