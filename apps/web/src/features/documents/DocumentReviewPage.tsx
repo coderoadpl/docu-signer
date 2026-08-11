@@ -5,10 +5,10 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   FormControl,
   IconButton,
   InputLabel,
-  LinearProgress,
   MenuItem,
   Paper,
   Select,
@@ -121,6 +121,21 @@ const Header = ({
       </IconButton>
     </Stack>
   </Paper>
+);
+
+const FileLoadingOverlay = () => (
+  <Box
+    sx={{
+      position: 'absolute',
+      inset: 0,
+      display: 'grid',
+      placeItems: 'center',
+      zIndex: 2,
+      pointerEvents: 'none',
+    }}
+  >
+    <CircularProgress aria-label="Ładowanie podglądu pliku" />
+  </Box>
 );
 
 const EditForm = ({
@@ -275,7 +290,7 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
   const queue = reviewQueueFromSearch(search);
   const queueIndex = queue.indexOf(documentId);
   const listSearch = documentsSearchFromReviewSearch(search);
-  const mode = reviewModeFromSearch(search);
+  const requestedMode = reviewModeFromSearch(search);
   const documentQuery = useQuery(actions.document(documentId));
   const documentsQuery = useQuery(actions.documents({ draft: 'all' }));
   const document = documentQuery.data?.document;
@@ -283,6 +298,7 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
   const signedFile = document
     ? newestDocumentFileByRole(document, 'signed-digital')
     : undefined;
+  const mode = search.tryb === undefined && signedFile ? 'signed' : requestedMode;
   const selectedFile = mode === 'signed' ? signedFile : sourceFile;
   const fileQuery = useQuery({
     ...actions.documentFile(documentId, selectedFile?.id ?? ''),
@@ -380,24 +396,47 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
   }, [fileQuery.data, mode, selectedFile]);
 
   useEffect(() => {
-    if (mode === 'edit') return;
+    if (mode === 'edit') {
+      setFitBox(undefined);
+      return;
+    }
     const element = fitBoxRef.current;
     if (!element) return;
     const measure = () => {
       const bounds = element.getBoundingClientRect();
-      if (bounds.width > 0 && bounds.height > 0) {
-        setFitBox({ width: bounds.width, height: bounds.height });
-      }
+      const next = {
+        width: bounds.width > 0 ? Math.floor(bounds.width) : 0,
+        height: bounds.height > 0 ? Math.floor(bounds.height) : 0,
+      };
+      if (next.width === 0 || next.height === 0) return;
+      setFitBox((current) =>
+        current?.width === next.width && current.height === next.height
+          ? current
+          : next,
+      );
     };
     measure();
+    const animationFrame = window.requestAnimationFrame(measure);
     if (typeof ResizeObserver === 'undefined') {
       window.addEventListener('resize', measure);
-      return () => window.removeEventListener('resize', measure);
+      window.addEventListener('orientationchange', measure);
+      return () => {
+        window.cancelAnimationFrame(animationFrame);
+        window.removeEventListener('resize', measure);
+        window.removeEventListener('orientationchange', measure);
+      };
     }
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => observer.disconnect();
-  }, [mode]);
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+    };
+  }, [fileQuery.data, mode, selectedFile]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -441,7 +480,7 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
         ? { tryb: 'podpisany' as const }
         : nextMode === 'edit'
           ? { tryb: 'edycja' as const }
-          : {}),
+          : { tryb: 'zrodlo' as const }),
     }),
     [listSearch, search.kolejka],
   );
@@ -456,7 +495,7 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
       void navigate({
         to: '/app/documents/$id/review',
         params: { id: intent.documentId },
-        search: reviewSearch('source'),
+        search: { ...listSearch, kolejka: search.kolejka },
       });
       return;
     }
@@ -641,14 +680,13 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
                 : 'Dodaj źródłowy PDF lub obraz, aby go przejrzeć.',
           }}
         />
-      ) : fileQuery.isPending ? (
-        <StatusView state={{ kind: 'loading', label: 'Pobieranie pliku…' }} />
       ) : fileQuery.isError ? (
         <StatusView state={{ kind: 'error', message: fileQuery.error.message }} />
       ) : selectedFile.contentType.toLowerCase() === 'application/pdf' ? (
         <Box
           ref={fitBoxRef}
           sx={{
+            position: 'relative',
             width: '100%',
             height: '100%',
             display: 'flex',
@@ -657,11 +695,10 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
           }}
         >
           {pdfError ? <Alert severity="error">{pdfError}</Alert> : null}
-          {pageRendering ? (
-            <LinearProgress
-              aria-label="Renderowanie strony PDF"
-              sx={{ position: 'absolute', top: 0, left: 0, right: 0 }}
-            />
+          {fileQuery.isPending ||
+          (fileQuery.isSuccess && !pdf && !pdfError) ||
+          pageRendering ? (
+            <FileLoadingOverlay />
           ) : null}
           <SigningPageSurface sx={{ width: 'fit-content', maxWidth: '100%', maxHeight: '100%' }}>
             <canvas
@@ -671,15 +708,29 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
             />
           </SigningPageSurface>
         </Box>
-      ) : imageUrl ? (
-        <SigningPageSurface sx={{ maxWidth: '100%', maxHeight: '100%' }}>
-          <Box
-            component="img"
-            src={imageUrl}
-            alt={selectedFile.fileName}
-            sx={{ display: 'block', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-          />
-        </SigningPageSurface>
+      ) : selectedFile.contentType.toLowerCase().startsWith('image/') ? (
+        <Box
+          sx={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {fileQuery.isPending || !imageUrl ? <FileLoadingOverlay /> : null}
+          {imageUrl ? (
+            <SigningPageSurface sx={{ maxWidth: '100%', maxHeight: '100%' }}>
+              <Box
+                component="img"
+                src={imageUrl}
+                alt={selectedFile.fileName}
+                sx={{ display: 'block', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+              />
+            </SigningPageSurface>
+          ) : null}
+        </Box>
       ) : (
         <StatusView
           state={{

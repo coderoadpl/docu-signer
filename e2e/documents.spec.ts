@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { PDFDocument } from 'pdf-lib';
 import { z } from 'zod';
 
-import { fetchMagicLink } from '../scripts/mailpit.js';
+import { clearMailpit, fetchMagicLink } from '../scripts/mailpit.js';
 
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
 const DEMO_PASSWORD = 'demo1234';
@@ -336,9 +336,14 @@ const signVisiblePdf = async (page: Page) => {
 const expectReviewPdfFitsViewport = async (page: Page) => {
   const canvas = page.getByLabel(/Strona \d+ dokumentu PDF/u);
   await expect(canvas).toBeVisible();
-  const box = await canvas.boundingBox();
+  await expect(page.getByLabel('Ładowanie podglądu pliku')).toBeHidden();
   const viewport = page.viewportSize();
-  if (!box || !viewport) throw new Error('Missing PDF review bounds');
+  if (!viewport) throw new Error('Missing PDF review viewport');
+  await expect
+    .poll(async () => (await canvas.boundingBox())?.height ?? 0)
+    .toBeGreaterThan(viewport.height * 0.5);
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('Missing PDF review bounds');
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
@@ -437,6 +442,7 @@ const signIn = async (page: Page) => {
 };
 
 const signInWithMagicLink = async (page: Page) => {
+  await clearMailpit(MAILPIT_API_URL);
   await page.goto('/login');
   await page.locator('#login-email').fill(MAGIC_EMAIL);
   await page.getByRole('button', { name: 'Wyślij link do logowania' }).click();
@@ -933,6 +939,57 @@ test('mass signing can receive a signature from a QR pad browser context', async
     await hostPadPage.close();
     await padContext.close();
   }
+});
+
+test('mass review renders full-size and defaults each document to its best file', async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  const signedTitle = `Mass review signed ${stamp}`;
+  const sourceTitle = `Mass review source ${stamp}`;
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  const signedDocumentId = await createDocumentWithFilesViaApi({
+    page,
+    title: signedTitle,
+    docType: 'umowa-uod',
+    files: [
+      { fileName: `review-source-${stamp}.pdf`, role: 'source' },
+      { fileName: `review-signed-${stamp}.pdf`, role: 'signed-digital' },
+    ],
+  });
+  const sourceDocumentId = await createDocumentWithFilesViaApi({
+    page,
+    title: sourceTitle,
+    docType: 'protokol',
+    files: [{ fileName: `review-source-only-${stamp}.pdf`, role: 'source' }],
+  });
+
+  await page.goto(
+    `/app/documents/${signedDocumentId}/review?kolejka=${signedDocumentId},${sourceDocumentId}`,
+  );
+  await expect(page.getByRole('heading', { name: signedTitle })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Podpisany', pressed: true })).toBeVisible();
+  await expectReviewPdfFitsViewport(page);
+
+  await page.getByRole('button', { name: 'Źródło' }).click();
+  await expect(page.getByRole('button', { name: 'Źródło', pressed: true })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get('tryb')).toBe('zrodlo');
+  await expectReviewPdfFitsViewport(page);
+  await page.getByRole('button', { name: 'Edycja' }).click();
+  await expect(page.getByRole('button', { name: 'Edycja', pressed: true })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get('tryb')).toBe('edycja');
+  await expect(page.getByRole('textbox', { name: 'Tytuł' })).toHaveValue(signedTitle);
+  await page.getByRole('button', { name: 'Podpisany' }).click();
+  await expect(page.getByRole('button', { name: 'Podpisany', pressed: true })).toBeVisible();
+  await expectReviewPdfFitsViewport(page);
+
+  await page.getByRole('button', { name: 'Dalej' }).click();
+  await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Źródło', pressed: true })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get('tryb')).toBeNull();
+  await expectReviewPdfFitsViewport(page);
 });
 
 test('mass signing signs a document', async ({ page }) => {

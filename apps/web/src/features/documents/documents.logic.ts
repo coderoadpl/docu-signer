@@ -136,7 +136,7 @@ export const documentReviewSearchSchema = z.preprocess(
   (value) => (typeof value === 'object' && value !== null ? value : {}),
   documentsSearchInputSchema.extend({
     kolejka: queueParamSchema,
-    tryb: z.enum(['podpisany', 'edycja']).optional().catch(undefined),
+    tryb: z.enum(['zrodlo', 'podpisany', 'edycja']).optional().catch(undefined),
   }),
 );
 
