@@ -168,8 +168,9 @@ tenant-domain management or a self-host deployment package.
 
 ## Backups
 
-The pinned [`backup` workflow](.github/workflows/backup.yml) creates a nightly
-full PostgreSQL + private Blob ZIP in a dedicated Google Workspace Shared Drive.
+The nightly backup cron runs from the private `docu-signer--backup` repository,
+which checks out this repo and runs `scripts/backup.ts` to create a full
+PostgreSQL + private Blob ZIP in a dedicated Google Workspace Shared Drive.
 Setup, retention, guards, and the exact restore procedure are in the
 [backup runbook](docs/backup.md).
 

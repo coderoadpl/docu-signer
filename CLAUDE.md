@@ -151,7 +151,8 @@ Per-layer one-screen summaries live beside the code — [`core/CLAUDE.md`](core/
   verification adapter, and the standalone DB/ops entrypoints `adapters/db/migrate.ts`,
   `adapters/db/seed.ts`, `adapters/db/seed-deploy.ts`, and
   `scripts/backup.ts` are sanctioned composition points outside the server
-  root. Backup runs in CI cron without the server. Seed needs the real auth and
+  root. Backup runs from the private `docu-signer--backup` repo's cron without
+  the server. Seed needs the real auth and
   database adapters to hash credentials and persist bootstrap data, just as
   migrate needs the real database adapter.
 - `apps/web` and `apps/cli` import `core/client` (+ auth client adapter), never

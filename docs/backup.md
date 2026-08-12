@@ -1,6 +1,7 @@
 # Nightly backup runbook
 
-The [`backup` workflow](../.github/workflows/backup.yml) runs at `01:17 UTC`
+The nightly backup cron runs from the private `docu-signer--backup` repository,
+whose workflow checks out this repo and runs `scripts/backup.ts` at `01:17 UTC`
 every day and can also be dispatched manually. That is 03:17 in Warsaw during
 summer time and 02:17 during winter time. An unconfigured repository skips the
 job cleanly. Configured failures remain red so GitHub notifications can alert
@@ -54,7 +55,8 @@ metadata. Do not edit or delete the ledger during a month.
 5. In Neon Console, open the production project and click **Connect**. Turn
    **Connection pooling** off and copy the direct connection string. Confirm its
    hostname does not contain `-pooler`.
-6. In GitHub open **Settings → Secrets and variables → Actions**. Create these
+6. In GitHub open the private `docu-signer--backup` repository's
+   **Settings → Secrets and variables → Actions**. Create these
    repository secrets:
    - `NEON_DATABASE_URL_UNPOOLED`: the direct Neon production URL.
    - `BLOB_READ_WRITE_TOKEN`: the credential for the private production Blob
@@ -64,7 +66,8 @@ metadata. Do not edit or delete the ledger during a month.
 7. On the **Variables** tab create `GOOGLE_DRIVE_FOLDER_ID` with the folder ID
    from step 4. The workflow also accepts a repository secret with that name,
    but a variable is preferred because the ID is not a credential.
-8. In **Actions → backup → Run workflow**, dispatch the first run. Confirm the
+8. In that repository's **Actions → backup → Run workflow**, dispatch the first
+   run. Confirm the
    log says the upload was verified, then inspect the ZIP in the Shared Drive.
    Enable GitHub Actions failure notifications for the repository owner. Once a
    month, confirm the newest timestamp and test the ZIP checksum listing.

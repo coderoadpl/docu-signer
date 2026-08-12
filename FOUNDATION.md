@@ -72,8 +72,8 @@ each.
 - The owner's [2026-08-09 confirming ruling](docs/owner-rulings.md) records both rulings directly: PAdES seal storage is behind a tenant flag that defaults off, and Tryb dat offers declared/actual time with declared as the default.
 - The fresh-clone `quickstart:probe` and its CI step were removed with the demo
   verticals they drove; the README quickstart is now convention, not enforced.
-- `scripts/backup.ts` is a sanctioned standalone composition site because the CI cron backup runs without the server.
-- `.github/workflows/backup.yml` lives under foundation-owned workflows for the repo-owned backup cron.
+- `scripts/backup.ts` is a sanctioned standalone composition site because the cron backup runs without the server.
+- The nightly backup cron moved out of this public repo into the private `docu-signer--backup` repository, which checks out this repo and runs `scripts/backup.ts` — backup secrets and Actions logs stay off the public surface (owner ruling 2026-08-15).
 - The user-preference resource consciously skips the CLI step of the 12-step chain: column preferences are a web-view concern with no CLI surface to configure.
 - API token `lastUsedAt` renders in Konto > Tokeny API despite the no-storage-timestamps rule: token hygiene is that security surface's purpose (agent decision 2026-08-02; owner may veto).
 - Remote pad access supports fragment-secret and identity joins. Private sessions stay same-account-only; shared sessions let any account in the same tenant join without consuming or superseding that participant's own per-user host-session slot, and queue server-attributed submissions for deliberate desktop placement (owner decisions 2026-08-04 and 2026-08-09).

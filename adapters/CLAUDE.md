@@ -34,8 +34,9 @@ is the only place framework and vendor SDKs live.
   adapter; and
   `adapters/db/migrate.ts`, `adapters/db/seed.ts`,
   `adapters/db/seed-deploy.ts`, and `scripts/backup.ts` are sanctioned
-  standalone composition points outside the server root. Backup runs in CI cron
-  without the server. Seed needs the real auth and database adapters to hash
+  standalone composition points outside the server root. Backup runs from the
+  private `docu-signer--backup` repo's cron without the server. Seed needs the
+  real auth and database adapters to hash
   credentials and persist bootstrap data, just as migrate needs the real database
   adapter.
 - `apps/web` and `apps/cli` never import server adapters or `adapters/db`; the

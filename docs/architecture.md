@@ -85,8 +85,9 @@ Dependency rules (enforced):
   the PDF seal verification adapter; the standalone DB/ops entrypoints
   `adapters/db/migrate.ts`, `adapters/db/seed.ts`,
   `adapters/db/seed-deploy.ts`, and `scripts/backup.ts` are also sanctioned
-  composition points outside the server root. Backup runs in CI cron without
-  the server. Seed needs the real auth and database adapters to hash credentials
+  composition points outside the server root. Backup runs from the private
+  `docu-signer--backup` repo's cron without the server. Seed needs the real
+  auth and database adapters to hash credentials
   and persist bootstrap data, just as migrate needs the real database adapter.
 - `@vercel/*` and `@neondatabase/*` are importable only inside `adapters/`
   (and the platform entry `api/index.ts`).
