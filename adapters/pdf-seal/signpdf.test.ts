@@ -1,6 +1,3 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-
 import forge from 'node-forge';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,16 +10,16 @@ import {
 } from '#core/server/index.js';
 import { MAX_DOCUMENT_FILE_BYTES } from '#core/domain/index.js';
 
+import { generateSealCertificate } from './certificate.js';
 import { createSignPdfSeal } from './signpdf.js';
 import { verifyPdfSeal } from './verify.js';
 
-const fixture = (name: string) =>
-  resolve('test', 'fixtures', 'pades-seal', name);
+const testCertificate = generateSealCertificate();
 
 const credentials = async () => ({
   kind: 'pem' as const,
-  certificate: await readFile(fixture('certificate.pem'), 'utf8'),
-  privateKey: await readFile(fixture('private-key.pem'), 'utf8'),
+  certificate: testCertificate.certificatePem,
+  privateKey: testCertificate.privateKeyPem,
 });
 
 const samplePdf = async (): Promise<Uint8Array> => {
