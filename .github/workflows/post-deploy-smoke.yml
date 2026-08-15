@@ -44,7 +44,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run smoke:remote
         env:
-          BASE_URL: ${{ github.event.deployment.environment == 'Production' && 'https://docu-signer-nine.vercel.app' || github.event.deployment_status.environment_url }}
+          BASE_URL: ${{ github.event.deployment.environment == 'Production' && 'https://docu-signer.coderoad.pl' || github.event.deployment_status.environment_url }}
           EXPECTED_SHA: ${{ github.event.deployment.sha }}
           SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
           SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
@@ -68,7 +68,7 @@ jobs:
         if: steps.probe-creds.outputs.armed == 'true'
         run: pnpm run probe:browser
         env:
-          BASE_URL: ${{ github.event.deployment.environment == 'Production' && 'https://docu-signer-nine.vercel.app' || github.event.deployment_status.environment_url }}
+          BASE_URL: ${{ github.event.deployment.environment == 'Production' && 'https://docu-signer.coderoad.pl' || github.event.deployment_status.environment_url }}
           SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
           SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
           SMOKE_TOTP_SECRET: ${{ secrets.SMOKE_TOTP_SECRET }}

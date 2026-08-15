@@ -26,7 +26,7 @@ canonical WHATWG origins:
   "currentOrigin": "http://default.localhost:47100",
   "profiles": {
     "http://default.localhost:47100": { "token": "…" },
-    "https://docu-signer-nine.vercel.app": { "token": "…" }
+    "https://docu-signer.coderoad.pl": { "token": "…" }
   }
 }
 ```
