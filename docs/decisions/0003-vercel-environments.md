@@ -7,14 +7,15 @@ Status: accepted (2026-07-14); **release and storage topology superseded
 (2026-07-24, 2026-07-27)** — see note below and
 [architecture.md](../architecture.md) §Environments (normative).
 
-> **Superseding notes (2026-07-24, 2026-07-27).** Decision point 1's release
-> mapping has changed: **staging is now `main`** (its Preview on a stable URL), and
-> **production is a dedicated `production` branch** with Vercel Production Branch
-> Tracking set to it. The long-lived `staging` branch relic is deleted. A
-> production release is an **owner-approved PR `main → production`** whose merge
-> triggers the production build — gated upstream by the `production-protection`
-> ruleset, and in this fork by the `require-gates` owner-review wall on `main`
-> (armed 2026-08-15; FOUNDATION.md); agents act as a machine account. This fork also supersedes point 2:
+> **Superseding notes (2026-07-24, 2026-07-27; fork reality 2026-08-15).**
+> Decision point 1's release mapping changed **upstream**: staging is `main`
+> (its Preview on a stable URL), production is a dedicated `production` branch
+> under Vercel Production Branch Tracking, and a release is an owner-approved
+> PR `main → production` gated by the `production-protection` ruleset. **This
+> fork adapts that pattern without a `production` branch**: Vercel builds
+> production from `main`, and the release gate is the `require-gates`
+> owner-review wall on every PR into `main` (armed 2026-08-15; FOUNDATION.md);
+> agents act as a machine account. This fork also supersedes point 2:
 > Production and Preview use one shared Neon database and Blob store, with no
 > per-preview branches ([FOUNDATION.md](../../FOUNDATION.md)). Build-time
 > migration/admin bootstrap (point 3), entry/routing (point 4), Frankfurt
