@@ -17,11 +17,12 @@ released by the owner approving a pull request into `main`; the merge triggers
 the production build, so the owner's diff review happens *before* the build
 that sees production secrets.** This file is the procedure that makes that
 true and keeps it true.
-Nothing here except opening the PR is agent-runnable — the approval and the
-merge are both owner actions from a device the agent does not control (owner
-clarification 2026-08-15: „Merguję osobiście"). The ruleset dismisses stale
-approvals on every new push, so what the owner merges is exactly the snapshot
-they approved.
+The approval is the one step only the owner can perform, from a device the
+agent does not control; once it is given and the four checks are green, the
+merge itself may be executed by the agent (`gh pr merge --merge`) or the
+owner (both 2026-08-15 rulings archived in owner-rulings.md). The ruleset
+dismisses stale approvals on every new push, so what merges is exactly the
+snapshot the owner approved.
 
 Vocabulary: the **released SHA** is the commit currently serving production (read
 it off `/api/health` — see [architecture.md](architecture.md) §Health & deploy
@@ -62,8 +63,9 @@ Do this once per Vercel project + GitHub repo.
 
 ## b. The release ritual (every production release)
 
-Performed by the **owner**, from a device the agent does not control. Opening the
-PR may be delegated to an agent; **approval and merge are not.**
+Decided by the **owner**, from a device the agent does not control. Opening
+the PR and executing the merge may be delegated to an agent; **the approval
+may not.**
 
 1. **Open the release PR `main → production`** (agent or owner). Its diff *is* the
    diff since the released SHA.
@@ -135,13 +137,14 @@ Operating-hygiene context for these lives in
 
 ## d. What agents may do
 
-**Everything up to the pull request — never past it.** In this fork a merge
-to `main` IS the production release, so the agent never merges into `main`.
-Agents (acting as `chomamateusz-agent`) branch, open PRs, dispatch workflows,
-and drive preview deployments freely — that is the whole development
-environment. The `require-gates` ruleset (no bypass) blocks any merge without
-one approving owner review plus the four green checks, and the agent cannot
-approve a PR (no self-approval), cannot lift the rulesets past the owner's
-admin controls, and holds no platform-CLI session. The approval **and the
-merge** — the release decision and its execution — are the owner's, from a
-device the agent does not control, always (owner clarification 2026-08-15).
+**Everything up to the owner's approval — never past it.** In this fork a
+merge to `main` IS the production release, so the four green checks alone
+never authorize one. Agents (acting as `chomamateusz-agent`) branch, open
+PRs, dispatch workflows, and drive preview deployments freely — that is the
+whole development environment. An agent may execute the merge
+(`gh pr merge --merge`) **only after the owner's approving review** stands
+next to the four green checks (the `require-gates` ruleset enforces both,
+with no bypass); it cannot approve a PR (no self-approval), cannot lift the
+rulesets past the owner's admin controls, and holds no platform-CLI session.
+The approval — the release decision — is the owner's, from a device the
+agent does not control, always (2026-08-15 rulings in owner-rulings.md).
