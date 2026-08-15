@@ -162,6 +162,13 @@
       "when": 1786349282206,
       "tag": "0022_slow_warbound",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786827520186,
+      "tag": "0023_odd_black_queen",
+      "breakpoints": true
     }
   ]
 }

@@ -19,6 +19,7 @@ import {
   renderSourcePage,
   type SigningStampWithMetrics,
 } from './signing-pdf.js';
+import type { SignersBoxModel } from './signers-box.js';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const SOURCE_ID = '22222222-2222-4222-8222-222222222222';
@@ -103,6 +104,7 @@ const pdfMocks = vi.hoisted(() => ({
     (
       sourceBytes: Uint8Array,
       stamps: readonly SigningStampWithMetrics[],
+      signersBox?: SignersBoxModel,
     ) => Promise<Uint8Array>
   >(async () => {
     const bytes = new Uint8Array(2048).fill(7);
@@ -1441,6 +1443,83 @@ describe('DocumentSigningPage', () => {
       sizeBytes: 2048,
       role: 'signed-digital',
     });
+  });
+
+  it('passes the signers box to flattening only for an enabled source target', async () => {
+    installUploadHandlers();
+    server.use(
+      http.get('*/api/tenant-settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              tenantId: 'tenant-default',
+              storeSignatureRecords: true,
+              pdfSealEnabled: true,
+              signatureBoxEnabled: true,
+              dateMode: 'declared',
+              sealCertificateSubject: 'Amazing Company Sp. z o.o.',
+            },
+          },
+        }),
+      ),
+    );
+    await renderPage();
+    await drawStroke();
+
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+
+    await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalled());
+    expect(pdfMocks.flatten.mock.calls[0]?.[2]).toMatchObject({
+      header: 'PODPISANO ELEKTRONICZNIE',
+      sealCertificateSubject: 'AMAZING COMPANY SP. Z O.O.',
+      entries: [
+        {
+          accountId: 'user-owner',
+          name: 'Owner',
+          signedAt: expect.stringMatching(/^01\.08\.2026 \d{2}:\d{2}$/u),
+        },
+      ],
+    });
+  });
+
+  it('does not pass a new signers box when signing an already-signed file', async () => {
+    const signedSource = {
+      ...sourceFile,
+      role: 'signed-digital' as const,
+      fileName: 'oryginal-podpisany.pdf',
+    };
+    installUploadHandlers();
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, files: [signedSource] } },
+        }),
+      ),
+      http.get('*/api/tenant-settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              tenantId: 'tenant-default',
+              storeSignatureRecords: true,
+              pdfSealEnabled: true,
+              signatureBoxEnabled: true,
+              dateMode: 'declared',
+              sealCertificateSubject: 'Amazing Company Sp. z o.o.',
+            },
+          },
+        }),
+      ),
+    );
+    await renderPage();
+    await drawStroke();
+
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+
+    await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalled());
+    expect(pdfMocks.flatten.mock.calls[0]).toHaveLength(2);
   });
 
   it('navigates after upload without waiting for signature-record storage', async () => {

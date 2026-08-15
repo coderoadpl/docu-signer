@@ -105,6 +105,12 @@ describe('CLI command surface', () => {
     expect(invitationHelp.stdout).toContain('revoke');
   }, CLI_TEST_TIMEOUT_MS);
 
+  it('documents the visible signers box tenant flag', () => {
+    const settingsHelp = run('tenant-settings', 'set', '--help');
+    expect(settingsHelp.status).toBe(0);
+    expect(settingsHelp.stdout).toContain('--signature-box-enabled <value>');
+  }, CLI_TEST_TIMEOUT_MS);
+
   it('requires an explicit signature policy for source updates', () => {
     const result = run(
       '--json',

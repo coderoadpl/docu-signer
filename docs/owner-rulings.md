@@ -27,6 +27,13 @@ approving review and the four green checks are in place, the owner ruled:)
 (Gloss: the owner performs the merge personally; the agent's authority ends
 at opening the pull request.)
 
+## 2026-08-15 — visible signers annotation on flattened PDFs
+
+Given in the implementation specification that supplied the owner's final
+layout reference and required a tenant flag defaulting off.
+
+> Owner ruling 2026-08-15 sanctions this visible artifact change.
+
 ## 2026-08-07 — storing signature ink per document
 
 Reverses the 2026-08-01 rule that signature ink is never stored separately.

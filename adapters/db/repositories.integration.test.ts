@@ -561,22 +561,26 @@ describe('TenantSettingsRepository', () => {
     await expect(repository.set('tenant-a', {
       storeSignatureRecords: false,
       pdfSealEnabled: true,
+      signatureBoxEnabled: true,
       dateMode: 'actual',
     })).resolves.toEqual({
       tenantId: 'tenant-a',
       storeSignatureRecords: false,
       pdfSealEnabled: true,
+      signatureBoxEnabled: true,
       dateMode: 'actual',
     });
     await expect(repository.get('tenant-b')).resolves.toBeNull();
     await expect(repository.set('tenant-a', {
       storeSignatureRecords: true,
       pdfSealEnabled: false,
+      signatureBoxEnabled: false,
       dateMode: 'declared',
     })).resolves.toEqual({
       tenantId: 'tenant-a',
       storeSignatureRecords: true,
       pdfSealEnabled: false,
+      signatureBoxEnabled: false,
       dateMode: 'declared',
     });
   });

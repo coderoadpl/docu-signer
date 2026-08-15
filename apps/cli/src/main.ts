@@ -444,6 +444,7 @@ tenantSettings.command('show').description('Show tenant settings').action(async 
     [
       `store-signature-records=${String(data.settings.storeSignatureRecords)}`,
       `pdf-seal-enabled=${String(data.settings.pdfSealEnabled)}`,
+      `signature-box-enabled=${String(data.settings.signatureBoxEnabled)}`,
       `date-mode=${data.settings.dateMode}`,
     ].join('\n'),
   );
@@ -454,10 +455,12 @@ tenantSettings
   .description('Update tenant settings')
   .option('--store-signature-records <value>', 'true|false')
   .option('--pdf-seal-enabled <value>', 'true|false')
+  .option('--signature-box-enabled <value>', 'true|false')
   .option('--date-mode <mode>', 'declared|actual')
   .action(async (options: {
     storeSignatureRecords?: string;
     pdfSealEnabled?: string;
+    signatureBoxEnabled?: string;
     dateMode?: string;
   }) => {
     const ctx = cliCtx();
@@ -469,6 +472,10 @@ tenantSettings
       ? undefined
       : parseArgs(booleanOptionSchema, options.pdfSealEnabled, ctx.json);
     if (options.pdfSealEnabled !== undefined && pdfSealEnabled === undefined) return;
+    const signatureBoxEnabled = options.signatureBoxEnabled === undefined
+      ? undefined
+      : parseArgs(booleanOptionSchema, options.signatureBoxEnabled, ctx.json);
+    if (options.signatureBoxEnabled !== undefined && signatureBoxEnabled === undefined) return;
     const dateMode = options.dateMode === undefined
       ? undefined
       : parseArgs(tenantDateModeOptionSchema, options.dateMode, ctx.json);
@@ -478,6 +485,7 @@ tenantSettings
       {
         ...(storeSignatureRecords === undefined ? {} : { storeSignatureRecords }),
         ...(pdfSealEnabled === undefined ? {} : { pdfSealEnabled }),
+        ...(signatureBoxEnabled === undefined ? {} : { signatureBoxEnabled }),
         ...(dateMode === undefined ? {} : { dateMode }),
       },
       ctx.json,
@@ -487,6 +495,7 @@ tenantSettings
       [
         `store-signature-records=${String(data.settings.storeSignatureRecords)}`,
         `pdf-seal-enabled=${String(data.settings.pdfSealEnabled)}`,
+        `signature-box-enabled=${String(data.settings.signatureBoxEnabled)}`,
         `date-mode=${data.settings.dateMode}`,
       ].join('\n'),
     );

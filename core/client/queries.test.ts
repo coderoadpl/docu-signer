@@ -429,6 +429,7 @@ describe('tenant settings and signature record descriptors', () => {
             tenantId: 'tenant-default',
             storeSignatureRecords: init?.method === 'GET',
             pdfSealEnabled: init?.method !== 'GET',
+            signatureBoxEnabled: init?.method !== 'GET',
             dateMode: init?.method === 'GET' ? 'declared' : 'actual',
           },
         });
@@ -443,14 +444,14 @@ describe('tenant settings and signature record descriptors', () => {
 
     expect(tenantSettingsQuery(api).queryKey).toEqual(['tenant-settings']);
     await expect(client.fetchQuery(tenantSettingsQuery(api))).resolves.toMatchObject({
-      settings: { storeSignatureRecords: true, pdfSealEnabled: false, dateMode: 'declared' },
+      settings: { storeSignatureRecords: true, pdfSealEnabled: false, signatureBoxEnabled: false, dateMode: 'declared' },
     });
     await expect(
       new MutationObserver(client, updateTenantSettingsMutation(api)).mutate({
         storeSignatureRecords: false,
       }),
     ).resolves.toMatchObject({
-      settings: { storeSignatureRecords: false, pdfSealEnabled: true, dateMode: 'actual' },
+      settings: { storeSignatureRecords: false, pdfSealEnabled: true, signatureBoxEnabled: true, dateMode: 'actual' },
     });
     expect(tenantSettingsInvalidates()).toEqual({ queryKey: ['tenant-settings'] });
 

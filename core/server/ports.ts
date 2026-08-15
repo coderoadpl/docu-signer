@@ -155,7 +155,7 @@ export interface TenantSettingsRepository {
   get(tenantId: string): Promise<TenantSettings | null>;
   set(
     tenantId: string,
-    settings: Omit<TenantSettings, 'tenantId'>,
+    settings: Omit<TenantSettings, 'tenantId' | 'sealCertificateSubject'>,
   ): Promise<TenantSettings>;
 }
 

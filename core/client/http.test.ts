@@ -422,13 +422,13 @@ describe('API client', () => {
       if (url.endsWith('/api/tenant-settings') && init?.method === 'GET') {
         return json({
           ok: true,
-          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: true, pdfSealEnabled: false, dateMode: 'declared' } },
+          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: true, pdfSealEnabled: false, signatureBoxEnabled: false, dateMode: 'declared' } },
         });
       }
       if (url.endsWith('/api/tenant-settings') && init?.method === 'PUT') {
         return json({
           ok: true,
-          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: false, pdfSealEnabled: true, dateMode: 'actual' } },
+          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: false, pdfSealEnabled: true, signatureBoxEnabled: true, dateMode: 'actual' } },
         });
       }
       if (init?.method === 'GET') {
@@ -440,7 +440,7 @@ describe('API client', () => {
 
     await expect(api.getTenantSettings()).resolves.toMatchObject({
       ok: true,
-      value: { settings: { storeSignatureRecords: true, pdfSealEnabled: false, dateMode: 'declared' } },
+      value: { settings: { storeSignatureRecords: true, pdfSealEnabled: false, signatureBoxEnabled: false, dateMode: 'declared' } },
     });
     await api.updateTenantSettings({ storeSignatureRecords: false });
     await api.listSignatureRecords(documentId, { cursor: 'opaque', limit: 1 });

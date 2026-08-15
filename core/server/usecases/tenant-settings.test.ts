@@ -38,6 +38,7 @@ describe('tenant settings use-cases', () => {
         tenantId: 'tenant-1',
         storeSignatureRecords: true,
         pdfSealEnabled: false,
+        signatureBoxEnabled: false,
         dateMode: 'declared',
       },
     });
@@ -49,6 +50,7 @@ describe('tenant settings use-cases', () => {
         tenantId: 'tenant-1',
         storeSignatureRecords: false,
         pdfSealEnabled: false,
+        signatureBoxEnabled: false,
         dateMode: 'declared',
       },
     });
@@ -59,7 +61,7 @@ describe('tenant settings use-cases', () => {
     await expect(
       updateTenantSettings(
         ctx,
-        { pdfSealEnabled: true, dateMode: 'actual' },
+        { pdfSealEnabled: true, signatureBoxEnabled: true, dateMode: 'actual' },
         { tenantSettings },
       ),
     ).resolves.toMatchObject({
@@ -67,7 +69,33 @@ describe('tenant settings use-cases', () => {
       value: {
         storeSignatureRecords: false,
         pdfSealEnabled: true,
+        signatureBoxEnabled: true,
         dateMode: 'actual',
+      },
+    });
+  });
+
+  it('adds the configured seal subject to read and update payloads', async () => {
+    const tenantSettings = repository();
+    const deps = { tenantSettings, sealCertificateSubject: 'Amazing Company Sp. z o.o.' };
+
+    await expect(
+      getTenantSettings({ identity: identity() }, deps),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { sealCertificateSubject: 'Amazing Company Sp. z o.o.' },
+    });
+    await expect(
+      updateTenantSettings(
+        { identity: identity() },
+        { signatureBoxEnabled: true },
+        deps,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        signatureBoxEnabled: true,
+        sealCertificateSubject: 'Amazing Company Sp. z o.o.',
       },
     });
   });

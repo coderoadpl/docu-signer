@@ -92,6 +92,7 @@ import {
 } from './signing-pdf.js';
 import { uploadDocumentFile } from './upload.logic.js';
 import { storeSignatureRecordAfterUpload } from './signature-record.logic.js';
+import { buildSignersBox } from './signers-box.js';
 
 type LoadedPdf = Awaited<ReturnType<typeof loadSourcePdf>>;
 
@@ -1990,10 +1991,31 @@ export const DocumentSigningPage = ({
     const currentDocument: DocumentWithFiles | undefined = documentQuery.data?.document;
     if (!currentDocument) throw new Error('Nie udało się odczytać danych dokumentu.');
     const committedStamps = await flattenedStamps();
-    const signedBytes = await flattenSignedPdf(
-      sourceQuery.data.bytes,
-      committedStamps,
-    );
+    const signersBox =
+      settings.settings.signatureBoxEnabled && sourceFile.role === 'source'
+        ? buildSignersBox({
+            documentDate: currentDocument.documentDate,
+            wallClock: new Date(),
+            signers: committedStamps.map(({ stamp }) => ({
+              accountId: stamp.contributedBy.accountId,
+              name: stamp.contributedBy.label,
+            })),
+            ...(settings.settings.pdfSealEnabled &&
+            settings.settings.sealCertificateSubject
+              ? {
+                  sealCertificateSubject:
+                    settings.settings.sealCertificateSubject,
+                }
+              : {}),
+          }) ?? undefined
+        : undefined;
+    const signedBytes = signersBox
+      ? await flattenSignedPdf(
+          sourceQuery.data.bytes,
+          committedStamps,
+          signersBox,
+        )
+      : await flattenSignedPdf(sourceQuery.data.bytes, committedStamps);
     const output = new File(
       [bytesAsArrayBuffer(signedBytes)],
       signedFileName(sourceFile.fileName),

@@ -491,12 +491,17 @@ describe('API route contract', () => {
           tenantId: 'tenant-default',
           storeSignatureRecords: true,
           pdfSealEnabled: false,
+          signatureBoxEnabled: false,
           dateMode: 'declared',
+          sealCertificateSubject: 'Amazing Company Sp. z o.o.',
         },
       }).success,
     ).toBe(true);
     expect(
       tenantSettingsUpdateInputSchema.safeParse({ storeSignatureRecords: false }).success,
+    ).toBe(true);
+    expect(
+      tenantSettingsUpdateInputSchema.safeParse({ signatureBoxEnabled: true }).success,
     ).toBe(true);
     expect(
       tenantSettingsUpdateInputSchema.safeParse({ storeSignatureRecords: 'false' }).success,

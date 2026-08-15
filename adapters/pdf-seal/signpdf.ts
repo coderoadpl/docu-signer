@@ -241,6 +241,18 @@ const signerAndSubject = (
   };
 };
 
+export const pdfSealCertificateSubject = (
+  credentials: PdfSealCredentials,
+): string =>
+  credentials.kind === 'p12'
+    ? certificateSubject(
+        p12Certificate(
+          Buffer.from(credentials.base64, 'base64'),
+          credentials.passphrase,
+        ),
+      )
+    : certificateSubject(forge.pki.certificateFromPem(credentials.certificate));
+
 export const createSignPdfSeal = (
   credentials: PdfSealCredentials | null,
 ): PdfSealPort => {

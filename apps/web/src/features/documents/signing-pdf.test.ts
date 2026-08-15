@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_SIGNING_INK_COLOR, signingInkColorById } from './signing.js';
 import { flattenSignedPdf } from './signing-pdf.js';
+import { buildSignersBox } from './signers-box.js';
 
 const contributor = { accountId: 'user-owner', label: 'Owner' };
 
@@ -165,5 +166,31 @@ describe('PDF signature flattening', () => {
     ]);
 
     expect(pageWidths).toEqual([200, 250]);
+  });
+
+  it('draws the vector signers box on the first page when supplied', async () => {
+    const drawRectangle = vi.spyOn(PDFPage.prototype, 'drawRectangle');
+    const drawCircle = vi.spyOn(PDFPage.prototype, 'drawCircle');
+    const source = await PDFDocument.create({ updateMetadata: false });
+    source.addPage([595, 842]);
+    const sourceBytes = await source.save();
+    const box = buildSignersBox({
+      documentDate: '2026-07-10',
+      wallClock: new Date('2026-08-15T19:07:00.000Z'),
+      signers: [
+        { accountId: 'one', name: 'Łukasz Żółć' },
+        { accountId: 'two', name: 'Weronika Choma' },
+      ],
+      sealCertificateSubject: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+    });
+    if (!box) throw new Error('Expected a signers box');
+
+    const output = await flattenSignedPdf(sourceBytes, [], box);
+
+    await expect(PDFDocument.load(output, { updateMetadata: false })).resolves.toBeDefined();
+    expect(drawRectangle).toHaveBeenCalledWith(
+      expect.objectContaining({ width: 210, borderWidth: 0.7 }),
+    );
+    expect(drawCircle).toHaveBeenCalledTimes(3);
   });
 });

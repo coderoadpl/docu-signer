@@ -11,7 +11,7 @@ import {
 import { MAX_DOCUMENT_FILE_BYTES } from '#core/domain/index.js';
 
 import { generateSealCertificate } from './certificate.js';
-import { createSignPdfSeal } from './signpdf.js';
+import { createSignPdfSeal, pdfSealCertificateSubject } from './signpdf.js';
 import { verifyPdfSeal } from './verify.js';
 
 const testCertificate = generateSealCertificate();
@@ -109,11 +109,13 @@ const sealingDeps = async (dateMode: 'declared' | 'actual'): Promise<PdfSealingD
       tenantId: 'tenant-1',
       storeSignatureRecords: true,
       pdfSealEnabled: true,
+      signatureBoxEnabled: false,
       dateMode,
     }),
     set: async (tenantId: string, settings: {
       storeSignatureRecords: boolean;
       pdfSealEnabled: boolean;
+      signatureBoxEnabled: boolean;
       dateMode: 'declared' | 'actual';
     }) => ({ tenantId, ...settings }),
   },
@@ -137,6 +139,12 @@ const document = {
 };
 
 describe('signpdf PAdES adapter', () => {
+  it('reads the configured certificate common name', async () => {
+    expect(pdfSealCertificateSubject(await credentials())).toBe(
+      'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+    );
+  });
+
   afterEach(() => vi.useRealTimers());
 
   it.each([
