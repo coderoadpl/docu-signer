@@ -133,9 +133,11 @@ before ai-review may accept them; the rulings are archived verbatim in
   Konto > Tokeny API only — token hygiene is that surface's purpose, and it is
   an account-security surface, not a document surface (agent decision
   2026-08-02, recorded in FOUNDATION.md).
-- Konto: personal passkeys, API tokens, two-factor authentication and the
-  tenant-wide signature-ink storage, PDF-seal and Tryb dat controls (Ustawienia
-  organizacji). Removed upstream verticals stay removed.
+- Konto: display-name editing (Profil — the name the app bar and signer
+  attribution render), personal passkeys, API tokens, two-factor
+  authentication and the tenant-wide signature-ink storage, PDF-seal and Tryb
+  dat controls (Ustawienia organizacji). Removed upstream verticals stay
+  removed.
 
 ## Layer rules (enforced, but know them anyway)
 
