@@ -16,8 +16,16 @@ pull request recording this ruling are the owner-visible artifact.
 > u Together ściana review gate'uje Ciebie - i to jest okej zrobmy tak samo
 > promocje na prod bede robil ja
 
-(Gloss: Together's review wall gates the owner — and that is fine; adopt the
-same here, production promotions are performed by the owner.)
+(Gloss: the first clause quotes back the agent's message addressed to the
+owner — "at Together the review wall gates you [the owner]" — and the owner
+affirms it: adopt the same wall here; production promotions are the owner's.
+Asked the same day whether the agent may at least execute the merge once the
+approving review and the four green checks are in place, the owner ruled:)
+
+> Merguję osobiście
+
+(Gloss: the owner performs the merge personally; the agent's authority ends
+at opening the pull request.)
 
 ## 2026-08-07 — storing signature ink per document
 

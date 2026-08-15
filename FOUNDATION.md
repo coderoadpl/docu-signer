@@ -33,8 +33,9 @@ each.
   review + required checks `check`/`smoke`/`e2e`/`ai-review`, merge commits
   only, no bypass). Owner ruling 2026-08-15 adopts the Together-style
   promotion wall and REVERSES the earlier autonomous-merge delta: the agent
-  prepares and merges PRs, but production promotion is the owner's approving
-  review. Stale approvals are dismissed on every new push
+  prepares PRs; the approving review AND the merge are both the owner's (the
+  owner clarified the same day: „Merguję osobiście" — the agent's authority
+  ends at opening the PR). Stale approvals are dismissed on every new push
   (`dismiss_stale_reviews_on_push`), so the owner's review always covers the
   exact snapshot that merges — that is what makes "the diff review happens
   before the production build" an enforced property, not a convention.
@@ -68,13 +69,11 @@ each.
   §Environments owner ruling); forward-only binds from that merge onward.
 - Login hides demo credentials and magic-link controls outside dev/e2e builds.
 - Password reset is hidden until SMTP or SES is configured; dev/e2e use Mailpit.
-- Merges to `main` land via `gh pr merge --merge` after the owner's approving
-  review — the ruleset blocks direct SSH pushes to `main`. The prior SSH-merge
-  delta guarded against Vercel Hobby refusing to deploy commits authored by an
-  account unconnected to Vercel; whether the paid-team move lifts that
-  constraint is unverified until the first post-transfer production deploy. If
-  that deploy skips an agent-authored merge commit, the owner performs merges
-  from the GitHub UI instead and this delta gets updated.
+- Merges to `main` are performed by the owner from the GitHub UI (merge
+  commit) after their approving review — the agent's authority ends at opening
+  the PR, and the ruleset blocks direct SSH pushes to `main`. This also
+  retires the prior SSH-merge delta's Vercel-Hobby author concern: the merge
+  commit is owner-authored by construction.
 - Remote post-deploy smoke drives the unauthenticated surface only (headers,
   the public API of the `default` tenant, health, deploy attestation) until
   the owner provisions a canary account and the `SMOKE_EMAIL`/`SMOKE_PASSWORD`

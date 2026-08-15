@@ -202,8 +202,8 @@ humans who own the platform; the architecture (`docs/architecture.md`
   `main` itself: since 2026-08-15 the `require-gates` ruleset requires a PR
   with one approving **owner** review plus green
   `check`/`smoke`/`e2e`/`ai-review` before anything lands, with no bypass
-  actors (see FOUNDATION.md) — the agent (a machine account) prepares and
-  merges PRs, the owner promotes by reviewing. The same commit flows feature
+  actors (see FOUNDATION.md) — the agent (a machine account) prepares PRs;
+  the owner promotes by approving and merging personally. The same commit flows feature
   branch → preview → `main` (production); only env vars differ, and the owner
   reviews the diff **before** the merge that triggers the secret-exposed
   production build.
