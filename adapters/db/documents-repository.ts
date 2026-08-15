@@ -14,6 +14,7 @@ import type { Db } from './client.js';
 import {
   documentFiles,
   documents,
+  signatureRecords,
   sourceUpdateRequests,
 } from './schema.js';
 
@@ -25,8 +26,11 @@ const toDocument = (row: typeof documents.$inferSelect): Document =>
     deletedAt: row.deletedAt?.toISOString() ?? null,
   });
 
-const toDocumentFile = (row: typeof documentFiles.$inferSelect): DocumentFile =>
-  documentFileSchema.parse({ ...row, createdAt: row.createdAt.toISOString() });
+const toDocumentFile = (
+  row: typeof documentFiles.$inferSelect,
+  sealed?: unknown,
+): DocumentFile =>
+  documentFileSchema.parse({ ...row, sealed, createdAt: row.createdAt.toISOString() });
 
 const toDocumentWithSigners = (row: {
   document: typeof documents.$inferSelect;
@@ -214,7 +218,22 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
   },
   listFilesIncludingDeleted: async (tenantId, documentId) => {
     const rows = await db
-      .select({ file: documentFiles })
+      .select({
+        file: documentFiles,
+        sealed: exists(
+          db
+            .select({ id: signatureRecords.id })
+            .from(signatureRecords)
+            .where(
+              and(
+                eq(signatureRecords.tenantId, documents.tenantId),
+                eq(signatureRecords.documentId, documents.id),
+                eq(signatureRecords.fileId, documentFiles.id),
+                isNotNull(signatureRecords.sealSubject),
+              ),
+            ),
+        ),
+      })
       .from(documentFiles)
       .innerJoin(documents, eq(documentFiles.documentId, documents.id))
       .where(
@@ -235,7 +254,7 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
         ),
       )
       .orderBy(documentFiles.createdAt);
-    return rows.map((row) => toDocumentFile(row.file));
+    return rows.map((row) => toDocumentFile(row.file, row.sealed));
   },
   listAllFilesIncludingDeleted: async (tenantId, documentId) => {
     const rows = await db

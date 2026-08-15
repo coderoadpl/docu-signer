@@ -282,6 +282,31 @@ describe('API route contract', () => {
       deletedAt: '2026-08-02T00:00:00.000Z',
     };
     expect(documentGetOutputSchema.safeParse({ document: { ...document, files: [] } }).success).toBe(true);
+    const detail = documentGetOutputSchema.parse({
+      document: {
+        ...document,
+        files: [
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            documentId: document.id,
+            role: 'signed-digital',
+            fileName: 'umowa-podpisana.pdf',
+            contentType: 'application/pdf',
+            sizeBytes: 1024,
+            storageKey: 'documents/tenant-default/umowa-podpisana.pdf',
+            sealed: true,
+            sealSubject: 'CN=Example',
+            sealDeclaredAt: '2026-08-01T10:00:00.000Z',
+            sealAppliedAt: '2026-08-01T10:00:01.000Z',
+            createdAt: '2026-08-01T10:00:00.000Z',
+          },
+        ],
+      },
+    });
+    expect(detail.document.files[0]).toMatchObject({ sealed: true });
+    expect(detail.document.files[0]).not.toHaveProperty('sealSubject');
+    expect(detail.document.files[0]).not.toHaveProperty('sealDeclaredAt');
+    expect(detail.document.files[0]).not.toHaveProperty('sealAppliedAt');
     expect(
       documentListOutputSchema.safeParse({
         documents: [
