@@ -36,7 +36,14 @@ each.
   prepares and merges PRs, but production promotion is the owner's approving
   review. `require_last_push_approval` stays off because branches are pushed
   over the owner's SSH identity, which would make the owner the pusher and
-  void their own approval.
+  void their own approval. Ruling archived verbatim in
+  [docs/owner-rulings.md](docs/owner-rulings.md).
+  architecture.md §Environments still documents the upstream two-ruleset wall
+  (including a `production` branch) — read it as the pattern this fork's
+  `main`-only wall adapts.
+- Production deploys from `main` (Vercel tracks `main`); the upstream
+  `main → production` promotion stage is collapsed into the owner-review wall
+  on `main` itself — there is no `production` branch in this fork.
 - Remote post-deploy smoke runs on Production only — previews sit behind
   Vercel Authentication, whose SSO interstitial an unauthenticated smoke
   cannot pass; staging-by-preview verification is deliberately waived.
@@ -58,10 +65,12 @@ each.
 - Login hides demo credentials and magic-link controls outside dev/e2e builds.
 - Password reset is hidden until SMTP or SES is configured; dev/e2e use Mailpit.
 - Merges to `main` land via `gh pr merge --merge` after the owner's approving
-  review — the ruleset blocks direct SSH pushes to `main`. The old SSH-merge
-  delta rested on Vercel Hobby refusing deploys for commits authored by an
-  unconnected account; that constraint lapsed with the move to the paid Vercel
-  team (verify on the first post-move team deploy).
+  review — the ruleset blocks direct SSH pushes to `main`. The prior SSH-merge
+  delta guarded against Vercel Hobby refusing to deploy commits authored by an
+  account unconnected to Vercel; whether the paid-team move lifts that
+  constraint is unverified until the first post-transfer production deploy. If
+  that deploy skips an agent-authored merge commit, the owner performs merges
+  from the GitHub UI instead and this delta gets updated.
 - Remote post-deploy smoke drives the unauthenticated surface only (headers,
   the public API of the `default` tenant, health, deploy attestation) until
   the owner provisions a canary account and the `SMOKE_EMAIL`/`SMOKE_PASSWORD`

@@ -11,8 +11,9 @@ run and manually copy approved PNGs back into the branch. The evidence and the
 approval should live in the pull request, while git remains the only baseline
 store.
 
-This fork has no branch rulesets. `visual` is non-required and there is no
-required-check arming plan; approval authorization and protected-ref safety must
+This fork's branch rulesets (armed 2026-08-15) gate `main` only. `visual` is
+non-required and there is no required-check arming plan; approval
+authorization and protected-ref safety for the refs these workflows push must
 therefore be explicit in the workflows.
 
 ## Decision

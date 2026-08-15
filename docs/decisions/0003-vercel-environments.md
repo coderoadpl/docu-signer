@@ -13,8 +13,8 @@ Status: accepted (2026-07-14); **release and storage topology superseded
 > Tracking set to it. The long-lived `staging` branch relic is deleted. A
 > production release is an **owner-approved PR `main → production`** whose merge
 > triggers the production build — gated upstream by the `production-protection`
-> ruleset, procedurally in this fork (no rulesets; FOUNDATION.md); agents act
-> as a Write-not-Admin machine account. This fork also supersedes point 2:
+> ruleset, and in this fork by the `require-gates` owner-review wall on `main`
+> (armed 2026-08-15; FOUNDATION.md); agents act as a machine account. This fork also supersedes point 2:
 > Production and Preview use one shared Neon database and Blob store, with no
 > per-preview branches ([FOUNDATION.md](../../FOUNDATION.md)). Build-time
 > migration/admin bootstrap (point 3), entry/routing (point 4), Frankfurt

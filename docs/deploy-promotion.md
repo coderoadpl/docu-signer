@@ -1,10 +1,12 @@
 # Deploy release runbook (Vercel target)
 
-> **Fork caveat (docu-signer, 2026-07-27).** The ruleset setup and
-> ruleset-based safety arguments below describe the upstream pattern. This
-> fork has no rulesets armed yet (FOUNDATION.md): skip the
-> ruleset steps; the release gate is procedural — the owner alone approves and
-> merges `main → production`.
+> **Fork caveat (docu-signer, updated 2026-08-15).** The two-branch
+> `main → production` setup below describes the upstream pattern. This fork
+> has no `production` branch — Vercel builds production from `main`, and the
+> release gate is enforced on `main` by the rulesets armed 2026-08-15
+> (`protect-main-history` + `require-gates`: PR, one approving owner review,
+> the four required checks, no bypass — FOUNDATION.md). Read the ruleset steps
+> below as the already-armed equivalent, not as steps to perform or skip.
 
 The step-by-step companion to [architecture.md](architecture.md) §Environments.
 That section is normative: **production is released by the owner merging an
