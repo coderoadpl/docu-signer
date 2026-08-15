@@ -203,7 +203,8 @@ humans who own the platform; the architecture (`docs/architecture.md`
   with one approving **owner** review plus green
   `check`/`smoke`/`e2e`/`ai-review` before anything lands, with no bypass
   actors (see FOUNDATION.md) — the agent (a machine account) prepares PRs;
-  the owner promotes by approving and merging personally. The same commit flows feature
+  the owner promotes by approving — the merge itself may then be executed by
+  either party. The same commit flows feature
   branch → preview → `main` (production); only env vars differ, and the owner
   reviews the diff **before** the merge that triggers the secret-exposed
   production build.
