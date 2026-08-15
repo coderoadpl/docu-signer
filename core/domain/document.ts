@@ -67,6 +67,7 @@ export const documentFileSchema = z.object({
   contentType: z.string().min(1),
   sizeBytes: z.number().int().nonnegative(),
   storageKey: z.string().min(1),
+  sealed: z.boolean().optional(),
   createdAt: z.iso.datetime(),
 });
 

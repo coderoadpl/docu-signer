@@ -182,6 +182,9 @@ const FileRow = ({
         direction="row"
         sx={{ alignItems: 'center', flexShrink: 0, gap: 0.5 }}
       >
+        {file.role === 'signed-digital' && file.sealed ? (
+          <Chip size="small" variant="outlined" label="Pieczęć" />
+        ) : null}
         {readOnly ? (
           <Chip size="small" variant="outlined" label={FILE_ROLE_LABELS[file.role]} />
         ) : (

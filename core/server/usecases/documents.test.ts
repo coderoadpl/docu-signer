@@ -40,6 +40,7 @@ const documentId = '11111111-1111-4111-8111-111111111111';
 const fileId = '22222222-2222-4222-8222-222222222222';
 const uploadId = '33333333-3333-4333-8333-333333333333';
 const movedDocumentId = '44444444-4444-4444-8444-444444444444';
+const unsealedFileId = '55555555-5555-4555-8555-555555555555';
 
 const staff = (tenantId: string | null, role: 'owner' | 'admin' = 'owner'): Identity => ({
   userId: 'u1',
@@ -535,6 +536,32 @@ describe('documents use-cases', () => {
       value: undefined,
     });
     expect(state.documents[1]?.deletedAt).toBe('2026-07-03T10:00:00.000Z');
+  });
+
+  it('returns the seal flag loaded with document detail files', async () => {
+    const sealedFile = {
+      ...fileRow(),
+      role: 'signed-digital' as const,
+      sealed: true,
+    };
+    const unsealedFile = {
+      ...fileRow(),
+      id: unsealedFileId,
+      storageKey: `documents/tenant-acme/${documentId}/${unsealedFileId}`,
+      role: 'signed-digital' as const,
+      sealed: false,
+    };
+    const state = fake([documentRow()], [sealedFile, unsealedFile]);
+
+    await expect(getDocument(ctx(staff('tenant-acme')), documentId, state.deps)).resolves.toMatchObject({
+      ok: true,
+      value: {
+        files: [
+          { id: fileId, sealed: true },
+          { id: unsealedFileId, sealed: false },
+        ],
+      },
+    });
   });
 
   it('soft-deletes, lists trash with files, restores, and purges idempotently', async () => {

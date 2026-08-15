@@ -365,6 +365,36 @@ describe('DocumentDetailPage', () => {
     await waitFor(() => expect(remove).toHaveBeenCalledOnce());
   });
 
+  it('shows a quiet seal chip only for sealed signed-digital files', async () => {
+    const signedFile = files[2];
+    if (!signedFile) throw new Error('Missing signed file fixture');
+    const sealedFile = { ...signedFile, sealed: true };
+    const unsealedFile = {
+      ...signedFile,
+      id: '55555555-5555-4555-8555-555555555555',
+      fileName: 'bez-pieczeci.pdf',
+      storageKey: 'unsealed-key',
+      sealed: false,
+    };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, files: [sealedFile, unsealedFile] } },
+        }),
+      ),
+    );
+    await renderPage();
+
+    const sealedRow = (await screen.findByText(sealedFile.fileName)).closest('li');
+    const unsealedRow = screen.getByText(unsealedFile.fileName).closest('li');
+    expect(sealedRow).not.toBeNull();
+    expect(unsealedRow).not.toBeNull();
+    if (!sealedRow || !unsealedRow) return;
+    expect(within(sealedRow).getByText('Pieczęć')).toBeInTheDocument();
+    expect(within(unsealedRow).queryByText('Pieczęć')).not.toBeInTheDocument();
+  });
+
   it('edits metadata and uploads through both storage paths', async () => {
     const update = vi.fn();
     const upload = vi.fn();

@@ -193,6 +193,48 @@ describe('DocumentRepository', () => {
     ).toBeNull();
   });
 
+  it('projects seal presence onto detail files without seal metadata', async () => {
+    const documents = createDocumentRepository(db);
+    const signatures = createSignatureRecordRepository(db);
+    const signedFileId = '23232323-2323-4323-8323-232323232323';
+    await documents.createFile('tenant-a', {
+      id: signedFileId,
+      documentId: '11111111-1111-4111-8111-111111111111',
+      role: 'signed-digital',
+      fileName: 'umowa-podpisana.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-a/document/signed-file',
+    });
+    await signatures.recordSeal({
+      id: '24242424-2424-4424-8424-242424242424',
+      tenantId: 'tenant-a',
+      documentId: '11111111-1111-4111-8111-111111111111',
+      fileId: signedFileId,
+      signedBy: 'user-owner',
+      seal: {
+        subject: 'CN=Agentproofarch',
+        declaredAt: '2026-08-01T10:00:00.000Z',
+        appliedAt: '2026-08-01T10:00:01.000Z',
+      },
+    });
+
+    await expect(
+      documents.listFilesIncludingDeleted(
+        'tenant-a',
+        '11111111-1111-4111-8111-111111111111',
+      ),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: '22222222-2222-4222-8222-222222222222',
+          sealed: false,
+        }),
+        expect.objectContaining({ id: signedFileId, sealed: true }),
+      ]),
+    );
+  });
+
   it('filters signature status through document file roles', async () => {
     const repository = createDocumentRepository(db);
     await repository.create({
