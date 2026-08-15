@@ -33,6 +33,7 @@ import {
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
 import { LoginRoute } from './routes/login.js';
 import { InvitationRoute } from './routes/invitation.js';
+import { shouldReloadAfterPreloadError } from './lib/preload-reload.js';
 import { NotFoundRoute } from './routes/not-found.js';
 import { PadRoute } from './routes/pad.js';
 import { RegisterRoute } from './routes/register.js';
@@ -41,6 +42,20 @@ import { SettingsRoute } from './routes/settings.js';
 import { SourceUpdatesRoute } from './routes/source-updates.js';
 import { TrashRoute } from './routes/trash.js';
 import { useAppTheme } from './theme.js';
+
+const PRELOAD_RELOAD_STORAGE_KEY = 'vite-preload-reload-at';
+
+window.addEventListener('vite:preloadError', (event) => {
+  const now = Date.now();
+  const storedReloadAt = window.sessionStorage.getItem(PRELOAD_RELOAD_STORAGE_KEY);
+  const lastReloadAt = storedReloadAt === null ? null : Number(storedReloadAt);
+
+  if (!shouldReloadAfterPreloadError(lastReloadAt, now)) return;
+
+  event.preventDefault();
+  window.sessionStorage.setItem(PRELOAD_RELOAD_STORAGE_KEY, String(now));
+  window.location.reload();
+});
 
 /** Dev-only, lazy so the devtools chunk never reaches the production bundle. */
 const ReactQueryDevtools = lazy(() =>
