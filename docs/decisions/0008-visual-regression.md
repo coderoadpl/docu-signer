@@ -56,8 +56,9 @@ away, or not screenshotted at all.
    filter someone can forget to apply.
 
 4. **The check is NON-REQUIRED until the owner arms it.** The gating checks
-   are `check` / `smoke` / `e2e` / `ai-review` — procedurally in this fork
-   (no rulesets; FOUNDATION.md). The new `visual` job is deliberately not
+   are `check` / `smoke` / `e2e` / `ai-review` — required by the
+   `require-gates` ruleset since 2026-08-15 (FOUNDATION.md). The new `visual`
+   job is deliberately not
    among them: it reports, it does not block. Arming it is an owner decision,
    made only after the check has a run history of green comparisons — and it
    is reverted the moment the gate flakes, because a flaky required gate is a

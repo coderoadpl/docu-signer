@@ -106,12 +106,13 @@ cells name a commissioned gate, not a shipped one.
 
 - Every PR is marked red until the required gates pass. The remote smoke script
   supports explicit production verification with SHA attestation.
-- **Branch protection is procedural here, not server-enforced.** This fork is
-  a **private** repository on GitHub Free, where rulesets are unavailable, and
-  the owner ruled against paying for them (FOUNDATION.md): merges happen only
-  on green checks and the owner's word. The upstream foundation's ruleset wall
-  (described in [architecture.md](../architecture.md) §Environments) records
-  the pattern this discipline substitutes for.
+- **Branch protection is server-enforced since 2026-08-15.** This fork is a
+  public repository, so rulesets work on GitHub Free: `protect-main-history`
+  and `require-gates` (PR + one approving owner review + the four required
+  checks, no bypass) gate `main` (FOUNDATION.md). The upstream foundation's
+  two-ruleset wall (described in
+  [architecture.md](../architecture.md) §Environments) records the pattern
+  this wall adapts.
 - CI has no canonical-repository guard, so the static, runtime, browser, and
   visual jobs run wherever the workflows are enabled.
 - The `smoke` job needs a Postgres service container in CI, but no

@@ -1,18 +1,27 @@
 # Deploy release runbook (Vercel target)
 
-> **Fork caveat (docu-signer, 2026-07-27).** The ruleset setup and
-> ruleset-based safety arguments below describe the upstream pattern. This
-> fork has no rulesets armed yet (FOUNDATION.md): skip the
-> ruleset steps; the release gate is procedural — the owner alone approves and
-> merges `main → production`.
+> **Fork caveat (docu-signer, updated 2026-08-15).** The two-branch
+> `main → production` setup below describes the upstream pattern. This fork
+> has no `production` branch — Vercel builds production from `main`, and the
+> release gate is enforced on `main` by the rulesets armed 2026-08-15
+> (`protect-main-history` + `require-gates`: PR, one approving owner review,
+> the four required checks, no bypass — FOUNDATION.md). The ruleset steps and
+> branch names below (`production-protection`, `main-gates`) are the
+> **upstream pattern**, not this fork's armed configuration — read them the
+> way architecture.md §Environments and ADR-0003 read them: as the pattern the
+> `main`-only wall adapts, never as steps to perform here.
 
 The step-by-step companion to [architecture.md](architecture.md) §Environments.
-That section is normative: **production is released by the owner merging an
-approved pull request `main → production`; the merge triggers the production
-build, so the owner's diff review happens *before* the build that sees production
-secrets.** This file is the procedure that makes that true and keeps it true.
-Nothing here except opening the PR is agent-runnable — the approval and merge are
-owner actions from a device the agent does not control.
+That section is normative; in this fork its rule lands as: **production is
+released by the owner approving a pull request into `main`; the merge triggers
+the production build, so the owner's diff review happens *before* the build
+that sees production secrets.** This file is the procedure that makes that
+true and keeps it true.
+Nothing here except opening the PR is agent-runnable — the approval and the
+merge are both owner actions from a device the agent does not control (owner
+clarification 2026-08-15: „Merguję osobiście"). The ruleset dismisses stale
+approvals on every new push, so what the owner merges is exactly the snapshot
+they approved.
 
 Vocabulary: the **released SHA** is the commit currently serving production (read
 it off `/api/health` — see [architecture.md](architecture.md) §Health & deploy
@@ -126,11 +135,13 @@ Operating-hygiene context for these lives in
 
 ## d. What agents may do
 
-**Everything on `main`, nothing that releases production.** Agents (acting as
-`chomamateusz-agent`, Write) branch, open PRs, merge to `main` once the four
-checks pass, dispatch workflows, and drive preview + staging deployments freely —
-that is the whole development environment. An agent may **open** the
-`main → production` release PR, but cannot approve it (no self-approval), cannot
-edit the rulesets (Write, not Admin), and holds no platform-CLI session. Approval
-and merge to `production` are the owner's, from a device the agent does not
-control, always.
+**Everything up to the pull request — never past it.** In this fork a merge
+to `main` IS the production release, so the agent never merges into `main`.
+Agents (acting as `chomamateusz-agent`) branch, open PRs, dispatch workflows,
+and drive preview deployments freely — that is the whole development
+environment. The `require-gates` ruleset (no bypass) blocks any merge without
+one approving owner review plus the four green checks, and the agent cannot
+approve a PR (no self-approval), cannot lift the rulesets past the owner's
+admin controls, and holds no platform-CLI session. The approval **and the
+merge** — the release decision and its execution — are the owner's, from a
+device the agent does not control, always (owner clarification 2026-08-15).

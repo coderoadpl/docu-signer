@@ -6,6 +6,27 @@ The confirming statements were originally posted as pull-request comments in
 the private repository this project was developed in; they are reproduced here
 verbatim so the record survives independently of that repository.
 
+## 2026-08-15 — owner promotion wall on `main`
+
+Reverses the SIL-2 autonomous-merge rule (the agent merged to `main` on green
+gates without an owner review). Given in the working session that armed the
+branch rulesets; the owner's confirming comment and approving review on the
+pull request recording this ruling are the owner-visible artifact.
+
+> u Together ściana review gate'uje Ciebie - i to jest okej zrobmy tak samo
+> promocje na prod bede robil ja
+
+(Gloss: the first clause quotes back the agent's message addressed to the
+owner — "at Together the review wall gates you [the owner]" — and the owner
+affirms it: adopt the same wall here; production promotions are the owner's.
+Asked the same day whether the agent may at least execute the merge once the
+approving review and the four green checks are in place, the owner ruled:)
+
+> Merguję osobiście
+
+(Gloss: the owner performs the merge personally; the agent's authority ends
+at opening the pull request.)
+
 ## 2026-08-07 — storing signature ink per document
 
 Reverses the 2026-08-01 rule that signature ink is never stored separately.

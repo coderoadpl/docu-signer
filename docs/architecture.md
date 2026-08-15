@@ -1238,11 +1238,15 @@ process must supply and verify its own long-lived Node packaging.
 
 ## Environments (Vercel target)
 
-> **Fork caveat (docu-signer, 2026-07-27).** Everything below about the public
-> repo and the two rulesets describes the **upstream** wall. This fork is a
-> public repo where no rulesets are armed yet; protection is
-> procedural — see FOUNDATION.md. The section is kept as the pattern the
-> discipline substitutes for.
+> **Fork caveat (docu-signer, updated 2026-08-15).** Everything below about
+> the two rulesets and the `production` branch describes the **upstream**
+> wall. This fork armed its own wall on `main` on 2026-08-15:
+> `protect-main-history` (no deletion, no force-push, no bypass) and
+> `require-gates` (PR + one approving owner review + required
+> `check`/`smoke`/`e2e`/`ai-review`, merge commits only, no bypass) — see
+> FOUNDATION.md. There is no `production` branch here; production deploys
+> from `main`, so the owner review on every PR into `main` IS the promotion
+> gate. The section is kept as the pattern this wall adapts.
 
 Four environments, mapped onto Vercel's native model
 ([ADR-0003](decisions/0003-vercel-environments.md)), under one hard security

@@ -89,7 +89,8 @@ before ai-review may accept them; the rulings are archived verbatim in
   `toHaveScreenshot()` over the same boot harness, in its own suite
   (`visual/`, `playwright.visual.config.ts`) so a moved screenshot can never
   redden `e2e`. It is **not a required check** — the required set is
-  `check`/`smoke`/`e2e`/`ai-review` (procedurally — see FOUNDATION.md), and
+  `check`/`smoke`/`e2e`/`ai-review` (enforced by the `require-gates` ruleset
+  since 2026-08-15 — see FOUNDATION.md), and
   `visual` stays out of it until the owner arms it. The `visual` workflow runs
   only when dispatched, nightly at 03:17 UTC, and on pushes to `main`; pull
   requests do not trigger it. Baselines

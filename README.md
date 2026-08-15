@@ -197,16 +197,16 @@ humans who own the platform; the architecture (`docs/architecture.md`
   outside the worktree, network to production hosts, `rsync`/`rm -rf` on shared
   mounts, and launching platform CLIs. A blocked command is enforcement; a
   documented "please don't" is not.
-- **Production release is an owner-approved PR gate.** Vercel Production Branch
-  Tracking points at the `production` branch. There is no server-enforced
-  ruleset armed in this fork yet (see FOUNDATION.md); the
-  gate is procedural: an agent (a Write-not-Admin machine account) merges to
-  `main` only on green checks and the owner's word, and the production build is
-  triggered only by a `main → production` PR the **owner** approves and merges
-  from a device the agent does not control. The same commit flows feature branch → preview →
-  `main` (staging) → `production`; only env vars differ, and only the owner
-  crosses the last edge, reviewing the diff **before** the merge that triggers the
-  secret-exposed build.
+- **Production release is an owner-approved PR gate.** In this fork Vercel
+  tracks `main` and there is no `production` branch, so the wall sits on
+  `main` itself: since 2026-08-15 the `require-gates` ruleset requires a PR
+  with one approving **owner** review plus green
+  `check`/`smoke`/`e2e`/`ai-review` before anything lands, with no bypass
+  actors (see FOUNDATION.md) — the agent (a machine account) prepares PRs;
+  the owner promotes by approving and merging personally. The same commit flows feature
+  branch → preview → `main` (production); only env vars differ, and the owner
+  reviews the diff **before** the merge that triggers the secret-exposed
+  production build.
 - **The AI-review gate fails closed.** A review check that cannot run — limits
   hit, tool unavailable, timeout — is a **red** check, never a skipped/green one.
   "Could not verify" and "verified safe" must never collapse to the same colour;
@@ -270,10 +270,10 @@ broad, note } }`.
   secret, so keeping it as a repo Actions secret does not violate the
   "production secrets never in Actions" rule above. The workflow never echoes it.
 
-**Required procedurally, not by ruleset.** Upstream arms `ai-review` as a
-required check on its `main-gates` ruleset; this fork has no rulesets
-(FOUNDATION.md), so a FAIL verdict blocks a merge by discipline: the agent
-does not merge a PR whose `ai-review` check is red.
+**Required by ruleset since 2026-08-15.** `ai-review` is one of the four
+required checks on this fork's `require-gates` ruleset (FOUNDATION.md), so a
+FAIL verdict blocks the merge server-side — and the agent additionally treats
+a red `ai-review` as unmergeable by discipline.
 
 **Adding slot `_2` / `_3` later.** Create repo Actions secrets
 `CLAUDE_CODE_OAUTH_TOKEN_2` / `_3` (each its own `claude setup-token`). No workflow

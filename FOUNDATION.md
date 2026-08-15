@@ -28,12 +28,27 @@ each.
 
 - Self-host stack dropped (Dockerfile, compose.prod, Caddyfile, ops/) — deploy
   target is Vercel + Neon + Blob only.
-- No branch rulesets armed yet — the repo is public, so rulesets are
-  available on GitHub Free; arming them is a pending owner task and gate
-  discipline is procedural until then (agent merges only on green checks and
-  the owner's word).
-  architecture.md §Environments still describes the upstream ruleset wall —
-  read it as the substituted-for pattern, not this repo's state.
+- Branch rulesets armed 2026-08-15: `protect-main-history` (no deletion, no
+  force-push, no bypass) and `require-gates` (PR with one approving owner
+  review + required checks `check`/`smoke`/`e2e`/`ai-review`, merge commits
+  only, no bypass). Owner ruling 2026-08-15 adopts the Together-style
+  promotion wall and REVERSES the earlier autonomous-merge delta: the agent
+  prepares PRs; the approving review AND the merge are both the owner's (the
+  owner clarified the same day: „Merguję osobiście" — the agent's authority
+  ends at opening the PR). Stale approvals are dismissed on every new push
+  (`dismiss_stale_reviews_on_push`), so the owner's review always covers the
+  exact snapshot that merges — that is what makes "the diff review happens
+  before the production build" an enforced property, not a convention.
+  `require_last_push_approval` stays off because branches are pushed
+  over the owner's SSH identity, which would make the owner the pusher and
+  void their own approval. Ruling archived verbatim in
+  [docs/owner-rulings.md](docs/owner-rulings.md).
+  architecture.md §Environments still documents the upstream two-ruleset wall
+  (including a `production` branch) — read it as the pattern this fork's
+  `main`-only wall adapts.
+- Production deploys from `main` (Vercel tracks `main`); the upstream
+  `main → production` promotion stage is collapsed into the owner-review wall
+  on `main` itself — there is no `production` branch in this fork.
 - Remote post-deploy smoke runs on Production only — previews sit behind
   Vercel Authentication, whose SSO interstitial an unauthenticated smoke
   cannot pass; staging-by-preview verification is deliberately waived.
@@ -54,9 +69,11 @@ each.
   §Environments owner ruling); forward-only binds from that merge onward.
 - Login hides demo credentials and magic-link controls outside dev/e2e builds.
 - Password reset is hidden until SMTP or SES is configured; dev/e2e use Mailpit.
-- Merges to `main` land over SSH as the owner — Vercel Hobby blocks production
-  deploys from commits authored by an unconnected account, so `gh pr merge`
-  (agent-authored merge commit) cannot release; `gh` stays for PR management.
+- Merges to `main` are performed by the owner from the GitHub UI (merge
+  commit) after their approving review — the agent's authority ends at opening
+  the PR, and the ruleset blocks direct SSH pushes to `main`. This also
+  retires the prior SSH-merge delta's Vercel-Hobby author concern: the merge
+  commit is owner-authored by construction.
 - Remote post-deploy smoke drives the unauthenticated surface only (headers,
   the public API of the `default` tenant, health, deploy attestation) until
   the owner provisions a canary account and the `SMOKE_EMAIL`/`SMOKE_PASSWORD`
