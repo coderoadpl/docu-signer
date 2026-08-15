@@ -205,6 +205,7 @@ export const fileUploadRequestSchema = z.object({
   fileName: z.string().trim().min(1),
   contentType: documentUploadContentTypeSchema,
   role: documentFileRoleSchema,
+  contributorAccountIds: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export type FileUploadRequest = z.infer<typeof fileUploadRequestSchema>;
@@ -215,6 +216,7 @@ export const finalizeFileUploadSchema = z.object({
   contentType: documentUploadContentTypeSchema,
   sizeBytes: z.number().int().nonnegative().max(MAX_DOCUMENT_FILE_BYTES),
   role: documentFileRoleSchema,
+  contributorAccountIds: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export type FinalizeFileUpload = z.infer<typeof finalizeFileUploadSchema>;

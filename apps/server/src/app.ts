@@ -781,6 +781,7 @@ export const buildApp = (deps: AppDeps) => {
       fileName: c.req.query('fileName'),
       contentType: c.req.header('content-type'),
       role: c.req.query('role'),
+      contributorAccountIds: c.req.queries('contributorAccountId'),
     });
     if (!parsed.success) {
       return respond(err(validation('Invalid server upload metadata', parsed.error.flatten())));

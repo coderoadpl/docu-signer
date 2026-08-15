@@ -197,6 +197,7 @@ export const createDeps = (env: Env): AppDeps => {
   const passwordResetEnabled = selectPasswordResetEnabled(env);
   const storage = selectStoragePort(env);
   const tenantSettings = createTenantSettingsRepository(db);
+  const tenantAccounts = createTenantAccountRepository(db);
   const signatureRecords = createSignatureRecordRepository(db);
   const warnings = createConsoleWarningLogger();
   if (!emailConfigured) {
@@ -265,13 +266,14 @@ export const createDeps = (env: Env): AppDeps => {
     savedSearches: createSavedSearchRepository(db),
     userPreferences: createUserPreferenceRepository(db),
     tenantSettings,
-    tenantAccounts: createTenantAccountRepository(db),
+    tenantAccounts,
     signatureRecords,
     sourceUpdateRequests: createSourceUpdateRequestRepository(db),
     pdfSealing: {
       ids: { nextId: () => randomUUID() },
       pdfSeal: createSignPdfSeal(selectPdfSealCredentials(env)),
       signatureRecords,
+      tenantAccounts,
       tenantSettings,
       warnings,
     },

@@ -408,9 +408,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
   ): Promise<WriteResult<z.output<typeof documentFileOutputSchema>>> => {
     const fetchImpl = options.fetchImpl ?? fetch;
     const traceparent = options.traceparent?.();
+    const contributorQuery = input.contributorAccountIds
+      ?.map((accountId) => `&contributorAccountId=${encodeURIComponent(accountId)}`)
+      .join('') ?? '';
     const path =
       pathWith(API_ROUTES.documentFileServerUpload.path, { documentId }) +
-      `?fileName=${encodeURIComponent(input.fileName)}&role=${encodeURIComponent(input.role)}`;
+      `?fileName=${encodeURIComponent(input.fileName)}&role=${encodeURIComponent(input.role)}${contributorQuery}`;
     let response: Response;
     try {
       response = await fetchImpl(`${options.baseUrl}${path}`, {
