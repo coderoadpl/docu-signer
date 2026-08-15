@@ -41,6 +41,7 @@ import {
   trashedDocumentsQuery,
   updateDocumentMutation,
   updateTenantSettingsMutation,
+  updateUserMutation,
   uploadDocumentFileMutation,
   setUserPreferenceMutation,
   userPreferenceInvalidates,
@@ -569,6 +570,7 @@ const auth: AuthClientPort = {
   signUp: async (): AuthWrite<AuthSessionResult> => ok({ token: 'signed-up' }),
   signIn: async (): AuthWrite<AuthSessionResult> => ok({ token: 'signed-in' }),
   signOut: async (): AuthWrite<void> => ok(undefined),
+  updateUser: async (): AuthWrite<void> => ok(undefined),
   changePassword: async (): AuthWrite<void> => ok(undefined),
   requestMagicLink: async (): AuthWrite<void> => ok(undefined),
   requestPasswordReset: async (): AuthWrite<void> => ok(undefined),
@@ -584,8 +586,13 @@ const auth: AuthClientPort = {
 };
 
 describe('auth mutation descriptors', () => {
-  it('executes password change and reset mutations through AuthClientPort', async () => {
+  it('executes profile and password mutations through AuthClientPort', async () => {
     const client = newClient();
+    await expect(
+      new MutationObserver(client, updateUserMutation(auth)).mutate({
+        name: 'Maria Kowalska',
+      }),
+    ).resolves.toBeUndefined();
     await expect(
       new MutationObserver(client, changePasswordMutation(auth)).mutate({
         currentPassword: 'demo1234',

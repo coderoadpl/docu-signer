@@ -8,6 +8,7 @@ describe('SettingsPage', () => {
   it('contains account security and organization settings', async () => {
     renderWithProviders(<SettingsPage />);
     expect(screen.getByRole('heading', { name: 'Konto', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText(/^Profil$/i)).toBeInTheDocument();
     expect(screen.getByText(/^Hasło$/i)).toBeInTheDocument();
     expect(screen.getByText(/uwierzytelnianie dwuskładnikowe/i)).toBeInTheDocument();
     expect(screen.getByText(/klucze dostępu/i)).toBeInTheDocument();

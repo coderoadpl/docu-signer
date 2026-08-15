@@ -162,6 +162,8 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
       return ok(authSessionResult(response.data, token));
     },
     signOut: async () => toResult(undefined, (await client.signOut()).error),
+    updateUser: async ({ name }) =>
+      toResult(undefined, (await client.updateUser({ name })).error),
     changePassword: async ({ currentPassword, newPassword, revokeOtherSessions }) =>
       toResult(
         undefined,
@@ -284,6 +286,10 @@ export const createCliAuthAdapter = (
       const current = token();
       if (current === null) return ok(undefined);
       const result = await postCliAuth(baseUrl, '/api/auth/sign-out', {}, current);
+      return result.ok ? ok(undefined) : result;
+    },
+    updateUser: async (input) => {
+      const result = await postCliAuth(baseUrl, '/api/auth/update-user', input, token());
       return result.ok ? ok(undefined) : result;
     },
     changePassword: async (input) => {

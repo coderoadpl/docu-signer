@@ -43,6 +43,7 @@ import type {
   PasswordResetCompletion,
   PasswordResetRequest,
   SocialSignInInput,
+  UpdateUserInput,
 } from './auth-port.js';
 import {
   unwrap,
@@ -662,6 +663,12 @@ export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, 
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-out'],
     call: () => auth.signOut(),
+  });
+
+export const updateUserMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'update-user'],
+    call: (input: UpdateUserInput) => auth.updateUser(input),
   });
 
 export const changePasswordMutation = (auth: AuthClientPort) =>
