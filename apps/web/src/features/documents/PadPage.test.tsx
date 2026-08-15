@@ -13,6 +13,20 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { PadQrDialog } from './DocumentSigningPage.js';
 import { PadPage } from './PadPage.js';
+import * as signingModule from './signing.js';
+
+const signingMocks = vi.hoisted(() => ({
+  inkToCanvasOutlines: vi.fn<typeof signingModule.inkToCanvasOutlines>(),
+}));
+
+vi.mock('./signing.js', async (importOriginal) => {
+  const original = await importOriginal<typeof signingModule>();
+  signingMocks.inkToCanvasOutlines.mockImplementation(original.inkToCanvasOutlines);
+  return {
+    ...original,
+    inkToCanvasOutlines: signingMocks.inkToCanvasOutlines,
+  };
+});
 
 const SESSION_ID = '11111111-1111-4111-8111-111111111111';
 const REQUEST_ID = '22222222-2222-4222-8222-222222222222';
@@ -155,6 +169,7 @@ describe('PadQrDialog', () => {
 describe('PadPage', () => {
   beforeEach(() => {
     pointerCapture.mockClear();
+    signingMocks.inkToCanvasOutlines.mockClear();
     window.scrollTo = vi.fn();
     window.history.pushState(null, '', `/pad/${SESSION_ID}#s=pad_secret`);
     const canvasContext = {
@@ -262,6 +277,25 @@ describe('PadPage', () => {
     expect(screen.getByRole('button', { name: 'Piórko' })).toHaveAttribute(
       'aria-pressed',
       'true',
+    );
+  });
+
+  it('renders live ink with the pad preview size', async () => {
+    useActiveRequest();
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    drawStroke(canvas, 'pen', 40);
+
+    await waitFor(() =>
+      expect(signingMocks.inkToCanvasOutlines).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ points: expect.any(Array) })]),
+        { offsetX: 0, offsetY: 0, scale: 1 },
+        expect.objectContaining({ cssHeight: 240, cssWidth: 320 }),
+        signingModule.PAD_PREVIEW_INK_SIZE,
+      ),
     );
   });
 

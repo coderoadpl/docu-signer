@@ -28,6 +28,7 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { InkSurface } from '../../theme.js';
 import {
   DEFAULT_SIGNING_INK_COLOR,
+  PAD_PREVIEW_INK_SIZE,
   SIGNING_INK_COLORS,
   inkToCanvasOutlines,
   penPriorityActive,
@@ -142,7 +143,12 @@ const drawPadInk = (
   if (!context) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = color;
-  for (const outline of inkToCanvasOutlines(strokes, DEFAULT_PLACEMENT, metrics)) {
+  for (const outline of inkToCanvasOutlines(
+    strokes,
+    DEFAULT_PLACEMENT,
+    metrics,
+    PAD_PREVIEW_INK_SIZE,
+  )) {
     drawOutline(context, outline.points);
   }
 };
