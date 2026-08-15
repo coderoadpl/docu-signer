@@ -73,11 +73,13 @@ each.
   §Environments owner ruling); forward-only binds from that merge onward.
 - Login hides demo credentials and magic-link controls outside dev/e2e builds.
 - Password reset is hidden until SMTP or SES is configured; dev/e2e use Mailpit.
-- Merges to `main` are performed by the owner from the GitHub UI (merge
-  commit) after their approving review — the agent's authority ends at opening
-  the PR, and the ruleset blocks direct SSH pushes to `main`. This also
-  retires the prior SSH-merge delta's Vercel-Hobby author concern: the merge
-  commit is owner-authored by construction.
+- Merges to `main` land as merge commits (GitHub UI or `gh pr merge --merge`)
+  only after the owner's approving review; the ruleset blocks direct SSH
+  pushes to `main`. The prior SSH-merge delta's Vercel-Hobby author concern
+  (Hobby refused deploys of commits authored by an unconnected account) is
+  retired empirically, not by construction: the project moved to the paid
+  Vercel team, and on 2026-08-15 three agent-authored merge commits deployed
+  to production without issue.
 - Remote post-deploy smoke drives the unauthenticated surface only (headers,
   the public API of the `default` tenant, health, deploy attestation) until
   the owner provisions a canary account and the `SMOKE_EMAIL`/`SMOKE_PASSWORD`
