@@ -138,6 +138,14 @@ const draftDocument = {
   draft: true,
 };
 
+const signatureWaivedDocument = {
+  ...document,
+  id: '66666666-6666-4666-8666-666666666666',
+  title: 'Rachunek bez podpisu',
+  docType: 'rachunek',
+  signatureNotRequired: true,
+};
+
 const savedSearch = {
   id: '33333333-3333-4333-8333-333333333333',
   tenantId: 'tenant-1',
@@ -369,6 +377,9 @@ describe('DocumentsPage', () => {
 
     await screen.findAllByText('Umowa z Anną');
     await user.click(screen.getByLabelText('Status podpisu'));
+    expect(
+      await screen.findByRole('option', { name: 'Nie wymaga podpisu' }),
+    ).toBeInTheDocument();
     await user.click(await screen.findByRole('option', { name: 'Podpisane' }));
     expect((await screen.findAllByText('Podpisana umowa')).length).toBeGreaterThan(0);
     await waitFor(() =>
@@ -387,6 +398,41 @@ describe('DocumentsPage', () => {
         draft: 'true',
       }),
     );
+  });
+
+  it('shows the signature-waiver chip in the status column', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { documents: [signatureWaivedDocument] },
+        }),
+      ),
+      http.get('/api/me/preferences/documents.columns', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            preference: {
+              userId: 'user-1',
+              key: 'documents.columns',
+              value: {
+                version: 2,
+                order: ['signatureStatus'],
+                visible: ['signatureStatus'],
+              },
+              updatedAt: '2026-08-02T10:00:00.000Z',
+            },
+          },
+        }),
+      ),
+    );
+
+    await renderPage();
+
+    expect(
+      await screen.findByRole('columnheader', { name: 'Status podpisu' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('Nie wymaga')).toBeInTheDocument();
   });
 
   it('renders signer initials with a full-name tooltip and filters by tenant account', async () => {
@@ -796,6 +842,53 @@ describe('DocumentsPage', () => {
     expect(unapprove).toHaveBeenCalledWith('66666666-6666-4666-8666-666666666666');
     expect(unapprove).not.toHaveBeenCalledWith(draftDocument.id);
     expect(await screen.findByText('Cofnięto do szkicu 2, błędów 0.')).toBeInTheDocument();
+  });
+
+  it('bulk waives and restores the signature requirement for gated selections', async () => {
+    const waive = vi.fn();
+    const requireSignature = vi.fn();
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { documents: [document, signatureWaivedDocument] },
+        }),
+      ),
+      http.post('/api/documents/:id/waive-signature', ({ params }) => {
+        const id = String(params.id);
+        waive(id);
+        return HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, id, signatureNotRequired: true } },
+        });
+      }),
+      http.post('/api/documents/:id/require-signature', ({ params }) => {
+        const id = String(params.id);
+        requireSignature(id);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            document: { ...signatureWaivedDocument, id, signatureNotRequired: false },
+          },
+        });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Rachunek bez podpisu');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
+    expect(
+      screen.getByRole('button', { name: 'Nie wymaga podpisu (1)' }),
+    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Wymaga podpisu (1)' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Nie wymaga podpisu (1)' }));
+    await waitFor(() => expect(waive).toHaveBeenCalledWith(document.id));
+    expect(waive).not.toHaveBeenCalledWith(signatureWaivedDocument.id);
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Wymaga podpisu (1)' }));
+    await waitFor(() => expect(requireSignature).toHaveBeenCalledWith(signatureWaivedDocument.id));
+    expect(requireSignature).not.toHaveBeenCalledWith(document.id);
   });
 
   it('starts mass signing selected PDFs in canonical grouped order', async () => {

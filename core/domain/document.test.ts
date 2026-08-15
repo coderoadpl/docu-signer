@@ -4,6 +4,7 @@ import {
   createDocumentSchema,
   createSavedSearchSchema,
   documentListFilterSchema,
+  documentSignatureStatusSchema,
   exportDocumentsSchema,
   fileUploadRequestSchema,
   finalizeFileUploadSchema,
@@ -69,6 +70,7 @@ describe('document schemas', () => {
         filter: { signatureStatus: 'unknown' },
       }).success,
     ).toBe(false);
+    expect(documentSignatureStatusSchema.parse('not-required')).toBe('not-required');
   });
 
   it('rejects inverted dates, inverted periods, unsafe MIME types, oversized files, and bulk overflow', () => {

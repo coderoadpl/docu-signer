@@ -48,6 +48,7 @@ export const FILE_ROLE_SHORT_LABELS: Record<DocumentFileRole, string> = {
 export const SIGNATURE_STATUS_LABELS: Record<DocumentSignatureStatus, string> = {
   'needs-signature': 'Do podpisania',
   signed: 'Podpisane',
+  'not-required': 'Nie wymaga podpisu',
 };
 
 export interface DocumentFormValues {
@@ -482,7 +483,7 @@ const documentsInCanonicalOrder = <Document extends CanonicalGroupedDocumentInpu
 export const massSigningQueueTargets = (
   documents: DocumentWithFiles[],
 ): SigningQueueTarget[] =>
-  documentsInCanonicalOrder(documents)
+  documentsInCanonicalOrder(documents.filter((document) => !document.signatureNotRequired))
     .flatMap((document) => {
       const file = newestSignablePdfFile(document);
       return file ? [{ documentId: document.id, fileId: file.id }] : [];

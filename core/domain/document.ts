@@ -26,7 +26,11 @@ const documentFileRoleSchema = z.enum([
 
 export type DocumentFileRole = z.infer<typeof documentFileRoleSchema>;
 
-export const documentSignatureStatusSchema = z.enum(['needs-signature', 'signed']);
+export const documentSignatureStatusSchema = z.enum([
+  'needs-signature',
+  'signed',
+  'not-required',
+]);
 
 export type DocumentSignatureStatus = z.infer<typeof documentSignatureStatusSchema>;
 
@@ -47,6 +51,7 @@ const documentFieldsSchema = z.object({
   person: z.string().nullable(),
   tags: z.array(z.string()),
   draft: z.boolean().default(false),
+  signatureNotRequired: z.boolean().default(false),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   deletedAt: z.iso.datetime().nullable().default(null),
