@@ -5,14 +5,18 @@
 > has no `production` branch — Vercel builds production from `main`, and the
 > release gate is enforced on `main` by the rulesets armed 2026-08-15
 > (`protect-main-history` + `require-gates`: PR, one approving owner review,
-> the four required checks, no bypass — FOUNDATION.md). Read the ruleset steps
-> below as the already-armed equivalent, not as steps to perform or skip.
+> the four required checks, no bypass — FOUNDATION.md). The ruleset steps and
+> branch names below (`production-protection`, `main-gates`) are the
+> **upstream pattern**, not this fork's armed configuration — read them the
+> way architecture.md §Environments and ADR-0003 read them: as the pattern the
+> `main`-only wall adapts, never as steps to perform here.
 
 The step-by-step companion to [architecture.md](architecture.md) §Environments.
-That section is normative: **production is released by the owner merging an
-approved pull request `main → production`; the merge triggers the production
-build, so the owner's diff review happens *before* the build that sees production
-secrets.** This file is the procedure that makes that true and keeps it true.
+That section is normative; in this fork its rule lands as: **production is
+released by the owner approving a pull request into `main`; the merge triggers
+the production build, so the owner's diff review happens *before* the build
+that sees production secrets.** This file is the procedure that makes that
+true and keeps it true.
 Nothing here except opening the PR is agent-runnable — the approval and merge are
 owner actions from a device the agent does not control.
 

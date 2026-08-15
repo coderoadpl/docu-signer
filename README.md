@@ -203,10 +203,10 @@ humans who own the platform; the architecture (`docs/architecture.md`
   with one approving **owner** review plus green
   `check`/`smoke`/`e2e`/`ai-review` before anything lands, with no bypass
   actors (see FOUNDATION.md) — the agent (a machine account) prepares and
-  merges PRs, the owner promotes by reviewing. The same commit flows feature branch → preview →
-  `main` (staging) → `production`; only env vars differ, and only the owner
-  crosses the last edge, reviewing the diff **before** the merge that triggers the
-  secret-exposed build.
+  merges PRs, the owner promotes by reviewing. The same commit flows feature
+  branch → preview → `main` (production); only env vars differ, and the owner
+  reviews the diff **before** the merge that triggers the secret-exposed
+  production build.
 - **The AI-review gate fails closed.** A review check that cannot run — limits
   hit, tool unavailable, timeout — is a **red** check, never a skipped/green one.
   "Could not verify" and "verified safe" must never collapse to the same colour;
