@@ -17,8 +17,11 @@ released by the owner approving a pull request into `main`; the merge triggers
 the production build, so the owner's diff review happens *before* the build
 that sees production secrets.** This file is the procedure that makes that
 true and keeps it true.
-Nothing here except opening the PR is agent-runnable — the approval and merge are
-owner actions from a device the agent does not control.
+The approval is an owner action from a device the agent does not control; once
+the owner has approved and the four checks are green, the merge itself may be
+performed by the agent (`gh pr merge --merge`). The ruleset dismisses stale
+approvals on every new push, so what merges is exactly the snapshot the owner
+approved.
 
 Vocabulary: the **released SHA** is the commit currently serving production (read
 it off `/api/health` — see [architecture.md](architecture.md) §Health & deploy
@@ -132,11 +135,14 @@ Operating-hygiene context for these lives in
 
 ## d. What agents may do
 
-**Everything on `main`, nothing that releases production.** Agents (acting as
-`chomamateusz-agent`, Write) branch, open PRs, merge to `main` once the four
-checks pass, dispatch workflows, and drive preview + staging deployments freely —
-that is the whole development environment. An agent may **open** the
-`main → production` release PR, but cannot approve it (no self-approval), cannot
-edit the rulesets (Write, not Admin), and holds no platform-CLI session. Approval
-and merge to `production` are the owner's, from a device the agent does not
-control, always.
+**Everything up to the owner's approval — never past it.** In this fork a
+merge to `main` IS the production release, so the four green checks alone
+never authorize a merge. Agents (acting as `chomamateusz-agent`) branch, open
+PRs, dispatch workflows, and drive preview deployments freely — that is the
+whole development environment. An agent may merge a PR into `main` **only
+after the owner's approving review** is present alongside the four green
+checks (the `require-gates` ruleset enforces both, with no bypass); it cannot
+approve the PR itself (no self-approval), cannot lift the rulesets past the
+owner's admin controls, and holds no platform-CLI session. The approval — the
+release decision — is the owner's, from a device the agent does not control,
+always.

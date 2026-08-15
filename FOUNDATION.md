@@ -34,7 +34,11 @@ each.
   only, no bypass). Owner ruling 2026-08-15 adopts the Together-style
   promotion wall and REVERSES the earlier autonomous-merge delta: the agent
   prepares and merges PRs, but production promotion is the owner's approving
-  review. `require_last_push_approval` stays off because branches are pushed
+  review. Stale approvals are dismissed on every new push
+  (`dismiss_stale_reviews_on_push`), so the owner's review always covers the
+  exact snapshot that merges — that is what makes "the diff review happens
+  before the production build" an enforced property, not a convention.
+  `require_last_push_approval` stays off because branches are pushed
   over the owner's SSH identity, which would make the owner the pusher and
   void their own approval. Ruling archived verbatim in
   [docs/owner-rulings.md](docs/owner-rulings.md).
