@@ -106,7 +106,7 @@ const SIGNING_PEN_PRIORITY_MS = 500;
 export const DEFAULT_SIGNING_INK_SIZE = 2;
 export const MIN_SIGNING_INK_SIZE = 1;
 export const MAX_SIGNING_INK_SIZE = 6;
-export const PAD_PREVIEW_INK_SIZE = 5;
+export const PAD_PREVIEW_INK_SIZE = 4;
 
 // WHY: these options keep pressure-sensitive ink legible for signatures while
 // damping direction-change thorns seen with the previous centerline renderer.

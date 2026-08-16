@@ -284,6 +284,8 @@ describe('PadPage', () => {
     useActiveRequest();
     renderPad();
 
+    expect(signingModule.PAD_PREVIEW_INK_SIZE).toBe(4);
+
     const canvas = await screen.findByRole('application', {
       name: 'Powierzchnia pada do podpisu',
     });
@@ -399,32 +401,21 @@ describe('PadPage', () => {
     expect(handMode).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('ignores a touch submit in Piórko mode and accepts it in Ręka mode', async () => {
-    const submissions: unknown[] = [];
+  it('keeps touch toolbar taps active while rejecting touch ink in Piórko mode', async () => {
     useActiveRequest();
-    server.use(
-      http.post('*/api/pad-sessions/:sessionId/submit', async ({ request }) => {
-        submissions.push(await request.json());
-        return HttpResponse.json({ ok: true, data: { submitted: true } });
-      }),
-    );
     renderPad();
 
     const canvas = await screen.findByRole('application', {
       name: 'Powierzchnia pada do podpisu',
     });
     drawStroke(canvas, 'pen', 49);
-    const submit = screen.getByRole('button', { name: 'Zatwierdź' });
-    fireEvent.pointerDown(submit, { pointerId: 50, pointerType: 'touch', buttons: 1 });
-    fireEvent.pointerUp(submit, { pointerId: 50, pointerType: 'touch', buttons: 0 });
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-    fireEvent.click(submit);
-    expect(submissions).toHaveLength(0);
+    const capturesBeforeTouch = pointerCapture.mock.calls.length;
+    drawStroke(canvas, 'touch', 50);
 
-    tap(screen.getByRole('button', { name: 'Ręka' }), 'touch', 51);
-    tap(submit, 'touch', 52);
+    expect(pointerCapture).toHaveBeenCalledTimes(capturesBeforeTouch);
+    tap(screen.getByRole('button', { name: 'Wyczyść' }), 'touch', 51);
 
-    await waitFor(() => expect(submissions).toHaveLength(1));
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeDisabled();
   });
 
   it('lets a pen tap Wyczyść in Piórko mode', async () => {
@@ -490,6 +481,82 @@ describe('PadPage', () => {
       buttons: 0,
     });
 
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
+  });
+
+  it('recovers stale state after a mismatched pointer cancel', async () => {
+    Object.defineProperty(HTMLCanvasElement.prototype, 'hasPointerCapture', {
+      configurable: true,
+      value: vi.fn(() => false),
+    });
+    useActiveRequest();
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    fireEvent.pointerDown(canvas, {
+      pointerId: 61,
+      pointerType: 'pen',
+      clientX: 40,
+      clientY: 40,
+      pressure: 0.5,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 61,
+      pointerType: 'pen',
+      clientX: 80,
+      clientY: 60,
+      pressure: 0.5,
+      buttons: 1,
+    });
+    fireEvent.pointerCancel(canvas, { pointerId: 62, pointerType: 'pen' });
+
+    drawStroke(canvas, 'pen', 63);
+
+    expect(pointerCapture).toHaveBeenCalledWith(63);
+    await waitFor(() =>
+      expect(signingMocks.inkToCanvasOutlines).toHaveBeenLastCalledWith(
+        [
+          expect.objectContaining({ points: expect.any(Array) }),
+          expect.objectContaining({ points: expect.any(Array) }),
+        ],
+        { offsetX: 0, offsetY: 0, scale: 1 },
+        expect.any(Object),
+        signingModule.PAD_PREVIEW_INK_SIZE,
+      ),
+    );
+  });
+
+  it('commits and clears an active stroke when pointer capture is lost', async () => {
+    useActiveRequest();
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    fireEvent.pointerDown(canvas, {
+      pointerId: 64,
+      pointerType: 'pen',
+      clientX: 40,
+      clientY: 40,
+      pressure: 0.5,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 64,
+      pointerType: 'pen',
+      clientX: 80,
+      clientY: 60,
+      pressure: 0.5,
+      buttons: 1,
+    });
+    fireEvent.lostPointerCapture(canvas, { pointerId: 64, pointerType: 'pen' });
+
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
+    drawStroke(canvas, 'pen', 65);
+    fireEvent.click(screen.getByRole('button', { name: 'Cofnij' }));
     expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
   });
 
