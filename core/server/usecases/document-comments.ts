@@ -30,7 +30,7 @@ export interface DocumentCommentDeps {
   ids: IdGenerator;
 }
 
-const writeTokenRequiresDraft = (ctx: Ctx): boolean =>
+const annotationIsDraft = (ctx: Ctx): boolean =>
   ctx.identity.apiToken !== null &&
   !ctx.identity.apiToken.scopes.includes('write');
 
@@ -50,9 +50,6 @@ export const addDocumentComment = async (
   }
   const document = await deps.documents.findById(scope.value, parsedDocumentId.data);
   if (!document) return err(notFound('Document not found'));
-  if (writeTokenRequiresDraft(ctx) && !document.draft) {
-    return err(forbidden('write:draft tokens can only modify draft documents'));
-  }
   return ok(
     await deps.documentComments.create({
       id: deps.ids.nextId(),
@@ -60,8 +57,22 @@ export const addDocumentComment = async (
       documentId: parsedDocumentId.data,
       authorAccountId: ctx.identity.userId,
       body: parsed.data.body,
+      draft: annotationIsDraft(ctx),
     }),
   );
+};
+
+export const approveDocumentComment = async (
+  ctx: Ctx,
+  commentId: string,
+  deps: Pick<DocumentCommentDeps, 'documentComments'>,
+): Promise<Result<DocumentCommentListItem, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:approve');
+  if (!scope.ok) return scope;
+  const parsedCommentId = documentCommentSchema.shape.id.safeParse(commentId);
+  if (!parsedCommentId.success) return err(validation('Invalid document comment id'));
+  const approved = await deps.documentComments.approve(scope.value, parsedCommentId.data);
+  return approved ? ok(approved) : err(notFound('Document comment not found'));
 };
 
 export const deleteDocumentComment = async (

@@ -235,6 +235,153 @@ describe('DocumentDetailPage', () => {
     await waitFor(() => expect(screen.queryByText('Umowa ramowa')).not.toBeInTheDocument());
   });
 
+  it('renders draft annotation chips and approves links and comments', async () => {
+    const linkId = '66666666-6666-4666-8666-666666666666';
+    const commentId = '67676767-6767-4767-8767-676767676767';
+    const approveLink = vi.fn();
+    const approveComment = vi.fn();
+    let linkDraft = true;
+    let commentDraft = true;
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/links`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            links: [{
+              linkId,
+              label: null,
+              draft: linkDraft,
+              document: {
+                ...document,
+                id: RELATED_ID,
+                title: 'Umowa ramowa',
+                files: undefined,
+                signers: undefined,
+              },
+            }],
+          },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/comments`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            items: [{
+              id: commentId,
+              tenantId: 'tenant-1',
+              documentId: DOCUMENT_ID,
+              author: { accountId: 'user-other', name: 'Anna Nowak' },
+              body: 'Komentarz do zatwierdzenia',
+              draft: commentDraft,
+              createdAt: '2026-08-16T12:00:00.000Z',
+            }],
+            nextCursor: null,
+          },
+        }),
+      ),
+      http.post(`/api/document-links/${linkId}/approve`, () => {
+        approveLink();
+        linkDraft = false;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            link: {
+              id: linkId,
+              tenantId: 'tenant-1',
+              fromDocumentId: DOCUMENT_ID,
+              toDocumentId: RELATED_ID,
+              label: null,
+              draft: false,
+            },
+          },
+        });
+      }),
+      http.post(`/api/document-comments/${commentId}/approve`, () => {
+        approveComment();
+        commentDraft = false;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            comment: {
+              id: commentId,
+              tenantId: 'tenant-1',
+              documentId: DOCUMENT_ID,
+              author: { accountId: 'user-other', name: 'Anna Nowak' },
+              body: 'Komentarz do zatwierdzenia',
+              draft: false,
+              createdAt: '2026-08-16T12:00:00.000Z',
+            },
+          },
+        });
+      }),
+    );
+    await renderPage();
+
+    const linkedRow = (await screen.findByText('Umowa ramowa')).closest('li');
+    const commentRow = screen.getByText('Komentarz do zatwierdzenia').closest('li');
+    expect(linkedRow).not.toBeNull();
+    expect(commentRow).not.toBeNull();
+    if (!linkedRow || !commentRow) throw new Error('Draft annotation rows were not rendered');
+    expect(within(linkedRow).getByText('Szkic')).toBeInTheDocument();
+    expect(within(commentRow).getByText('Szkic')).toBeInTheDocument();
+
+    await userEvent.click(within(linkedRow).getByRole('button', { name: 'Zatwierdź' }));
+    await waitFor(() => expect(approveLink).toHaveBeenCalledOnce());
+    await waitFor(() => expect(within(linkedRow).queryByText('Szkic')).not.toBeInTheDocument());
+
+    await userEvent.click(within(commentRow).getByRole('button', { name: 'Zatwierdź' }));
+    await waitFor(() => expect(approveComment).toHaveBeenCalledOnce());
+    await waitFor(() => expect(within(commentRow).queryByText('Szkic')).not.toBeInTheDocument());
+  });
+
+  it('keeps draft chips visible without approval buttons when approval is unavailable', async () => {
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'visitor',
+            email: 'visitor@example.com',
+            name: 'Visitor',
+            tenant: null,
+          },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/links`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            links: [{
+              linkId: '66666666-6666-4666-8666-666666666666',
+              label: null,
+              draft: true,
+              document: {
+                ...document,
+                id: RELATED_ID,
+                title: 'Umowa ramowa',
+                files: undefined,
+                signers: undefined,
+              },
+            }],
+          },
+        }),
+      ),
+    );
+    await renderPage();
+
+    const linkedRow = (await screen.findByText('Umowa ramowa')).closest('li');
+    expect(linkedRow).not.toBeNull();
+    if (!linkedRow) throw new Error('Draft link row was not rendered');
+    expect(within(linkedRow).getByText('Szkic')).toBeInTheDocument();
+    expect(within(linkedRow).queryByRole('button', { name: 'Zatwierdź' })).not.toBeInTheDocument();
+  });
+
   it('collapses related documents beyond three entries', async () => {
     const links = [
       ['66666666-6666-4666-8666-666666666661', 'Umowa pierwsza'],

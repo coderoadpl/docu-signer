@@ -72,11 +72,14 @@ Full command set (<!--count:cli-command-groups-->13<!--/count--> top-level group
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
 `origin list|use`, `account change-password|request-password-reset`,
 `tenant-settings show|set`,
-`document list|trash-list|search|show|comment|add|link|unlink|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
+`document list|trash-list|search|show|comment|approve-comment|add|link|unlink|approve-link|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
 `token create|list|revoke`, `public profile`.
 
 `document link <targetId> <id...> [--label <text>]` links every listed document
-to one target and reports an outcome for each pair in `--json` mode.
+to one target and reports an outcome for each pair in `--json` mode. `document
+approve-link <id>` and `document approve-comment <id>` approve draft
+annotations. Draft-token creation results include the annotation's `draft`
+state in JSON output.
 
 Every command also accepts `--token <value>` (or the `APP_CLI_TOKEN` env var)
 to authenticate with a personal API token instead of the stored session;

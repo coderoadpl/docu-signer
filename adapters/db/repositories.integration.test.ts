@@ -549,11 +549,13 @@ describe('DocumentCommentRepository', () => {
         documentId,
         authorAccountId: 'user-owner',
         body: 'Pierwszy komentarz',
+        draft: true,
       }),
     ).resolves.toMatchObject({
       id: firstCommentId,
       author: { accountId: 'user-owner', name: 'Owner' },
       body: 'Pierwszy komentarz',
+      draft: true,
       createdAt: expect.any(String),
     });
     await comments.create({
@@ -562,6 +564,7 @@ describe('DocumentCommentRepository', () => {
       documentId,
       authorAccountId: 'user-owner',
       body: 'Drugi komentarz',
+      draft: false,
     });
 
     await expect(
@@ -576,6 +579,15 @@ describe('DocumentCommentRepository', () => {
     await expect(
       comments.findById('tenant-b', documentId, firstCommentId),
     ).resolves.toBeNull();
+    await expect(comments.approve('tenant-b', firstCommentId)).resolves.toBeNull();
+    await expect(comments.approve('tenant-a', firstCommentId)).resolves.toMatchObject({
+      id: firstCommentId,
+      draft: false,
+    });
+    await expect(comments.approve('tenant-a', firstCommentId)).resolves.toMatchObject({
+      id: firstCommentId,
+      draft: false,
+    });
     await expect(
       comments.delete('tenant-b', documentId, firstCommentId),
     ).resolves.toBe(false);
@@ -642,10 +654,11 @@ describe('DocumentLinkRepository', () => {
         fromDocumentId: first.id,
         toDocumentId: second.id,
         label: 'podstawa',
+        draft: true,
       }),
-    ).resolves.toMatchObject({ label: 'podstawa' });
+    ).resolves.toMatchObject({ label: 'podstawa', draft: true });
     await expect(links.listForDocument('tenant-a', first.id)).resolves.toMatchObject([
-      { label: 'podstawa', document: { id: second.id, deletedAt: null } },
+      { label: 'podstawa', draft: true, document: { id: second.id, deletedAt: null } },
     ]);
     await expect(links.listForDocument('tenant-a', second.id)).resolves.toMatchObject([
       { label: 'podstawa', document: { id: first.id } },
@@ -654,11 +667,21 @@ describe('DocumentLinkRepository', () => {
       id: '73737373-7373-4373-8373-737373737373',
     });
     await expect(
+      links.approve('tenant-b', '73737373-7373-4373-8373-737373737373'),
+    ).resolves.toBeNull();
+    await expect(
+      links.approve('tenant-a', '73737373-7373-4373-8373-737373737373'),
+    ).resolves.toMatchObject({ draft: false });
+    await expect(
+      links.approve('tenant-a', '73737373-7373-4373-8373-737373737373'),
+    ).resolves.toMatchObject({ draft: false });
+    await expect(
       links.create('tenant-a', {
         id: '74747474-7474-4474-8474-747474747474',
         fromDocumentId: first.id,
         toDocumentId: second.id,
         label: null,
+        draft: false,
       }),
     ).resolves.toBeNull();
     await expect(links.listForDocument('tenant-b', first.id)).resolves.toEqual([]);
@@ -668,6 +691,7 @@ describe('DocumentLinkRepository', () => {
         fromDocumentId: first.id,
         toDocumentId: otherTenant.id,
         label: null,
+        draft: false,
       }),
     ).rejects.toThrow();
     await expect(
@@ -676,6 +700,7 @@ describe('DocumentLinkRepository', () => {
         fromDocumentId: first.id,
         toDocumentId: first.id,
         label: null,
+        draft: false,
       }),
     ).rejects.toThrow();
 

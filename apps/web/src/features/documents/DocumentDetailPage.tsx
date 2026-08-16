@@ -514,6 +514,12 @@ export const DocumentDetailPage = ({
       await queryClient.invalidateQueries(actions.documentLinksInvalidates());
     },
   });
+  const approveDocumentLink = useMutation({
+    ...actions.approveDocumentLink,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentLinksInvalidates());
+    },
+  });
   const addDocumentComment = useMutation({
     ...actions.addDocumentComment,
     onSuccess: async () => {
@@ -523,6 +529,12 @@ export const DocumentDetailPage = ({
   });
   const deleteDocumentComment = useMutation({
     ...actions.deleteDocumentComment,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
+    },
+  });
+  const approveDocumentComment = useMutation({
+    ...actions.approveDocumentComment,
     onSuccess: async () => {
       await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
     },
@@ -570,6 +582,7 @@ export const DocumentDetailPage = ({
     signatureRecordsQuery.isSuccess &&
     !legacySignedWithoutRecords;
   const currentUserId = identityQuery.data?.userId;
+  const canApprove = identityQuery.data?.tenant !== null && identityQuery.data?.tenant !== undefined;
   const currentApproval = activeSourceUpdate?.approvals.find(
     (approval) => approval.approverId === currentUserId,
   );
@@ -1008,20 +1021,33 @@ export const DocumentDetailPage = ({
                   disablePadding
                   divider
                   secondaryAction={
-                    !isTrashed ? (
-                      <Button
-                        color="error"
-                        size="small"
-                        disabled={unlinkDocuments.isPending}
-                        onClick={() =>
-                          unlinkDocuments.mutate({
-                            documentId,
-                            otherDocumentId: link.document.id,
-                          })
-                        }
-                      >
-                        Usuń
-                      </Button>
+                    (link.draft && canApprove) || !isTrashed ? (
+                      <Stack direction="row" sx={{ gap: 1 }}>
+                        {link.draft && canApprove ? (
+                          <Button
+                            size="small"
+                            disabled={approveDocumentLink.isPending}
+                            onClick={() => approveDocumentLink.mutate(link.linkId)}
+                          >
+                            Zatwierdź
+                          </Button>
+                        ) : null}
+                        {!isTrashed ? (
+                          <Button
+                            color="error"
+                            size="small"
+                            disabled={unlinkDocuments.isPending}
+                            onClick={() =>
+                              unlinkDocuments.mutate({
+                                documentId,
+                                otherDocumentId: link.document.id,
+                              })
+                            }
+                          >
+                            Usuń
+                          </Button>
+                        ) : null}
+                      </Stack>
                     ) : null
                   }
                   sx={{ opacity: link.document.deletedAt ? 0.55 : 1 }}
@@ -1031,7 +1057,14 @@ export const DocumentDetailPage = ({
                     params={{ id: link.document.id }}
                   >
                     <ListItemText primary={link.document.title} />
-                    <Stack direction="row" sx={{ gap: 1, mr: isTrashed ? 0 : 8 }}>
+                    <Stack
+                      direction="row"
+                      sx={{
+                        gap: 1,
+                        mr: (link.draft && canApprove) || !isTrashed ? 16 : 0,
+                      }}
+                    >
+                      {link.draft ? <Chip size="small" label="Szkic" /> : null}
                       {link.label ? <Chip size="small" label={link.label} /> : null}
                       {link.document.deletedAt ? (
                         <Chip size="small" variant="outlined" label="W koszu" />
@@ -1060,6 +1093,11 @@ export const DocumentDetailPage = ({
             {unlinkDocuments.error.message}
           </Alert>
         ) : null}
+        {approveDocumentLink.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {approveDocumentLink.error.message}
+          </Alert>
+        ) : null}
       </Paper>
       <Paper component="section" variant="outlined" sx={{ mt: 3, p: 3 }}>
         <Typography variant="h2" component="h2">
@@ -1083,28 +1121,51 @@ export const DocumentDetailPage = ({
                 disableGutters
                 divider
                 secondaryAction={
-                  !isTrashed && comment.author.accountId === currentUserId ? (
-                    <Tooltip title="Usuń komentarz" describeChild disableInteractive>
-                      <IconButton
-                        aria-label={`Usuń komentarz ${comment.id}`}
-                        color="error"
-                        size="small"
-                        disabled={deleteDocumentComment.isPending}
-                        onClick={() =>
-                          deleteDocumentComment.mutate({
-                            documentId,
-                            commentId: comment.id,
-                          })
-                        }
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Tooltip>
+                  (comment.draft && canApprove) ||
+                  (!isTrashed && comment.author.accountId === currentUserId) ? (
+                    <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}>
+                      {comment.draft && canApprove ? (
+                        <Button
+                          size="small"
+                          disabled={approveDocumentComment.isPending}
+                          onClick={() => approveDocumentComment.mutate(comment.id)}
+                        >
+                          Zatwierdź
+                        </Button>
+                      ) : null}
+                      {!isTrashed && comment.author.accountId === currentUserId ? (
+                        <Tooltip title="Usuń komentarz" describeChild disableInteractive>
+                          <IconButton
+                            aria-label={`Usuń komentarz ${comment.id}`}
+                            color="error"
+                            size="small"
+                            disabled={deleteDocumentComment.isPending}
+                            onClick={() =>
+                              deleteDocumentComment.mutate({
+                                documentId,
+                                commentId: comment.id,
+                              })
+                            }
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
+                      ) : null}
+                    </Stack>
                   ) : null
                 }
                 sx={{ alignItems: 'flex-start', py: 1.5 }}
               >
-                <Box sx={{ flex: 1, mr: comment.author.accountId === currentUserId ? 5 : 0 }}>
+                <Box
+                  sx={{
+                    flex: 1,
+                    mr:
+                      (comment.draft && canApprove) ||
+                      (!isTrashed && comment.author.accountId === currentUserId)
+                        ? 12
+                        : 0,
+                  }}
+                >
                   <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
                     <Typography component="span" variant="subtitle1">
                       {comment.author.name}
@@ -1112,6 +1173,7 @@ export const DocumentDetailPage = ({
                     <Typography component="time" variant="body2" color="text.secondary">
                       {formatPolishDateTime(comment.createdAt)}
                     </Typography>
+                    {comment.draft ? <Chip size="small" label="Szkic" /> : null}
                   </Stack>
                   <DocumentCommentBody variant="body2">
                     {comment.body}
@@ -1154,6 +1216,11 @@ export const DocumentDetailPage = ({
         {deleteDocumentComment.isError ? (
           <Alert severity="error" sx={{ mt: 2 }}>
             {deleteDocumentComment.error.message}
+          </Alert>
+        ) : null}
+        {approveDocumentComment.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {approveDocumentComment.error.message}
           </Alert>
         ) : null}
       </Paper>

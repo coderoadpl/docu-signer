@@ -110,8 +110,10 @@ const baseDeps = (): AppDeps => ({
       documentId: input.documentId,
       author: { accountId: input.authorAccountId, name: 'Demo' },
       body: input.body,
+      draft: input.draft,
       createdAt: '2026-08-16T10:00:00.000Z',
     }),
+    approve: async () => null,
     findById: async () => null,
     delete: async () => false,
   },
@@ -119,6 +121,7 @@ const baseDeps = (): AppDeps => ({
     create: async () => null,
     findBetween: async () => null,
     listForDocument: async () => [],
+    approve: async () => null,
     deleteBetween: async () => false,
   },
   padSessions: {
@@ -347,6 +350,7 @@ describe('buildApp', () => {
                 documentId: comment.documentId,
                 author: { accountId: comment.authorAccountId, name: 'Demo' },
                 body: comment.body,
+                draft: comment.draft,
                 createdAt: comment.createdAt,
               },
             ]
@@ -359,7 +363,21 @@ describe('buildApp', () => {
           documentId: input.documentId,
           author: { accountId: input.authorAccountId, name: 'Demo' },
           body: input.body,
+          draft: input.draft,
           createdAt: '2026-08-16T12:00:00.000Z',
+        };
+      },
+      approve: async () => {
+        if (!comment) return null;
+        comment = { ...comment, draft: false };
+        return {
+          id: comment.id,
+          tenantId: comment.tenantId,
+          documentId: comment.documentId,
+          author: { accountId: comment.authorAccountId, name: 'Demo' },
+          body: comment.body,
+          draft: comment.draft,
+          createdAt: comment.createdAt,
         };
       },
       findById: async () => comment,
@@ -385,6 +403,16 @@ describe('buildApp', () => {
     expect(await listed.json()).toMatchObject({
       ok: true,
       data: { items: [{ author: { name: 'Demo' } }] },
+    });
+
+    const approved = await buildApp(deps).request(
+      API_ROUTES.documentCommentApprove.path.replace(':commentId', commentId),
+      { method: API_ROUTES.documentCommentApprove.method, headers },
+    );
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({
+      ok: true,
+      data: { comment: { id: commentId, draft: false } },
     });
 
     const deleted = await buildApp(deps).request(
@@ -675,9 +703,18 @@ describe('buildApp', () => {
       {
         linkId: '33333333-3333-4333-8333-333333333333',
         label: 'podstawa',
+        draft: false,
         document: other,
       },
     ];
+    deps.documentLinks.approve = async (tenantId, linkId) => ({
+      id: linkId,
+      tenantId,
+      fromDocumentId: documentId,
+      toDocumentId: otherDocumentId,
+      label: 'podstawa',
+      draft: false,
+    });
     deps.documentLinks.deleteBetween = async () => true;
     const app = buildApp(deps);
     const linksPath = API_ROUTES.documentLinks.path.replace(':documentId', documentId);
@@ -701,6 +738,22 @@ describe('buildApp', () => {
     expect(await listed.json()).toMatchObject({
       ok: true,
       data: { links: [{ document: { title: 'Uchwała' } }] },
+    });
+
+    const approved = await app.request(
+      API_ROUTES.documentLinkApprove.path.replace(
+        ':linkId',
+        '33333333-3333-4333-8333-333333333333',
+      ),
+      {
+        method: API_ROUTES.documentLinkApprove.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({
+      ok: true,
+      data: { link: { draft: false } },
     });
 
     const deleted = await app.request(

@@ -12,6 +12,7 @@ import {
   createSourceUpdateRequestSchema,
   documentFileSchema,
   documentCommentListItemSchema,
+  documentLinkSchema,
   documentListItemSchema,
   documentListFilterSchema,
   linkedDocumentSchema,
@@ -129,6 +130,10 @@ export const documentCommentCreateOutputSchema = z.object({
   comment: documentCommentListItemSchema,
 });
 
+export const documentCommentApproveOutputSchema = z.object({
+  comment: documentCommentListItemSchema,
+});
+
 export const documentCommentDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
@@ -159,6 +164,10 @@ export const documentLinkCreateInputSchema = linkDocumentsInputSchema;
 
 export const documentLinkCreateOutputSchema = z.object({
   link: linkedDocumentSchema,
+});
+
+export const documentLinkApproveOutputSchema = z.object({
+  link: documentLinkSchema,
 });
 
 export const documentLinkListOutputSchema = z.object({
@@ -426,6 +435,10 @@ export const API_ROUTES = {
   document: { method: 'GET', path: '/api/documents/:documentId' },
   documentComments: { method: 'GET', path: '/api/documents/:documentId/comments' },
   documentCommentCreate: { method: 'POST', path: '/api/documents/:documentId/comments' },
+  documentCommentApprove: {
+    method: 'POST',
+    path: '/api/document-comments/:commentId/approve',
+  },
   documentCommentDelete: {
     method: 'DELETE',
     path: '/api/documents/:documentId/comments/:commentId',
@@ -443,6 +456,10 @@ export const API_ROUTES = {
   },
   documentLinks: { method: 'GET', path: '/api/documents/:documentId/links' },
   documentLinkCreate: { method: 'POST', path: '/api/documents/:documentId/links' },
+  documentLinkApprove: {
+    method: 'POST',
+    path: '/api/document-links/:linkId/approve',
+  },
   documentLinkDelete: {
     method: 'DELETE',
     path: '/api/documents/:documentId/links/:otherDocumentId',

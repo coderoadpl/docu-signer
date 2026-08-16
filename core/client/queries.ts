@@ -284,6 +284,12 @@ export const deleteDocumentCommentMutation = (api: ApiClient) =>
       api.deleteDocumentComment(documentId, commentId),
   });
 
+export const approveDocumentCommentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentCommentScopes.all(), 'approve'],
+    call: (commentId: string) => api.approveDocumentComment(commentId),
+  });
+
 export const documentCommentsInvalidates = (documentId: string) => ({
   queryKey: documentCommentScopes.document(documentId),
 });
@@ -328,6 +334,12 @@ export const unlinkDocumentsMutation = (api: ApiClient) =>
     mutationKey: [...documentLinksScopes.all(), 'delete'],
     call: ({ documentId, otherDocumentId }: { documentId: string; otherDocumentId: string }) =>
       api.unlinkDocuments(documentId, otherDocumentId),
+  });
+
+export const approveDocumentLinkMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentLinksScopes.all(), 'approve'],
+    call: (linkId: string) => api.approveDocumentLink(linkId),
   });
 
 export const approveDocumentMutation = (api: ApiClient) =>

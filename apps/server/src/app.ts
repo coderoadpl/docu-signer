@@ -48,6 +48,8 @@ import {
 } from '#core/domain/index.js';
 import {
   approveDocument,
+  approveDocumentComment,
+  approveDocumentLink,
   addDocumentComment,
   createApiToken,
   createInvitation,
@@ -711,6 +713,15 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ comment: result.value }) : result);
   });
 
+  app.post(API_ROUTES.documentCommentApprove.path, async (c) => {
+    const result = await approveDocumentComment(
+      ctxOf(c.get('identity')),
+      c.req.param('commentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ comment: result.value }) : result);
+  });
+
   app.delete(API_ROUTES.documentCommentDelete.path, async (c) => {
     const result = await deleteDocumentComment(
       ctxOf(c.get('identity')),
@@ -791,6 +802,15 @@ export const buildApp = (deps: AppDeps) => {
       ctxOf(c.get('identity')),
       c.req.param('documentId'),
       parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ link: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentLinkApprove.path, async (c) => {
+    const result = await approveDocumentLink(
+      ctxOf(c.get('identity')),
+      c.req.param('linkId'),
       deps,
     );
     return respond(result.ok ? ok({ link: result.value }) : result);

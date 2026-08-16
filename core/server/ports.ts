@@ -103,6 +103,7 @@ export interface DocumentCommentRepository {
     limit: number,
   ): Promise<DocumentCommentListItem[]>;
   create(input: Omit<DocumentComment, 'createdAt'>): Promise<DocumentCommentListItem>;
+  approve(tenantId: string, commentId: string): Promise<DocumentCommentListItem | null>;
   findById(
     tenantId: string,
     documentId: string,
@@ -122,6 +123,7 @@ export interface DocumentLinkRepository {
     secondDocumentId: string,
   ): Promise<DocumentLink | null>;
   listForDocument(tenantId: string, documentId: string): Promise<LinkedDocument[]>;
+  approve(tenantId: string, linkId: string): Promise<DocumentLink | null>;
   deleteBetween(
     tenantId: string,
     firstDocumentId: string,
