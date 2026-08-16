@@ -235,6 +235,49 @@ describe('DocumentDetailPage', () => {
     await waitFor(() => expect(screen.queryByText('Umowa ramowa')).not.toBeInTheDocument());
   });
 
+  it('collapses related documents beyond three entries', async () => {
+    const links = [
+      ['66666666-6666-4666-8666-666666666661', 'Umowa pierwsza'],
+      ['66666666-6666-4666-8666-666666666662', 'Umowa druga'],
+      ['66666666-6666-4666-8666-666666666663', 'Umowa trzecia'],
+      ['66666666-6666-4666-8666-666666666664', 'Umowa czwarta'],
+    ].map(([linkId, title], index) => ({
+      linkId,
+      label: null,
+      document: {
+        ...document,
+        id: `77777777-7777-4777-8777-77777777777${index}`,
+        title,
+        files: undefined,
+        signers: undefined,
+      },
+    }));
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/links`, () =>
+        HttpResponse.json({ ok: true, data: { links } }),
+      ),
+    );
+    await renderPage();
+
+    expect(await screen.findByText('Umowa pierwsza')).toBeInTheDocument();
+    expect(screen.getByText('Umowa druga')).toBeInTheDocument();
+    expect(screen.getByText('Umowa trzecia')).toBeInTheDocument();
+    expect(screen.queryByText('Umowa czwarta')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dodaj powiązanie' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Pokaż wszystkie (4)' }));
+
+    expect(screen.getByText('Umowa czwarta')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dodaj powiązanie' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Zwiń' }));
+
+    expect(screen.queryByText('Umowa czwarta')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pokaż wszystkie (4)' })).toBeInTheDocument();
+  });
+
   it('enables source updates with signature records and shows both dialog choices', async () => {
     server.use(
       http.get(`/api/documents/${DOCUMENT_ID}`, () =>
