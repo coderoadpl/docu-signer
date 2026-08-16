@@ -555,7 +555,21 @@ describe('API route contract', () => {
       }).success,
     ).toBe(true);
     expect(
-      signatureRecordListOutputSchema.safeParse({ items: [record], nextCursor: null }).success,
+      signatureRecordListOutputSchema.safeParse({
+        items: [
+          {
+            ...record,
+            signerBoxEntries: [
+              {
+                accountId: 'user-1',
+                name: 'Owner',
+                declaredAt: '2026-08-07T10:00:00.000Z',
+              },
+            ],
+          },
+        ],
+        nextCursor: null,
+      }).success,
     ).toBe(true);
     expect(
       signatureRecordCreateInputSchema.safeParse({

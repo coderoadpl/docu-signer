@@ -92,7 +92,10 @@ import {
 } from './signing-pdf.js';
 import { uploadDocumentFile } from './upload.logic.js';
 import { storeSignatureRecordAfterUpload } from './signature-record.logic.js';
-import { buildSignersBox } from './signers-box.js';
+import {
+  buildSignersBox,
+  priorSignersBoxEntries,
+} from './signers-box.js';
 
 type LoadedPdf = Awaited<ReturnType<typeof loadSourcePdf>>;
 
@@ -1991,8 +1994,26 @@ export const DocumentSigningPage = ({
     const currentDocument: DocumentWithFiles | undefined = documentQuery.data?.document;
     if (!currentDocument) throw new Error('Nie udało się odczytać danych dokumentu.');
     const committedStamps = await flattenedStamps();
+    let priorSigners;
+    if (
+      settings.settings.signatureBoxEnabled &&
+      settings.settings.storeSignatureRecords &&
+      sourceFile.role === 'signed-digital'
+    ) {
+      try {
+        const records = await queryClient.fetchQuery(
+          actions.signatureRecords(documentId),
+        );
+        priorSigners = priorSignersBoxEntries(records.items, sourceFile.id);
+      } catch {
+        priorSigners = null;
+      }
+    }
+    const canDrawSignersBox =
+      sourceFile.role === 'source' ||
+      (settings.settings.storeSignatureRecords && priorSigners !== null);
     const signersBox =
-      settings.settings.signatureBoxEnabled && sourceFile.role === 'source'
+      settings.settings.signatureBoxEnabled && canDrawSignersBox
         ? buildSignersBox({
             documentDate: currentDocument.documentDate,
             wallClock: new Date(),
@@ -2000,6 +2021,7 @@ export const DocumentSigningPage = ({
               accountId: stamp.contributedBy.accountId,
               name: stamp.contributedBy.label,
             })),
+            ...(priorSigners ? { priorSigners } : {}),
             ...(settings.settings.pdfSealEnabled &&
             settings.settings.sealCertificateSubject
               ? {

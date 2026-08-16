@@ -264,7 +264,23 @@ export const tenantSettingsUpdateOutputSchema = z.object({
 
 export const signatureRecordListInputSchema = paginationQuerySchema;
 
-export const signatureRecordListOutputSchema = paginatedOutputSchema(signatureRecordSchema);
+export const signatureRecordSignerBoxEntrySchema = tenantAccountSchema.extend({
+  declaredAt: z.iso.datetime(),
+});
+
+export type SignatureRecordSignerBoxEntry = z.infer<
+  typeof signatureRecordSignerBoxEntrySchema
+>;
+
+export const signatureRecordListItemSchema = signatureRecordSchema.extend({
+  signerBoxEntries: z.array(signatureRecordSignerBoxEntrySchema).min(1).nullable(),
+});
+
+export type SignatureRecordListItem = z.infer<typeof signatureRecordListItemSchema>;
+
+export const signatureRecordListOutputSchema = paginatedOutputSchema(
+  signatureRecordListItemSchema,
+);
 
 export const signatureRecordCreateInputSchema = createSignatureRecordSchema;
 

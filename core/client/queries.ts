@@ -30,10 +30,10 @@ import {
   type PadSessionMode,
   type PadStrokeSubmission,
   type SetUserPreference,
-  type SignatureRecord,
   type UpdateDocument,
   type UpdateTenantSettings,
 } from '#core/domain/index.js';
+import type { SignatureRecordListItem } from '#core/contract/index.js';
 
 import type {
   AuthClientPort,
@@ -464,7 +464,7 @@ const listAllSignatureRecords = async (
   documentId: string,
   signal: AbortSignal,
 ) => {
-  const items: SignatureRecord[] = [];
+  const items: SignatureRecordListItem[] = [];
   let cursor: string | undefined;
   do {
     const page = await api.listSignatureRecords(

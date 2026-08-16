@@ -7,7 +7,10 @@ import {
   type RGB,
 } from 'pdf-lib';
 
-import type { SignersBoxModel } from './signers-box.js';
+import {
+  signersBoxBounds,
+  type SignersBoxModel,
+} from './signers-box.js';
 
 type Accent = 'acute' | 'dot' | 'ogonek' | 'slash';
 
@@ -181,8 +184,8 @@ export const drawSignersBox = async (
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const page = pdf.getPage(0);
-  const x = page.getWidth() - model.margin - model.width;
-  const y = page.getHeight() - model.margin - model.height;
+  const bounds = signersBoxBounds(page.getWidth(), page.getHeight(), model);
+  const { x, y } = bounds;
   const right = x + model.width - model.paddingX;
   const navy = rgb(0.12, 0.23, 0.34);
   const border = rgb(0.58, 0.64, 0.7);
