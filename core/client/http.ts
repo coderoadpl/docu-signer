@@ -11,6 +11,9 @@ import {
   invitationListOutputSchema,
   invitationRevokeOutputSchema,
   documentApproveOutputSchema,
+  documentCommentCreateOutputSchema,
+  documentCommentDeleteOutputSchema,
+  documentCommentListOutputSchema,
   documentCreateOutputSchema,
   documentDeleteOutputSchema,
   documentFileDeleteOutputSchema,
@@ -81,6 +84,7 @@ import {
   type CreateInvitation,
   type CreateSavedSearch,
   type CreateDocument,
+  type CreateDocumentComment,
   type DocumentListFilter,
   type LinkDocumentsInput,
   type ExportDocuments,
@@ -332,6 +336,45 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.document.method,
       pathWith(API_ROUTES.document.path, { documentId }),
       documentGetOutputSchema,
+      undefined,
+      signal,
+    ),
+  listDocumentComments: (
+    documentId: string,
+    input: { cursor?: string | undefined; limit?: number | undefined } = {},
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.documentComments.method,
+      `${pathWith(API_ROUTES.documentComments.path, { documentId })}${paginationQueryString(input)}`,
+      documentCommentListOutputSchema,
+      undefined,
+      signal,
+    ),
+  addDocumentComment: (
+    documentId: string,
+    input: CreateDocumentComment,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.documentCommentCreate.method,
+      pathWith(API_ROUTES.documentCommentCreate.path, { documentId }),
+      documentCommentCreateOutputSchema,
+      input,
+      signal,
+    ),
+  deleteDocumentComment: (
+    documentId: string,
+    commentId: string,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.documentCommentDelete.method,
+      pathWith(API_ROUTES.documentCommentDelete.path, { documentId, commentId }),
+      documentCommentDeleteOutputSchema,
       undefined,
       signal,
     ),

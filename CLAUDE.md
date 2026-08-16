@@ -136,13 +136,15 @@ before ai-review may accept them; the rulings are archived verbatim in
   current document. The pad defaults to a touch-locked Piórko mode with an
   explicit Ręka mode for finger drawing.
 - Dokumenty show only user-entered dates (`data podpisania`, `okres`); storage
-  timestamps (`createdAt`, `updatedAt`) never render in UI or exports. Two
+  timestamps (`createdAt`, `updatedAt`) never render in UI or exports. Three
   carve-outs: `deletedAt` records a user action and renders as `Usunięto:` in
   the Kosz surfaces only (owner decision 2026-08-02); API token `lastUsedAt` is
   a system-written security-audit timestamp and renders as `Ostatnio użyty:` in
   Konto > Tokeny API only — token hygiene is that surface's purpose, and it is
   an account-security surface, not a document surface (agent decision
-  2026-08-02, recorded in FOUNDATION.md).
+  2026-08-02, recorded in FOUNDATION.md); a document comment's `createdAt`
+  records the user action of posting and renders beside that comment (owner
+  request 2026-08-16). No other storage timestamp renders.
 - Konto: display-name editing (Profil — the name the app bar and signer
   attribution render), personal passkeys, API tokens, two-factor
   authentication and the tenant-wide signature-ink storage, PDF-seal,

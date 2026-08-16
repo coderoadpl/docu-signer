@@ -55,6 +55,7 @@ With `pnpm run dev:server` running:
 pnpm --silent run cli login --email demo@agentproofarch.dev --password demo1234
 pnpm --silent run cli document list
 pnpm --silent run cli document add "Signed agreement" --date 2026-08-01 --type umowa-uod
+pnpm --silent run cli document comment <id> "Do ponownego sprawdzenia"
 pnpm --silent run cli document upload <id> agreement.pdf --role source
 pnpm --silent run cli document verify-seal <id>
 pnpm --silent run cli document export <id> --output agreement.zip
@@ -71,7 +72,7 @@ Full command set (<!--count:cli-command-groups-->13<!--/count--> top-level group
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
 `origin list|use`, `account change-password|request-password-reset`,
 `tenant-settings show|set`,
-`document list|trash-list|search|show|add|link|unlink|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
+`document list|trash-list|search|show|comment|add|link|unlink|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
 `token create|list|revoke`, `public profile`.
 
 `document link <targetId> <id...> [--label <text>]` links every listed document
@@ -125,7 +126,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`,
   server ↔ Vercel CSP sync, dead links), and vitest with coverage across
-  **<!--count:test-files-->110<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->111<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → document archive →
@@ -137,7 +138,7 @@ Dependency lifecycle scripts are blocked unless explicitly named in
 configuration applies a three-day (`4320` minute) minimum-release-age cooldown.
 
 Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
-<!--count:integration-tests-->27<!--/count--> integration tests against a real
+<!--count:integration-tests-->28<!--/count--> integration tests against a real
 Postgres and <!--count:e2e-tests-->32<!--/count--> Playwright test executions
 across <!--count:e2e-specs-->6<!--/count--> spec files: Chromium covers all
 six, and WebKit reruns `documents.spec.ts` to pin the Safari/pdf.js legacy

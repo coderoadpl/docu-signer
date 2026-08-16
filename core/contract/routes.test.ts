@@ -7,6 +7,8 @@ import {
   apiTokenCreateInputSchema,
   apiTokenCreateOutputSchema,
   documentCreateInputSchema,
+  documentCommentCreateInputSchema,
+  documentCommentListOutputSchema,
   documentGetOutputSchema,
   documentListInputSchema,
   documentListOutputSchema,
@@ -70,6 +72,14 @@ describe('API route contract', () => {
     expect(API_ROUTES.documentRestore).toEqual({
       method: 'POST',
       path: '/api/documents/:documentId/restore',
+    });
+    expect(API_ROUTES.documentComments).toEqual({
+      method: 'GET',
+      path: '/api/documents/:documentId/comments',
+    });
+    expect(API_ROUTES.documentCommentDelete).toEqual({
+      method: 'DELETE',
+      path: '/api/documents/:documentId/comments/:commentId',
     });
     expect(API_ROUTES.documentPurge).toEqual({
       method: 'DELETE',
@@ -591,6 +601,28 @@ describe('API route contract', () => {
         payload: [{ ...record.payload[0], pageIndex: -1 }],
       }).success,
     ).toBe(false);
+  });
+
+  it('validates document comment bodies and attributed list pages', () => {
+    expect(documentCommentCreateInputSchema.parse({ body: '  Treść  ' })).toEqual({
+      body: 'Treść',
+    });
+    expect(documentCommentCreateInputSchema.safeParse({ body: ' ' }).success).toBe(false);
+    expect(
+      documentCommentListOutputSchema.safeParse({
+        items: [
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            tenantId: 'tenant-default',
+            documentId: '11111111-1111-4111-8111-111111111111',
+            author: { accountId: 'user-owner', name: 'Owner' },
+            body: 'Treść',
+            createdAt: '2026-08-16T10:00:00.000Z',
+          },
+        ],
+        nextCursor: null,
+      }).success,
+    ).toBe(true);
   });
 
   it('validates saved search payloads and responses', () => {

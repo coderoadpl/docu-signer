@@ -221,6 +221,13 @@ export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
 
 export const NoWrapButton = styled(Button)({ whiteSpace: 'nowrap' });
 
+export const DocumentCommentBody = styled(Typography)(({ theme }) => ({
+  color: theme.palette.text.primary,
+  marginTop: theme.spacing(0.75),
+  overflowWrap: 'anywhere',
+  whiteSpace: 'pre-wrap',
+}));
+
 export const PadStatusDot = styled('span')(({ theme }) => ({
   display: 'inline-block',
   width: 8,
