@@ -372,6 +372,9 @@ describe('document view logic', () => {
     expect(reviewQueueFromSearch(search)).toEqual(['document-a', 'document-b']);
     expect(reviewModeFromSearch(search)).toBe('signed');
     expect(
+      reviewModeFromSearch(documentReviewSearchSchema.parse({ tryb: 'skan' })),
+    ).toBe('scan');
+    expect(
       reviewModeFromSearch(documentReviewSearchSchema.parse({ tryb: 'zrodlo' })),
     ).toBe('source');
     expect(

@@ -24,6 +24,7 @@ const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const NEXT_DOCUMENT_ID = '22222222-2222-4222-8222-222222222222';
 const SOURCE_ID = '33333333-3333-4333-8333-333333333333';
 const SIGNED_ID = '44444444-4444-4444-8444-444444444444';
+const SCAN_ID = '55555555-5555-4555-8555-555555555555';
 
 const pdfMocks = vi.hoisted(() => ({
   destroy: vi.fn(async () => undefined),
@@ -60,6 +61,14 @@ const sourceFile = {
   createdAt: '2026-08-01T10:00:00.000Z',
 };
 
+const scanFile = {
+  ...sourceFile,
+  id: SCAN_ID,
+  role: 'signed-scan' as const,
+  fileName: 'umowa-skan.pdf',
+  createdAt: '2026-08-02T10:00:00.000Z',
+};
+
 const document = {
   id: DOCUMENT_ID,
   tenantId: 'tenant-1',
@@ -90,12 +99,13 @@ const signedDocument = {
   ...document,
   files: [
     sourceFile,
+    scanFile,
     {
       ...sourceFile,
       id: SIGNED_ID,
       role: 'signed-digital' as const,
       fileName: 'umowa-podpisana.pdf',
-      createdAt: '2026-08-02T10:00:00.000Z',
+      createdAt: '2026-08-03T10:00:00.000Z',
     },
   ],
 };
@@ -168,6 +178,32 @@ describe('DocumentReviewPage', () => {
     ).toBeVisible();
   });
 
+  it('opens a scan-only document on the scan without a missing-file message', async () => {
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, files: [scanFile] } },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/files/${SCAN_ID}/content`, () =>
+        new HttpResponse(new Uint8Array([37, 80, 68, 70]), {
+          headers: { 'content-type': 'application/pdf' },
+        }),
+      ),
+    );
+
+    await renderPage(`/app/documents/${DOCUMENT_ID}/review?kolejka=${DOCUMENT_ID}`);
+
+    expect(
+      await screen.findByRole('button', { name: 'Skan', pressed: true }),
+    ).toBeVisible();
+    expect(screen.queryByText('Brak pliku źródłowego')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Ten dokument nie ma podpisanego pliku cyfrowego'),
+    ).not.toBeInTheDocument();
+  });
+
   it('saves metadata from edit mode and returns to source mode', async () => {
     const update = vi.fn();
     server.use(
@@ -225,12 +261,17 @@ describe('DocumentReviewPage', () => {
     expect(router.state.location.search.tryb).toBeUndefined();
   });
 
-  it('opens the newest signed PDF, changes pages and closes to the filtered list', async () => {
+  it('opens the newest signed PDF ahead of the scan and source, changes pages and closes', async () => {
     server.use(
       http.get(`/api/documents/${DOCUMENT_ID}`, () =>
         HttpResponse.json({ ok: true, data: { document: signedDocument } }),
       ),
       http.get(`/api/documents/${DOCUMENT_ID}/files/${SIGNED_ID}/content`, () =>
+        new HttpResponse(new Uint8Array([37, 80, 68, 70]), {
+          headers: { 'content-type': 'application/pdf' },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/files/${SCAN_ID}/content`, () =>
         new HttpResponse(new Uint8Array([37, 80, 68, 70]), {
           headers: { 'content-type': 'application/pdf' },
         }),
@@ -241,6 +282,9 @@ describe('DocumentReviewPage', () => {
     );
 
     expect(await screen.findByRole('button', { name: 'Podpisany', pressed: true })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Skan' }));
+    await waitFor(() => expect(router.state.location.search.tryb).toBe('skan'));
+    expect(await screen.findByRole('button', { name: 'Skan', pressed: true })).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Źródło' }));
     await waitFor(() => expect(router.state.location.search.tryb).toBe('zrodlo'));
     expect(await screen.findByRole('button', { name: 'Źródło', pressed: true })).toBeVisible();
