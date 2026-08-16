@@ -36,6 +36,7 @@ import {
   padSessionStateOutputSchema as domainPadSessionStateOutputSchema,
   padSessionSubmissionConsumeOutputSchema as domainPadSessionSubmissionConsumeOutputSchema,
   padStrokeSubmissionSchema as domainPadSessionSubmitInputSchema,
+  pdfSealVerificationSchema,
   moveDocumentFileSchema,
   paginationQuerySchema,
   publicTenantProfileSchema,
@@ -234,6 +235,10 @@ export const finalizeFileUploadInputSchema = finalizeFileUploadSchema;
 
 export const documentFileOutputSchema = z.object({
   file: documentFileSchema,
+});
+
+export const documentFileSealOutputSchema = z.object({
+  verification: pdfSealVerificationSchema,
 });
 
 export const serverUploadMetadataSchema = fileUploadRequestSchema;
@@ -517,6 +522,10 @@ export const API_ROUTES = {
   documentFileContent: {
     method: 'GET',
     path: '/api/documents/:documentId/files/:fileId/content',
+  },
+  documentFileSeal: {
+    method: 'GET',
+    path: '/api/documents/:documentId/files/:fileId/seal',
   },
   documentFileExport: {
     method: 'GET',

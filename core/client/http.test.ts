@@ -9,6 +9,33 @@ const json = (data: unknown, status = 200) =>
   });
 
 describe('API client', () => {
+  it('gets document seal verification through the file route', async () => {
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const fileId = '22222222-2222-4222-8222-222222222222';
+    const verification = {
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      json({ ok: true, data: { verification } }),
+    );
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(
+      api.getDocumentFileSealVerification(documentId, fileId),
+    ).resolves.toEqual({ ok: true, value: { verification } });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      `/api/documents/${documentId}/files/${fileId}/seal`,
+    );
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'GET' });
+  });
+
   it('parses health and document responses through the contract', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input) =>
       String(input).endsWith('/api/health')

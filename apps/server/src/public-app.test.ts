@@ -198,6 +198,18 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     cancel: async () => null,
     complete: async () => null,
   },
+  pdfSealVerification: {
+    verify: () => ({
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    }),
+  },
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),

@@ -201,6 +201,8 @@ describe('signpdf PAdES adapter', () => {
     const verification = verifyPdfSeal(sealed.bytes);
     expect(verification).toEqual({
       subject: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+      name: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+      reason: 'Signed by: Anna Żółć, Marek Nowak',
       declaredAt: expectedCmsTime,
       byteRangeValid: true,
       digestValid: true,
@@ -223,7 +225,7 @@ describe('signpdf PAdES adapter', () => {
     const second = await adapter.seal({
       bytes: first.bytes,
       signingTime: new Date('2026-08-09T14:16:17.000Z'),
-      contributorNames: ['Marek Nowak'],
+      contributorNames: ['Marek (Nowak) \\ QA'],
     });
     if (second.kind !== 'sealed') throw new Error(second.reason);
     const pdf = await PDFDocument.load(second.bytes);
@@ -233,12 +235,16 @@ describe('signpdf PAdES adapter', () => {
     const dictionaries = fields.map((field) => signatureDictionary(field));
     expect(dictionaries.map((dictionary) => dictionaryText(dictionary, 'Reason'))).toEqual([
       'Signed by: Anna Żółć, Marek Nowak',
-      'Signed by: Marek Nowak',
+      'Signed by: Marek (Nowak) \\ QA',
     ]);
     expect(dictionaries.map((dictionary) => dictionaryText(dictionary, 'Name'))).toEqual([
       'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
       'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
     ]);
+    expect(verifyPdfSeal(second.bytes)).toMatchObject({
+      name: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+      reason: 'Signed by: Marek (Nowak) \\ QA',
+    });
   });
 
   it('detects a byte changed inside the signed ranges', async () => {
@@ -257,6 +263,30 @@ describe('signpdf PAdES adapter', () => {
       digestValid: false,
       signatureValid: true,
       integrity: false,
+    });
+  });
+
+  it('returns null when optional signature dictionary text entries are absent', async () => {
+    const adapter = createSignPdfSeal(await credentials());
+    if (!adapter.configured) throw new Error('Fixture seal adapter is not configured');
+    const sealed = await adapter.seal({
+      bytes: await samplePdf(),
+      signingTime: new Date('2026-08-09T14:15:16.000Z'),
+      contributorNames: ['Anna Żółć'],
+    });
+    if (sealed.kind !== 'sealed') throw new Error(sealed.reason);
+    const withoutEntries = Buffer.from(sealed.bytes);
+    for (const key of ['Name', 'Reason']) {
+      const keyStart = withoutEntries.indexOf(Buffer.from(`/${key} <`));
+      if (keyStart < 0) throw new Error(`Missing ${key} fixture entry`);
+      withoutEntries[keyStart + 1] = 'X'.charCodeAt(0);
+    }
+
+    expect(verifyPdfSeal(withoutEntries)).toMatchObject({
+      name: null,
+      reason: null,
+      byteRangeValid: true,
+      digestValid: false,
     });
   });
 

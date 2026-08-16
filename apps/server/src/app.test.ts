@@ -209,6 +209,18 @@ const baseDeps = (): AppDeps => ({
     cancel: async () => null,
     complete: async () => null,
   },
+  pdfSealVerification: {
+    verify: () => ({
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    }),
+  },
   storage: {
     put: async () => ok(undefined),
     get: async () => ok(null),
@@ -972,6 +984,48 @@ describe('buildApp', () => {
     expect(await listed.json()).toMatchObject({
       ok: true,
       data: { items: [{ id: recordId }], nextCursor: null },
+    });
+  });
+
+  it('serves seal verification details through the document file route', async () => {
+    const deps = authorizedDeps();
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const fileId = '22222222-2222-4222-8222-222222222222';
+    deps.documents.findFile = async (tenantId, requestedDocumentId, requestedFileId) =>
+      tenantId === tenant.id &&
+      requestedDocumentId === documentId &&
+      requestedFileId === fileId
+        ? {
+            id: fileId,
+            documentId,
+            role: 'signed-digital',
+            fileName: 'umowa-podpisana.pdf',
+            contentType: 'application/pdf',
+            sizeBytes: 3,
+            storageKey: 'documents/tenant-default/document/file',
+            sealed: true,
+            createdAt: '2026-08-16T10:00:00.000Z',
+          }
+        : null;
+    deps.storage.get = async () => ok(new Uint8Array([1, 2, 3]));
+
+    const response = await buildApp(deps).request(
+      API_ROUTES.documentFileSeal.path
+        .replace(':documentId', documentId)
+        .replace(':fileId', fileId),
+      { headers: { [TENANT_HEADER]: tenant.slug } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        verification: {
+          subject: 'Amazing Company Sp. z o.o.',
+          name: 'Amazing Company Sp. z o.o.',
+          reason: 'Signed by: Anna Nowak',
+        },
+      },
     });
   });
 

@@ -130,6 +130,8 @@ const documentsScopes = {
   detail: (documentId: string) => ['documents', 'detail', documentId] as const,
   file: (documentId: string, fileId: string) =>
     ['documents', 'detail', documentId, 'file', fileId] as const,
+  fileSeal: (documentId: string, fileId: string) =>
+    ['documents', 'detail', documentId, 'file', fileId, 'seal'] as const,
 };
 
 const documentTypeScopes = {
@@ -340,6 +342,17 @@ export const documentFileQuery = (
   defineQuery({
     queryKey: documentsScopes.file(documentId, fileId),
     call: ({ signal }) => api.downloadDocumentFile(documentId, fileId, signal),
+  });
+
+export const documentFileSealQuery = (
+  api: ApiClient,
+  documentId: string,
+  fileId: string,
+) =>
+  defineQuery({
+    queryKey: documentsScopes.fileSeal(documentId, fileId),
+    staleTime: Infinity,
+    call: ({ signal }) => api.getDocumentFileSealVerification(documentId, fileId, signal),
   });
 
 export const createDocumentMutation = (api: ApiClient) =>

@@ -124,9 +124,11 @@ before ai-review may accept them; the rulings are archived verbatim in
   in order with their declared signing times); re-signing a signed file
   redraws the cumulative annotation over the previous one at the same anchor.
   When the tenant's PDF-seal setting is on, the server
-  then adds an invisible, externally verifiable PAdES organization seal; Tryb
-  dat chooses its signer-claimed time from the entered signing date or the true
-  wall clock. With the signature-record setting on, each signing session also
+  then adds an invisible, externally verifiable PAdES organization seal; the
+  clickable Pieczęć badge opens its verdict, sealing identity, declared date,
+  signers and reason without leaving the document page. Tryb dat chooses its
+  signer-claimed time from the entered signing date or the true wall clock.
+  With the signature-record setting on, each signing session also
   stores its signature ink (stroke geometry, placement, color, size) bound by
   foreign key to that document — a deliberate reversal of the 2026-08-01
   never-store-ink rule (owner decision 2026-08-07, provenance in

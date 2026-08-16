@@ -81,7 +81,9 @@ Full command set (<!--count:cli-command-groups-->14<!--/count--> top-level group
 to one target and reports an outcome for each pair in `--json` mode. `document
 approve-link <id>` and `document approve-comment <id>` approve draft
 annotations. Draft-token creation results include the annotation's `draft`
-state in JSON output.
+state in JSON output. `document verify-seal --json` returns the certificate
+`subject`, signature dictionary `name` and `reason`, signer-declared
+`declaredAt`, and each integrity check alongside the overall verdict.
 
 Every command also accepts `--token <value>` (or the `APP_CLI_TOKEN` env var)
 to authenticate with a personal API token instead of the stored session;

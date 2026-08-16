@@ -689,7 +689,7 @@ describe('DocumentDetailPage', () => {
     await waitFor(() => expect(remove).toHaveBeenCalledOnce());
   });
 
-  it('shows a quiet seal chip only for sealed signed-digital files', async () => {
+  it('opens seal verification details from the sealed-file chip', async () => {
     const signedFile = files[2];
     if (!signedFile) throw new Error('Missing signed file fixture');
     const sealedFile = { ...signedFile, sealed: true };
@@ -707,6 +707,23 @@ describe('DocumentDetailPage', () => {
           data: { document: { ...document, files: [sealedFile, unsealedFile] } },
         }),
       ),
+      http.get(`/api/documents/${DOCUMENT_ID}/files/${SIGNED_ID}/seal`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            verification: {
+              subject: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+              name: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+              reason: 'Signed by: Anna Żółć, Marek Nowak',
+              declaredAt: '2026-08-16T10:00:00.000Z',
+              byteRangeValid: true,
+              digestValid: true,
+              signatureValid: true,
+              integrity: true,
+            },
+          },
+        }),
+      ),
     );
     await renderPage();
 
@@ -717,6 +734,100 @@ describe('DocumentDetailPage', () => {
     if (!sealedRow || !unsealedRow) return;
     expect(within(sealedRow).getByText('Pieczęć')).toBeInTheDocument();
     expect(within(unsealedRow).queryByText('Pieczęć')).not.toBeInTheDocument();
+
+    await userEvent.click(
+      within(sealedRow).getByRole('button', {
+        name: `Pokaż szczegóły pieczęci pliku ${sealedFile.fileName}`,
+      }),
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Szczegóły pieczęci' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Pieczęć jest kryptograficznie poprawna/u)).toBeInTheDocument();
+    expect(
+      screen.getByText('Amazing Company Sp. z o.o. — pieczęć dokumentowa'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('16.08.2026')).toBeInTheDocument();
+    expect(screen.getByText('Anna Żółć, Marek Nowak')).toBeInTheDocument();
+    expect(screen.getByText('Signed by: Anna Żółć, Marek Nowak')).toBeInTheDocument();
+    expect(screen.queryByText('2026-08-16T10:00:00.000Z')).not.toBeInTheDocument();
+  });
+
+  it('shows the seal verification error inside the dialog', async () => {
+    const signedFile = files[2];
+    if (!signedFile) throw new Error('Missing signed file fixture');
+    const sealedFile = { ...signedFile, sealed: true };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, files: [sealedFile] } },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/files/${SIGNED_ID}/seal`, () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            error: { code: 'validation', message: 'Pieczęć nie może zostać zweryfikowana' },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    await renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: `Pokaż szczegóły pieczęci pliku ${sealedFile.fileName}`,
+      }),
+    );
+    expect(
+      await screen.findByText(/Pieczęć nie może zostać zweryfikowana/u),
+    ).toBeInTheDocument();
+  });
+
+  it('names each failed partial seal check in an invalid verdict', async () => {
+    const signedFile = files[2];
+    if (!signedFile) throw new Error('Missing signed file fixture');
+    const sealedFile = { ...signedFile, sealed: true };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, files: [sealedFile] } },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/files/${SIGNED_ID}/seal`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            verification: {
+              subject: 'Amazing Company Sp. z o.o.',
+              name: null,
+              reason: null,
+              declaredAt: '2026-08-16T10:00:00.000Z',
+              byteRangeValid: false,
+              digestValid: false,
+              signatureValid: false,
+              integrity: false,
+            },
+          },
+        }),
+      ),
+    );
+    await renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: `Pokaż szczegóły pieczęci pliku ${sealedFile.fileName}`,
+      }),
+    );
+    expect(
+      await screen.findByText(
+        'Pieczęć jest nieprawidłowa. Nieprawidłowe kontrole: zakres bajtów dokumentu, skrót dokumentu, podpis kryptograficzny.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Brak danych')).toBeInTheDocument();
   });
 
   it('edits metadata and uploads through both storage paths', async () => {
