@@ -33,9 +33,13 @@ each.
   review + required checks `check`/`smoke`/`e2e`/`ai-review`, merge commits
   only, no bypass). Owner ruling 2026-08-15 adopts the Together-style
   promotion wall and REVERSES the earlier autonomous-merge delta: the agent
-  prepares PRs; the approving review AND the merge are both the owner's (the
-  owner clarified the same day: „Merguję osobiście" — the agent's authority
-  ends at opening the PR). Stale approvals are dismissed on every new push
+  prepares PRs and the approving review is the owner's release decision. The
+  owner first ruled the merge click personal („Merguję osobiście"), then
+  reversed that mechanic the same evening: once the owner's approval and the
+  four green checks are in place, the agent MAY execute the merge
+  (`gh pr merge --merge`) — both rulings archived verbatim in
+  [docs/owner-rulings.md](docs/owner-rulings.md). Stale approvals are
+  dismissed on every new push
   (`dismiss_stale_reviews_on_push`), so the owner's review always covers the
   exact snapshot that merges — that is what makes "the diff review happens
   before the production build" an enforced property, not a convention.
@@ -69,11 +73,13 @@ each.
   §Environments owner ruling); forward-only binds from that merge onward.
 - Login hides demo credentials and magic-link controls outside dev/e2e builds.
 - Password reset is hidden until SMTP or SES is configured; dev/e2e use Mailpit.
-- Merges to `main` are performed by the owner from the GitHub UI (merge
-  commit) after their approving review — the agent's authority ends at opening
-  the PR, and the ruleset blocks direct SSH pushes to `main`. This also
-  retires the prior SSH-merge delta's Vercel-Hobby author concern: the merge
-  commit is owner-authored by construction.
+- Merges to `main` land as merge commits (GitHub UI or `gh pr merge --merge`)
+  only after the owner's approving review; the ruleset blocks direct SSH
+  pushes to `main`. The prior SSH-merge delta's Vercel-Hobby author concern
+  (Hobby refused deploys of commits authored by an unconnected account) is
+  retired empirically, not by construction: the project moved to the paid
+  Vercel team, and on 2026-08-15 three agent-authored merge commits deployed
+  to production without issue.
 - Remote post-deploy smoke drives the unauthenticated surface only (headers,
   the public API of the `default` tenant, health, deploy attestation) until
   the owner provisions a canary account and the `SMOKE_EMAIL`/`SMOKE_PASSWORD`
@@ -87,6 +93,7 @@ each.
 - Server-side PAdES sealing after the browser has flattened and uploaded a `signed-digital` PDF is a sanctioned artifact touch (owner ruling 2026-08-09); source replay uploads use the same post-upload step, while client-side flattening remains the signing engine.
 - A visible first-page signers annotation is sanctioned behind a tenant flag that defaults off (owner ruling 2026-08-15). The browser draws it only while flattening a source PDF; signing an already-signed digital file deliberately adds no box because the prior box is already baked into that artifact and another would overlap it.
 - PDF organization-seal evidence is stored with the signature record. Tryb dat uses either the user-entered document signing date plus the sealing wall-clock time (`declared`) or the true wall clock (`actual`), while the true sealing wall clock is always retained in the database and never rendered. This is an eIDAS-positioned organization seal and SES evidence layer, not a qualified signature; declared time is signer-claimed and has no TSA (owner ruling 2026-08-09).
+- PAdES seal metadata has two explicit layers: the certificate CN remains the certified organization identity, while English signature-dictionary metadata carries the signer-claimed display names of the people who contributed ink and does not change the certificate identity (owner ruling 2026-08-15).
 - The owner's [2026-08-09 confirming ruling](docs/owner-rulings.md) records both rulings directly: PAdES seal storage is behind a tenant flag that defaults off, and Tryb dat offers declared/actual time with declared as the default.
 - The fresh-clone `quickstart:probe` and its CI step were removed with the demo
   verticals they drove; the README quickstart is now convention, not enforced.

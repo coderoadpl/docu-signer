@@ -107,6 +107,7 @@ describe('AppLayout', () => {
     expect(screen.getByRole('link', { name: 'Kosz' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Konto' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tryb pada' })).toBeInTheDocument();
+    expect(screen.getByText('User')).toBeInTheDocument();
     expect(screen.queryByText(/rejestr|tablica|członkowie/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Tryb pada' }));
     await waitFor(() =>

@@ -25,7 +25,15 @@ approving review and the four green checks are in place, the owner ruled:)
 > Merguję osobiście
 
 (Gloss: the owner performs the merge personally; the agent's authority ends
-at opening the pull request.)
+at opening the pull request. Reversed later the same evening — asked to
+execute merges of PRs the owner had already approved, the owner ruled:)
+
+> a nie mzoesz ty mergowac? przecez dalem approve
+
+(Gloss, verbatim spelling preserved: "can't you merge? I gave the approve
+after all" — the approving review is the release decision; the merge
+mechanics may be executed by the agent once the approval and the four green
+checks are in place.)
 
 ## 2026-08-15 — visible signers annotation on flattened PDFs
 

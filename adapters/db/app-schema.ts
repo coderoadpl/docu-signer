@@ -214,6 +214,7 @@ export const documents = pgTable(
     person: text('person'),
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     draft: boolean('draft').notNull().default(false),
+    signatureNotRequired: boolean('signature_not_required').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),

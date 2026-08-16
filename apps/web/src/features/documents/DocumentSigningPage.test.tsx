@@ -1442,6 +1442,7 @@ describe('DocumentSigningPage', () => {
       contentType: 'application/pdf',
       sizeBytes: 2048,
       role: 'signed-digital',
+      contributorAccountIds: ['user-owner'],
     });
   });
 

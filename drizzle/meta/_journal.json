@@ -166,8 +166,15 @@
     {
       "idx": 23,
       "version": "7",
-      "when": 1786827520186,
-      "tag": "0023_odd_black_queen",
+      "when": 1786826973642,
+      "tag": "0023_skinny_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786875073332,
+      "tag": "0024_talented_madripoor",
       "breakpoints": true
     }
   ]

@@ -2029,7 +2029,7 @@ export const DocumentSigningPage = ({
         finalizeUpload.mutateAsync({ documentId, input }),
       server: (input) =>
         serverUpload.mutateAsync({ documentId, input }),
-    });
+    }, committedStamps.map(({ stamp }) => stamp.contributedBy.accountId));
     const persistSignatureRecord = async () => {
       try {
         const warning = await storeSignatureRecordAfterUpload({

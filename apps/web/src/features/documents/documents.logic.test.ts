@@ -300,6 +300,7 @@ describe('document view logic', () => {
       person: 'Anna',
       tags: [],
       draft: false,
+      signatureNotRequired: false,
       deletedAt: null,
       createdAt: '2026-05-10T00:00:00.000Z',
       updatedAt: '2026-05-10T00:00:00.000Z',
@@ -310,6 +311,7 @@ describe('document view logic', () => {
       id: '22222222-2222-4222-8222-222222222222',
       title: 'Rachunek',
       docType: 'rachunek' as const,
+      signatureNotRequired: true,
       files: [
         {
           ...sourceFile,
@@ -340,10 +342,6 @@ describe('document view logic', () => {
         fileId: '88888888-8888-4888-8888-888888888888',
       },
       { documentId: protocol.id, fileId: newestSignedFile.id },
-      {
-        documentId: bill.id,
-        fileId: '66666666-6666-4666-8666-666666666666',
-      },
     ]);
     expect(massSigningQueueTargets([protocol, contract])).toEqual([
       {
@@ -371,6 +369,9 @@ describe('document view logic', () => {
 
     expect(reviewQueueFromSearch(search)).toEqual(['document-a', 'document-b']);
     expect(reviewModeFromSearch(search)).toBe('signed');
+    expect(
+      reviewModeFromSearch(documentReviewSearchSchema.parse({ tryb: 'skan' })),
+    ).toBe('scan');
     expect(
       reviewModeFromSearch(documentReviewSearchSchema.parse({ tryb: 'zrodlo' })),
     ).toBe('source');

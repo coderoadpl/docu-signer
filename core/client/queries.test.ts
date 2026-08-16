@@ -29,6 +29,7 @@ import {
   purgeDocumentMutation,
   pendingSourceUpdateRequestsQuery,
   requestPasswordResetMutation,
+  requireDocumentSignatureMutation,
   resetPasswordMutation,
   requestFileUploadMutation,
   restoreDocumentMutation,
@@ -41,7 +42,9 @@ import {
   trashedDocumentsQuery,
   updateDocumentMutation,
   updateTenantSettingsMutation,
+  updateUserMutation,
   uploadDocumentFileMutation,
+  waiveDocumentSignatureMutation,
   setUserPreferenceMutation,
   userPreferenceInvalidates,
   userPreferenceQuery,
@@ -63,6 +66,7 @@ const document = {
   person: null,
   tags: [],
   draft: false,
+  signatureNotRequired: false,
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z',
   deletedAt: null,
@@ -203,6 +207,12 @@ describe('document mutation descriptors', () => {
     await expect(
       observe(updateDocumentMutation(api)).mutate({ documentId: document.id, input }),
     ).resolves.toEqual({ document });
+    await expect(
+      observe(waiveDocumentSignatureMutation(api)).mutate(document.id),
+    ).resolves.toEqual({ document });
+    await expect(
+      observe(requireDocumentSignatureMutation(api)).mutate(document.id),
+    ).resolves.toEqual({ document });
     await expect(observe(deleteDocumentMutation(api)).mutate(document.id)).resolves.toEqual({
       deleted: true,
     });
@@ -274,7 +284,7 @@ describe('document mutation descriptors', () => {
       ([request, init]) => String(request).endsWith('/api/documents') && init?.method === 'POST',
     );
     expect(createRequest?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify(input) });
-    expect(fetchImpl).toHaveBeenCalledTimes(12);
+    expect(fetchImpl).toHaveBeenCalledTimes(14);
   });
 
   it('propagates a failed write as ApiError', async () => {
@@ -570,6 +580,7 @@ const auth: AuthClientPort = {
   signUp: async (): AuthWrite<AuthSessionResult> => ok({ token: 'signed-up' }),
   signIn: async (): AuthWrite<AuthSessionResult> => ok({ token: 'signed-in' }),
   signOut: async (): AuthWrite<void> => ok(undefined),
+  updateUser: async (): AuthWrite<void> => ok(undefined),
   changePassword: async (): AuthWrite<void> => ok(undefined),
   requestMagicLink: async (): AuthWrite<void> => ok(undefined),
   requestPasswordReset: async (): AuthWrite<void> => ok(undefined),
@@ -585,8 +596,13 @@ const auth: AuthClientPort = {
 };
 
 describe('auth mutation descriptors', () => {
-  it('executes password change and reset mutations through AuthClientPort', async () => {
+  it('executes profile and password mutations through AuthClientPort', async () => {
     const client = newClient();
+    await expect(
+      new MutationObserver(client, updateUserMutation(auth)).mutate({
+        name: 'Maria Kowalska',
+      }),
+    ).resolves.toBeUndefined();
     await expect(
       new MutationObserver(client, changePasswordMutation(auth)).mutate({
         currentPassword: 'demo1234',

@@ -199,6 +199,7 @@ export const createDeps = (env: Env): AppDeps => {
   const passwordResetEnabled = selectPasswordResetEnabled(env);
   const storage = selectStoragePort(env);
   const tenantSettings = createTenantSettingsRepository(db);
+  const tenantAccounts = createTenantAccountRepository(db);
   const signatureRecords = createSignatureRecordRepository(db);
   const warnings = createConsoleWarningLogger();
   const pdfSealCredentials = selectPdfSealCredentials(env);
@@ -273,13 +274,14 @@ export const createDeps = (env: Env): AppDeps => {
     userPreferences: createUserPreferenceRepository(db),
     tenantSettings,
     ...(sealCertificateSubject ? { sealCertificateSubject } : {}),
-    tenantAccounts: createTenantAccountRepository(db),
+    tenantAccounts,
     signatureRecords,
     sourceUpdateRequests: createSourceUpdateRequestRepository(db),
     pdfSealing: {
       ids: { nextId: () => randomUUID() },
       pdfSeal,
       signatureRecords,
+      tenantAccounts,
       tenantSettings,
       warnings,
     },

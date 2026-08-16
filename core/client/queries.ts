@@ -43,6 +43,7 @@ import type {
   PasswordResetCompletion,
   PasswordResetRequest,
   SocialSignInInput,
+  UpdateUserInput,
 } from './auth-port.js';
 import {
   unwrap,
@@ -252,6 +253,18 @@ export const unapproveDocumentMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...documentsScopes.all(), 'unapprove'],
     call: (documentId: string) => api.unapproveDocument(documentId),
+  });
+
+export const waiveDocumentSignatureMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'waive-signature'],
+    call: (documentId: string) => api.waiveDocumentSignature(documentId),
+  });
+
+export const requireDocumentSignatureMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'require-signature'],
+    call: (documentId: string) => api.requireDocumentSignature(documentId),
   });
 
 export const deleteDocumentMutation = (api: ApiClient) =>
@@ -662,6 +675,12 @@ export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, 
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-out'],
     call: () => auth.signOut(),
+  });
+
+export const updateUserMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'update-user'],
+    call: (input: UpdateUserInput) => auth.updateUser(input),
   });
 
 export const changePasswordMutation = (auth: AuthClientPort) =>

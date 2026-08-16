@@ -1,6 +1,6 @@
 {
-  "id": "01760d58-2dcb-4aee-83d3-abe5bc0b3d34",
-  "prevId": "7c746b6e-f0af-43b0-910a-5126c5a53bde",
+  "id": "17a3716d-b159-4d1e-9880-60aaae7ae445",
+  "prevId": "01760d58-2dcb-4aee-83d3-abe5bc0b3d34",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2776,6 +2776,13 @@
         },
         "pdf_seal_enabled": {
           "name": "pdf_seal_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "signature_box_enabled": {
+          "name": "signature_box_enabled",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

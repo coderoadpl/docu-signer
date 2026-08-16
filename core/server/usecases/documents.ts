@@ -222,6 +222,28 @@ export const unapproveDocument = async (
   return unapproved ? ok(unapproved) : err(notFound('Document not found'));
 };
 
+export const waiveDocumentSignature = async (
+  ctx: Ctx,
+  documentId: string,
+  deps: DocumentDeps,
+): Promise<Result<Document, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:approve');
+  if (!scope.ok) return scope;
+  const waived = await deps.documents.waiveSignature(scope.value, documentId);
+  return waived ? ok(waived) : err(notFound('Document not found'));
+};
+
+export const requireDocumentSignature = async (
+  ctx: Ctx,
+  documentId: string,
+  deps: DocumentDeps,
+): Promise<Result<Document, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:approve');
+  if (!scope.ok) return scope;
+  const required = await deps.documents.requireSignature(scope.value, documentId);
+  return required ? ok(required) : err(notFound('Document not found'));
+};
+
 export const deleteDocument = async (
   ctx: Ctx,
   documentId: string,
@@ -338,7 +360,13 @@ const finalizeUpload = async (
       const storedBytes = await deps.storage.get(parsed.data.key);
       if (storedBytes.ok && storedBytes.value) {
         const sealed = await attemptPdfSeal(
-          { tenantId, document, bytes: storedBytes.value, dateMode },
+          {
+            tenantId,
+            document,
+            bytes: storedBytes.value,
+            dateMode,
+            contributorAccountIds: parsed.data.contributorAccountIds ?? [signedBy],
+          },
           deps.pdfSealing,
         );
         if (sealed) {
@@ -425,6 +453,9 @@ export const serverUpload = async (
       contentType: input.contentType,
       sizeBytes: input.bytes.byteLength,
       role: input.role,
+      ...(input.contributorAccountIds
+        ? { contributorAccountIds: input.contributorAccountIds }
+        : {}),
     },
     deps,
   );

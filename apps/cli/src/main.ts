@@ -715,6 +715,26 @@ document
   });
 
 document
+  .command('waive-signature <id>')
+  .description('Mark a document as not requiring a signature')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    emit(await ctx.api.waiveDocumentSignature(id), ctx.json, (data) =>
+      `signature not required: ${data.document.title} (${data.document.id})`,
+    );
+  });
+
+document
+  .command('require-signature <id>')
+  .description('Mark a document as requiring a signature')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    emit(await ctx.api.requireDocumentSignature(id), ctx.json, (data) =>
+      `signature required: ${data.document.title} (${data.document.id})`,
+    );
+  });
+
+document
   .command('upload <id> <path>')
   .description('Upload an attachment through the server')
   .requiredOption('--role <role>', 'source|signed-scan|signed-digital|other')

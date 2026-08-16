@@ -90,6 +90,7 @@ import {
   revokeInvitation,
   requestFileUpload,
   requestPadSignature,
+  requireDocumentSignature,
   setPadCurrentDocument,
   serverUpload,
   setUserPreference,
@@ -97,6 +98,7 @@ import {
   updateTenantSettings,
   updateDocument,
   unapproveDocument,
+  waiveDocumentSignature,
   type Ctx,
 } from '#core/server/index.js';
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
@@ -691,6 +693,24 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ document: result.value }) : result);
   });
 
+  app.post(API_ROUTES.documentWaiveSignature.path, async (c) => {
+    const result = await waiveDocumentSignature(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentRequireSignature.path, async (c) => {
+    const result = await requireDocumentSignature(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
   app.delete(API_ROUTES.documentDelete.path, async (c) => {
     const result = await deleteDocument(
       ctxOf(c.get('identity')),
@@ -781,6 +801,7 @@ export const buildApp = (deps: AppDeps) => {
       fileName: c.req.query('fileName'),
       contentType: c.req.header('content-type'),
       role: c.req.query('role'),
+      contributorAccountIds: c.req.queries('contributorAccountId'),
     });
     if (!parsed.success) {
       return respond(err(validation('Invalid server upload metadata', parsed.error.flatten())));

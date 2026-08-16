@@ -85,6 +85,14 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/documents/:documentId/unapprove',
     });
+    expect(API_ROUTES.documentWaiveSignature).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/waive-signature',
+    });
+    expect(API_ROUTES.documentRequireSignature).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/require-signature',
+    });
     expect(API_ROUTES.savedSearches).toEqual({
       method: 'GET',
       path: '/api/saved-searches',
@@ -395,6 +403,9 @@ describe('API route contract', () => {
     ).toBe(false);
     expect(
       documentListInputSchema.safeParse({ signatureStatus: 'needs-signature' }).success,
+    ).toBe(true);
+    expect(
+      documentListInputSchema.safeParse({ signatureStatus: 'not-required' }).success,
     ).toBe(true);
     expect(documentListInputSchema.safeParse({ draft: 'all' }).success).toBe(true);
     expect(
