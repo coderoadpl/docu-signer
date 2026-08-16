@@ -78,3 +78,38 @@ Originally posted on the pull request adding the PAdES seal.
 > ustawienie „Tryb dat" — domyślnie daty deklarowane (signingTime pieczęci =
 > wpisana data podpisania + bieżąca godzina), opcjonalnie daty rzeczywiste;
 > prawdziwy czas pieczęci tylko w bazie.
+
+## 2026-08-16 — draft-scoped tokens annotate and propose against any document
+
+Reverses the rule that `write:draft` API tokens may only modify draft
+documents. Two approval-gated exceptions now target any document: draft link
+and comment annotations, and metadata-change proposals. Nothing mutates
+without a session user's explicit approval. Both rulings were given in the
+working session; verbatim spelling preserved.
+
+Asked whether annotating approved documents from a draft token deserved a
+new token scope or draft states, the owner ruled for draft states:
+
+> Wydaje mi się, że sensowniej byłoby, jakby jednak istniały drafty
+> komentarzy i drafty linku do zatwierdzenia.
+
+(Gloss: rather than a separate scope, links and comments created by a draft
+token exist as drafts awaiting approval.)
+
+Later the same day the owner extended the mechanism to document metadata:
+
+> Chciałbym jeszcze do tokena Draft dodać uprawnienie umożliwiające
+> propozycje zmian wszystkich metadanych, w szczególności tytułu. Dokumenty
+> z draftowymi komentarzami, bądź draftowymi linkami, bądź draftowymi
+> propozycjami zmian metadanych powinny dać się wyszukiwać po tej
+> właściwości oraz wyświetlać jakąś kropeczkę. Na pewno nie powinno być to
+> osobną kolumną, ale powinna się wyświetlać przy tytule jakaś kropeczka,
+> że są niezatwierdzone zmiany. Kropeczka z tooltipem, jak się najedzie na
+> nią myszką, coś w tym stylu. No i oczywiście użytkownik musi te zmiany
+> ręcznie zatwierdzić.
+
+(Gloss: the Draft token additionally files proposals for all metadata —
+the title in particular; documents with pending draft comments, links or
+metadata proposals are searchable by that property and show a dot with a
+tooltip near the title, never a separate column; a user must approve the
+changes manually.)
