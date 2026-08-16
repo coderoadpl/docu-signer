@@ -31,7 +31,13 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { DocumentRepository, IdGenerator, StoragePort, UploadTarget } from '../ports.js';
+import type {
+  DocumentRepository,
+  DocumentTypeRepository,
+  IdGenerator,
+  StoragePort,
+  UploadTarget,
+} from '../ports.js';
 import {
   attemptPdfSeal,
   preparePdfSeal,
@@ -41,6 +47,7 @@ import {
 
 export interface DocumentDeps {
   documents: DocumentRepository;
+  documentTypes: DocumentTypeRepository;
   storage: StoragePort;
   ids: IdGenerator;
   pdfSealing?: PdfSealingDeps;
@@ -75,6 +82,15 @@ const findDocument = async (
   return found ? ok(found) : err(notFound('Document not found'));
 };
 
+const validateDocumentType = async (
+  tenantId: string,
+  slug: string,
+  deps: DocumentDeps,
+): Promise<Result<void, AppError>> =>
+  (await deps.documentTypes.findBySlug(tenantId, slug))
+    ? ok(undefined)
+    : err(validation('Unknown document type'));
+
 const tokenHasWrite = (ctx: Ctx): boolean =>
   ctx.identity.apiToken?.scopes.includes('write') ?? false;
 
@@ -108,6 +124,8 @@ export const createDocument = async (
   if (!scope.ok) return scope;
   const parsed = createDocumentSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document', parsed.error.flatten()));
+  const validDocumentType = await validateDocumentType(scope.value, parsed.data.docType, deps);
+  if (!validDocumentType.ok) return validDocumentType;
   if (tokenNeedsDraftDocument(ctx) && parsed.data.draft !== true) {
     return err(forbidden('write:draft tokens can only create draft documents'));
   }
@@ -189,6 +207,8 @@ export const updateDocument = async (
   if (!scope.ok) return scope;
   const parsed = updateDocumentSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document', parsed.error.flatten()));
+  const validDocumentType = await validateDocumentType(scope.value, parsed.data.docType, deps);
+  if (!validDocumentType.ok) return validDocumentType;
   const document = await requireDraftDocumentForToken(ctx, scope.value, documentId, deps);
   if (!document.ok) return document;
   const updated = await deps.documents.update(scope.value, documentId, {
@@ -493,6 +513,8 @@ export const moveDocumentFile = async (
   if (!scope.ok) return scope;
   const parsed = moveDocumentFileSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document payload', parsed.error.flatten()));
+  const validDocumentType = await validateDocumentType(scope.value, parsed.data.docType, deps);
+  if (!validDocumentType.ok) return validDocumentType;
   const source = await findDocument(scope.value, documentId, deps);
   if (!source.ok) return source;
   if (tokenNeedsDraftDocument(ctx) && !source.value.draft) {

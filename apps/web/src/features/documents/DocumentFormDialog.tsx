@@ -18,11 +18,10 @@ import {
   TextField,
 } from '@mui/material';
 
-import { documentTypeSchema } from '#core/domain/index.js';
+import { documentTypeSchema, type DocumentType } from '#core/domain/index.js';
 
 import { PolishDatePicker } from '../../components/ui/PolishDatePicker.js';
 import {
-  DOCUMENT_TYPE_LABELS,
   emptyDocumentForm,
   suggestDocumentDate,
   type DocumentFormValues,
@@ -33,6 +32,7 @@ export const DocumentFormDialog = ({
   title,
   submitLabel,
   initialValues,
+  documentTypes,
   personOptions = [],
   tagOptions = [],
   pending,
@@ -44,6 +44,7 @@ export const DocumentFormDialog = ({
   title: string;
   submitLabel: string;
   initialValues?: DocumentFormValues;
+  documentTypes: DocumentType[];
   personOptions?: string[];
   tagOptions?: string[];
   pending: boolean;
@@ -52,7 +53,7 @@ export const DocumentFormDialog = ({
   onSubmit: (values: DocumentFormValues) => void;
 }) => {
   const [values, setValues] = useState<DocumentFormValues>(
-    initialValues ?? emptyDocumentForm(),
+    initialValues ?? emptyDocumentForm(documentTypes[0]?.slug ?? ''),
   );
   const [tagInput, setTagInput] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{
@@ -65,11 +66,11 @@ export const DocumentFormDialog = ({
 
   useEffect(() => {
     if (open) {
-      setValues(initialValues ?? emptyDocumentForm());
+      setValues(initialValues ?? emptyDocumentForm(documentTypes[0]?.slug ?? ''));
       setTagInput('');
       setFieldErrors({});
     }
-  }, [initialValues, open]);
+  }, [documentTypes, initialValues, open]);
 
   const field = (name: Exclude<keyof DocumentFormValues, 'tags'>, value: string) => {
     setValues((current) =>
@@ -157,13 +158,16 @@ export const DocumentFormDialog = ({
                 field('docType', documentTypeSchema.parse(event.target.value))
               }
             >
-              {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
-                <MenuItem key={value} value={value}>
-                  {label}
+              {documentTypes.map((documentType) => (
+                <MenuItem key={documentType.slug} value={documentType.slug}>
+                  {documentType.label}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
+          {documentTypes.length === 0 ? (
+            <Alert severity="warning">Dodaj typ dokumentu w ustawieniach organizacji.</Alert>
+          ) : null}
           <PolishDatePicker
             id="document-date"
             label="Data podpisania"
@@ -229,7 +233,7 @@ export const DocumentFormDialog = ({
           type="submit"
           form="document-form"
           variant="contained"
-          disabled={pending}
+          disabled={pending || documentTypes.length === 0}
         >
           {pending ? 'Zapisywanie…' : submitLabel}
         </Button>

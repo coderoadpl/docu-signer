@@ -18,6 +18,8 @@ import {
   apiTokenCreateInputSchema,
   documentCommentCreateInputSchema,
   documentCreateInputSchema,
+  documentTypeCreateInputSchema,
+  documentTypeRenameInputSchema,
   documentLinkCreateInputSchema,
   invitationCreateInputSchema,
   tenantSettingsUpdateInputSchema,
@@ -25,6 +27,7 @@ import {
 import {
   appError,
   canonicalSlugSchema,
+  documentTypeSchema,
   err,
   internal,
   notFound,
@@ -211,6 +214,10 @@ export const documentListFilterFromOptions = (
   options.signer === undefined ? {} : { signerAccountId: options.signer };
 const booleanOptionSchema = z.enum(['true', 'false']).transform((value) => value === 'true');
 const tenantDateModeOptionSchema = z.enum(['declared', 'actual']);
+const documentTypeSlugArgsSchema = z.object({ slug: documentTypeSchema });
+const documentTypeRenameArgsSchema = documentTypeRenameInputSchema.extend({
+  slug: documentTypeSchema,
+});
 
 export const verifySealBytes = (
   bytes: Uint8Array,
@@ -574,6 +581,65 @@ tenantSettings
     );
   });
 
+const documentType = program
+  .command('document-type')
+  .description('Manage document types for the active tenant');
+
+documentType.command('list').description('List document types').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.listDocumentTypes(), ctx.json, (data) =>
+    data.documentTypes
+      .map((item) => `${item.position}\t${item.label}\t${item.slug}`)
+      .join('\n'),
+  );
+});
+
+documentType
+  .command('add <label...>')
+  .description('Add a document type')
+  .action(async (label: string[]) => {
+    const ctx = cliCtx();
+    const input = parseArgs(
+      documentTypeCreateInputSchema,
+      { label: label.join(' ') },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(await ctx.api.createDocumentType(input), ctx.json, (data) =>
+      `added: ${data.documentType.label} (${data.documentType.slug})`,
+    );
+  });
+
+documentType
+  .command('rename <slug> <label...>')
+  .description('Rename a document type')
+  .action(async (slug: string, label: string[]) => {
+    const ctx = cliCtx();
+    const input = parseArgs(
+      documentTypeRenameArgsSchema,
+      { slug, label: label.join(' ') },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(
+      await ctx.api.renameDocumentType(input.slug, { label: input.label }),
+      ctx.json,
+      (data) => `renamed: ${data.documentType.label} (${data.documentType.slug})`,
+    );
+  });
+
+documentType
+  .command('remove <slug>')
+  .description('Remove a document type')
+  .action(async (slug: string) => {
+    const ctx = cliCtx();
+    const input = parseArgs(documentTypeSlugArgsSchema, { slug }, ctx.json);
+    if (input === undefined) return;
+    emit(await ctx.api.deleteDocumentType(input.slug), ctx.json, () =>
+      `removed: ${input.slug}`,
+    );
+  });
+
 const origin = program.command('origin').description('API-origin profiles');
 
 origin.command('list').description('List configured API origins').action(() => {
@@ -852,7 +918,7 @@ document
 document
   .command('add <title...>')
   .description('Create a document entry')
-  .requiredOption('--type <type>', 'umowa-uod|uchwala|protokol|rachunek|inny')
+  .requiredOption('--type <slug>', 'document type slug')
   .requiredOption('--date <date>', 'signature date (YYYY-MM-DD)')
   .option('--period-start <date>', 'period start (YYYY-MM-DD)')
   .option('--period-end <date>', 'period end (YYYY-MM-DD)')

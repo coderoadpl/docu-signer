@@ -7,6 +7,12 @@ import {
   apiTokenCreateInputSchema,
   apiTokenCreateOutputSchema,
   documentCreateInputSchema,
+  documentTypeCreateInputSchema,
+  documentTypeCreateOutputSchema,
+  documentTypeDeleteOutputSchema,
+  documentTypeListOutputSchema,
+  documentTypeRenameInputSchema,
+  documentTypeRenameOutputSchema,
   documentCommentCreateInputSchema,
   documentCommentListOutputSchema,
   documentGetOutputSchema,
@@ -69,6 +75,14 @@ describe('API route contract', () => {
     expect(API_ROUTES.documentsTrash).toEqual({
       method: 'GET',
       path: '/api/documents/trash',
+    });
+    expect(API_ROUTES.documentTypes).toEqual({
+      method: 'GET',
+      path: '/api/document-types',
+    });
+    expect(API_ROUTES.documentTypeRename).toEqual({
+      method: 'PATCH',
+      path: '/api/document-types/:slug',
     });
     expect(API_ROUTES.documentRestore).toEqual({
       method: 'POST',
@@ -396,6 +410,18 @@ describe('API route contract', () => {
     ).toBe(true);
   });
 
+  it('validates document type dictionary envelopes', () => {
+    const documentType = { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 60 };
+    expect(documentTypeCreateInputSchema.parse({ label: ' Umowa z klientem ' })).toEqual({
+      label: 'Umowa z klientem',
+    });
+    expect(documentTypeRenameInputSchema.safeParse({ label: '' }).success).toBe(false);
+    expect(documentTypeListOutputSchema.safeParse({ documentTypes: [documentType] }).success).toBe(true);
+    expect(documentTypeCreateOutputSchema.safeParse({ documentType }).success).toBe(true);
+    expect(documentTypeRenameOutputSchema.safeParse({ documentType }).success).toBe(true);
+    expect(documentTypeDeleteOutputSchema.safeParse({ deleted: true }).success).toBe(true);
+  });
+
   it('validates the PDF seal verification response', () => {
     expect(
       documentFileSealOutputSchema.parse({
@@ -491,7 +517,7 @@ describe('API route contract', () => {
     expect(
       documentCreateInputSchema.safeParse({
         title: 'Umowa',
-        docType: 'contract',
+        docType: 'Invalid_Type',
         documentDate: '2026-08-01',
       }).success,
     ).toBe(false);
@@ -694,7 +720,7 @@ describe('API route contract', () => {
     expect(
       savedSearchCreateInputSchema.safeParse({
         name: 'Błędny typ',
-        filter: { docType: 'contract' },
+        filter: { docType: 'Invalid_Type' },
       }).success,
     ).toBe(false);
     expect(

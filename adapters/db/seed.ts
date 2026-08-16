@@ -4,6 +4,7 @@ import { createAuth } from '#adapters/auth/create-auth.js';
 import { seedEnvSchema } from '#core/server/config.js';
 
 import { createDb } from './client.js';
+import { seedDefaultDocumentTypes } from './document-types-seed.js';
 import { tenantAdmins, tenantDomains, tenants, user } from './schema.js';
 
 const {
@@ -59,6 +60,8 @@ await db
     createdAt: new Date().toISOString(),
   })
   .onConflictDoNothing();
+
+await seedDefaultDocumentTypes(db, 'tenant-default');
 
 await db
   .insert(tenantAdmins)

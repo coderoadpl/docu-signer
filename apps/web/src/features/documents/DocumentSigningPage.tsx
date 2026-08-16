@@ -29,6 +29,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 
 import {
+  type DocumentType,
   type DocumentWithFiles,
   type PadParticipant,
   type PadQueuedSubmission,
@@ -77,7 +78,7 @@ import {
   type SigningStamp,
 } from './signing.js';
 import {
-  DOCUMENT_TYPE_LABELS,
+  documentTypeLabel,
   canSignPdfFile,
   documentsSearchFromSigningSearch,
   massSigningQueueSearch,
@@ -717,14 +718,16 @@ const EmptyControls = () => <Box />;
 
 const MassReviewHeader = ({
   document,
+  documentTypes,
   onClose,
 }: {
   document: {
-    docType: keyof typeof DOCUMENT_TYPE_LABELS;
+    docType: string;
     person?: string | null;
     tags: string[];
     title: string;
   };
+  documentTypes: DocumentType[];
   onClose: () => void;
 }) => (
   <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1 }}>
@@ -748,7 +751,7 @@ const MassReviewHeader = ({
       <Chip
         size="small"
         variant="outlined"
-        label={DOCUMENT_TYPE_LABELS[document.docType]}
+        label={documentTypeLabel(documentTypes, document.docType)}
       />
       {document.person ? <Chip size="small" label={document.person} /> : null}
       {document.tags.map((tag) => (
@@ -937,6 +940,7 @@ export const DocumentSigningPage = ({
   const signingSearch = useSearch({ from: '/app/documents/$id/sign/$fileId' });
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
+  const documentTypesQuery = useQuery(actions.documentTypes);
   const sourceQuery = useQuery(actions.documentFile(documentId, fileId));
   const identityQuery = useQuery(actions.me);
   const activeRemotePadSession = useQuery({
@@ -2174,6 +2178,7 @@ export const DocumentSigningPage = ({
         massMode ? (
           <MassReviewHeader
             document={documentQuery.data.document}
+            documentTypes={documentTypesQuery.data?.documentTypes ?? []}
             onClose={requestMassExit}
           />
         ) : (

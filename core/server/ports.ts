@@ -8,6 +8,7 @@ import type {
   DocumentFile,
   DocumentLink,
   DocumentListFilter,
+  DocumentType,
   DocumentWithSigners,
   Invitation,
   LinkedDocument,
@@ -94,6 +95,15 @@ export interface DocumentRepository {
     targetDocumentId: string,
   ): Promise<DocumentFile | null>;
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
+}
+
+export interface DocumentTypeRepository {
+  listByTenant(tenantId: string): Promise<DocumentType[]>;
+  findBySlug(tenantId: string, slug: string): Promise<DocumentType | null>;
+  create(input: DocumentType & { tenantId: string }): Promise<DocumentType | null>;
+  rename(tenantId: string, slug: string, label: string): Promise<DocumentType | null>;
+  delete(tenantId: string, slug: string): Promise<boolean>;
+  isUsedByAnyDocument(tenantId: string, slug: string): Promise<boolean>;
 }
 
 export interface DocumentCommentRepository {

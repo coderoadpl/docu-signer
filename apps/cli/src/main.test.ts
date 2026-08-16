@@ -34,6 +34,7 @@ describe('CLI command surface', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('account');
     expect(result.stdout).toContain('document');
+    expect(result.stdout).toContain('document-type');
     expect(result.stdout).toContain('login');
     expect(result.stdout).toContain('health');
     expect(result.stdout).toContain('invitation');
@@ -155,6 +156,22 @@ describe('CLI command surface', () => {
     const settingsHelp = run('tenant-settings', 'set', '--help');
     expect(settingsHelp.status).toBe(0);
     expect(settingsHelp.stdout).toContain('--signature-box-enabled <value>');
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('documents document type management verbs and validates required labels', () => {
+    const help = run('document-type', '--help');
+    expect(help.status).toBe(0);
+    expect(help.stdout).toContain('list');
+    expect(help.stdout).toContain('add');
+    expect(help.stdout).toContain('rename');
+    expect(help.stdout).toContain('remove');
+
+    const missingLabel = run('--json', 'document-type', 'add');
+    expect(missingLabel.status).toBe(2);
+    expect(JSON.parse(missingLabel.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
   }, CLI_TEST_TIMEOUT_MS);
 
   it('requires an explicit signature policy for source updates', () => {

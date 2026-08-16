@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '#core/client/index.js';
-import { documentTypeSchema } from '#core/domain/index.js';
+import { DEFAULT_DOCUMENT_TYPES } from '#core/domain/index.js';
 
 import {
   DOCUMENT_TYPE_COLORS,
   documentFilterSummary,
+  documentTypeLabel,
   documentFiltersFromSearch,
   documentReviewSearchSchema,
   documentsSearchFromSigningSearch,
@@ -561,19 +562,25 @@ describe('document view logic', () => {
       ]),
     ).toEqual(['Anna Nowak', 'Jan Kowalski']);
     expect(
-      documentFilterSummary({
-        text: 'umowa',
-        docType: 'umowa-uod',
-        person: 'Anna',
-        tag: 'ważne',
-        dateFrom: '2026-01-01',
-        dateTo: '2026-12-31',
-        signatureStatus: 'needs-signature',
-      }),
+      documentFilterSummary(
+        {
+          text: 'umowa',
+          docType: 'umowa-uod',
+          person: 'Anna',
+          tag: 'ważne',
+          dateFrom: '2026-01-01',
+          dateTo: '2026-12-31',
+          signatureStatus: 'needs-signature',
+        },
+        DEFAULT_DOCUMENT_TYPES,
+      ),
     ).toBe(
       'Tytuł: umowa · Typ: Umowa UoD · Osoba: Anna · Tag: ważne · Od: 01.01.2026 · Do: 31.12.2026 · Status podpisu: Do podpisania',
     );
-    expect(documentFilterSummary({})).toBe('Wszystkie dokumenty');
+    expect(documentFilterSummary({}, DEFAULT_DOCUMENT_TYPES)).toBe('Wszystkie dokumenty');
+    expect(documentTypeLabel(DEFAULT_DOCUMENT_TYPES, 'umowa-z-klientem')).toBe(
+      'umowa-z-klientem',
+    );
   });
 
   it('derives file name stems', () => {
@@ -712,7 +719,7 @@ describe('document view logic', () => {
           },
         ],
       },
-    ]);
+    ], DEFAULT_DOCUMENT_TYPES);
 
     expect(data.groups).toEqual([
       { id: 'Anna', content: 'Anna' },
@@ -743,7 +750,7 @@ describe('document view logic', () => {
 
   it('keeps timeline colors exhaustive and fits the window to the visible items', () => {
     expect(Object.keys(DOCUMENT_TYPE_COLORS).sort()).toEqual(
-      [...documentTypeSchema.options].sort(),
+      DEFAULT_DOCUMENT_TYPES.map((documentType) => documentType.slug).sort(),
     );
 
     expect(visTimelineFittedWindow([], 1000)).toBeNull();

@@ -10,6 +10,8 @@ import {
   invitationCreateInputSchema,
   TENANT_HEADER,
   documentCreateInputSchema,
+  documentTypeCreateInputSchema,
+  documentTypeRenameInputSchema,
   documentCommentCreateInputSchema,
   documentCommentListInputSchema,
   documentLinkCreateInputSchema,
@@ -54,6 +56,7 @@ import {
   createApiToken,
   createInvitation,
   createDocument,
+  createDocumentType,
   createPadSession,
   createSavedSearch,
   createSignatureRecord,
@@ -66,6 +69,7 @@ import {
   cancelSourceUpdateRequest,
   completeSourceUpdateRequest,
   deleteDocument,
+  deleteDocumentType,
   deleteDocumentComment,
   deleteSavedSearch,
   exportDocuments,
@@ -82,6 +86,7 @@ import {
   joinOwnPadSession,
   linkDocuments,
   listDocuments,
+  listDocumentTypes,
   listDocumentComments,
   listDocumentLinks,
   listApiTokens,
@@ -97,6 +102,7 @@ import {
   resolveApiTokenIdentity,
   resolveIdentity,
   restoreDocument,
+  renameDocumentType,
   revokeApiToken,
   revokeInvitation,
   requestFileUpload,
@@ -670,6 +676,45 @@ export const buildApp = (deps: AppDeps) => {
     }
     const result = await createDocument(ctxOf(c.get('identity')), parsed.data, deps);
     return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.documentTypes.path, async (c) => {
+    const result = await listDocumentTypes(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ documentTypes: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentTypesCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentTypeCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document type', parsed.error.flatten())));
+    }
+    const result = await createDocumentType(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result.ok ? ok({ documentType: result.value }) : result);
+  });
+
+  app.patch(API_ROUTES.documentTypeRename.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentTypeRenameInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document type', parsed.error.flatten())));
+    }
+    const result = await renameDocumentType(
+      ctxOf(c.get('identity')),
+      c.req.param('slug'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ documentType: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentTypeDelete.path, async (c) => {
+    const result = await deleteDocumentType(
+      ctxOf(c.get('identity')),
+      c.req.param('slug'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
   });
 
   app.get(API_ROUTES.documentsTrash.path, async (c) => {

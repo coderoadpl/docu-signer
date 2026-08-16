@@ -11,6 +11,8 @@ import {
 import { createDb } from '#adapters/db/client.js';
 import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
+import { createDocumentTypeRepository } from '#adapters/db/document-types-repository.js';
+import { seedDefaultDocumentTypes } from '#adapters/db/document-types-seed.js';
 import { createDocumentCommentRepository } from '#adapters/db/document-comments-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
@@ -104,6 +106,7 @@ beforeAll(async () => {
   await db
     .insert(tenants)
     .values({ id: 'tenant-default', slug: 'default', name: 'Archive', createdAt: '2026-08-02T00:00:00.000Z' });
+  await seedDefaultDocumentTypes(db, 'tenant-default');
   await db.insert(user).values({
     id: 'user-owner',
     email: 'owner@example.com',
@@ -161,6 +164,7 @@ beforeAll(async () => {
     invitationRateLimitEnabled: false,
     emailConfigured: false,
     documents: createDocumentRepository(db),
+    documentTypes: createDocumentTypeRepository(db),
     documentComments: createDocumentCommentRepository(db),
     documentLinks: {
       create: async () => null,

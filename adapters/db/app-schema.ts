@@ -58,6 +58,21 @@ export const tenantAdmins = pgTable(
   ],
 );
 
+export const documentTypes = pgTable(
+  'document_types',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull(),
+    label: text('label').notNull(),
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.tenantId, table.slug] })],
+);
+
 export const invitations = pgTable(
   'invitations',
   {
@@ -206,9 +221,7 @@ export const documents = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
-    docType: text('doc_type', {
-      enum: ['umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny'],
-    }).notNull(),
+    docType: text('doc_type').notNull(),
     documentDate: date('document_date').notNull(),
     periodStart: date('period_start'),
     periodEnd: date('period_end'),
@@ -223,10 +236,6 @@ export const documents = pgTable(
   (table) => [
     index('documents_tenant_date_idx').on(table.tenantId, table.documentDate),
     uniqueIndex('documents_tenant_id_uidx').on(table.tenantId, table.id),
-    check(
-      'documents_doc_type_check',
-      sql`${table.docType} IN ('umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny')`,
-    ),
     check(
       'documents_period_order_check',
       sql`${table.periodStart} IS NULL OR ${table.periodEnd} IS NULL OR ${table.periodStart} <= ${table.periodEnd}`,

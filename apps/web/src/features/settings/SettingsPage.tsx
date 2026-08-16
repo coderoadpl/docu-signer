@@ -7,6 +7,7 @@ import { ProfileSection } from './ProfileSection.js';
 import { TwoFactorSection } from './TwoFactorSection.js';
 import { TenantSettingsSection } from './TenantSettingsSection.js';
 import { InvitationsSection } from './InvitationsSection.js';
+import { DocumentTypesSection } from './DocumentTypesSection.js';
 
 export const SettingsPage = () => (
   <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', py: '2.5rem' }}>
@@ -18,6 +19,7 @@ export const SettingsPage = () => (
     </Typography>
     <ProfileSection />
     <TenantSettingsSection />
+    <DocumentTypesSection />
     <InvitationsSection />
     <PasswordSection />
     <TwoFactorSection />

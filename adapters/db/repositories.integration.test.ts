@@ -1,12 +1,17 @@
+import { readFile } from 'node:fs/promises';
+
 import { drizzle as drizzleNodePg, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate as migrateNodePg } from 'drizzle-orm/node-postgres/migrator';
 import { eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { DEFAULT_DOCUMENT_TYPES } from '#core/domain/index.js';
+
 import { createDocumentRepository } from './documents-repository.js';
 import { createDocumentCommentRepository } from './document-comments-repository.js';
 import { createDocumentLinkRepository } from './document-links-repository.js';
+import { createDocumentTypeRepository } from './document-types-repository.js';
 import { createPadSessionRepository } from './pad-sessions-repository.js';
 import { createApiTokenRepository } from './api-tokens-repository.js';
 import { createInvitationRepository } from './invitations-repository.js';
@@ -45,6 +50,12 @@ beforeAll(async () => {
     { id: 'tenant-a', slug: 'a', name: 'A', createdAt: '2026-08-01T00:00:00.000Z' },
     { id: 'tenant-b', slug: 'b', name: 'B', createdAt: '2026-08-01T00:00:00.000Z' },
   ]);
+  const migration = await readFile(
+    new URL('../../drizzle/0028_smooth_bishop.sql', import.meta.url),
+    'utf8',
+  );
+  await pool.query(migration.replaceAll('--> statement-breakpoint', ''));
+  await pool.query(migration.replaceAll('--> statement-breakpoint', ''));
   await db.insert(tenantAdmins).values([
     { id: 'grant-owner', tenantId: 'tenant-a', userId: 'user-owner', role: 'owner' },
     { id: 'grant-admin', tenantId: 'tenant-b', userId: 'user-admin', role: 'admin' },
@@ -112,6 +123,73 @@ describe('InvitationRepository', () => {
     await expect(repository.listByTenant('tenant-a')).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ status: 'accepted' })]),
     );
+  });
+});
+
+describe('DocumentTypeRepository', () => {
+  it('backfills the legacy defaults idempotently for every existing tenant', async () => {
+    const repository = createDocumentTypeRepository(db);
+    await expect(repository.listByTenant('tenant-a')).resolves.toEqual(DEFAULT_DOCUMENT_TYPES);
+    await expect(repository.listByTenant('tenant-b')).resolves.toEqual(DEFAULT_DOCUMENT_TYPES);
+  });
+
+  it('round-trips ordered tenant types and detects use by trashed documents', async () => {
+    const repository = createDocumentTypeRepository(db);
+    await expect(repository.create({
+      tenantId: 'tenant-a',
+      slug: 'umowa-z-klientem',
+      label: 'Umowa z klientem',
+      position: 70,
+    })).resolves.toEqual({
+      slug: 'umowa-z-klientem',
+      label: 'Umowa z klientem',
+      position: 70,
+    });
+    await expect(repository.create({
+      tenantId: 'tenant-a',
+      slug: 'regulamin',
+      label: 'Regulamin',
+      position: 60,
+    })).resolves.toMatchObject({ slug: 'regulamin' });
+    await expect(repository.create({
+      tenantId: 'tenant-a',
+      slug: 'regulamin',
+      label: 'Duplikat',
+      position: 80,
+    })).resolves.toBeNull();
+    await expect(repository.listByTenant('tenant-a')).resolves.toEqual([
+      ...DEFAULT_DOCUMENT_TYPES,
+      { slug: 'regulamin', label: 'Regulamin', position: 60 },
+      { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 70 },
+    ]);
+    await expect(repository.listByTenant('tenant-b')).resolves.toEqual(DEFAULT_DOCUMENT_TYPES);
+    await expect(
+      repository.rename('tenant-a', 'regulamin', 'Regulamin wewnętrzny'),
+    ).resolves.toEqual({
+      slug: 'regulamin',
+      label: 'Regulamin wewnętrzny',
+      position: 60,
+    });
+    await expect(repository.findBySlug('tenant-b', 'regulamin')).resolves.toBeNull();
+
+    const documents = createDocumentRepository(db);
+    const document = await documents.create({
+      id: '12121212-1212-4212-8212-121212121212',
+      tenantId: 'tenant-a',
+      title: 'Umowa klienta',
+      docType: 'umowa-z-klientem',
+      documentDate: '2026-08-16',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+    });
+    await documents.delete('tenant-a', document.id);
+    await expect(
+      repository.isUsedByAnyDocument('tenant-a', 'umowa-z-klientem'),
+    ).resolves.toBe(true);
+    await expect(repository.delete('tenant-a', 'regulamin')).resolves.toBe(true);
+    await expect(repository.delete('tenant-a', 'regulamin')).resolves.toBe(false);
   });
 });
 
@@ -1249,12 +1327,6 @@ describe('database invariants', () => {
          VALUES ('domain-invalid', 'tenant-constraints', 'invalid.example.com', 'alias', true)`,
       ),
     ).rejects.toMatchObject({ code: '23514' });
-    await expect(
-      pool.query(
-        `INSERT INTO documents (id, tenant_id, title, doc_type, document_date)
-         VALUES ('33333333-3333-4333-8333-333333333333', 'tenant-constraints', 'Invalid', 'contract', '2026-08-01')`,
-      ),
-    ).rejects.toMatchObject({ code: '23514' });
     await pool.query(
       `INSERT INTO documents (id, tenant_id, title, doc_type, document_date)
        VALUES ('44444444-4444-4444-8444-444444444444', 'tenant-constraints', 'Valid', 'inny', '2026-08-01')`,
@@ -1300,6 +1372,11 @@ describe('database invariants', () => {
         `INSERT INTO tenant_domains (id, tenant_id, domain, kind, verified)
          VALUES ($1, $2, $3, 'custom', true)`,
         [`domain-${suffix}`, `tenant-${suffix}`, `${suffix}.example.com`],
+      );
+      await pool.query(
+        `INSERT INTO document_types (tenant_id, slug, label, position)
+         VALUES ($1, 'inny', 'Inny', 10)`,
+        [`tenant-${suffix}`],
       );
       await pool.query(
         `INSERT INTO documents (id, tenant_id, title, doc_type, document_date)
@@ -1380,6 +1457,9 @@ describe('database invariants', () => {
         `SELECT count(*)::int AS count FROM tenant_settings WHERE tenant_id = 'tenant-offboard'`,
       ),
       pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM document_types WHERE tenant_id = 'tenant-offboard'`,
+      ),
+      pool.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM signature_records WHERE tenant_id = 'tenant-offboard'`,
       ),
     ]);
@@ -1403,11 +1483,14 @@ describe('database invariants', () => {
         `SELECT count(*)::int AS count FROM tenant_settings WHERE tenant_id = 'tenant-sibling'`,
       ),
       pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM document_types WHERE tenant_id = 'tenant-sibling'`,
+      ),
+      pool.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM signature_records WHERE tenant_id = 'tenant-sibling'`,
       ),
     ]);
 
-    expect(removed.map((result) => result.rows[0]?.count)).toEqual([0, 0, 0, 0, 0, 0, 0]);
-    expect(sibling.map((result) => result.rows[0]?.count)).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expect(removed.map((result) => result.rows[0]?.count)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(sibling.map((result) => result.rows[0]?.count)).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
   });
 });
