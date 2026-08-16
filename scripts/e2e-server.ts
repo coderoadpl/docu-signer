@@ -15,8 +15,8 @@ const E2E_DB = 'agentproofarch_e2e';
 const WEB_DIST_DIR = join(rootDir, 'dist/web');
 // The dev/CI Mailpit (docker-compose.dev.yml): the real smtp adapter delivers
 // the US-026 magic link here; the magic-link spec reads it back over its HTTP API.
-const MAILPIT_SMTP_PORT = 47925;
-const MAILPIT_API_URL = 'http://localhost:47980';
+const MAILPIT_SMTP_PORT = 9925;
+const MAILPIT_API_URL = 'http://localhost:9980';
 
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ??
