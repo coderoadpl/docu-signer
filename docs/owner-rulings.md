@@ -37,10 +37,28 @@ checks are in place.)
 
 ## 2026-08-15 — visible signers annotation on flattened PDFs
 
-Given in the implementation specification that supplied the owner's final
-layout reference and required a tenant flag defaulting off.
+Extends the 2026-08-09 invisible-touch scope: the flattened artifact may now
+carry VISIBLE generated content, behind a tenant setting defaulting off.
+Given in the working session; the owner then iterated the layout live on a
+mockup and locked it ("tak teraz jest super"). Verbatim spelling preserved:
 
-> Owner ruling 2026-08-15 sanctions this visible artifact change.
+> Po namysle zrobmy w ustawieniach ten box na PDFie z imionami i nazwiskami
+> podpisujacych po kolei i datami podpisow
+
+(Gloss: on reflection, add — as a setting — the box on the PDF with the
+signers' names in order and the signature dates.)
+
+The next day the owner rejected the single-stale-box limitation for re-signed
+files and specified the overlay mechanic himself:
+
+> Nie moze tak zostac jak jest ze jest yylko 1 start box. Trzeba jakos
+> wyyslic zeby nowy box pojawial sie na starym zasaalniajac stary - w nowym
+> zawsze ebdzie o linijka wiecej wiec jak damy mu biale tlo to powinien to
+> zrobic nie?
+
+(Gloss: it cannot stay at one stale box; the new box must cover the old one —
+it always has one more row, so an opaque white background at the same anchor
+covers it.)
 
 ## 2026-08-07 — storing signature ink per document
 

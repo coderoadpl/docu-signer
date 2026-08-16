@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildSignersBox, formatSignersBoxDate } from './signers-box.js';
 
-const wallClock = new Date('2026-08-15T19:07:59.000Z');
+const wallClock = new Date(2026, 7, 15, 19, 7, 59);
 
 describe('signers box model', () => {
   it('preserves first-signature order and emits one row per account', () => {

@@ -28,7 +28,9 @@ export const formatSignersBoxDate = (
 ): string => {
   const [year, month, day] = documentDate.split('-');
   if (!year || !month || !day) throw new Error('Invalid document signing date');
-  return `${day}.${month}.${year} ${wallClock.toISOString().slice(11, 16)}`;
+  const hours = String(wallClock.getHours()).padStart(2, '0');
+  const minutes = String(wallClock.getMinutes()).padStart(2, '0');
+  return `${day}.${month}.${year} ${hours}:${minutes}`;
 };
 
 export const buildSignersBox = (input: {
