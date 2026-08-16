@@ -48,7 +48,7 @@ export const InvitationAcceptPage = ({ token }: { token: string }) => {
   const signIn = useMutation({
     ...actions.signIn,
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      await queryClient.resetQueries();
       await navigate({ to: '/app' });
     },
   });

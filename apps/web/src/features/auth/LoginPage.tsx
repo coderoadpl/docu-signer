@@ -44,7 +44,7 @@ export const LoginPage = () => {
         setTwoFactorRequired(true);
         return;
       }
-      await queryClient.invalidateQueries();
+      await queryClient.resetQueries();
       await navigate({ to: '/app' });
     },
   });
@@ -52,7 +52,7 @@ export const LoginPage = () => {
   const verifyTotp = useMutation({
     ...actions.verifyTotp,
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      await queryClient.resetQueries();
       await navigate({ to: '/app' });
     },
   });
@@ -62,7 +62,7 @@ export const LoginPage = () => {
   const passkey = useMutation({
     ...actions.signInPasskey,
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      await queryClient.resetQueries();
       await navigate({ to: '/app' });
     },
   });
