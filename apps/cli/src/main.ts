@@ -22,6 +22,7 @@ import {
   tenantSettingsUpdateInputSchema,
 } from '#core/contract/index.js';
 import {
+  appError,
   canonicalSlugSchema,
   err,
   internal,
@@ -29,8 +30,11 @@ import {
   ok,
   unauthorized,
   validation,
+  type AppError,
   type DocumentListFilter,
   type DocumentListItem,
+  type LinkedDocument,
+  type Result,
 } from '#core/domain/index.js';
 
 import {
@@ -135,10 +139,68 @@ const tokenListFilterSchema = z.object({
 const documentListOptionsSchema = z.object({
   signer: z.string().trim().min(1).optional(),
 });
-const documentLinkPairArgsSchema = z.object({
-  id: z.uuid(),
-  otherId: z.uuid(),
+const documentLinkBatchArgsSchema = z.object({
+  targetId: z.uuid(),
+  ids: z.array(z.uuid()).min(1),
+  label: documentLinkCreateInputSchema.shape.label,
 });
+const documentLinkPairArgsSchema = z.object({ id: z.uuid(), otherId: z.uuid() });
+
+interface LinkedDocumentOutcome {
+  documentId: string;
+  link: LinkedDocument;
+  status: 'linked';
+  targetId: string;
+}
+
+interface FailedDocumentLinkOutcome {
+  documentId: string;
+  error: AppError;
+  status: 'failed';
+  targetId: string;
+}
+
+export type DocumentLinkOutcome = FailedDocumentLinkOutcome | LinkedDocumentOutcome;
+
+export interface DocumentLinkBatchResult {
+  outcomes: DocumentLinkOutcome[];
+  targetId: string;
+}
+
+export const linkDocumentsToTarget = async (
+  api: Pick<ApiClient, 'linkDocuments'>,
+  targetId: string,
+  documentIds: string[],
+  label?: string | null,
+): Promise<Result<DocumentLinkBatchResult, AppError>> => {
+  const outcomes: DocumentLinkOutcome[] = [];
+  for (const documentId of documentIds) {
+    const result = await api.linkDocuments(documentId, {
+      otherDocumentId: targetId,
+      ...(label === undefined ? {} : { label }),
+    });
+    outcomes.push(
+      result.ok
+        ? { documentId, link: result.value.link, status: 'linked', targetId }
+        : { documentId, error: result.error, status: 'failed', targetId },
+    );
+  }
+  const failures = outcomes.filter(
+    (outcome): outcome is FailedDocumentLinkOutcome => outcome.status === 'failed',
+  );
+  const firstFailure = failures[0];
+  if (!firstFailure) return ok({ outcomes, targetId });
+  const failedPairs = failures
+    .map((outcome) => `${outcome.documentId} → ${targetId} (${outcome.error.message})`)
+    .join(', ');
+  return err(
+    appError(
+      firstFailure.error.code,
+      `Failed to link ${failures.length} of ${documentIds.length} documents: ${failedPairs}`,
+      { outcomes, targetId },
+    ),
+  );
+};
 export const documentListFilterFromOptions = (
   options: z.output<typeof documentListOptionsSchema>,
 ): DocumentListFilter =>
@@ -638,24 +700,33 @@ document
   });
 
 document
-  .command('link <id> <otherId>')
-  .description('Link two related documents')
+  .command('link <targetId> <ids...>')
+  .description('Link one or more documents to a target document')
   .option('--label <text>', 'short relationship label')
-  .action(async (id: string, otherId: string, options: { label?: string }) => {
+  .action(async (targetId: string, ids: string[], options: { label?: string }) => {
     const ctx = cliCtx();
-    const pair = parseArgs(documentLinkPairArgsSchema, { id, otherId }, ctx.json);
-    if (pair === undefined) return;
     const input = parseArgs(
-      documentLinkCreateInputSchema,
+      documentLinkBatchArgsSchema,
       {
-        otherDocumentId: pair.otherId,
+        targetId,
+        ids,
         ...(options.label === undefined ? {} : { label: options.label }),
       },
       ctx.json,
     );
     if (input === undefined) return;
-    emit(await ctx.api.linkDocuments(pair.id, input), ctx.json, (data) =>
-      `linked: ${data.link.document.title} (${data.link.document.id})${data.link.label ? ` [${data.link.label}]` : ''}`,
+    emit(
+      await linkDocumentsToTarget(ctx.api, input.targetId, input.ids, input.label),
+      ctx.json,
+      (data) =>
+        data.outcomes
+          .map(
+            (outcome) =>
+              outcome.status === 'linked'
+                ? `linked: ${outcome.documentId} → ${outcome.targetId}${outcome.link.label ? ` [${outcome.link.label}]` : ''}`
+                : `failed: ${outcome.documentId} → ${outcome.targetId} (${outcome.error.message})`,
+          )
+          .join('\n'),
     );
   });
 

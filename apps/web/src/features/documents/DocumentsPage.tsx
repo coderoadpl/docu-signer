@@ -19,6 +19,10 @@ import {
   IconButton,
   InputLabel,
   LinearProgress,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
   Menu,
   MenuItem,
   Paper,
@@ -40,6 +44,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { z } from 'zod';
 
+import { ApiError } from '#core/client/index.js';
 import {
   documentSignatureStatusSchema,
   documentTypeSchema,
@@ -247,12 +252,13 @@ const signerInitials = (name: string): string => {
     .join('');
 };
 
-type BulkDialog = 'add-tags' | 'remove-tag' | 'person' | 'type';
+type BulkDialog = 'add-tags' | 'link' | 'remove-tag' | 'person' | 'type';
 
 interface BulkSummary {
   changed: number;
   errors: number;
-  kind: 'approved' | 'changed' | 'required' | 'unapproved' | 'waived';
+  skipped: number;
+  kind: 'approved' | 'changed' | 'linked' | 'required' | 'unapproved' | 'waived';
 }
 
 const toUpdateDocumentInput = (
@@ -296,6 +302,9 @@ export const DocumentsPage = () => {
   const [bulkRemoveTag, setBulkRemoveTag] = useState('');
   const [bulkPerson, setBulkPerson] = useState('');
   const [bulkDocType, setBulkDocType] = useState<DocumentType>('umowa-uod');
+  const [bulkLinkSearch, setBulkLinkSearch] = useState('');
+  const [bulkLinkTargetId, setBulkLinkTargetId] = useState('');
+  const [bulkLinkLabel, setBulkLinkLabel] = useState('');
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [bulkSummary, setBulkSummary] = useState<BulkSummary | null>(null);
   const [rowMenuAnchor, setRowMenuAnchor] = useState<HTMLElement | null>(null);
@@ -331,6 +340,7 @@ export const DocumentsPage = () => {
   const bulkUnapproveDocument = useMutation(actions.unapproveDocument);
   const bulkWaiveDocumentSignature = useMutation(actions.waiveDocumentSignature);
   const bulkRequireDocumentSignature = useMutation(actions.requireDocumentSignature);
+  const bulkLinkDocuments = useMutation(actions.linkDocuments);
   const bulkUpdateDocument = useMutation(actions.updateDocument);
   const bulkDeleteDocument = useMutation(actions.deleteDocument);
   const createSavedSearch = useMutation({
@@ -400,6 +410,10 @@ export const DocumentsPage = () => {
   const massReviewDocumentIds = massReviewQueueDocumentIds(selectedDocuments);
   const massSigningTargets = massSigningQueueTargets(selectedDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
+  const normalizedBulkLinkSearch = bulkLinkSearch.trim().toLocaleLowerCase('pl');
+  const bulkLinkCandidates = allDocuments.filter((candidate) =>
+    candidate.title.toLocaleLowerCase('pl').includes(normalizedBulkLinkSearch),
+  );
   const visibleColumnIds = columnSettings.order.filter((column) =>
     columnSettings.visible.includes(column),
   );
@@ -498,10 +512,15 @@ export const DocumentsPage = () => {
     if (dialog === 'remove-tag') setBulkRemoveTag(selectedTagOptions[0] ?? '');
     if (dialog === 'person') setBulkPerson('');
     if (dialog === 'type') setBulkDocType(selectedDocuments[0]?.docType ?? 'umowa-uod');
+    if (dialog === 'link') {
+      setBulkLinkSearch('');
+      setBulkLinkTargetId('');
+      setBulkLinkLabel('');
+    }
   };
 
   const runBulk = async (
-    action: (document: DocumentWithFiles) => Promise<void>,
+    action: (document: DocumentWithFiles) => Promise<unknown>,
     options?: {
       documents?: DocumentWithFiles[];
       summaryKind?: BulkSummary['kind'];
@@ -511,12 +530,14 @@ export const DocumentsPage = () => {
     if (targets.length === 0 || bulkBusy) return;
     let changed = 0;
     let errors = 0;
+    let skipped = 0;
     setBulkSummary(null);
     setBulkProgress({ done: 0, total: targets.length });
     for (const document of targets) {
       try {
-        await action(document);
-        changed += 1;
+        const outcome = await action(document);
+        if (outcome === 'skipped') skipped += 1;
+        else changed += 1;
       } catch {
         errors += 1;
       } finally {
@@ -527,7 +548,7 @@ export const DocumentsPage = () => {
     }
     setBulkProgress(null);
     setBulkDialog(null);
-    setBulkSummary({ changed, errors, kind: options?.summaryKind ?? 'changed' });
+    setBulkSummary({ changed, errors, skipped, kind: options?.summaryKind ?? 'changed' });
     setSelectedIds([]);
     await queryClient.invalidateQueries(actions.documentsInvalidates());
   };
@@ -938,6 +959,13 @@ export const DocumentsPage = () => {
               </Button>
               <Button
                 variant="outlined"
+                disabled={selectedIds.length === 0 || bulkBusy}
+                onClick={() => openBulkDialog('link')}
+              >
+                Powiąż z dokumentem… ({selectedIds.length})
+              </Button>
+              <Button
+                variant="outlined"
                 disabled={selectedIds.length === 0 || exportDocuments.isPending || bulkBusy}
                 onClick={() => exportDocuments.mutate({ documentIds: selectedIds })}
               >
@@ -969,6 +997,8 @@ export const DocumentsPage = () => {
               ? `Oznaczono jako niewymagające podpisu ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
             : bulkSummary.kind === 'required'
               ? `Przywrócono wymaganie podpisu ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
+            : bulkSummary.kind === 'linked'
+              ? `Powiązano ${bulkSummary.changed}, pominięto ${bulkSummary.skipped}, błędów ${bulkSummary.errors}.`
             : `Operacje zbiorcze: ${bulkSummary.changed} zmieniono, ${bulkSummary.errors} błędów.`}
         </Alert>
       ) : null}
@@ -1385,7 +1415,9 @@ export const DocumentsPage = () => {
               ? 'Usuń tag'
               : bulkDialog === 'person'
                 ? 'Ustaw osobę'
-                : 'Ustaw typ'}
+                : bulkDialog === 'link'
+                  ? 'Dodaj powiązany dokument'
+                  : 'Ustaw typ'}
         </DialogTitle>
         <DialogContent>
           <Stack sx={{ gap: 2, pt: 1 }}>
@@ -1455,6 +1487,37 @@ export const DocumentsPage = () => {
                 </FormControl>
               </>
             ) : null}
+            {bulkDialog === 'link' ? (
+              <>
+                <TextField
+                  label="Szukaj po tytule"
+                  value={bulkLinkSearch}
+                  onChange={(event) => setBulkLinkSearch(event.target.value)}
+                />
+                <List sx={{ maxHeight: 240, overflow: 'auto' }}>
+                  {bulkLinkCandidates.map((candidate) => (
+                    <ListItemButton
+                      key={candidate.id}
+                      selected={bulkLinkTargetId === candidate.id}
+                      onClick={() => setBulkLinkTargetId(candidate.id)}
+                    >
+                      <ListItemText primary={candidate.title} />
+                    </ListItemButton>
+                  ))}
+                  {bulkLinkCandidates.length === 0 ? (
+                    <ListItem>
+                      <ListItemText primary="Brak dokumentów do powiązania." />
+                    </ListItem>
+                  ) : null}
+                </List>
+                <TextField
+                  label="Etykieta (opcjonalnie)"
+                  value={bulkLinkLabel}
+                  slotProps={{ htmlInput: { maxLength: 60 } }}
+                  onChange={(event) => setBulkLinkLabel(event.target.value)}
+                />
+              </>
+            ) : null}
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -1468,7 +1531,8 @@ export const DocumentsPage = () => {
               selectedDocuments.length === 0 ||
               (bulkDialog === 'add-tags' && bulkTags.map((tag) => tag.trim()).filter(Boolean).length === 0) ||
               (bulkDialog === 'remove-tag' && !bulkRemoveTag) ||
-              (bulkDialog === 'person' && bulkPerson.trim().length === 0)
+              (bulkDialog === 'person' && bulkPerson.trim().length === 0) ||
+              (bulkDialog === 'link' && !bulkLinkTargetId)
             }
             onClick={() => {
               if (bulkDialog === 'add-tags') {
@@ -1511,10 +1575,35 @@ export const DocumentsPage = () => {
                     input: toUpdateDocumentInput(document, { docType: bulkDocType }),
                   });
                 });
+                return;
+              }
+              if (bulkDialog === 'link') {
+                const targetId = bulkLinkTargetId;
+                const label = bulkLinkLabel.trim();
+                void runBulk(
+                  async (document) => {
+                    if (document.id === targetId) return 'skipped';
+                    try {
+                      await bulkLinkDocuments.mutateAsync({
+                        documentId: document.id,
+                        input: {
+                          otherDocumentId: targetId,
+                          ...(label ? { label } : {}),
+                        },
+                      });
+                    } catch (error) {
+                      if (error instanceof ApiError && error.appError.code === 'conflict') {
+                        return 'skipped';
+                      }
+                      throw error;
+                    }
+                  },
+                  { summaryKind: 'linked' },
+                );
               }
             }}
           >
-            Zastosuj
+            {bulkDialog === 'link' ? 'Dodaj' : 'Zastosuj'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -742,6 +742,102 @@ describe('DocumentsPage', () => {
     ).toBeEnabled();
   });
 
+  it('bulk links selected documents to one target and skips the target in the selection', async () => {
+    const links = vi.fn();
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { documents: [document, draftDocument, protocolDocument] },
+        }),
+      ),
+      http.post('/api/documents/:documentId/links', async ({ params, request }) => {
+        const input = await request.json();
+        links(String(params.documentId), input);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            link: {
+              linkId: '77777777-7777-4777-8777-777777777777',
+              label: 'podstawa',
+              document: protocolDocument,
+            },
+          },
+        });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Protokół odbioru');
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }),
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Powiąż z dokumentem… (3)' }),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Dodaj powiązany dokument',
+    });
+    await userEvent.click(within(dialog).getByText('Protokół odbioru'));
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: 'Etykieta (opcjonalnie)' }),
+      'podstawa',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Dodaj' }));
+
+    await waitFor(() => expect(links).toHaveBeenCalledTimes(2));
+    expect(links).toHaveBeenCalledWith(document.id, {
+      otherDocumentId: protocolDocument.id,
+      label: 'podstawa',
+    });
+    expect(links).toHaveBeenCalledWith(draftDocument.id, {
+      otherDocumentId: protocolDocument.id,
+      label: 'podstawa',
+    });
+    expect(links).not.toHaveBeenCalledWith(protocolDocument.id, expect.anything());
+    expect(
+      await screen.findByText('Powiązano 2, pominięto 1, błędów 0.'),
+    ).toBeInTheDocument();
+  });
+
+  it('silently skips an already-linked pair in a bulk link action', async () => {
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { documents: [document, protocolDocument] },
+        }),
+      ),
+      http.post('/api/documents/:documentId/links', () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            error: { code: 'conflict', message: 'Documents are already linked' },
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Protokół odbioru');
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }),
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Powiąż z dokumentem… (2)' }),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Dodaj powiązany dokument',
+    });
+    await userEvent.click(within(dialog).getByText('Protokół odbioru'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Dodaj' }));
+
+    expect(
+      await screen.findByText('Powiązano 0, pominięto 2, błędów 0.'),
+    ).toBeInTheDocument();
+  });
+
   it('disables bulk approve when selected documents contain no drafts', async () => {
     server.use(
       http.get('/api/documents', () =>
