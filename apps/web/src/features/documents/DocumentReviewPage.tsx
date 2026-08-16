@@ -238,7 +238,7 @@ const EditForm = ({
           value={values.person}
           onChange={(_event, value) => field('person', value ?? '')}
           onInputChange={(_event, value) => field('person', value)}
-          renderInput={(params) => <TextField {...params} label="Osoba" />}
+          renderInput={(params) => <TextField {...params} label="Strona" />}
         />
         <Autocomplete
           multiple
@@ -592,7 +592,7 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
               Poprzednia strona
             </Button>
             <Typography variant="body2" aria-live="polite">
-              Strona {pageNumber} z {pdf.numPages}
+              str. {pageNumber} z {pdf.numPages}
             </Typography>
             <Button
               size="small"

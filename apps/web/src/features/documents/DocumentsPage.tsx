@@ -190,7 +190,7 @@ interface DocumentColumnSettings {
 const DOCUMENT_COLUMN_LABELS: Record<DocumentColumnId, string> = {
   documentDate: 'Data podpisania',
   docType: 'Typ',
-  person: 'Osoba',
+  person: 'Strona',
   tags: 'Tagi',
   period: 'Okres',
   signatureStatus: 'Status podpisu',
@@ -713,7 +713,7 @@ export const DocumentsPage = () => {
             value={filters.person}
             onChange={(_event, value) => updateFilter('person', value ?? '')}
             onInputChange={(_event, value) => updateFilter('person', value)}
-            renderInput={(params) => <TextField {...params} label="Osoba" />}
+            renderInput={(params) => <TextField {...params} label="Strona" />}
             sx={{ flex: { sm: '1 1 10rem' } }}
           />
           <Autocomplete
@@ -955,7 +955,7 @@ export const DocumentsPage = () => {
                 disabled={selectedIds.length === 0 || bulkBusy}
                 onClick={() => openBulkDialog('person')}
               >
-                Ustaw osobę
+                Ustaw stronę
               </Button>
               <Button
                 variant="outlined"
@@ -1185,7 +1185,7 @@ export const DocumentsPage = () => {
                                   />
                                 ) : null}
                                 <Typography variant="body2" sx={{ mt: 1 }}>
-                                  {document.person ?? 'Bez przypisanej osoby'}
+                                  {document.person ?? 'Bez przypisanej strony'}
                                 </Typography>
                                 <Typography variant="body2">
                                   {formatPolishDate(document.documentDate)} · Pliki: {document.files.length}
@@ -1424,7 +1424,7 @@ export const DocumentsPage = () => {
             : bulkDialog === 'remove-tag'
               ? 'Usuń tag'
               : bulkDialog === 'person'
-                ? 'Ustaw osobę'
+                ? 'Ustaw stronę'
                 : bulkDialog === 'link'
                   ? 'Dodaj powiązany dokument'
                   : 'Ustaw typ'}
@@ -1461,7 +1461,7 @@ export const DocumentsPage = () => {
             {bulkDialog === 'person' ? (
               <>
                 <Alert severity="warning">
-                  Nadpiszesz osobę w {selectedDocuments.length} dokumentach.
+                  Nadpiszesz stronę w {selectedDocuments.length} dokumentach.
                 </Alert>
                 <Autocomplete
                   freeSolo
@@ -1469,7 +1469,7 @@ export const DocumentsPage = () => {
                   value={bulkPerson}
                   onChange={(_event, value) => setBulkPerson(value ?? '')}
                   onInputChange={(_event, value) => setBulkPerson(value)}
-                  renderInput={(params) => <TextField {...params} label="Osoba" />}
+                  renderInput={(params) => <TextField {...params} label="Strona" />}
                 />
               </>
             ) : null}

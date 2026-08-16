@@ -448,7 +448,7 @@ describe('document view logic', () => {
       },
       {
         id: 'no-person',
-        title: 'Bez osoby',
+        title: 'Bez strony',
         docType: 'inny' as const,
         documentDate: '2026-05-26',
         periodStart: '2026-05-01',
@@ -504,7 +504,7 @@ describe('document view logic', () => {
     expect(mayGroup.people.map((group) => group.person)).toEqual([
       'Anna',
       'Łukasz',
-      'Bez osoby',
+      'Bez strony',
     ]);
     expect(mayGroup.people.at(1)?.documents.map((item) => item.id)).toEqual([
       'contract',
@@ -533,7 +533,7 @@ describe('document view logic', () => {
           person: 'Anna',
         },
       ]).at(0)?.people.map((group) => group.person),
-    ).toEqual(['Anna', 'Bez osoby']);
+    ).toEqual(['Anna', 'Bez strony']);
   });
 
   it('builds tag suggestions and saved-search summaries', () => {
@@ -575,7 +575,7 @@ describe('document view logic', () => {
         DEFAULT_DOCUMENT_TYPES,
       ),
     ).toBe(
-      'Tytuł: umowa · Typ: Umowa UoD · Osoba: Anna · Tag: ważne · Od: 01.01.2026 · Do: 31.12.2026 · Status podpisu: Do podpisania',
+      'Tytuł: umowa · Typ: Umowa UoD · Strona: Anna · Tag: ważne · Od: 01.01.2026 · Do: 31.12.2026 · Status podpisu: Do podpisania',
     );
     expect(documentFilterSummary({}, DEFAULT_DOCUMENT_TYPES)).toBe('Wszystkie dokumenty');
     expect(documentTypeLabel(DEFAULT_DOCUMENT_TYPES, 'umowa-z-klientem')).toBe(
@@ -680,7 +680,7 @@ describe('document view logic', () => {
         ],
       },
       {
-        person: 'Bez osoby',
+        person: 'Bez strony',
         intervals: [{ start: '2026-02-10', end: '2026-02-10' }],
         documents: [{ title: 'Bez okresu', instant: true }],
       },

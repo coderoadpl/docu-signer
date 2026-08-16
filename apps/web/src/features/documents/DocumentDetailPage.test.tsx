@@ -1031,7 +1031,7 @@ describe('DocumentDetailPage', () => {
     await renderPage();
 
     expect(
-      await screen.findByText(/Bez przypisanej osoby/),
+      await screen.findByText(/Bez przypisanej strony/),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'Podgląd' }),

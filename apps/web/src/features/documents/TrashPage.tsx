@@ -216,7 +216,7 @@ export const TrashPage = () => {
                             />
                           </Stack>
                           <Typography variant="body2" sx={{ mt: 1 }}>
-                            {document.person ?? 'Bez przypisanej osoby'}
+                            {document.person ?? 'Bez przypisanej strony'}
                           </Typography>
                         </CardContent>
                       </RouterCardActionArea>
@@ -257,7 +257,7 @@ export const TrashPage = () => {
                     <TableCell>Usunięto</TableCell>
                     <TableCell>Tytuł</TableCell>
                     <TableCell>Typ</TableCell>
-                    <TableCell>Osoba</TableCell>
+                    <TableCell>Strona</TableCell>
                     <TableCell align="right">Akcje</TableCell>
                   </TableRow>
                 </TableHead>

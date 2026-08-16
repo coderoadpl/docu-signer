@@ -339,7 +339,7 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Osoba' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Strona' }), {
       target: { value: 'Anna' },
     });
     await user.click(await screen.findByRole('option', { name: 'Anna Nowak' }));
@@ -483,7 +483,7 @@ describe('DocumentsPage', () => {
     );
 
     expect(await screen.findByLabelText('Szukaj po tytule')).toHaveValue('umowa');
-    expect(screen.getByRole('combobox', { name: 'Osoba' })).toHaveValue('Anna');
+    expect(screen.getByRole('combobox', { name: 'Strona' })).toHaveValue('Anna');
     expect(screen.getByRole('combobox', { name: 'Tag' })).toHaveValue('ważne');
     expect(screen.getByText('Do podpisania')).toBeInTheDocument();
     expect(screen.getByText('Tylko szkice')).toBeInTheDocument();
@@ -1268,10 +1268,10 @@ describe('DocumentsPage', () => {
       screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Uchwała zarządu' }).at(0) ??
         screen.getByLabelText('Zaznacz dokument: Uchwała zarządu'),
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Ustaw osobę' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Ustaw osobę' });
-    expect(within(dialog).getByText('Nadpiszesz osobę w 2 dokumentach.')).toBeInTheDocument();
-    await userEvent.type(within(dialog).getByRole('combobox', { name: 'Osoba' }), 'Jan Kowalski');
+    await userEvent.click(screen.getByRole('button', { name: 'Ustaw stronę' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ustaw stronę' });
+    expect(within(dialog).getByText('Nadpiszesz stronę w 2 dokumentach.')).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole('combobox', { name: 'Strona' }), 'Jan Kowalski');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Zastosuj' }));
 
     expect(await screen.findByLabelText('Postęp operacji zbiorczej')).toBeInTheDocument();
@@ -1669,7 +1669,7 @@ describe('DocumentsPage', () => {
     ).toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
     await clearDateWithButton(periodEnd);
-    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Osoba' }), {
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Strona' }), {
       target: { value: 'Anna Nowak' },
     });
     await userEvent.type(
