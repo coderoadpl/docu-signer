@@ -911,6 +911,7 @@ describe('documents use-cases', () => {
           tenantId: 'tenant-acme',
           storeSignatureRecords: true,
           pdfSealEnabled: true,
+          signatureBoxEnabled: false,
           dateMode: 'declared',
         }),
         set: async (tenantId, settings) => ({ tenantId, ...settings }),
