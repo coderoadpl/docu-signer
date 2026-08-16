@@ -3,6 +3,7 @@ import { Container, Typography } from '@mui/material';
 import { ApiTokenSection } from './ApiTokenSection.js';
 import { PasskeySection } from './PasskeySection.js';
 import { PasswordSection } from './PasswordSection.js';
+import { ProfileSection } from './ProfileSection.js';
 import { TwoFactorSection } from './TwoFactorSection.js';
 import { TenantSettingsSection } from './TenantSettingsSection.js';
 import { InvitationsSection } from './InvitationsSection.js';
@@ -13,8 +14,9 @@ export const SettingsPage = () => (
       Konto
     </Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mb: '1.5rem' }}>
-      Zarządzaj zabezpieczeniami swojego konta.
+      Zarządzaj profilem, zabezpieczeniami konta i ustawieniami organizacji.
     </Typography>
+    <ProfileSection />
     <TenantSettingsSection />
     <InvitationsSection />
     <PasswordSection />

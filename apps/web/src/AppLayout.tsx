@@ -89,19 +89,19 @@ export const AppLayout = () => {
     );
   }
   if (!me.data.tenant) {
-    return <Shell email={me.data.email} state={noArchiveAccessState} />;
+    return <Shell displayName={me.data.name} state={noArchiveAccessState} />;
   }
 
-  return <Shell tenant={me.data.tenant} email={me.data.email} />;
+  return <Shell tenant={me.data.tenant} displayName={me.data.name} />;
 };
 
 interface ShellProps {
   tenant?: { slug: string; name: string } | null;
-  email?: string;
+  displayName?: string;
   state?: PageState;
 }
 
-const Shell = ({ tenant = null, email, state }: ShellProps) => {
+const Shell = ({ tenant = null, displayName, state }: ShellProps) => {
   const signOut = useSignOut();
   const joinPad = useMutation(actions.joinOwnPadSession);
   const navigate = useNavigate();
@@ -298,13 +298,13 @@ const Shell = ({ tenant = null, email, state }: ShellProps) => {
           ) : null
         }
         meta={
-          email ? (
+          displayName ? (
             <Typography
               variant="caption"
               color="text.secondary"
               sx={{ display: { xs: 'none', sm: 'block' } }}
             >
-              {email}
+              {displayName}
             </Typography>
           ) : null
         }
