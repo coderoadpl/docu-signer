@@ -3,27 +3,49 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
+import type { QueryClient } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
-import { forbidden, type AppError } from '#core/domain/index.js';
+import { ApiError } from '#core/client/index.js';
+import { forbidden, unauthorized, type AppError } from '#core/domain/index.js';
 
-import { renderWithProviders } from './test/render.js';
+import { actions } from './api.js';
+import { createTestQueryClient, renderWithProviders } from './test/render.js';
 import { server } from './test/server.js';
 import { AppLayout } from './AppLayout.js';
+import { LoginPage } from './features/auth/LoginPage.js';
 import { documentsSearchSchema } from './features/documents/documents.logic.js';
 
-const renderLayout = async (
-  tenant: object | null,
+interface RenderLayoutOptions {
+  tenant: object | null;
+  initialEntry?: string;
+  error?: AppError;
+  queryClient?: QueryClient;
+  waitForMe?: Promise<void>;
+}
+
+const renderLayout = async ({
+  tenant,
   initialEntry = '/app',
-  error?: AppError,
-) => {
+  error,
+  queryClient = createTestQueryClient(),
+  waitForMe,
+}: RenderLayoutOptions) => {
   server.use(
-    http.get('/api/me', () => {
-      if (error) return HttpResponse.json({ ok: false, error }, { status: 403 });
+    http.get('/api/me', async () => {
+      await waitForMe;
+      if (error) {
+        return HttpResponse.json(
+          { ok: false, error },
+          { status: error.code === 'unauthorized' ? 401 : 403 },
+        );
+      }
       return HttpResponse.json({
         ok: true,
         data: {
@@ -67,13 +89,49 @@ const renderLayout = async (
     path: '/pad/$sessionId',
     component: () => <p>pad</p>,
   });
+  const login = createRoute({
+    getParentRoute: () => root,
+    path: '/login',
+    component: () => <p>login page</p>,
+  });
   const router = createRouter({
-    routeTree: root.addChildren([app.addChildren([index, documents, trash, settings]), pad]),
+    routeTree: root.addChildren([
+      app.addChildren([index, documents, trash, settings]),
+      login,
+      pad,
+    ]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
-  renderWithProviders(<RouterProvider router={router} />);
-  return router;
+  return {
+    router,
+    ...renderWithProviders(<RouterProvider router={router} />, { queryClient }),
+  };
+};
+
+const renderLoginWithApp = async () => {
+  const root = createRootRoute({ component: Outlet });
+  const login = createRoute({
+    getParentRoute: () => root,
+    path: '/login',
+    component: LoginPage,
+  });
+  const app = createRoute({
+    getParentRoute: () => root,
+    path: '/app',
+    component: AppLayout,
+  });
+  const index = createRoute({
+    getParentRoute: () => app,
+    path: '/',
+    component: () => <p>archive content</p>,
+  });
+  const router = createRouter({
+    routeTree: root.addChildren([login, app.addChildren([index])]),
+    history: createMemoryHistory({ initialEntries: ['/login'] }),
+  });
+  await router.load();
+  return { router, ...renderWithProviders(<RouterProvider router={router} />) };
 };
 
 describe('AppLayout', () => {
@@ -97,11 +155,13 @@ describe('AppLayout', () => {
         }),
       ),
     );
-    const router = await renderLayout({
-      id: 'tenant-default',
-      slug: 'default',
-      name: 'Archiwum',
-      staffRole: 'owner',
+    const { router } = await renderLayout({
+      tenant: {
+        id: 'tenant-default',
+        slug: 'default',
+        name: 'Archiwum',
+        staffRole: 'owner',
+      },
     });
     expect(await screen.findByRole('link', { name: 'Dokumenty' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Kosz' })).toBeInTheDocument();
@@ -191,15 +251,15 @@ describe('AppLayout', () => {
         return HttpResponse.json({ ok: true, data: { deleted: true } });
       }),
     );
-    await renderLayout(
-      {
+    await renderLayout({
+      tenant: {
         id: 'tenant-default',
         slug: 'default',
         name: 'Archiwum',
         staffRole: 'owner',
       },
-      '/app/documents?tag=odbiór&status=signed&szkice=all',
-    );
+      initialEntry: '/app/documents?tag=odbiór&status=signed&szkice=all',
+    });
 
     expect((await screen.findAllByText('TECZKI')).length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'Odbiór' })).toHaveClass('active');
@@ -215,7 +275,7 @@ describe('AppLayout', () => {
   });
 
   it('shows a closed access state without tenant-management actions', async () => {
-    await renderLayout(null);
+    await renderLayout({ tenant: null });
     expect(await screen.findByText('Brak dostępu do archiwum')).toBeInTheDocument();
     expect(screen.queryByText(/utwórz|zmień firmę/i)).not.toBeInTheDocument();
   });
@@ -223,7 +283,7 @@ describe('AppLayout', () => {
   it('shows the no-access state without navigation when identity resolution is forbidden', async () => {
     const error = forbidden('You do not have access to this tenant');
 
-    await renderLayout(null, '/app/documents', error);
+    await renderLayout({ tenant: null, initialEntry: '/app/documents', error });
 
     expect(await screen.findByText('Brak dostępu do archiwum')).toBeInTheDocument();
     expect(
@@ -234,5 +294,102 @@ describe('AppLayout', () => {
     expect(screen.queryByRole('link', { name: 'Konto' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Tryb pada' })).not.toBeInTheDocument();
     expect(screen.queryByText(error.message)).not.toBeInTheDocument();
+  });
+
+  it('shows loading while a cached unauthorized result is refetching', async () => {
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryDefaults(actions.me.queryKey, { gcTime: Infinity });
+    await expect(
+      queryClient.fetchQuery({
+        ...actions.me,
+        queryFn: () => Promise.reject(new ApiError(unauthorized())),
+      }),
+    ).rejects.toThrow('Authentication required');
+    let finishMeRequest = () => {};
+    const waitForMe = new Promise<void>((resolve) => {
+      finishMeRequest = resolve;
+    });
+
+    const { router } = await renderLayout({
+      tenant: {
+        id: 'tenant-default',
+        slug: 'default',
+        name: 'Archiwum',
+        staffRole: 'owner',
+      },
+      queryClient,
+      waitForMe,
+    });
+
+    expect(await screen.findByText('Ładowanie aplikacji…')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/app');
+
+    finishMeRequest();
+    expect(await screen.findByText('archive content')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/app');
+  });
+
+  it('redirects after an unauthorized result settles', async () => {
+    const { router } = await renderLayout({ tenant: null, error: unauthorized() });
+
+    expect(await screen.findByText('login page')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/login');
+  });
+
+  it('stays in the app after signing in with a cached unauthorized session', async () => {
+    let authenticated = false;
+    let meRequests = 0;
+    let finishMeRequest = () => {};
+    const waitForAuthenticatedMe = new Promise<void>((resolve) => {
+      finishMeRequest = resolve;
+    });
+    server.use(
+      http.get('/api/me', async () => {
+        meRequests += 1;
+        if (!authenticated) {
+          return HttpResponse.json(
+            { ok: false, error: unauthorized() },
+            { status: 401 },
+          );
+        }
+        await waitForAuthenticatedMe;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u1',
+            email: 'user@example.com',
+            name: 'User',
+            tenant: {
+              id: 'tenant-default',
+              slug: 'default',
+              name: 'Archiwum',
+              staffRole: 'owner',
+            },
+          },
+        });
+      }),
+      http.post('*/sign-in/email', () => {
+        authenticated = true;
+        return HttpResponse.json({
+          token: 'session-token',
+          user: { id: 'u1', email: 'user@example.com', name: 'User' },
+        });
+      }),
+    );
+    const { router, queryClient } = await renderLoginWithApp();
+    queryClient.setQueryDefaults(actions.me.queryKey, { gcTime: Infinity });
+    await expect(queryClient.fetchQuery(actions.me)).rejects.toThrow('Authentication required');
+
+    await userEvent.type(screen.getByLabelText('Adres e-mail'), 'demo@agentproofarch.dev');
+    await userEvent.type(screen.getByLabelText('Hasło'), 'demo1234');
+    await userEvent.click(screen.getByRole('button', { name: 'Zaloguj się' }));
+
+    expect(await screen.findByText('Ładowanie aplikacji…')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/app');
+
+    finishMeRequest();
+    expect(await screen.findByText('archive content')).toBeInTheDocument();
+    expect(meRequests).toBe(2);
+    expect(router.state.location.pathname).toBe('/app');
   });
 });

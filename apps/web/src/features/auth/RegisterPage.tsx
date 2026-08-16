@@ -59,7 +59,7 @@ export const RegisterPage = () => {
   const signUp = useMutation({
     ...actions.signUp,
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      await queryClient.resetQueries();
       await navigate({ to: '/app' });
     },
   });

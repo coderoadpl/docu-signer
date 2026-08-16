@@ -19,7 +19,7 @@ const polishPickerLocaleText = {
   todayButtonLabel: 'Dzisiaj',
 };
 
-const createTestQueryClient = () =>
+export const createTestQueryClient = () =>
   new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -43,11 +43,15 @@ const TestProviders = ({
   </LocalizationProvider>
 );
 
-export const renderWithProviders = (ui: ReactElement, options?: RenderOptions) => {
-  const queryClient = createTestQueryClient();
+interface ProviderRenderOptions extends RenderOptions {
+  queryClient?: QueryClient;
+}
+
+export const renderWithProviders = (ui: ReactElement, options: ProviderRenderOptions = {}) => {
+  const { queryClient = createTestQueryClient(), ...renderOptions } = options;
 
   return {
     queryClient,
-    ...render(<TestProviders queryClient={queryClient}>{ui}</TestProviders>, options),
+    ...render(<TestProviders queryClient={queryClient}>{ui}</TestProviders>, renderOptions),
   };
 };
