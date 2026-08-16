@@ -1,11 +1,13 @@
 import {
   appError,
+  documentLinkSchema,
   err,
   linkDocumentsInputSchema,
   notFound,
   ok,
   validation,
   type AppError,
+  type DocumentLink,
   type LinkDocumentsInput,
   type LinkedDocument,
   type Result,
@@ -20,6 +22,10 @@ export interface DocumentLinkDeps {
   documents: DocumentRepository;
   ids: IdGenerator;
 }
+
+const annotationIsDraft = (ctx: Ctx): boolean =>
+  ctx.identity.apiToken !== null &&
+  !ctx.identity.apiToken.scopes.includes('write');
 
 const orderedPair = (firstDocumentId: string, secondDocumentId: string) =>
   firstDocumentId < secondDocumentId
@@ -69,10 +75,29 @@ export const linkDocuments = async (
     id: deps.ids.nextId(),
     ...pair,
     label: pairInput.value.label,
+    draft: annotationIsDraft(ctx),
   });
   return created
-    ? ok({ linkId: created.id, label: created.label, document: otherDocument })
+    ? ok({
+        linkId: created.id,
+        label: created.label,
+        draft: created.draft,
+        document: otherDocument,
+      })
     : err(appError('conflict', 'Documents are already linked'));
+};
+
+export const approveDocumentLink = async (
+  ctx: Ctx,
+  linkId: string,
+  deps: Pick<DocumentLinkDeps, 'documentLinks'>,
+): Promise<Result<DocumentLink, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:approve');
+  if (!scope.ok) return scope;
+  const parsedLinkId = documentLinkSchema.shape.id.safeParse(linkId);
+  if (!parsedLinkId.success) return err(validation('Invalid document link id'));
+  const approved = await deps.documentLinks.approve(scope.value, parsedLinkId.data);
+  return approved ? ok(approved) : err(notFound('Document link not found'));
 };
 
 export const unlinkDocuments = async (

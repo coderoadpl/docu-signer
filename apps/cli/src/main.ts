@@ -148,6 +148,7 @@ const documentLinkBatchArgsSchema = z.object({
 });
 const documentLinkPairArgsSchema = z.object({ id: z.uuid(), otherId: z.uuid() });
 const documentCommentArgsSchema = documentCommentCreateInputSchema.extend({ id: z.uuid() });
+const annotationIdSchema = z.uuid();
 
 interface LinkedDocumentOutcome {
   documentId: string;
@@ -752,6 +753,18 @@ document
   });
 
 document
+  .command('approve-comment <id>')
+  .description('Approve a draft document comment')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    const commentId = parseArgs(annotationIdSchema, id, ctx.json);
+    if (commentId === undefined) return;
+    emit(await ctx.api.approveDocumentComment(commentId), ctx.json, (data) =>
+      `approved comment: ${data.comment.id}`,
+    );
+  });
+
+document
   .command('link <targetId> <ids...>')
   .description('Link one or more documents to a target document')
   .option('--label <text>', 'short relationship label')
@@ -791,6 +804,18 @@ document
     if (pair === undefined) return;
     emit(await ctx.api.unlinkDocuments(pair.id, pair.otherId), ctx.json, () =>
       `unlinked: ${pair.id} ↔ ${pair.otherId}`,
+    );
+  });
+
+document
+  .command('approve-link <id>')
+  .description('Approve a draft document link')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    const linkId = parseArgs(annotationIdSchema, id, ctx.json);
+    if (linkId === undefined) return;
+    emit(await ctx.api.approveDocumentLink(linkId), ctx.json, (data) =>
+      `approved link: ${data.link.id}`,
     );
   });
 

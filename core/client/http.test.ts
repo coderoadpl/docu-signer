@@ -33,6 +33,7 @@ describe('API client', () => {
     const link = {
       linkId: '33333333-3333-4333-8333-333333333333',
       label: 'podstawa',
+      draft: true,
       document: {
         id: otherDocumentId,
         tenantId: 'tenant-default',
@@ -47,7 +48,22 @@ describe('API client', () => {
         updatedAt: '2026-08-16T10:00:00.000Z',
       },
     };
-    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).endsWith('/approve')) {
+        return json({
+          ok: true,
+          data: {
+            link: {
+              id: link.linkId,
+              tenantId: 'tenant-default',
+              fromDocumentId: documentId,
+              toDocumentId: otherDocumentId,
+              label: 'podstawa',
+              draft: false,
+            },
+          },
+        });
+      }
       if (init?.method === 'POST') return json({ ok: true, data: { link } });
       if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
       return json({ ok: true, data: { links: [link] } });
@@ -61,6 +77,10 @@ describe('API client', () => {
     await expect(
       api.linkDocuments(documentId, { otherDocumentId, label: 'podstawa' }),
     ).resolves.toMatchObject({ ok: true, value: { link: { label: 'podstawa' } } });
+    await expect(api.approveDocumentLink(link.linkId)).resolves.toMatchObject({
+      ok: true,
+      value: { link: { id: link.linkId, draft: false } },
+    });
     await expect(api.unlinkDocuments(documentId, otherDocumentId)).resolves.toEqual({
       ok: true,
       value: { deleted: true },
@@ -70,10 +90,11 @@ describe('API client', () => {
       method: 'POST',
       body: JSON.stringify({ otherDocumentId, label: 'podstawa' }),
     });
-    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(`/api/document-links/${link.linkId}/approve`);
+    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
       `/api/documents/${documentId}/links/${otherDocumentId}`,
     );
-    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
   it('lists, creates, and deletes document comments through contract paths', async () => {
@@ -85,9 +106,13 @@ describe('API client', () => {
       documentId,
       author: { accountId: 'user-owner', name: 'Owner' },
       body: 'Treść komentarza',
+      draft: true,
       createdAt: '2026-08-16T10:00:00.000Z',
     };
-    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).endsWith('/approve')) {
+        return json({ ok: true, data: { comment: { ...comment, draft: false } } });
+      }
       if (init?.method === 'POST') return json({ ok: true, data: { comment } });
       if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
       return json({ ok: true, data: { items: [comment], nextCursor: null } });
@@ -100,6 +125,10 @@ describe('API client', () => {
     await expect(
       api.addDocumentComment(documentId, { body: comment.body }),
     ).resolves.toMatchObject({ ok: true, value: { comment: { id: commentId } } });
+    await expect(api.approveDocumentComment(commentId)).resolves.toMatchObject({
+      ok: true,
+      value: { comment: { id: commentId, draft: false } },
+    });
     await expect(api.deleteDocumentComment(documentId, commentId)).resolves.toEqual({
       ok: true,
       value: { deleted: true },
@@ -112,9 +141,12 @@ describe('API client', () => {
       body: JSON.stringify({ body: comment.body }),
     });
     expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      `/api/document-comments/${commentId}/approve`,
+    );
+    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
       `/api/documents/${documentId}/comments/${commentId}`,
     );
-    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
   it('sends tenant document filters and write bodies', async () => {

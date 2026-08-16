@@ -93,6 +93,8 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('link');
     expect(documentHelp.stdout).toContain('unlink');
     expect(documentHelp.stdout).toContain('comment');
+    expect(documentHelp.stdout).toContain('approve-link');
+    expect(documentHelp.stdout).toContain('approve-comment');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
     expect(listHelp.stdout).toContain('--signer <accountId>');
@@ -128,6 +130,17 @@ describe('CLI command surface', () => {
       ok: false,
       error: { code: 'validation' },
     });
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('maps invalid annotation approval IDs to the validation exit code', () => {
+    for (const command of ['approve-link', 'approve-comment']) {
+      const result = run('--json', 'document', command, 'bad-id');
+      expect(result.status).toBe(2);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: false,
+        error: { code: 'validation' },
+      });
+    }
   }, CLI_TEST_TIMEOUT_MS);
 
   it('documents the minimal invitation commands', () => {
@@ -207,6 +220,7 @@ describe('document link batch', () => {
             link: {
               linkId: '44444444-4444-4444-8444-444444444444',
               label: 'podstawa',
+              draft: true,
               document: {
                 id: targetId,
                 tenantId: 'tenant-default',
@@ -242,7 +256,7 @@ describe('document link batch', () => {
         details: {
           targetId,
           outcomes: [
-            { documentId: firstId, status: 'linked', targetId },
+            { documentId: firstId, status: 'linked', targetId, link: { draft: true } },
             {
               documentId: secondId,
               error: { code: 'not_found' },
@@ -294,6 +308,7 @@ describe('document show comments', () => {
       documentId,
       author: { accountId: 'user-owner', name: 'Owner' },
       body: 'Pierwszy',
+      draft: true,
       createdAt: '2026-08-16T10:00:00.000Z',
     };
     const second = {

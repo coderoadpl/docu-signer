@@ -91,6 +91,22 @@ export const createDocumentCommentRepository = (
     if (!created) throw new Error('Created document comment could not be read');
     return created;
   },
+  approve: async (tenantId, commentId) => {
+    const rows = await db
+      .update(documentComments)
+      .set({ draft: false })
+      .where(
+        and(
+          eq(documentComments.tenantId, tenantId),
+          eq(documentComments.id, commentId),
+        ),
+      )
+      .returning({ documentId: documentComments.documentId });
+    const approved = rows[0];
+    return approved
+      ? findListItemById(db, tenantId, approved.documentId, commentId)
+      : null;
+  },
   findById: async (tenantId, documentId, commentId) => {
     const rows = await db
       .select()

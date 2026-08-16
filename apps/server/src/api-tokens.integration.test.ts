@@ -31,6 +31,7 @@ import {
   API_ROUTES,
   TENANT_HEADER,
   apiTokenCreateOutputSchema,
+  documentCommentCreateOutputSchema,
   documentCreateOutputSchema,
   documentFileOutputSchema,
   looseEnvelopeSchema,
@@ -165,6 +166,7 @@ beforeAll(async () => {
       create: async () => null,
       findBetween: async () => null,
       listForDocument: async () => [],
+      approve: async () => null,
       deleteBetween: async () => false,
     },
     padSessions: createPadSessionRepository(db),
@@ -204,7 +206,7 @@ afterAll(async () => {
 });
 
 describe('API token HTTP integration', () => {
-  it('creates a draft through bearer auth, then forbids token writes after approval', async () => {
+  it('forbids draft-token document edits after approval but creates draft annotations', async () => {
     const createdToken = await app.request(API_ROUTES.apiTokensCreate.path, {
       method: API_ROUTES.apiTokensCreate.method,
       headers: { [TENANT_HEADER]: 'default', 'content-type': 'application/json' },
@@ -276,5 +278,33 @@ describe('API token HTTP integration', () => {
     );
     expect(denied.status).toBe(403);
     expect(await denied.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+
+    const createdComment = await app.request(
+      API_ROUTES.documentCommentCreate.path.replace(':documentId', documentData.document.id),
+      {
+        method: API_ROUTES.documentCommentCreate.method,
+        headers: {
+          [TENANT_HEADER]: 'default',
+          authorization: `Bearer ${tokenData.value}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ body: 'Token annotation on an approved document' }),
+      },
+    );
+    expect(createdComment.status).toBe(200);
+    const commentData = await expectData(createdComment, documentCommentCreateOutputSchema);
+    expect(commentData.comment.draft).toBe(true);
+
+    const approvedComment = await app.request(
+      API_ROUTES.documentCommentApprove.path.replace(':commentId', commentData.comment.id),
+      {
+        method: API_ROUTES.documentCommentApprove.method,
+        headers: { [TENANT_HEADER]: 'default' },
+      },
+    );
+    expect(approvedComment.status).toBe(200);
+    expect(await expectData(approvedComment, documentCommentCreateOutputSchema)).toMatchObject({
+      comment: { id: commentData.comment.id, draft: false },
+    });
   });
 });
