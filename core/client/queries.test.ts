@@ -20,11 +20,14 @@ import {
   deleteSavedSearchMutation,
   directFileUploadMutation,
   documentQuery,
+  documentLinksInvalidates,
+  documentLinksQuery,
   documentsInvalidates,
   documentsQuery,
   exportDocumentsMutation,
   finalizeFileUploadMutation,
   meQuery,
+  linkDocumentsMutation,
   moveDocumentFileMutation,
   purgeDocumentMutation,
   pendingSourceUpdateRequestsQuery,
@@ -43,6 +46,7 @@ import {
   updateDocumentMutation,
   updateTenantSettingsMutation,
   updateUserMutation,
+  unlinkDocumentsMutation,
   uploadDocumentFileMutation,
   waiveDocumentSignatureMutation,
   setUserPreferenceMutation,
@@ -121,6 +125,39 @@ describe('document query descriptors', () => {
     await expect(newClient().fetchQuery(query)).resolves.toEqual({ documents: [] });
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('/api/documents?text=umowa');
     expect(documentsInvalidates()).toEqual({ queryKey: ['documents'] });
+  });
+
+  it('binds related-document queries and mutations', async () => {
+    const otherDocumentId = '55555555-5555-4555-8555-555555555555';
+    const link = {
+      linkId: '66666666-6666-4666-8666-666666666666',
+      label: null,
+      document: { ...document, id: otherDocumentId },
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'POST') return response({ link });
+      if (init?.method === 'DELETE') return response({ deleted: true });
+      return response({ links: [link] });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const client = newClient();
+
+    await expect(client.fetchQuery(documentLinksQuery(api, document.id))).resolves.toEqual({
+      links: [link],
+    });
+    await expect(
+      new MutationObserver(client, linkDocumentsMutation(api)).mutate({
+        documentId: document.id,
+        input: { otherDocumentId },
+      }),
+    ).resolves.toEqual({ link });
+    await expect(
+      new MutationObserver(client, unlinkDocumentsMutation(api)).mutate({
+        documentId: document.id,
+        otherDocumentId,
+      }),
+    ).resolves.toEqual({ deleted: true });
+    expect(documentLinksInvalidates()).toEqual({ queryKey: ['document-links'] });
   });
 
   it('executes the detail queryFn and builds identity scope', async () => {

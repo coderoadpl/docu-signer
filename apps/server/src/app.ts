@@ -10,6 +10,7 @@ import {
   invitationCreateInputSchema,
   TENANT_HEADER,
   documentCreateInputSchema,
+  documentLinkCreateInputSchema,
   documentFileMoveInputSchema,
   documentListInputSchema,
   documentUpdateInputSchema,
@@ -72,7 +73,9 @@ import {
   getActiveSourceUpdateRequest,
   getPadState,
   joinOwnPadSession,
+  linkDocuments,
   listDocuments,
+  listDocumentLinks,
   listApiTokens,
   listInvitations,
   listTrashedDocuments,
@@ -98,6 +101,7 @@ import {
   updateTenantSettings,
   updateDocument,
   unapproveDocument,
+  unlinkDocuments,
   waiveDocumentSignature,
   type Ctx,
 } from '#core/server/index.js';
@@ -709,6 +713,40 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.documentLinks.path, async (c) => {
+    const result = await listDocumentLinks(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ links: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentLinkCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentLinkCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document link', parsed.error.flatten())));
+    }
+    const result = await linkDocuments(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ link: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentLinkDelete.path, async (c) => {
+    const result = await unlinkDocuments(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      c.req.param('otherDocumentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
   });
 
   app.delete(API_ROUTES.documentDelete.path, async (c) => {

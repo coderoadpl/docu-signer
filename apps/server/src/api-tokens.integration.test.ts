@@ -159,6 +159,12 @@ beforeAll(async () => {
     invitationRateLimitEnabled: false,
     emailConfigured: false,
     documents: createDocumentRepository(db),
+    documentLinks: {
+      create: async () => null,
+      findBetween: async () => null,
+      listForDocument: async () => [],
+      deleteBetween: async () => false,
+    },
     padSessions: createPadSessionRepository(db),
     padSessionSecrets: createPadSessionSecrets(),
     userPreferences: createUserPreferenceRepository(db),

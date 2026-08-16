@@ -3,9 +3,11 @@ import type {
   ApiToken,
   Document,
   DocumentFile,
+  DocumentLink,
   DocumentListFilter,
   DocumentWithSigners,
   Invitation,
+  LinkedDocument,
   PadSession,
   PadCurrentDocument,
   PadParticipant,
@@ -87,6 +89,24 @@ export interface DocumentRepository {
     targetDocumentId: string,
   ): Promise<DocumentFile | null>;
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
+}
+
+export interface DocumentLinkRepository {
+  create(
+    tenantId: string,
+    input: Omit<DocumentLink, 'tenantId'>,
+  ): Promise<DocumentLink | null>;
+  findBetween(
+    tenantId: string,
+    firstDocumentId: string,
+    secondDocumentId: string,
+  ): Promise<DocumentLink | null>;
+  listForDocument(tenantId: string, documentId: string): Promise<LinkedDocument[]>;
+  deleteBetween(
+    tenantId: string,
+    firstDocumentId: string,
+    secondDocumentId: string,
+  ): Promise<boolean>;
 }
 
 export interface TenantAccountRepository {

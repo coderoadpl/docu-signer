@@ -27,6 +27,55 @@ describe('API client', () => {
     });
   });
 
+  it('lists, creates, and deletes related-document links through contract paths', async () => {
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const otherDocumentId = '22222222-2222-4222-8222-222222222222';
+    const link = {
+      linkId: '33333333-3333-4333-8333-333333333333',
+      label: 'podstawa',
+      document: {
+        id: otherDocumentId,
+        tenantId: 'tenant-default',
+        title: 'Umowa ramowa',
+        docType: 'umowa-uod',
+        documentDate: '2026-08-16',
+        periodStart: null,
+        periodEnd: null,
+        person: null,
+        tags: [],
+        createdAt: '2026-08-16T10:00:00.000Z',
+        updatedAt: '2026-08-16T10:00:00.000Z',
+      },
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'POST') return json({ ok: true, data: { link } });
+      if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
+      return json({ ok: true, data: { links: [link] } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(api.listDocumentLinks(documentId)).resolves.toMatchObject({
+      ok: true,
+      value: { links: [{ label: 'podstawa' }] },
+    });
+    await expect(
+      api.linkDocuments(documentId, { otherDocumentId, label: 'podstawa' }),
+    ).resolves.toMatchObject({ ok: true, value: { link: { label: 'podstawa' } } });
+    await expect(api.unlinkDocuments(documentId, otherDocumentId)).resolves.toEqual({
+      ok: true,
+      value: { deleted: true },
+    });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(`/api/documents/${documentId}/links`);
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ otherDocumentId, label: 'podstawa' }),
+    });
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      `/api/documents/${documentId}/links/${otherDocumentId}`,
+    );
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
+  });
+
   it('sends tenant document filters and write bodies', async () => {
     const document = {
       id: '11111111-1111-4111-8111-111111111111',

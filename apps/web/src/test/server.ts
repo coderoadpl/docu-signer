@@ -64,6 +64,9 @@ export const server = setupServer(
   http.get('*/api/documents/:documentId/signature-records', () =>
     HttpResponse.json({ ok: true, data: { items: [], nextCursor: null } }),
   ),
+  http.get('*/api/documents/:documentId/links', () =>
+    HttpResponse.json({ ok: true, data: { links: [] } }),
+  ),
   http.get('*/api/documents/:documentId/source-update-request', () =>
     HttpResponse.json({ ok: true, data: { request: null } }),
   ),

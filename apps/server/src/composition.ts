@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { createDb } from '#adapters/db/client.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
+import { createDocumentLinkRepository } from '#adapters/db/document-links-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createSavedSearchRepository } from '#adapters/db/saved-searches-repository.js';
 import {
@@ -46,6 +47,7 @@ import type {
   ApiTokenRepository,
   ApiTokenSecretPort,
   DocumentRepository,
+  DocumentLinkRepository,
   EmailPort,
   HealthPort,
   IdGenerator,
@@ -76,6 +78,7 @@ export interface AppDeps {
   apiTokens: ApiTokenRepository;
   apiTokenSecrets: ApiTokenSecretPort;
   documents: DocumentRepository;
+  documentLinks: DocumentLinkRepository;
   padSessions: PadSessionRepository;
   padSessionSecrets: PadSessionSecretPort;
   savedSearches: SavedSearchRepository;
@@ -268,6 +271,7 @@ export const createDeps = (env: Env): AppDeps => {
     apiTokens: createApiTokenRepository(db),
     apiTokenSecrets: createApiTokenSecrets(),
     documents: createDocumentRepository(db),
+    documentLinks: createDocumentLinkRepository(db),
     padSessions: createPadSessionRepository(db),
     padSessionSecrets: createPadSessionSecrets(),
     savedSearches: createSavedSearchRepository(db),
