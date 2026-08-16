@@ -128,6 +128,7 @@ export const followMagicLink = async (url: string): Promise<Result<{ token: stri
 };
 
 const socialUrlSchema = z.object({ url: z.string().optional(), redirect: z.boolean().optional() });
+const totpUriSchema = z.object({ totpURI: z.string() });
 const totpEnableSchema = z.object({ totpURI: z.string(), backupCodes: z.array(z.string()) });
 const authSessionSchema = z.object({
   token: z.string().nullable().optional(),
@@ -188,6 +189,15 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
       return ok({ url: parsed.success ? (parsed.data.url ?? null) : null });
     },
     enableTwoFactor: async ({ password }) => {
+      const existingResponse = await client.twoFactor.getTotpUri({ password });
+      if (!existingResponse.error) {
+        const parsed = totpUriSchema.safeParse(existingResponse.data);
+        if (!parsed.success) return err(appError('internal', 'Two-factor URI returned an unexpected shape'));
+        return ok({ ...parsed.data, backupCodes: [] });
+      }
+      if (existingResponse.error.status !== 400) {
+        return toResult({ totpURI: '', backupCodes: [] }, existingResponse.error);
+      }
       const response = await client.twoFactor.enable({ password });
       if (response.error) return toResult({ totpURI: '', backupCodes: [] }, response.error);
       const parsed = totpEnableSchema.safeParse(response.data);
