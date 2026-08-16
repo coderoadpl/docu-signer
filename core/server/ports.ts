@@ -5,9 +5,14 @@ import type {
   DocumentComment,
   DocumentCommentCursor,
   DocumentCommentListItem,
+  DocumentMetadataChanges,
+  DocumentMetadataProposal,
+  DocumentMetadataProposalCursor,
+  DocumentMetadataProposalListItem,
   DocumentFile,
   DocumentLink,
   DocumentListFilter,
+  DocumentType,
   DocumentWithSigners,
   Invitation,
   LinkedDocument,
@@ -18,6 +23,8 @@ import type {
   PadSessionMode,
   PadSignatureRequest,
   PadSubmittedStrokes,
+  PendingDraftCounts,
+  PdfSealVerification,
   PdfSealMetadata,
   PublicInvitation,
   SavedSearch,
@@ -43,6 +50,7 @@ export interface DocumentRepository {
   findById(tenantId: string, documentId: string): Promise<Document | null>;
   findDeletedById(tenantId: string, documentId: string): Promise<Document | null>;
   findAnyById(tenantId: string, documentId: string): Promise<Document | null>;
+  getPendingDraftCounts(tenantId: string, documentId: string): Promise<PendingDraftCounts>;
   listFiles(tenantId: string, documentId: string): Promise<DocumentFile[]>;
   listFilesIncludingDeleted(tenantId: string, documentId: string): Promise<DocumentFile[]>;
   listAllFilesIncludingDeleted(tenantId: string, documentId: string): Promise<DocumentFile[]>;
@@ -95,6 +103,37 @@ export interface DocumentRepository {
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
 }
 
+export interface DocumentMetadataProposalRepository {
+  listByDocument(
+    tenantId: string,
+    documentId: string,
+    cursor: DocumentMetadataProposalCursor | null,
+    limit: number,
+  ): Promise<DocumentMetadataProposalListItem[]>;
+  create(
+    input: Omit<DocumentMetadataProposal, 'createdAt'>,
+  ): Promise<DocumentMetadataProposalListItem>;
+  findById(
+    tenantId: string,
+    proposalId: string,
+  ): Promise<DocumentMetadataProposal | null>;
+  apply(
+    tenantId: string,
+    proposalId: string,
+    changes: DocumentMetadataChanges,
+  ): Promise<Document | null>;
+  reject(tenantId: string, proposalId: string): Promise<boolean>;
+}
+
+export interface DocumentTypeRepository {
+  listByTenant(tenantId: string): Promise<DocumentType[]>;
+  findBySlug(tenantId: string, slug: string): Promise<DocumentType | null>;
+  create(input: DocumentType & { tenantId: string }): Promise<DocumentType | null>;
+  rename(tenantId: string, slug: string, label: string): Promise<DocumentType | null>;
+  delete(tenantId: string, slug: string): Promise<boolean>;
+  isUsedByAnyDocument(tenantId: string, slug: string): Promise<boolean>;
+}
+
 export interface DocumentCommentRepository {
   listByDocument(
     tenantId: string,
@@ -103,6 +142,7 @@ export interface DocumentCommentRepository {
     limit: number,
   ): Promise<DocumentCommentListItem[]>;
   create(input: Omit<DocumentComment, 'createdAt'>): Promise<DocumentCommentListItem>;
+  approve(tenantId: string, commentId: string): Promise<DocumentCommentListItem | null>;
   findById(
     tenantId: string,
     documentId: string,
@@ -122,6 +162,7 @@ export interface DocumentLinkRepository {
     secondDocumentId: string,
   ): Promise<DocumentLink | null>;
   listForDocument(tenantId: string, documentId: string): Promise<LinkedDocument[]>;
+  approve(tenantId: string, linkId: string): Promise<DocumentLink | null>;
   deleteBetween(
     tenantId: string,
     firstDocumentId: string,
@@ -242,6 +283,10 @@ export type PdfSealPort =
         | { kind: 'failed'; reason: string }
       >;
     };
+
+export interface PdfSealVerificationPort {
+  verify(bytes: Uint8Array): PdfSealVerification;
+}
 
 export interface WarningLoggerPort {
   warn(message: string, details?: Record<string, unknown>): void;

@@ -8,6 +8,7 @@ import {
   type DocumentSignatureStatus,
   type SavedSearchFilter,
   type DocumentType,
+  type DocumentTypeSlug,
   type DocumentWithFiles,
   type UpdateDocument,
   documentSignatureStatusSchema,
@@ -15,21 +16,18 @@ import {
 } from '#core/domain/index.js';
 import { formatPolishDate } from '../../lib/format-date.js';
 
-export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  'umowa-uod': 'Umowa UoD',
-  uchwala: 'Uchwała',
-  protokol: 'Protokół',
-  rachunek: 'Rachunek',
-  inny: 'Inny',
-};
-
-export const DOCUMENT_TYPE_COLORS: Record<DocumentType, string> = {
+export const DOCUMENT_TYPE_COLORS = {
   'umowa-uod': '#385171',
   uchwala: '#7a5c8f',
   protokol: '#2f855a',
   rachunek: '#b36b1f',
   inny: '#5a6572',
-};
+} as const;
+
+export const documentTypeLabel = (
+  documentTypes: readonly DocumentType[],
+  slug: string,
+): string => documentTypes.find((documentType) => documentType.slug === slug)?.label ?? slug;
 
 export const FILE_ROLE_LABELS: Record<DocumentFileRole, string> = {
   source: 'Źródło',
@@ -53,7 +51,7 @@ export const SIGNATURE_STATUS_LABELS: Record<DocumentSignatureStatus, string> = 
 
 export interface DocumentFormValues {
   title: string;
-  docType: DocumentType;
+  docType: DocumentTypeSlug;
   documentDate: string;
   periodStart: string;
   periodEnd: string;
@@ -63,14 +61,14 @@ export interface DocumentFormValues {
 
 export interface DocumentFilterValues {
   text: string;
-  docType: DocumentType | '';
+  docType: DocumentTypeSlug | '';
   person: string;
   tag: string;
   dateFrom: string;
   dateTo: string;
   signatureStatus: DocumentSignatureStatus | '';
   signerAccountId: string;
-  draft: 'false' | 'true' | 'all';
+  draft: 'false' | 'true' | 'all' | 'pending';
 }
 
 export type DocumentsView = 'list' | 'timeline';
@@ -84,9 +82,10 @@ const draftParamSchema = z.preprocess(
   (value: unknown) => {
     if (value === true || value === 'true' || value === '"true"') return true;
     if (value === 'all' || value === '"all"') return 'all';
+    if (value === 'pending' || value === '"pending"') return 'pending';
     return value;
   },
-  z.union([z.literal(true), z.literal('all')]).optional(),
+  z.union([z.literal(true), z.literal('all'), z.literal('pending')]).optional(),
 ).catch(undefined);
 const documentsSearchInputSchema = z.object({
   widok: z.literal('os-czasu').optional().catch(undefined),
@@ -192,13 +191,14 @@ export const documentsSearchFromState = (
   ...(values.signerAccountId ? { podpisal: values.signerAccountId } : {}),
   ...(values.draft === 'true' ? { szkice: true as const } : {}),
   ...(values.draft === 'all' ? { szkice: 'all' as const } : {}),
+  ...(values.draft === 'pending' ? { szkice: 'pending' as const } : {}),
   ...(values.dateFrom ? { od: values.dateFrom } : {}),
   ...(values.dateTo ? { do: values.dateTo } : {}),
 });
 
-export const emptyDocumentForm = (): DocumentFormValues => ({
+export const emptyDocumentForm = (docType: DocumentTypeSlug = 'umowa-uod'): DocumentFormValues => ({
   title: '',
-  docType: 'umowa-uod',
+  docType,
   documentDate: '',
   periodStart: '',
   periodEnd: '',
@@ -236,14 +236,14 @@ export const suggestDocumentDate = (
 
 export const toDocumentFilter = (values: {
   text: string;
-  docType: DocumentType | '';
+  docType: DocumentTypeSlug | '';
   person: string;
   tag: string;
   dateFrom: string;
   dateTo: string;
   signatureStatus: DocumentSignatureStatus | '';
   signerAccountId: string;
-  draft: 'false' | 'true' | 'all';
+  draft: 'false' | 'true' | 'all' | 'pending';
 }): DocumentListFilter => ({
   ...(values.text.trim() ? { text: values.text.trim() } : {}),
   ...(values.docType ? { docType: values.docType } : {}),
@@ -255,7 +255,11 @@ export const toDocumentFilter = (values: {
   ...(values.signerAccountId.trim()
     ? { signerAccountId: values.signerAccountId.trim() }
     : {}),
-  ...(values.draft === 'false' ? {} : { draft: values.draft }),
+  ...(values.draft === 'false'
+    ? {}
+    : values.draft === 'pending'
+      ? { draft: 'all' as const, pendingDrafts: 'true' as const }
+      : { draft: values.draft }),
 });
 
 export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilterValues => ({
@@ -267,7 +271,7 @@ export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilte
   dateTo: filter.dateTo ?? '',
   signatureStatus: filter.signatureStatus ?? '',
   signerAccountId: filter.signerAccountId ?? '',
-  draft: filter.draft ?? 'false',
+  draft: filter.pendingDrafts === 'true' ? 'pending' : (filter.draft ?? 'false'),
 });
 
 export const hasDocumentFilter = (filter: DocumentListFilter): boolean =>
@@ -301,19 +305,19 @@ export type CanonicalGroupedDocumentInput = Pick<
   'docType' | 'documentDate' | 'periodStart' | 'periodEnd' | 'person'
 >;
 
-const DOC_TYPE_PRECEDENCE: Partial<Record<DocumentType, number>> = {
+const DOC_TYPE_PRECEDENCE: Partial<Record<DocumentTypeSlug, number>> = {
   'umowa-uod': 0,
   protokol: 1,
   rachunek: 2,
 };
 
 const personGroupLabel = (person: string | null | undefined): string =>
-  person?.trim() || 'Bez osoby';
+  person?.trim() || 'Bez strony';
 
 const comparePersonLabels = (left: string, right: string): number => {
   if (left === right) return 0;
-  if (left === 'Bez osoby') return 1;
-  if (right === 'Bez osoby') return -1;
+  if (left === 'Bez strony') return 1;
+  if (right === 'Bez strony') return -1;
   return left.localeCompare(right, 'pl');
 };
 
@@ -387,11 +391,14 @@ export const groupDocumentsCanonically = <
     });
 };
 
-export const documentFilterSummary = (filter: SavedSearchFilter): string => {
+export const documentFilterSummary = (
+  filter: SavedSearchFilter,
+  documentTypes: readonly DocumentType[],
+): string => {
   const parts = [
     filter.text ? `Tytuł: ${filter.text}` : '',
-    filter.docType ? `Typ: ${DOCUMENT_TYPE_LABELS[filter.docType]}` : '',
-    filter.person ? `Osoba: ${filter.person}` : '',
+    filter.docType ? `Typ: ${documentTypeLabel(documentTypes, filter.docType)}` : '',
+    filter.person ? `Strona: ${filter.person}` : '',
     filter.tag ? `Tag: ${filter.tag}` : '',
     filter.dateFrom ? `Od: ${formatPolishDate(filter.dateFrom)}` : '',
     filter.dateTo ? `Do: ${formatPolishDate(filter.dateTo)}` : '',
@@ -401,6 +408,7 @@ export const documentFilterSummary = (filter: SavedSearchFilter): string => {
     filter.signerAccountId ? `Podpisał(a): ${filter.signerAccountId}` : '',
     filter.draft === 'true' ? 'Szkice: tylko szkice' : '',
     filter.draft === 'all' ? 'Szkice: razem z zatwierdzonymi' : '',
+    filter.pendingDrafts === 'true' ? 'Szkice: z niezatwierdzonymi zmianami' : '',
   ].filter(Boolean);
   return parts.length ? parts.join(' · ') : 'Wszystkie dokumenty';
 };
@@ -607,7 +615,7 @@ export interface TimelineInterval {
 export interface TimelineDocument extends TimelineInterval {
   id: string;
   title: string;
-  docType: DocumentType;
+  docType: DocumentTypeSlug;
   instant: boolean;
   signed: boolean;
 }
@@ -690,7 +698,7 @@ export const groupDocumentsForTimeline = (
 ): TimelineGroup[] => {
   const buckets = new Map<string, TimelineDocument[]>();
   for (const document of documents) {
-    const person = document.person?.trim() || 'Bez osoby';
+    const person = document.person?.trim() || 'Bez strony';
     const current = buckets.get(person) ?? [];
     current.push(timelineIntervalForDocument(document));
     buckets.set(person, current);
@@ -719,17 +727,21 @@ const escapeHtml = (value: string): string =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
-const timelineDocumentTooltip = (document: TimelineDocument): string => {
+const timelineDocumentTooltip = (
+  document: TimelineDocument,
+  documentTypes: readonly DocumentType[],
+): string => {
   const dates = document.instant
     ? formatPolishDate(document.start)
     : `${formatPolishDate(document.start)} - ${formatPolishDate(document.end)}`;
-  return `${escapeHtml(document.title)}\n${DOCUMENT_TYPE_LABELS[document.docType]}\n${dates}\n${
+  return `${escapeHtml(document.title)}\n${escapeHtml(documentTypeLabel(documentTypes, document.docType))}\n${dates}\n${
     SIGNATURE_STATUS_LABELS[document.signed ? 'signed' : 'needs-signature']
   }`;
 };
 
 export const toVisTimelineData = (
   timelineGroups: TimelineGroup[],
+  documentTypes: readonly DocumentType[],
 ): { items: VisTimelineItem[]; groups: VisTimelineGroup[] } => {
   const groups = [...timelineGroups].sort((left, right) =>
     left.person.localeCompare(right.person, 'pl'),
@@ -751,7 +763,7 @@ export const toVisTimelineData = (
         className: `doc doc--${document.docType} ${
           document.signed ? 'is-signed' : 'is-unsigned'
         }`,
-        title: timelineDocumentTooltip(document),
+        title: timelineDocumentTooltip(document, documentTypes),
       })),
     ),
   };

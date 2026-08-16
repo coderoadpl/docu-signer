@@ -297,6 +297,35 @@ describe('DocumentsPage', () => {
     expect((await screen.findAllByText('—')).length).toBeGreaterThan(0);
   });
 
+  it('shows a pending-drafts dot with a Polish count tooltip', async () => {
+    const user = userEvent.setup();
+    const label = '1 propozycja zmian, 2 komentarze-szkice, 1 powiązanie-szkic';
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              {
+                ...document,
+                pendingDrafts: { comments: 2, links: 1, metadataProposals: 1 },
+              },
+              { ...signedDocument, pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 } },
+            ],
+          },
+        }),
+      ),
+    );
+    await renderPage();
+
+    const dots = await screen.findAllByLabelText(label);
+    expect(dots).toHaveLength(2);
+    const dot = dots[0];
+    if (!dot) throw new Error('Pending-drafts dot was not rendered');
+    await user.hover(dot);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(label);
+  });
+
   it('cancels a pending text-filter debounce on unmount', async () => {
     const seen = vi.fn();
     server.use(
@@ -339,7 +368,7 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     await screen.findAllByText('Umowa z Anną');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Osoba' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Strona' }), {
       target: { value: 'Anna' },
     });
     await user.click(await screen.findByRole('option', { name: 'Anna Nowak' }));
@@ -367,6 +396,9 @@ describe('DocumentsPage', () => {
         seen(Object.fromEntries(params.entries()));
         if (params.get('draft') === 'true') {
           return HttpResponse.json({ ok: true, data: { documents: [draftDocument] } });
+        }
+        if (params.get('pendingDrafts') === 'true') {
+          return HttpResponse.json({ ok: true, data: { documents: [document] } });
         }
         if (params.get('signatureStatus') === 'signed') {
           return HttpResponse.json({ ok: true, data: { documents: [signedDocument] } });
@@ -400,6 +432,18 @@ describe('DocumentsPage', () => {
       expect(seen).toHaveBeenCalledWith({
         signatureStatus: 'signed',
         draft: 'true',
+      }),
+    );
+
+    await user.click(screen.getByLabelText('Szkice'));
+    await user.click(
+      await screen.findByRole('option', { name: 'Z niezatwierdzonymi zmianami' }),
+    );
+    await waitFor(() =>
+      expect(seen).toHaveBeenCalledWith({
+        signatureStatus: 'signed',
+        draft: 'all',
+        pendingDrafts: 'true',
       }),
     );
   });
@@ -483,7 +527,7 @@ describe('DocumentsPage', () => {
     );
 
     expect(await screen.findByLabelText('Szukaj po tytule')).toHaveValue('umowa');
-    expect(screen.getByRole('combobox', { name: 'Osoba' })).toHaveValue('Anna');
+    expect(screen.getByRole('combobox', { name: 'Strona' })).toHaveValue('Anna');
     expect(screen.getByRole('combobox', { name: 'Tag' })).toHaveValue('ważne');
     expect(screen.getByText('Do podpisania')).toBeInTheDocument();
     expect(screen.getByText('Tylko szkice')).toBeInTheDocument();
@@ -1249,7 +1293,10 @@ describe('DocumentsPage', () => {
         updates(params.id, await request.json());
         if (params.id === DOCUMENT_ID) {
           await firstUpdate;
-          return HttpResponse.json({ ok: true, data: { document } });
+          return HttpResponse.json({
+            ok: true,
+            data: { outcome: 'updated', document, proposal: null },
+          });
         }
         return HttpResponse.json(
           { ok: false, error: { code: 'internal', message: 'Błąd zapisu' } },
@@ -1268,10 +1315,10 @@ describe('DocumentsPage', () => {
       screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Uchwała zarządu' }).at(0) ??
         screen.getByLabelText('Zaznacz dokument: Uchwała zarządu'),
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Ustaw osobę' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Ustaw osobę' });
-    expect(within(dialog).getByText('Nadpiszesz osobę w 2 dokumentach.')).toBeInTheDocument();
-    await userEvent.type(within(dialog).getByRole('combobox', { name: 'Osoba' }), 'Jan Kowalski');
+    await userEvent.click(screen.getByRole('button', { name: 'Ustaw stronę' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ustaw stronę' });
+    expect(within(dialog).getByText('Nadpiszesz stronę w 2 dokumentach.')).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole('combobox', { name: 'Strona' }), 'Jan Kowalski');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Zastosuj' }));
 
     expect(await screen.findByLabelText('Postęp operacji zbiorczej')).toBeInTheDocument();
@@ -1669,7 +1716,7 @@ describe('DocumentsPage', () => {
     ).toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
     await clearDateWithButton(periodEnd);
-    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Osoba' }), {
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Strona' }), {
       target: { value: 'Anna Nowak' },
     });
     await userEvent.type(

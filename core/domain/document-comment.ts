@@ -10,6 +10,7 @@ export const documentCommentSchema = z.object({
   documentId: z.uuid(),
   authorAccountId: z.string().min(1),
   body: z.string().trim().min(1).max(MAX_DOCUMENT_COMMENT_BODY_LENGTH),
+  draft: z.boolean().default(false),
   createdAt: z.iso.datetime(),
 });
 

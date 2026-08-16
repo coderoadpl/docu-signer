@@ -1,12 +1,18 @@
+import { readFile } from 'node:fs/promises';
+
 import { drizzle as drizzleNodePg, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate as migrateNodePg } from 'drizzle-orm/node-postgres/migrator';
 import { eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { DEFAULT_DOCUMENT_TYPES } from '#core/domain/index.js';
+
 import { createDocumentRepository } from './documents-repository.js';
 import { createDocumentCommentRepository } from './document-comments-repository.js';
 import { createDocumentLinkRepository } from './document-links-repository.js';
+import { createDocumentMetadataProposalRepository } from './document-metadata-proposals-repository.js';
+import { createDocumentTypeRepository } from './document-types-repository.js';
 import { createPadSessionRepository } from './pad-sessions-repository.js';
 import { createApiTokenRepository } from './api-tokens-repository.js';
 import { createInvitationRepository } from './invitations-repository.js';
@@ -45,6 +51,11 @@ beforeAll(async () => {
     { id: 'tenant-a', slug: 'a', name: 'A', createdAt: '2026-08-01T00:00:00.000Z' },
     { id: 'tenant-b', slug: 'b', name: 'B', createdAt: '2026-08-01T00:00:00.000Z' },
   ]);
+  for (const fileName of ['0028_smooth_bishop.sql', '0029_worthless_thor.sql']) {
+    const migration = await readFile(new URL(`../../drizzle/${fileName}`, import.meta.url), 'utf8');
+    await pool.query(migration.replaceAll('--> statement-breakpoint', ''));
+    await pool.query(migration.replaceAll('--> statement-breakpoint', ''));
+  }
   await db.insert(tenantAdmins).values([
     { id: 'grant-owner', tenantId: 'tenant-a', userId: 'user-owner', role: 'owner' },
     { id: 'grant-admin', tenantId: 'tenant-b', userId: 'user-admin', role: 'admin' },
@@ -112,6 +123,73 @@ describe('InvitationRepository', () => {
     await expect(repository.listByTenant('tenant-a')).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ status: 'accepted' })]),
     );
+  });
+});
+
+describe('DocumentTypeRepository', () => {
+  it('backfills the legacy defaults idempotently for every existing tenant', async () => {
+    const repository = createDocumentTypeRepository(db);
+    await expect(repository.listByTenant('tenant-a')).resolves.toEqual(DEFAULT_DOCUMENT_TYPES);
+    await expect(repository.listByTenant('tenant-b')).resolves.toEqual(DEFAULT_DOCUMENT_TYPES);
+  });
+
+  it('round-trips ordered tenant types and detects use by trashed documents', async () => {
+    const repository = createDocumentTypeRepository(db);
+    await expect(repository.create({
+      tenantId: 'tenant-a',
+      slug: 'umowa-z-klientem',
+      label: 'Umowa z klientem',
+      position: 70,
+    })).resolves.toEqual({
+      slug: 'umowa-z-klientem',
+      label: 'Umowa z klientem',
+      position: 70,
+    });
+    await expect(repository.create({
+      tenantId: 'tenant-a',
+      slug: 'regulamin',
+      label: 'Regulamin',
+      position: 60,
+    })).resolves.toMatchObject({ slug: 'regulamin' });
+    await expect(repository.create({
+      tenantId: 'tenant-a',
+      slug: 'regulamin',
+      label: 'Duplikat',
+      position: 80,
+    })).resolves.toBeNull();
+    await expect(repository.listByTenant('tenant-a')).resolves.toEqual([
+      ...DEFAULT_DOCUMENT_TYPES,
+      { slug: 'regulamin', label: 'Regulamin', position: 60 },
+      { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 70 },
+    ]);
+    await expect(repository.listByTenant('tenant-b')).resolves.toEqual(DEFAULT_DOCUMENT_TYPES);
+    await expect(
+      repository.rename('tenant-a', 'regulamin', 'Regulamin wewnętrzny'),
+    ).resolves.toEqual({
+      slug: 'regulamin',
+      label: 'Regulamin wewnętrzny',
+      position: 60,
+    });
+    await expect(repository.findBySlug('tenant-b', 'regulamin')).resolves.toBeNull();
+
+    const documents = createDocumentRepository(db);
+    const document = await documents.create({
+      id: '12121212-1212-4212-8212-121212121212',
+      tenantId: 'tenant-a',
+      title: 'Umowa klienta',
+      docType: 'umowa-z-klientem',
+      documentDate: '2026-08-16',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+    });
+    await documents.delete('tenant-a', document.id);
+    await expect(
+      repository.isUsedByAnyDocument('tenant-a', 'umowa-z-klientem'),
+    ).resolves.toBe(true);
+    await expect(repository.delete('tenant-a', 'regulamin')).resolves.toBe(true);
+    await expect(repository.delete('tenant-a', 'regulamin')).resolves.toBe(false);
   });
 });
 
@@ -549,11 +627,13 @@ describe('DocumentCommentRepository', () => {
         documentId,
         authorAccountId: 'user-owner',
         body: 'Pierwszy komentarz',
+        draft: true,
       }),
     ).resolves.toMatchObject({
       id: firstCommentId,
       author: { accountId: 'user-owner', name: 'Owner' },
       body: 'Pierwszy komentarz',
+      draft: true,
       createdAt: expect.any(String),
     });
     await comments.create({
@@ -562,6 +642,7 @@ describe('DocumentCommentRepository', () => {
       documentId,
       authorAccountId: 'user-owner',
       body: 'Drugi komentarz',
+      draft: false,
     });
 
     await expect(
@@ -576,6 +657,15 @@ describe('DocumentCommentRepository', () => {
     await expect(
       comments.findById('tenant-b', documentId, firstCommentId),
     ).resolves.toBeNull();
+    await expect(comments.approve('tenant-b', firstCommentId)).resolves.toBeNull();
+    await expect(comments.approve('tenant-a', firstCommentId)).resolves.toMatchObject({
+      id: firstCommentId,
+      draft: false,
+    });
+    await expect(comments.approve('tenant-a', firstCommentId)).resolves.toMatchObject({
+      id: firstCommentId,
+      draft: false,
+    });
     await expect(
       comments.delete('tenant-b', documentId, firstCommentId),
     ).resolves.toBe(false);
@@ -642,10 +732,11 @@ describe('DocumentLinkRepository', () => {
         fromDocumentId: first.id,
         toDocumentId: second.id,
         label: 'podstawa',
+        draft: true,
       }),
-    ).resolves.toMatchObject({ label: 'podstawa' });
+    ).resolves.toMatchObject({ label: 'podstawa', draft: true });
     await expect(links.listForDocument('tenant-a', first.id)).resolves.toMatchObject([
-      { label: 'podstawa', document: { id: second.id, deletedAt: null } },
+      { label: 'podstawa', draft: true, document: { id: second.id, deletedAt: null } },
     ]);
     await expect(links.listForDocument('tenant-a', second.id)).resolves.toMatchObject([
       { label: 'podstawa', document: { id: first.id } },
@@ -654,11 +745,21 @@ describe('DocumentLinkRepository', () => {
       id: '73737373-7373-4373-8373-737373737373',
     });
     await expect(
+      links.approve('tenant-b', '73737373-7373-4373-8373-737373737373'),
+    ).resolves.toBeNull();
+    await expect(
+      links.approve('tenant-a', '73737373-7373-4373-8373-737373737373'),
+    ).resolves.toMatchObject({ draft: false });
+    await expect(
+      links.approve('tenant-a', '73737373-7373-4373-8373-737373737373'),
+    ).resolves.toMatchObject({ draft: false });
+    await expect(
       links.create('tenant-a', {
         id: '74747474-7474-4474-8474-747474747474',
         fromDocumentId: first.id,
         toDocumentId: second.id,
         label: null,
+        draft: false,
       }),
     ).resolves.toBeNull();
     await expect(links.listForDocument('tenant-b', first.id)).resolves.toEqual([]);
@@ -668,6 +769,7 @@ describe('DocumentLinkRepository', () => {
         fromDocumentId: first.id,
         toDocumentId: otherTenant.id,
         label: null,
+        draft: false,
       }),
     ).rejects.toThrow();
     await expect(
@@ -676,6 +778,7 @@ describe('DocumentLinkRepository', () => {
         fromDocumentId: first.id,
         toDocumentId: first.id,
         label: null,
+        draft: false,
       }),
     ).rejects.toThrow();
 
@@ -685,6 +788,98 @@ describe('DocumentLinkRepository', () => {
     ]);
     await expect(links.deleteBetween('tenant-a', second.id, first.id)).resolves.toBe(true);
     await expect(links.listForDocument('tenant-a', first.id)).resolves.toEqual([]);
+  });
+});
+
+describe('DocumentMetadataProposalRepository', () => {
+  it('round-trips proposals and filters documents with any pending draft source', async () => {
+    const documents = createDocumentRepository(db);
+    const comments = createDocumentCommentRepository(db);
+    const links = createDocumentLinkRepository(db);
+    const proposals = createDocumentMetadataProposalRepository(db);
+    const rows = await Promise.all(
+      [
+        ['81818181-8181-4181-8181-818181818181', 'Komentarz'],
+        ['82828282-8282-4282-8282-828282828282', 'Powiązanie A'],
+        ['83838383-8383-4383-8383-838383838383', 'Powiązanie B'],
+        ['84848484-8484-4484-8484-848484848484', 'Propozycja'],
+      ].map(([id, title]) =>
+        documents.create({
+          id: id ?? '',
+          tenantId: 'tenant-a',
+          title: title ?? '',
+          docType: 'umowa-uod',
+          documentDate: '2026-08-16',
+          periodStart: null,
+          periodEnd: null,
+          person: null,
+          tags: ['pending-drafts-itest'],
+        }),
+      ),
+    );
+    const [commentDocument, linkFrom, linkTo, proposalDocument] = rows;
+    if (!commentDocument || !linkFrom || !linkTo || !proposalDocument) {
+      throw new Error('Missing integration document');
+    }
+    await comments.create({
+      id: '85858585-8585-4585-8585-858585858585',
+      tenantId: 'tenant-a',
+      documentId: commentDocument.id,
+      authorAccountId: 'user-owner',
+      body: 'Szkic komentarza',
+      draft: true,
+    });
+    await links.create('tenant-a', {
+      id: '86868686-8686-4686-8686-868686868686',
+      fromDocumentId: linkFrom.id,
+      toDocumentId: linkTo.id,
+      label: null,
+      draft: true,
+    });
+    const created = await proposals.create({
+      id: '87878787-8787-4787-8787-878787878787',
+      tenantId: 'tenant-a',
+      documentId: proposalDocument.id,
+      creatorAccountId: 'user-owner',
+      changes: { title: 'Zatwierdzona propozycja', person: 'Anna Nowak' },
+    });
+    expect(created).toMatchObject({
+      creator: { accountId: 'user-owner', name: 'Owner' },
+      changes: { title: 'Zatwierdzona propozycja', person: 'Anna Nowak' },
+    });
+    await expect(
+      proposals.listByDocument('tenant-b', proposalDocument.id, null, 10),
+    ).resolves.toEqual([]);
+    await expect(
+      documents.listByTenant('tenant-a', {
+        tag: 'pending-drafts-itest',
+        draft: 'all',
+        pendingDrafts: 'true',
+      }),
+    ).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: commentDocument.id, pendingDrafts: { comments: 1, links: 0, metadataProposals: 0 } }),
+      expect.objectContaining({ id: linkFrom.id, pendingDrafts: { comments: 0, links: 1, metadataProposals: 0 } }),
+      expect.objectContaining({ id: linkTo.id, pendingDrafts: { comments: 0, links: 1, metadataProposals: 0 } }),
+      expect.objectContaining({ id: proposalDocument.id, pendingDrafts: { comments: 0, links: 0, metadataProposals: 1 } }),
+    ]));
+    await expect(
+      proposals.apply('tenant-a', created.id, created.changes),
+    ).resolves.toMatchObject({
+      id: proposalDocument.id,
+      title: 'Zatwierdzona propozycja',
+      person: 'Anna Nowak',
+    });
+    await expect(proposals.findById('tenant-a', created.id)).resolves.toBeNull();
+    const rejected = await proposals.create({
+      id: '88888888-8888-4888-8888-888888888888',
+      tenantId: 'tenant-a',
+      documentId: proposalDocument.id,
+      creatorAccountId: 'user-owner',
+      changes: { tags: ['odrzucone'] },
+    });
+    await expect(proposals.reject('tenant-b', rejected.id)).resolves.toBe(false);
+    await expect(proposals.reject('tenant-a', rejected.id)).resolves.toBe(true);
+    await expect(proposals.reject('tenant-a', rejected.id)).resolves.toBe(false);
   });
 });
 
@@ -1224,12 +1419,6 @@ describe('database invariants', () => {
          VALUES ('domain-invalid', 'tenant-constraints', 'invalid.example.com', 'alias', true)`,
       ),
     ).rejects.toMatchObject({ code: '23514' });
-    await expect(
-      pool.query(
-        `INSERT INTO documents (id, tenant_id, title, doc_type, document_date)
-         VALUES ('33333333-3333-4333-8333-333333333333', 'tenant-constraints', 'Invalid', 'contract', '2026-08-01')`,
-      ),
-    ).rejects.toMatchObject({ code: '23514' });
     await pool.query(
       `INSERT INTO documents (id, tenant_id, title, doc_type, document_date)
        VALUES ('44444444-4444-4444-8444-444444444444', 'tenant-constraints', 'Valid', 'inny', '2026-08-01')`,
@@ -1275,6 +1464,11 @@ describe('database invariants', () => {
         `INSERT INTO tenant_domains (id, tenant_id, domain, kind, verified)
          VALUES ($1, $2, $3, 'custom', true)`,
         [`domain-${suffix}`, `tenant-${suffix}`, `${suffix}.example.com`],
+      );
+      await pool.query(
+        `INSERT INTO document_types (tenant_id, slug, label, position)
+         VALUES ($1, 'inny', 'Inny', 10)`,
+        [`tenant-${suffix}`],
       );
       await pool.query(
         `INSERT INTO documents (id, tenant_id, title, doc_type, document_date)
@@ -1355,6 +1549,9 @@ describe('database invariants', () => {
         `SELECT count(*)::int AS count FROM tenant_settings WHERE tenant_id = 'tenant-offboard'`,
       ),
       pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM document_types WHERE tenant_id = 'tenant-offboard'`,
+      ),
+      pool.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM signature_records WHERE tenant_id = 'tenant-offboard'`,
       ),
     ]);
@@ -1378,11 +1575,14 @@ describe('database invariants', () => {
         `SELECT count(*)::int AS count FROM tenant_settings WHERE tenant_id = 'tenant-sibling'`,
       ),
       pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM document_types WHERE tenant_id = 'tenant-sibling'`,
+      ),
+      pool.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM signature_records WHERE tenant_id = 'tenant-sibling'`,
       ),
     ]);
 
-    expect(removed.map((result) => result.rows[0]?.count)).toEqual([0, 0, 0, 0, 0, 0, 0]);
-    expect(sibling.map((result) => result.rows[0]?.count)).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expect(removed.map((result) => result.rows[0]?.count)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(sibling.map((result) => result.rows[0]?.count)).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
   });
 });

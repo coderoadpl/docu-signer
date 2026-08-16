@@ -73,6 +73,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     findById: async () => null,
     findDeletedById: async () => null,
     findAnyById: async () => null,
+    getPendingDraftCounts: async () => ({ comments: 0, links: 0, metadataProposals: 0 }),
     listFiles: async () => [],
     listFilesIncludingDeleted: async () => [],
     listAllFilesIncludingDeleted: async () => [],
@@ -94,6 +95,14 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
   },
+  documentTypes: {
+    listByTenant: async () => [],
+    findBySlug: async () => null,
+    create: async () => null,
+    rename: async () => null,
+    delete: async () => false,
+    isUsedByAnyDocument: async () => false,
+  },
   documentComments: {
     listByDocument: async () => [],
     create: async (input) => ({
@@ -102,8 +111,10 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
       documentId: input.documentId,
       author: { accountId: input.authorAccountId, name: 'Owner' },
       body: input.body,
+      draft: input.draft,
       createdAt: '2026-08-16T10:00:00.000Z',
     }),
+    approve: async () => null,
     findById: async () => null,
     delete: async () => false,
   },
@@ -111,7 +122,15 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     create: async () => null,
     findBetween: async () => null,
     listForDocument: async () => [],
+    approve: async () => null,
     deleteBetween: async () => false,
+  },
+  documentMetadataProposals: {
+    listByDocument: async () => [],
+    create: async () => { throw new Error('not implemented'); },
+    findById: async () => null,
+    apply: async () => null,
+    reject: async () => false,
   },
   padSessions: {
     create: async (input) => ({
@@ -186,6 +205,18 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     decide: async () => null,
     cancel: async () => null,
     complete: async () => null,
+  },
+  pdfSealVerification: {
+    verify: () => ({
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    }),
   },
   storage: {
     put: async () => ok(undefined),

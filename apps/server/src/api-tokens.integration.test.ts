@@ -11,7 +11,10 @@ import {
 import { createDb } from '#adapters/db/client.js';
 import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
+import { createDocumentTypeRepository } from '#adapters/db/document-types-repository.js';
+import { seedDefaultDocumentTypes } from '#adapters/db/document-types-seed.js';
 import { createDocumentCommentRepository } from '#adapters/db/document-comments-repository.js';
+import { createDocumentMetadataProposalRepository } from '#adapters/db/document-metadata-proposals-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
@@ -31,8 +34,11 @@ import {
   API_ROUTES,
   TENANT_HEADER,
   apiTokenCreateOutputSchema,
+  documentCommentCreateOutputSchema,
   documentCreateOutputSchema,
   documentFileOutputSchema,
+  documentMetadataProposalListOutputSchema,
+  documentUpdateOutputSchema,
   looseEnvelopeSchema,
 } from '#core/contract/index.js';
 import { ok, type AppError, type Result } from '#core/domain/index.js';
@@ -103,6 +109,7 @@ beforeAll(async () => {
   await db
     .insert(tenants)
     .values({ id: 'tenant-default', slug: 'default', name: 'Archive', createdAt: '2026-08-02T00:00:00.000Z' });
+  await seedDefaultDocumentTypes(db, 'tenant-default');
   await db.insert(user).values({
     id: 'user-owner',
     email: 'owner@example.com',
@@ -160,11 +167,14 @@ beforeAll(async () => {
     invitationRateLimitEnabled: false,
     emailConfigured: false,
     documents: createDocumentRepository(db),
+    documentTypes: createDocumentTypeRepository(db),
     documentComments: createDocumentCommentRepository(db),
+    documentMetadataProposals: createDocumentMetadataProposalRepository(db),
     documentLinks: {
       create: async () => null,
       findBetween: async () => null,
       listForDocument: async () => [],
+      approve: async () => null,
       deleteBetween: async () => false,
     },
     padSessions: createPadSessionRepository(db),
@@ -174,6 +184,18 @@ beforeAll(async () => {
     tenantAccounts: createTenantAccountRepository(db),
     signatureRecords: createSignatureRecordRepository(db),
     sourceUpdateRequests: createSourceUpdateRequestRepository(db),
+    pdfSealVerification: {
+      verify: () => ({
+        subject: 'Amazing Company Sp. z o.o.',
+        name: 'Amazing Company Sp. z o.o.',
+        reason: 'Signed by: Anna Nowak',
+        declaredAt: '2026-08-16T10:00:00.000Z',
+        byteRangeValid: true,
+        digestValid: true,
+        signatureValid: true,
+        integrity: true,
+      }),
+    },
     savedSearches: {
       listByTenant: async () => [],
       create: async (input) => ({ ...input, createdAt: '2026-08-02T00:00:00.000Z' }),
@@ -204,7 +226,7 @@ afterAll(async () => {
 });
 
 describe('API token HTTP integration', () => {
-  it('creates a draft through bearer auth, then forbids token writes after approval', async () => {
+  it('turns draft-token edits into proposals and creates draft annotations', async () => {
     const createdToken = await app.request(API_ROUTES.apiTokensCreate.path, {
       method: API_ROUTES.apiTokensCreate.method,
       headers: { [TENANT_HEADER]: 'default', 'content-type': 'application/json' },
@@ -257,7 +279,7 @@ describe('API token HTTP integration', () => {
     );
     expect(approved.status).toBe(200);
 
-    const denied = await app.request(
+    const proposed = await app.request(
       API_ROUTES.documentUpdate.path.replace(':documentId', documentData.document.id),
       {
         method: API_ROUTES.documentUpdate.method,
@@ -266,15 +288,70 @@ describe('API token HTTP integration', () => {
           authorization: `Bearer ${tokenData.value}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({
-          title: 'Should fail',
-          docType: 'inny',
-          documentDate: '2026-08-02',
-          tags: [],
-        }),
+        body: JSON.stringify({ title: 'Proposed title' }),
       },
     );
-    expect(denied.status).toBe(403);
-    expect(await denied.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(proposed.status).toBe(200);
+    const proposedData = await expectData(proposed, documentUpdateOutputSchema);
+    expect(proposedData).toMatchObject({
+      outcome: 'proposed',
+      document: { title: 'Imported draft' },
+      proposal: { changes: { title: 'Proposed title' } },
+    });
+    if (proposedData.outcome !== 'proposed') throw new Error('Expected proposal outcome');
+
+    const proposalList = await app.request(
+      API_ROUTES.documentMetadataProposals.path.replace(
+        ':documentId',
+        documentData.document.id,
+      ),
+      { headers: { [TENANT_HEADER]: 'default' } },
+    );
+    expect(proposalList.status).toBe(200);
+    await expectData(proposalList, documentMetadataProposalListOutputSchema);
+
+    const approvedProposal = await app.request(
+      API_ROUTES.documentMetadataProposalApprove.path.replace(
+        ':proposalId',
+        proposedData.proposal.id,
+      ),
+      {
+        method: API_ROUTES.documentMetadataProposalApprove.method,
+        headers: { [TENANT_HEADER]: 'default' },
+      },
+    );
+    expect(approvedProposal.status).toBe(200);
+    expect(await approvedProposal.json()).toMatchObject({
+      ok: true,
+      data: { document: { title: 'Proposed title' } },
+    });
+
+    const createdComment = await app.request(
+      API_ROUTES.documentCommentCreate.path.replace(':documentId', documentData.document.id),
+      {
+        method: API_ROUTES.documentCommentCreate.method,
+        headers: {
+          [TENANT_HEADER]: 'default',
+          authorization: `Bearer ${tokenData.value}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ body: 'Token annotation on an approved document' }),
+      },
+    );
+    expect(createdComment.status).toBe(200);
+    const commentData = await expectData(createdComment, documentCommentCreateOutputSchema);
+    expect(commentData.comment.draft).toBe(true);
+
+    const approvedComment = await app.request(
+      API_ROUTES.documentCommentApprove.path.replace(':commentId', commentData.comment.id),
+      {
+        method: API_ROUTES.documentCommentApprove.method,
+        headers: { [TENANT_HEADER]: 'default' },
+      },
+    );
+    expect(approvedComment.status).toBe(200);
+    expect(await expectData(approvedComment, documentCommentCreateOutputSchema)).toMatchObject({
+      comment: { id: commentData.comment.id, draft: false },
+    });
   });
 });

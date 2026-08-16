@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   err,
+  DEFAULT_DOCUMENT_TYPES,
   internal,
   MAX_DOCUMENT_EXPORT_BYTES,
   MAX_DOCUMENT_FILE_BYTES,
@@ -9,11 +10,16 @@ import {
   type AppError,
   type Document,
   type DocumentFile,
+  type DocumentMetadataProposal,
   type Identity,
   type Result,
 } from '#core/domain/index.js';
 
-import type { DocumentRepository, StoragePort } from '../ports.js';
+import type {
+  DocumentMetadataProposalRepository,
+  DocumentRepository,
+  StoragePort,
+} from '../ports.js';
 import {
   approveDocument,
   createDocument,
@@ -37,6 +43,7 @@ import {
   updateDocument,
   waiveDocumentSignature,
 } from './documents.js';
+import { getDocumentFileSealVerification } from './document-seal-verification.js';
 
 const documentId = '11111111-1111-4111-8111-111111111111';
 const fileId = '22222222-2222-4222-8222-222222222222';
@@ -101,6 +108,7 @@ const fake = (
 ) => {
   const documents = [...initialDocuments];
   const files = [...initialFiles];
+  const proposals: DocumentMetadataProposal[] = [];
   const blobs = new Map<string, Uint8Array>();
   for (const file of files) blobs.set(file.storageKey, new Uint8Array([1, 2, 3]));
 
@@ -108,7 +116,11 @@ const fake = (
     listByTenant: async (tenantId) =>
       documents
         .filter((document) => document.tenantId === tenantId && document.deletedAt === null)
-        .map((document) => ({ ...document, signers: [] })),
+        .map((document) => ({
+          ...document,
+          pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
+          signers: [],
+        })),
     listDeletedByTenant: async (tenantId) =>
       documents.filter((document) => document.tenantId === tenantId && document.deletedAt !== null),
     findById: async (tenantId, id) =>
@@ -123,6 +135,7 @@ const fake = (
       ) ?? null,
     findAnyById: async (tenantId, id) =>
       documents.find((document) => document.tenantId === tenantId && document.id === id) ?? null,
+    getPendingDraftCounts: async () => ({ comments: 0, links: 0, metadataProposals: 0 }),
     listFiles: async (tenantId, id) =>
       files.filter(
         (file) =>
@@ -351,6 +364,38 @@ const fake = (
     },
   };
 
+  const documentMetadataProposals: DocumentMetadataProposalRepository = {
+    listByDocument: async (tenantId, id) =>
+      proposals
+        .filter((proposal) => proposal.tenantId === tenantId && proposal.documentId === id)
+        .map((proposal) => ({
+          id: proposal.id,
+          tenantId: proposal.tenantId,
+          documentId: proposal.documentId,
+          changes: proposal.changes,
+          creator: { accountId: proposal.creatorAccountId, name: 'Demo' },
+          createdAt: proposal.createdAt,
+        })),
+    create: async (input) => {
+      const created = { ...input, createdAt: '2026-07-02T10:00:00.000Z' };
+      proposals.push(created);
+      return {
+        id: created.id,
+        tenantId: created.tenantId,
+        documentId: created.documentId,
+        changes: created.changes,
+        creator: { accountId: created.creatorAccountId, name: 'Demo' },
+        createdAt: created.createdAt,
+      };
+    },
+    findById: async (tenantId, proposalId) =>
+      proposals.find(
+        (proposal) => proposal.tenantId === tenantId && proposal.id === proposalId,
+      ) ?? null,
+    apply: async () => null,
+    reject: async () => false,
+  };
+
   const storage: StoragePort = {
     put: async (key, bytes) => {
       blobs.set(key, bytes);
@@ -371,6 +416,16 @@ const fake = (
   const ids = [...idSequence];
   const deps: DocumentDeps = {
     documents: repo,
+    documentMetadataProposals,
+    documentTypes: {
+      listByTenant: async () => [...DEFAULT_DOCUMENT_TYPES],
+      findBySlug: async (_tenantId, slug) =>
+        DEFAULT_DOCUMENT_TYPES.find((documentType) => documentType.slug === slug) ?? null,
+      create: async () => null,
+      rename: async () => null,
+      delete: async () => false,
+      isUsedByAnyDocument: async () => false,
+    },
     storage,
     ids: { nextId: () => ids.shift() ?? fileId },
   };
@@ -378,6 +433,7 @@ const fake = (
     deps,
     documents,
     files,
+    proposals,
     blobs,
   };
 };
@@ -394,6 +450,125 @@ const createInput = {
 };
 
 describe('documents use-cases', () => {
+  it('authorizes seal verification before repository access', async () => {
+    const state = fake([documentRow()], [{ ...fileRow(), role: 'signed-digital', sealed: true }]);
+    const findFile = vi.spyOn(state.deps.documents, 'findFile');
+    const verify = vi.fn(() => ({
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    }));
+
+    await expect(
+      getDocumentFileSealVerification(ctx(member), documentId, fileId, {
+        ...state.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(findFile).not.toHaveBeenCalled();
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unsealed signed-digital file before loading its bytes', async () => {
+    const state = fake([documentRow()], [{ ...fileRow(), role: 'signed-digital', sealed: false }]);
+    const storageGet = vi.spyOn(state.deps.storage, 'get');
+    const verify = vi.fn();
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...state.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(storageGet).not.toHaveBeenCalled();
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { role: 'source' as const, contentType: 'application/pdf', sealed: true },
+    { role: 'signed-digital' as const, contentType: 'image/jpeg', sealed: true },
+  ])('refuses an ineligible sealed file %#', async (filePatch) => {
+    const state = fake([documentRow()], [{ ...fileRow(), ...filePatch }]);
+    const verify = vi.fn();
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...state.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('returns not found for a missing seal file or stored content', async () => {
+    const missingFile = fake([documentRow()]);
+    const sealedFile = { ...fileRow(), role: 'signed-digital' as const, sealed: true };
+    const missingContent = fake([documentRow()], [sealedFile]);
+    missingContent.blobs.clear();
+    const verify = vi.fn();
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...missingFile.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'not_found' } });
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...missingContent.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('passes storage failures through without invoking the verifier', async () => {
+    const sealedFile = { ...fileRow(), role: 'signed-digital' as const, sealed: true };
+    const state = fake([documentRow()], [sealedFile]);
+    const failure = err(internal('storage unavailable'));
+    const verify = vi.fn();
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...state.deps,
+        storage: { ...state.deps.storage, get: async () => failure },
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toBe(failure);
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('loads and verifies a tenant-owned sealed signed-digital PDF', async () => {
+    const sealedFile = { ...fileRow(), role: 'signed-digital' as const, sealed: true };
+    const state = fake([documentRow()], [sealedFile]);
+    const verification = {
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak, Marek Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    };
+    const verify = vi.fn(() => verification);
+    const findFile = vi.spyOn(state.deps.documents, 'findFile');
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...state.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toEqual({ ok: true, value: verification });
+    expect(findFile).toHaveBeenCalledWith('tenant-acme', documentId, fileId);
+    expect(verify).toHaveBeenCalledWith(new Uint8Array([1, 2, 3]));
+  });
+
   it('denies every document use-case before any repository access', async () => {
     const input = {
       fileName: 'scan.pdf',
@@ -508,6 +683,7 @@ describe('documents use-cases', () => {
         vi.spyOn(state.deps.documents, 'findFile'),
         vi.spyOn(state.deps.documents, 'moveFileToDocument'),
         vi.spyOn(state.deps.documents, 'deleteFile'),
+        vi.spyOn(state.deps.documentTypes, 'findBySlug'),
       ];
       const result = await testCase.run(state.deps);
       expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
@@ -547,6 +723,7 @@ describe('documents use-cases', () => {
     state.deps.documents.listByTenant = async () => [
       {
         ...documentRow(),
+        pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
         signers: [{ accountId: 'account-1', name: 'Maria Choma' }],
       },
     ];
@@ -565,7 +742,7 @@ describe('documents use-cases', () => {
         { ...createInput, title: 'Updated' },
         state.deps,
       ),
-    ).toMatchObject({ ok: true, value: { title: 'Updated' } });
+    ).toMatchObject({ ok: true, value: { outcome: 'updated', document: { title: 'Updated' } } });
     const draft = await createDocument(
       ctx(staff('tenant-acme')),
       { ...createInput, title: 'Draft', draft: true },
@@ -592,6 +769,20 @@ describe('documents use-cases', () => {
       value: undefined,
     });
     expect(state.documents[1]?.deletedAt).toBe('2026-07-03T10:00:00.000Z');
+  });
+
+  it('rejects document creation when the type is not in the tenant dictionary', async () => {
+    const state = fake();
+    state.deps.documentTypes.findBySlug = async () => null;
+
+    await expect(
+      createDocument(
+        ctx(staff('tenant-acme')),
+        { ...createInput, docType: 'umowa-z-klientem' },
+        state.deps,
+      ),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(state.documents).toHaveLength(0);
   });
 
   it('returns the seal flag loaded with document detail files', async () => {
@@ -696,7 +887,7 @@ describe('documents use-cases', () => {
     expect(state.documents.some((document) => document.id === documentId)).toBe(true);
   });
 
-  it('enforces write:draft token restrictions on create, modify, delete, and approve', async () => {
+  it('creates a metadata proposal for write:draft updates without mutating the document', async () => {
     const draftToken = {
       ...staff('tenant-acme'),
       apiToken: { id: '55555555-5555-4555-8555-555555555555', scopes: ['write:draft'] as const },
@@ -713,10 +904,65 @@ describe('documents use-cases', () => {
       await updateDocument(
         ctx(draftToken),
         documentId,
-        { ...createInput, title: 'Nope' },
+        { title: 'Nope' },
         state.deps,
       ),
-    ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    ).toMatchObject({
+      ok: true,
+      value: {
+        outcome: 'proposed',
+        document: { title: 'Agreement' },
+        proposal: { changes: { title: 'Nope' } },
+      },
+    });
+    expect(state.documents.find((document) => document.id === documentId)?.title).toBe('Agreement');
+    await expect(
+      updateDocument(
+        ctx(draftToken),
+        documentId,
+        {
+          docType: 'inny',
+          documentDate: '2026-07-02',
+          periodStart: '2026-07-01',
+          periodEnd: '2026-07-31',
+          person: 'Anna Nowak',
+          tags: ['changed'],
+        },
+        state.deps,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        outcome: 'proposed',
+        proposal: {
+          changes: {
+            docType: 'inny',
+            documentDate: '2026-07-02',
+            periodStart: '2026-07-01',
+            periodEnd: '2026-07-31',
+            person: 'Anna Nowak',
+            tags: ['changed'],
+          },
+        },
+      },
+    });
+    await expect(
+      updateDocument(
+        ctx(draftToken),
+        documentId,
+        {
+          title: 'Agreement',
+          docType: 'umowa-uod',
+          documentDate: '2026-07-01',
+          periodStart: null,
+          periodEnd: null,
+          person: null,
+          tags: ['contract'],
+        },
+        state.deps,
+      ),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(state.proposals).toHaveLength(2);
     expect(
       await serverUpload(
         ctx(draftToken),

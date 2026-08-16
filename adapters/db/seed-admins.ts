@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { hashPassword } from 'better-auth/crypto';
 
 import type { Db } from './client.js';
+import { seedDefaultDocumentTypes } from './document-types-seed.js';
 import { account, tenantAdmins, tenantDomains, tenants, user } from './schema.js';
 
 export interface SeedAdmin {
@@ -103,6 +104,8 @@ export const ensureSeedAdmins = async (
       createdAt: new Date().toISOString(),
     })
     .onConflictDoNothing();
+
+  await seedDefaultDocumentTypes(db, 'tenant-default');
 
   const results: SeedAdminResult[] = [];
   for (const admin of admins) {

@@ -32,7 +32,7 @@ import { actions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { formatPolishDate } from '../../lib/format-date.js';
-import { DOCUMENT_TYPE_LABELS } from './documents.logic.js';
+import { documentTypeLabel } from './documents.logic.js';
 
 const TRASH_EMPTY_CONFIRMATION = 'OPRÓŻNIJ KOSZ';
 
@@ -51,9 +51,11 @@ export const TrashPage = () => {
   const [emptyTrashOpen, setEmptyTrashOpen] = useState(false);
   const [emptyTrashConfirmation, setEmptyTrashConfirmation] = useState('');
   const trashedDocuments = useQuery(actions.trashedDocuments);
+  const documentTypes = useQuery(actions.documentTypes);
   const restoreDocument = useMutation(actions.restoreDocument);
   const purgeDocument = useMutation(actions.purgeDocument);
   const trashedItems = trashedDocuments.data?.documents ?? [];
+  const typeOptions = documentTypes.data?.documentTypes ?? [];
 
   const runTrashAction = async (documentId: string, action: () => Promise<void>) => {
     setTrashError(null);
@@ -205,7 +207,7 @@ export const TrashPage = () => {
                             <Chip
                               size="small"
                               variant="outlined"
-                              label={DOCUMENT_TYPE_LABELS[document.docType]}
+                              label={documentTypeLabel(typeOptions, document.docType)}
                             />
                             <Chip
                               size="small"
@@ -214,7 +216,7 @@ export const TrashPage = () => {
                             />
                           </Stack>
                           <Typography variant="body2" sx={{ mt: 1 }}>
-                            {document.person ?? 'Bez przypisanej osoby'}
+                            {document.person ?? 'Bez przypisanej strony'}
                           </Typography>
                         </CardContent>
                       </RouterCardActionArea>
@@ -255,7 +257,7 @@ export const TrashPage = () => {
                     <TableCell>Usunięto</TableCell>
                     <TableCell>Tytuł</TableCell>
                     <TableCell>Typ</TableCell>
-                    <TableCell>Osoba</TableCell>
+                    <TableCell>Strona</TableCell>
                     <TableCell align="right">Akcje</TableCell>
                   </TableRow>
                 </TableHead>
@@ -297,7 +299,7 @@ export const TrashPage = () => {
                           <Chip
                             size="small"
                             variant="outlined"
-                            label={DOCUMENT_TYPE_LABELS[document.docType]}
+                            label={documentTypeLabel(typeOptions, document.docType)}
                           />
                         </TableCell>
                         <TableCell>{document.person ?? '—'}</TableCell>

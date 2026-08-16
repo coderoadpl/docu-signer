@@ -49,7 +49,7 @@ import {
   documentSignatureStatusSchema,
   documentTypeSchema,
   type DocumentListItem,
-  type DocumentType,
+  type DocumentTypeSlug,
   type DocumentWithFiles,
   type UpdateDocument,
   type UserPreferenceValue,
@@ -75,13 +75,14 @@ import {
   DocumentTitleText,
 } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
+import { PendingDraftsDot } from './PendingDraftsDot.js';
 import {
-  DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   FILE_ROLE_SHORT_LABELS,
   SIGNATURE_STATUS_LABELS,
   documentFiltersFromSearch,
   documentFilterSummary,
+  documentTypeLabel,
   documentsSearchFromState,
   documentsViewFromSearch,
   emptyDocumentFilters,
@@ -190,7 +191,7 @@ interface DocumentColumnSettings {
 const DOCUMENT_COLUMN_LABELS: Record<DocumentColumnId, string> = {
   documentDate: 'Data podpisania',
   docType: 'Typ',
-  person: 'Osoba',
+  person: 'Strona',
   tags: 'Tagi',
   period: 'Okres',
   signatureStatus: 'Status podpisu',
@@ -304,7 +305,7 @@ export const DocumentsPage = () => {
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkRemoveTag, setBulkRemoveTag] = useState('');
   const [bulkPerson, setBulkPerson] = useState('');
-  const [bulkDocType, setBulkDocType] = useState<DocumentType>('umowa-uod');
+  const [bulkDocType, setBulkDocType] = useState<DocumentTypeSlug>('');
   const [bulkLinkSearch, setBulkLinkSearch] = useState('');
   const [bulkLinkTargetId, setBulkLinkTargetId] = useState('');
   const [bulkLinkLabel, setBulkLinkLabel] = useState('');
@@ -321,6 +322,7 @@ export const DocumentsPage = () => {
   const [textFilter, setTextFilter] = useState(filters.text);
   const documentFilter = toDocumentFilter(filters);
   const documents = useQuery(actions.documents(documentFilter));
+  const documentTypes = useQuery(actions.documentTypes);
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const tenantAccounts = useQuery(actions.tenantAccounts);
   const columnPreference = useQuery(preferenceActions.userPreference(DOCUMENT_COLUMNS_KEY));
@@ -390,6 +392,7 @@ export const DocumentsPage = () => {
   };
   const filtersActive = hasDocumentFilter(documentFilter);
   const visibleDocuments = documents.data?.documents ?? EMPTY_DOCUMENT_LIST;
+  const typeOptions = documentTypes.data?.documentTypes ?? [];
   const groupedVisibleDocuments = useMemo(
     () => groupDocumentsCanonically(visibleDocuments),
     [visibleDocuments],
@@ -514,7 +517,9 @@ export const DocumentsPage = () => {
     if (dialog === 'add-tags') setBulkTags([]);
     if (dialog === 'remove-tag') setBulkRemoveTag(selectedTagOptions[0] ?? '');
     if (dialog === 'person') setBulkPerson('');
-    if (dialog === 'type') setBulkDocType(selectedDocuments[0]?.docType ?? 'umowa-uod');
+    if (dialog === 'type') {
+      setBulkDocType(selectedDocuments[0]?.docType ?? typeOptions[0]?.slug ?? '');
+    }
     if (dialog === 'link') {
       setBulkLinkSearch('');
       setBulkLinkTargetId('');
@@ -589,7 +594,7 @@ export const DocumentsPage = () => {
         <Chip
           size="small"
           variant="outlined"
-          label={DOCUMENT_TYPE_LABELS[document.docType]}
+          label={documentTypeLabel(typeOptions, document.docType)}
         />
       );
     }
@@ -696,9 +701,9 @@ export const DocumentsPage = () => {
               }}
             >
               <MenuItem value="">Wszystkie</MenuItem>
-              {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
-                <MenuItem key={value} value={value}>
-                  {label}
+              {typeOptions.map((documentType) => (
+                <MenuItem key={documentType.slug} value={documentType.slug}>
+                  {documentType.label}
                 </MenuItem>
               ))}
             </Select>
@@ -709,7 +714,7 @@ export const DocumentsPage = () => {
             value={filters.person}
             onChange={(_event, value) => updateFilter('person', value ?? '')}
             onInputChange={(_event, value) => updateFilter('person', value)}
-            renderInput={(params) => <TextField {...params} label="Osoba" />}
+            renderInput={(params) => <TextField {...params} label="Strona" />}
             sx={{ flex: { sm: '1 1 10rem' } }}
           />
           <Autocomplete
@@ -765,12 +770,15 @@ export const DocumentsPage = () => {
                 const value = String(event.target.value);
                 updateFilter(
                   'draft',
-                  value === 'true' || value === 'all' ? value : 'false',
+                  value === 'true' || value === 'all' || value === 'pending'
+                    ? value
+                    : 'false',
                 );
               }}
             >
               <MenuItem value="false">Tylko zatwierdzone</MenuItem>
               <MenuItem value="true">Tylko szkice</MenuItem>
+              <MenuItem value="pending">Z niezatwierdzonymi zmianami</MenuItem>
               <MenuItem value="all">Wszystkie</MenuItem>
             </Select>
           </FormControl>
@@ -951,7 +959,7 @@ export const DocumentsPage = () => {
                 disabled={selectedIds.length === 0 || bulkBusy}
                 onClick={() => openBulkDialog('person')}
               >
-                Ustaw osobę
+                Ustaw stronę
               </Button>
               <Button
                 variant="outlined"
@@ -1170,7 +1178,10 @@ export const DocumentsPage = () => {
                               search={currentDocumentsSearch}
                             >
                               <CardContent>
-                                <Typography variant="h2">{document.title}</Typography>
+                                <Typography variant="h2">
+                                  {document.title}
+                                  <PendingDraftsDot counts={document.pendingDrafts} />
+                                </Typography>
                                 {document.draft ? (
                                   <Chip
                                     size="small"
@@ -1181,7 +1192,7 @@ export const DocumentsPage = () => {
                                   />
                                 ) : null}
                                 <Typography variant="body2" sx={{ mt: 1 }}>
-                                  {document.person ?? 'Bez przypisanej osoby'}
+                                  {document.person ?? 'Bez przypisanej strony'}
                                 </Typography>
                                 <Typography variant="body2">
                                   {formatPolishDate(document.documentDate)} · Pliki: {document.files.length}
@@ -1319,6 +1330,7 @@ export const DocumentsPage = () => {
                         >
                           <DocumentTitleText component="span">
                             {document.title}
+                            <PendingDraftsDot counts={document.pendingDrafts} />
                           </DocumentTitleText>
                         </Link>
                       </DocumentRecordTitleCell>
@@ -1369,6 +1381,7 @@ export const DocumentsPage = () => {
         <Suspense fallback={<LinearProgress aria-label="Ładowanie osi czasu" sx={{ mt: 3 }} />}>
           <LazyDocumentTimelineView
             documents={visibleDocuments}
+            documentTypes={typeOptions}
             onOpenDocument={(id) =>
               void navigate({
                 to: '/app/documents/$id',
@@ -1419,7 +1432,7 @@ export const DocumentsPage = () => {
             : bulkDialog === 'remove-tag'
               ? 'Usuń tag'
               : bulkDialog === 'person'
-                ? 'Ustaw osobę'
+                ? 'Ustaw stronę'
                 : bulkDialog === 'link'
                   ? 'Dodaj powiązany dokument'
                   : 'Ustaw typ'}
@@ -1456,7 +1469,7 @@ export const DocumentsPage = () => {
             {bulkDialog === 'person' ? (
               <>
                 <Alert severity="warning">
-                  Nadpiszesz osobę w {selectedDocuments.length} dokumentach.
+                  Nadpiszesz stronę w {selectedDocuments.length} dokumentach.
                 </Alert>
                 <Autocomplete
                   freeSolo
@@ -1464,7 +1477,7 @@ export const DocumentsPage = () => {
                   value={bulkPerson}
                   onChange={(_event, value) => setBulkPerson(value ?? '')}
                   onInputChange={(_event, value) => setBulkPerson(value)}
-                  renderInput={(params) => <TextField {...params} label="Osoba" />}
+                  renderInput={(params) => <TextField {...params} label="Strona" />}
                 />
               </>
             ) : null}
@@ -1483,9 +1496,9 @@ export const DocumentsPage = () => {
                       setBulkDocType(documentTypeSchema.parse(event.target.value))
                     }
                   >
-                    {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
+                    {typeOptions.map((documentType) => (
+                      <MenuItem key={documentType.slug} value={documentType.slug}>
+                        {documentType.label}
                       </MenuItem>
                     ))}
                   </Select>
@@ -1618,6 +1631,7 @@ export const DocumentsPage = () => {
         title="Dodaj dokument"
         submitLabel="Dodaj dokument"
         pending={createDocument.isPending}
+        documentTypes={typeOptions}
         error={createDocument.error?.message}
         personOptions={personOptions}
         tagOptions={tagOptions}
@@ -1641,7 +1655,7 @@ export const DocumentsPage = () => {
             slotProps={{ htmlInput: { maxLength: 120 } }}
           />
           <Typography variant="body2" sx={{ mt: 2 }}>
-            {documentFilterSummary(documentFilter)}
+            {documentFilterSummary(documentFilter, typeOptions)}
           </Typography>
           {createSavedSearch.isError ? (
             <Alert severity="error" sx={{ mt: 2 }}>{createSavedSearch.error.message}</Alert>

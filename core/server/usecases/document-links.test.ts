@@ -8,6 +8,7 @@ import type {
 
 import type { DocumentLinkRepository, DocumentRepository } from '../ports.js';
 import {
+  approveDocumentLink,
   linkDocuments,
   listDocumentLinks,
   unlinkDocuments,
@@ -53,6 +54,7 @@ const documentRepository = (rows: Document[]): DocumentRepository => ({
   findDeletedById: async () => null,
   findAnyById: async (tenantId, documentId) =>
     rows.find((row) => row.tenantId === tenantId && row.id === documentId) ?? null,
+  getPendingDraftCounts: async () => ({ comments: 0, links: 0, metadataProposals: 0 }),
   listFiles: async () => [],
   listFilesIncludingDeleted: async () => [],
   listAllFilesIncludingDeleted: async () => [],
@@ -115,8 +117,14 @@ const deps = (rows: Document[], initialLinks: DocumentLink[] = []): DocumentLink
             : link.fromDocumentId;
           const other = rows.find((row) => row.tenantId === tenantId && row.id === otherId);
           if (!other) throw new Error('missing linked document');
-          return { linkId: link.id, label: link.label, document: other };
+          return { linkId: link.id, label: link.label, draft: link.draft, document: other };
         }),
+    approve: async (tenantId, linkId) => {
+      const link = links.find((candidate) => candidate.tenantId === tenantId && candidate.id === linkId);
+      if (!link) return null;
+      link.draft = false;
+      return link;
+    },
     deleteBetween: async (tenantId, firstDocumentId, secondDocumentId) => {
       const index = links.findIndex(
         (link) =>
@@ -146,6 +154,7 @@ describe('document link use-cases', () => {
     const linkRead = vi.spyOn(state.documentLinks, 'findBetween');
     const linkList = vi.spyOn(state.documentLinks, 'listForDocument');
     const linkDelete = vi.spyOn(state.documentLinks, 'deleteBetween');
+    const linkApprove = vi.spyOn(state.documentLinks, 'approve');
     const visitor = ctx(identity(null, null));
 
     await expect(
@@ -159,10 +168,15 @@ describe('document link use-cases', () => {
       ok: false,
       error: { code: 'forbidden' },
     });
+    await expect(approveDocumentLink(visitor, LINK_ID, state)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
     expect(documentRead).not.toHaveBeenCalled();
     expect(linkRead).not.toHaveBeenCalled();
     expect(linkList).not.toHaveBeenCalled();
     expect(linkDelete).not.toHaveBeenCalled();
+    expect(linkApprove).not.toHaveBeenCalled();
   });
 
   it('returns not_found when either document is outside the tenant', async () => {
@@ -236,6 +250,80 @@ describe('document link use-cases', () => {
       'tenant-a',
       expect.objectContaining({ fromDocumentId: FIRST_ID, toDocumentId: SECOND_ID }),
     );
+  });
+
+  it('marks draft-token links as drafts and session or full-token links as approved', async () => {
+    const rows = [
+      document(FIRST_ID, 'tenant-a', 'First'),
+      document(SECOND_ID, 'tenant-a', 'Second'),
+    ];
+    const draftToken = {
+      ...identity('tenant-a', 'owner'),
+      apiToken: { id: 'token-draft', scopes: ['write:draft'] as const },
+    };
+    const fullToken = {
+      ...identity('tenant-a', 'owner'),
+      apiToken: { id: 'token-write', scopes: ['write', 'write:draft'] as const },
+    };
+    const draftState = deps(rows);
+    const sessionState = deps(rows);
+    const fullTokenState = deps(rows);
+
+    await expect(
+      linkDocuments(ctx(draftToken), FIRST_ID, { otherDocumentId: SECOND_ID }, draftState),
+    ).resolves.toMatchObject({ ok: true, value: { draft: true } });
+    await expect(
+      linkDocuments(
+        ctx(identity('tenant-a', 'owner')),
+        FIRST_ID,
+        { otherDocumentId: SECOND_ID },
+        sessionState,
+      ),
+    ).resolves.toMatchObject({ ok: true, value: { draft: false } });
+    await expect(
+      linkDocuments(ctx(fullToken), FIRST_ID, { otherDocumentId: SECOND_ID }, fullTokenState),
+    ).resolves.toMatchObject({ ok: true, value: { draft: false } });
+  });
+
+  it('approves links idempotently with document approval capability', async () => {
+    const state = deps(
+      [
+        document(FIRST_ID, 'tenant-a', 'First'),
+        document(SECOND_ID, 'tenant-a', 'Second'),
+      ],
+      [{
+        id: LINK_ID,
+        tenantId: 'tenant-a',
+        fromDocumentId: FIRST_ID,
+        toDocumentId: SECOND_ID,
+        label: null,
+        draft: true,
+      }],
+    );
+    const owner = ctx(identity('tenant-a', 'owner'));
+
+    await expect(approveDocumentLink(owner, LINK_ID, state)).resolves.toMatchObject({
+      ok: true,
+      value: { id: LINK_ID, draft: false },
+    });
+    await expect(approveDocumentLink(owner, LINK_ID, state)).resolves.toMatchObject({
+      ok: true,
+      value: { id: LINK_ID, draft: false },
+    });
+  });
+
+  it('validates approval ids and returns not found for missing links', async () => {
+    const state = deps([]);
+    const owner = ctx(identity('tenant-a', 'owner'));
+
+    await expect(approveDocumentLink(owner, 'invalid', state)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    await expect(approveDocumentLink(owner, LINK_ID, state)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
   });
 
   it('trims labels, lists both directions, rejects duplicates, and unlinks', async () => {

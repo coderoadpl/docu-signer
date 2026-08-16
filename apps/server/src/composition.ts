@@ -4,6 +4,8 @@ import { createDb } from '#adapters/db/client.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
 import { createDocumentCommentRepository } from '#adapters/db/document-comments-repository.js';
 import { createDocumentLinkRepository } from '#adapters/db/document-links-repository.js';
+import { createDocumentMetadataProposalRepository } from '#adapters/db/document-metadata-proposals-repository.js';
+import { createDocumentTypeRepository } from '#adapters/db/document-types-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createSavedSearchRepository } from '#adapters/db/saved-searches-repository.js';
 import {
@@ -42,6 +44,7 @@ import {
   pdfSealCertificateSubject,
   type PdfSealCredentials,
 } from '#adapters/pdf-seal/signpdf.js';
+import { createPdfSealVerificationPort } from '#adapters/pdf-seal/verify.js';
 import { createConsoleWarningLogger } from '#adapters/logging/console-warning.js';
 import type {
   AuthPort,
@@ -50,6 +53,8 @@ import type {
   DocumentRepository,
   DocumentCommentRepository,
   DocumentLinkRepository,
+  DocumentMetadataProposalRepository,
+  DocumentTypeRepository,
   EmailPort,
   HealthPort,
   IdGenerator,
@@ -59,6 +64,7 @@ import type {
   PadSessionRepository,
   PadSessionSecretPort,
   PdfSealingDeps,
+  PdfSealVerificationPort,
   RateLimitPort,
   SavedSearchRepository,
   SignatureRecordRepository,
@@ -82,6 +88,8 @@ export interface AppDeps {
   documents: DocumentRepository;
   documentComments: DocumentCommentRepository;
   documentLinks: DocumentLinkRepository;
+  documentMetadataProposals: DocumentMetadataProposalRepository;
+  documentTypes: DocumentTypeRepository;
   padSessions: PadSessionRepository;
   padSessionSecrets: PadSessionSecretPort;
   savedSearches: SavedSearchRepository;
@@ -92,6 +100,7 @@ export interface AppDeps {
   signatureRecords: SignatureRecordRepository;
   sourceUpdateRequests: SourceUpdateRequestRepository;
   pdfSealing?: PdfSealingDeps;
+  pdfSealVerification: PdfSealVerificationPort;
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
@@ -205,6 +214,7 @@ export const createDeps = (env: Env): AppDeps => {
   const passwordResetEnabled = selectPasswordResetEnabled(env);
   const storage = selectStoragePort(env);
   const tenantSettings = createTenantSettingsRepository(db);
+  const documentTypes = createDocumentTypeRepository(db);
   const tenantAccounts = createTenantAccountRepository(db);
   const signatureRecords = createSignatureRecordRepository(db);
   const warnings = createConsoleWarningLogger();
@@ -276,6 +286,8 @@ export const createDeps = (env: Env): AppDeps => {
     documents: createDocumentRepository(db),
     documentComments: createDocumentCommentRepository(db),
     documentLinks: createDocumentLinkRepository(db),
+    documentMetadataProposals: createDocumentMetadataProposalRepository(db),
+    documentTypes,
     padSessions: createPadSessionRepository(db),
     padSessionSecrets: createPadSessionSecrets(),
     savedSearches: createSavedSearchRepository(db),
@@ -293,6 +305,7 @@ export const createDeps = (env: Env): AppDeps => {
       tenantSettings,
       warnings,
     },
+    pdfSealVerification: createPdfSealVerificationPort(),
     storage,
     tenantDomains,
     email,

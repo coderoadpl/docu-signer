@@ -78,6 +78,9 @@ const readDataset = async (client: pg.Pool) => {
   const documents = await client.query(
     'SELECT id, tenant_id, title, doc_type, document_date, person, tags FROM documents ORDER BY id',
   );
+  const documentTypes = await client.query(
+    'SELECT tenant_id, slug, label, position FROM document_types ORDER BY position',
+  );
   const documentFiles = await client.query(
     'SELECT id, document_id, role, file_name, content_type, size_bytes, storage_key FROM document_files ORDER BY id',
   );
@@ -89,6 +92,7 @@ const readDataset = async (client: pg.Pool) => {
     domains: domains.rows,
     todos: todos.rows,
     documents: documents.rows,
+    documentTypes: documentTypes.rows,
     documentFiles: documentFiles.rows,
   };
 };
@@ -173,6 +177,13 @@ describe('seed convergence', () => {
       ]);
       expect(expected.todos).toEqual([]);
       expect(expected.documents).toEqual([]);
+      expect(expected.documentTypes).toEqual([
+        { tenant_id: 'tenant-default', slug: 'umowa-uod', label: 'Umowa UoD', position: 10 },
+        { tenant_id: 'tenant-default', slug: 'uchwala', label: 'Uchwała', position: 20 },
+        { tenant_id: 'tenant-default', slug: 'protokol', label: 'Protokół', position: 30 },
+        { tenant_id: 'tenant-default', slug: 'rachunek', label: 'Rachunek', position: 40 },
+        { tenant_id: 'tenant-default', slug: 'inny', label: 'Inny', position: 50 },
+      ]);
       expect(expected.documentFiles).toEqual([]);
 
       for (const stage of [

@@ -9,6 +9,33 @@ const json = (data: unknown, status = 200) =>
   });
 
 describe('API client', () => {
+  it('gets document seal verification through the file route', async () => {
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const fileId = '22222222-2222-4222-8222-222222222222';
+    const verification = {
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      json({ ok: true, data: { verification } }),
+    );
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(
+      api.getDocumentFileSealVerification(documentId, fileId),
+    ).resolves.toEqual({ ok: true, value: { verification } });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      `/api/documents/${documentId}/files/${fileId}/seal`,
+    );
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'GET' });
+  });
+
   it('parses health and document responses through the contract', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input) =>
       String(input).endsWith('/api/health')
@@ -33,6 +60,7 @@ describe('API client', () => {
     const link = {
       linkId: '33333333-3333-4333-8333-333333333333',
       label: 'podstawa',
+      draft: true,
       document: {
         id: otherDocumentId,
         tenantId: 'tenant-default',
@@ -47,7 +75,22 @@ describe('API client', () => {
         updatedAt: '2026-08-16T10:00:00.000Z',
       },
     };
-    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).endsWith('/approve')) {
+        return json({
+          ok: true,
+          data: {
+            link: {
+              id: link.linkId,
+              tenantId: 'tenant-default',
+              fromDocumentId: documentId,
+              toDocumentId: otherDocumentId,
+              label: 'podstawa',
+              draft: false,
+            },
+          },
+        });
+      }
       if (init?.method === 'POST') return json({ ok: true, data: { link } });
       if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
       return json({ ok: true, data: { links: [link] } });
@@ -61,6 +104,10 @@ describe('API client', () => {
     await expect(
       api.linkDocuments(documentId, { otherDocumentId, label: 'podstawa' }),
     ).resolves.toMatchObject({ ok: true, value: { link: { label: 'podstawa' } } });
+    await expect(api.approveDocumentLink(link.linkId)).resolves.toMatchObject({
+      ok: true,
+      value: { link: { id: link.linkId, draft: false } },
+    });
     await expect(api.unlinkDocuments(documentId, otherDocumentId)).resolves.toEqual({
       ok: true,
       value: { deleted: true },
@@ -70,10 +117,11 @@ describe('API client', () => {
       method: 'POST',
       body: JSON.stringify({ otherDocumentId, label: 'podstawa' }),
     });
-    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(`/api/document-links/${link.linkId}/approve`);
+    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
       `/api/documents/${documentId}/links/${otherDocumentId}`,
     );
-    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
   it('lists, creates, and deletes document comments through contract paths', async () => {
@@ -85,9 +133,13 @@ describe('API client', () => {
       documentId,
       author: { accountId: 'user-owner', name: 'Owner' },
       body: 'Treść komentarza',
+      draft: true,
       createdAt: '2026-08-16T10:00:00.000Z',
     };
-    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).endsWith('/approve')) {
+        return json({ ok: true, data: { comment: { ...comment, draft: false } } });
+      }
       if (init?.method === 'POST') return json({ ok: true, data: { comment } });
       if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
       return json({ ok: true, data: { items: [comment], nextCursor: null } });
@@ -100,6 +152,10 @@ describe('API client', () => {
     await expect(
       api.addDocumentComment(documentId, { body: comment.body }),
     ).resolves.toMatchObject({ ok: true, value: { comment: { id: commentId } } });
+    await expect(api.approveDocumentComment(commentId)).resolves.toMatchObject({
+      ok: true,
+      value: { comment: { id: commentId, draft: false } },
+    });
     await expect(api.deleteDocumentComment(documentId, commentId)).resolves.toEqual({
       ok: true,
       value: { deleted: true },
@@ -112,9 +168,87 @@ describe('API client', () => {
       body: JSON.stringify({ body: comment.body }),
     });
     expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      `/api/document-comments/${commentId}/approve`,
+    );
+    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
       `/api/documents/${documentId}/comments/${commentId}`,
     );
-    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'DELETE' });
+  });
+
+  it('lists and resolves document metadata proposals through contract paths', async () => {
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const proposalId = '22222222-2222-4222-8222-222222222222';
+    const document = {
+      id: documentId,
+      tenantId: 'tenant-default',
+      title: 'Umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-01',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      deletedAt: null,
+    };
+    const proposal = {
+      id: proposalId,
+      tenantId: 'tenant-default',
+      documentId,
+      changes: { title: 'Nowa umowa' },
+      creator: { accountId: 'user-owner', name: 'Owner' },
+      createdAt: '2026-08-16T10:00:00.000Z',
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (init?.method === 'PATCH') {
+        return json({
+          ok: true,
+          data: { outcome: 'proposed', document, proposal },
+        });
+      }
+      if (String(input).endsWith('/approve')) {
+        return json({ ok: true, data: { document: { ...document, title: 'Nowa umowa' } } });
+      }
+      if (String(input).endsWith('/reject')) {
+        return json({ ok: true, data: { deleted: true } });
+      }
+      return json({ ok: true, data: { items: [proposal], nextCursor: null } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(
+      api.proposeDocumentUpdate(documentId, { title: 'Nowa umowa' }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { outcome: 'proposed', proposal: { id: proposalId } },
+    });
+    await expect(
+      api.listDocumentMetadataProposals(documentId, { cursor: 'next', limit: 5 }),
+    ).resolves.toMatchObject({ ok: true, value: { items: [{ id: proposalId }] } });
+    await expect(api.approveDocumentMetadataProposal(proposalId)).resolves.toMatchObject({
+      ok: true,
+      value: { document: { title: 'Nowa umowa' } },
+    });
+    await expect(api.rejectDocumentMetadataProposal(proposalId)).resolves.toEqual({
+      ok: true,
+      value: { deleted: true },
+    });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(`/api/documents/${documentId}`);
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ title: 'Nowa umowa' }),
+    });
+    expect(String(fetchImpl.mock.calls[1]?.[0])).toBe(
+      `/api/documents/${documentId}/metadata-proposals?cursor=next&limit=5`,
+    );
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      `/api/document-metadata-proposals/${proposalId}/approve`,
+    );
+    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
+      `/api/document-metadata-proposals/${proposalId}/reject`,
+    );
   });
 
   it('sends tenant document filters and write bodies', async () => {
@@ -156,6 +290,7 @@ describe('API client', () => {
       dateFrom: '2026-01-01',
       signatureStatus: 'needs-signature',
       signerAccountId: 'account-1',
+      pendingDrafts: 'true',
     });
     await api.createDocument({
       title: 'Umowa',
@@ -170,7 +305,7 @@ describe('API client', () => {
     await api.purgeDocument('11111111-1111-4111-8111-111111111111');
 
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(
-      '/api/documents?person=Jan&tag=podpis&dateFrom=2026-01-01&signatureStatus=needs-signature&signerAccountId=account-1',
+      '/api/documents?person=Jan&tag=podpis&dateFrom=2026-01-01&signatureStatus=needs-signature&signerAccountId=account-1&pendingDrafts=true',
     );
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
       method: 'POST',
@@ -246,6 +381,43 @@ describe('API client', () => {
       '/api/saved-searches/11111111-1111-4111-8111-111111111111',
     );
     expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
+  });
+
+  it('calls document type dictionary routes through the contract', async () => {
+    const documentType = { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 60 };
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
+      if (init?.method === 'PATCH') {
+        return json({ ok: true, data: { documentType: { ...documentType, label: 'Kontrakt' } } });
+      }
+      if (init?.method === 'POST') return json({ ok: true, data: { documentType } });
+      return json({ ok: true, data: { documentTypes: [documentType] } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(api.listDocumentTypes()).resolves.toMatchObject({
+      ok: true,
+      value: { documentTypes: [documentType] },
+    });
+    await api.createDocumentType({ label: 'Umowa z klientem' });
+    await api.renameDocumentType(documentType.slug, { label: 'Kontrakt' });
+    await api.deleteDocumentType(documentType.slug);
+
+    expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toEqual([
+      '/api/document-types',
+      '/api/document-types',
+      '/api/document-types/umowa-z-klientem',
+      '/api/document-types/umowa-z-klientem',
+    ]);
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ label: 'Umowa z klientem' }),
+    });
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ label: 'Kontrakt' }),
+    });
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
   it('calls document approval, API token and preference routes through the contract', async () => {

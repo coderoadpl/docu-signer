@@ -23,6 +23,7 @@ export const documentLinkSchema = z.object({
   fromDocumentId: z.uuid(),
   toDocumentId: z.uuid(),
   label: documentLinkLabelSchema.nullable(),
+  draft: z.boolean().default(false),
 });
 
 export type DocumentLink = z.infer<typeof documentLinkSchema>;
@@ -30,6 +31,7 @@ export type DocumentLink = z.infer<typeof documentLinkSchema>;
 export const linkedDocumentSchema = z.object({
   linkId: z.uuid(),
   label: documentLinkLabelSchema.nullable(),
+  draft: z.boolean().default(false),
   document: documentSchema,
 });
 

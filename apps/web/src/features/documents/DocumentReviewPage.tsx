@@ -23,7 +23,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 
-import { documentTypeSchema, type DocumentWithFiles } from '#core/domain/index.js';
+import {
+  documentTypeSchema,
+  type DocumentType,
+  type DocumentWithFiles,
+} from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SigningShell } from '../../components/layout/SigningShell.js';
@@ -31,7 +35,7 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { PolishDatePicker } from '../../components/ui/PolishDatePicker.js';
 import { SigningPageSurface } from '../../theme.js';
 import {
-  DOCUMENT_TYPE_LABELS,
+  documentTypeLabel,
   documentsSearchFromReviewSearch,
   newestDocumentFileByRole,
   reviewModeFromSearch,
@@ -88,9 +92,11 @@ const formFingerprint = (values: DocumentFormValues): string =>
 
 const Header = ({
   document,
+  documentTypes,
   onClose,
 }: {
   document?: DocumentWithFiles;
+  documentTypes: DocumentType[];
   onClose: () => void;
 }) => (
   <Paper square sx={{ px: { xs: 1.5, md: 3 }, py: 1 }}>
@@ -110,7 +116,7 @@ const Header = ({
         <Chip
           size="small"
           variant="outlined"
-          label={DOCUMENT_TYPE_LABELS[document.docType]}
+          label={documentTypeLabel(documentTypes, document.docType)}
         />
       ) : null}
       {document?.person ? <Chip size="small" label={document.person} /> : null}
@@ -146,6 +152,7 @@ const EditForm = ({
   personOptions,
   tagInput,
   tagOptions,
+  documentTypes,
   values,
   onTagInputChange,
 }: {
@@ -156,6 +163,7 @@ const EditForm = ({
   personOptions: string[];
   tagInput: string;
   tagOptions: string[];
+  documentTypes: DocumentType[];
   values: DocumentFormValues;
   onTagInputChange: (value: string) => void;
 }) => {
@@ -217,9 +225,9 @@ const EditForm = ({
             value={values.docType}
             onChange={(event) => field('docType', documentTypeSchema.parse(event.target.value))}
           >
-            {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
-              <MenuItem key={value} value={value}>
-                {label}
+            {documentTypes.map((documentType) => (
+              <MenuItem key={documentType.slug} value={documentType.slug}>
+                {documentType.label}
               </MenuItem>
             ))}
           </Select>
@@ -230,7 +238,7 @@ const EditForm = ({
           value={values.person}
           onChange={(_event, value) => field('person', value ?? '')}
           onInputChange={(_event, value) => field('person', value)}
-          renderInput={(params) => <TextField {...params} label="Osoba" />}
+          renderInput={(params) => <TextField {...params} label="Strona" />}
         />
         <Autocomplete
           multiple
@@ -292,8 +300,10 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
   const listSearch = documentsSearchFromReviewSearch(search);
   const requestedMode = reviewModeFromSearch(search);
   const documentQuery = useQuery(actions.document(documentId));
+  const documentTypesQuery = useQuery(actions.documentTypes);
   const documentsQuery = useQuery(actions.documents({ draft: 'all' }));
   const document = documentQuery.data?.document;
+  const documentTypes = documentTypesQuery.data?.documentTypes ?? [];
   const sourceFile = document ? newestDocumentFileByRole(document, 'source') : undefined;
   const scanFile = document
     ? newestDocumentFileByRole(document, 'signed-scan')
@@ -582,7 +592,7 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
               Poprzednia strona
             </Button>
             <Typography variant="body2" aria-live="polite">
-              Strona {pageNumber} z {pdf.numPages}
+              str. {pageNumber} z {pdf.numPages}
             </Typography>
             <Button
               size="small"
@@ -660,6 +670,7 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
       header={
         <Header
           {...(document === undefined ? {} : { document })}
+          documentTypes={documentTypes}
           onClose={() => requestNavigation({ kind: 'close' })}
         />
       }
@@ -678,6 +689,7 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
           tagInput={tagInput}
           personOptions={uniqueDocumentPersons(allDocuments)}
           tagOptions={uniqueDocumentTags(allDocuments)}
+          documentTypes={documentTypes}
           pending={updateDocument.isPending}
           {...(updateDocument.error === null
             ? {}

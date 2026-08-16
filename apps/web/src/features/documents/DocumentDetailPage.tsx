@@ -35,8 +35,9 @@ import {
   documentTypeSchema,
   type DocumentFile,
   type DocumentFileRole,
+  type PdfSealVerification,
   type SourceUpdateRequest,
-  type DocumentType,
+  type DocumentTypeSlug,
 } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
@@ -45,12 +46,14 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { formatPolishDate, formatPolishDateTime } from '../../lib/format-date.js';
 import { DocumentCommentBody, FileDropZone, NoWrapButton } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
+import { MetadataProposalsSection } from './MetadataProposalsSection.js';
+import { PendingDraftsDot } from './PendingDraftsDot.js';
 import { SourceUpdateDialog } from './SourceUpdateDialog.js';
 import {
-  DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   canSignPdfFile,
   documentFiltersFromSearch,
+  documentTypeLabel,
   documentsSearchFromState,
   documentsViewFromSearch,
   fileNameStem,
@@ -141,6 +144,95 @@ const ConfirmDialog = ({
   </Dialog>
 );
 
+const sealFailureLabels = (verification: PdfSealVerification): string[] => [
+  ...(verification.byteRangeValid ? [] : ['zakres bajtów dokumentu']),
+  ...(verification.digestValid ? [] : ['skrót dokumentu']),
+  ...(verification.signatureValid ? [] : ['podpis kryptograficzny']),
+];
+
+const sealSignerNames = (verification: PdfSealVerification): string => {
+  const claimed = [verification.name, verification.reason]
+    .flatMap((value) => {
+      const match = value?.match(/^Signed by:\s*(.+)$/iu);
+      return match?.[1]?.split(',').map((name) => name.trim()).filter(Boolean) ?? [];
+    });
+  const fallback = verification.name && verification.name !== verification.subject
+    ? [verification.name]
+    : [];
+  return [...new Set(claimed.length ? claimed : fallback)].join(', ');
+};
+
+const SealDetailsDialog = ({
+  documentId,
+  file,
+  open,
+  onClose,
+}: {
+  documentId: string;
+  file: DocumentFile;
+  open: boolean;
+  onClose: () => void;
+}) => {
+  const verificationQuery = useQuery({
+    ...actions.documentFileSeal(documentId, file.id),
+    enabled: open,
+  });
+  const verification = verificationQuery.data?.verification;
+  const signerNames = verification ? sealSignerNames(verification) : '';
+  const failures = verification ? sealFailureLabels(verification) : [];
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>Szczegóły pieczęci</DialogTitle>
+      <DialogContent dividers>
+        {verificationQuery.isPending ? (
+          <LinearProgress aria-label="Ładowanie szczegółów pieczęci" />
+        ) : verificationQuery.isError ? (
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" onClick={() => void verificationQuery.refetch()}>
+                Spróbuj ponownie
+              </Button>
+            }
+          >
+            Nie udało się pobrać szczegółów pieczęci: {verificationQuery.error.message}
+          </Alert>
+        ) : verification ? (
+          <Stack sx={{ gap: 2 }}>
+            <Alert severity={verification.integrity ? 'success' : 'error'}>
+              {verification.integrity
+                ? 'Pieczęć jest kryptograficznie poprawna, a dokument nie został zmieniony od chwili opieczętowania.'
+                : `Pieczęć jest nieprawidłowa. Nieprawidłowe kontrole: ${failures.join(', ')}.`}
+            </Alert>
+            <Box>
+              <Typography variant="subtitle2">Podmiot certyfikatu</Typography>
+              <Typography>{verification.subject}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2">Deklarowana data podpisania</Typography>
+              <Typography>{formatPolishDate(verification.declaredAt)}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2">Podpisujący</Typography>
+              <Typography>{signerNames || 'Brak danych'}</Typography>
+            </Box>
+            {verification.reason ? (
+              <Box>
+                <Typography variant="subtitle2">Powód</Typography>
+                <Typography>{verification.reason}</Typography>
+              </Box>
+            ) : null}
+          </Stack>
+        ) : null}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Zamknij</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const FileRow = ({
   documentId,
   file,
@@ -158,6 +250,7 @@ const FileRow = ({
 }) => {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [afterMenuClose, setAfterMenuClose] = useState<(() => void) | undefined>();
+  const [sealDetailsOpen, setSealDetailsOpen] = useState(false);
   const contentUrl = actions.documentFileContentUrl(documentId, file.id);
   const exportUrl = actions.documentFileExportUrl(documentId, file.id);
   const closeMenu = () => setMenuAnchor(null);
@@ -193,7 +286,14 @@ const FileRow = ({
         sx={{ alignItems: 'center', flexShrink: 0, gap: 0.5 }}
       >
         {file.role === 'signed-digital' && file.sealed ? (
-          <Chip size="small" variant="outlined" label="Pieczęć" />
+          <Chip
+            clickable
+            size="small"
+            variant="outlined"
+            label="Pieczęć"
+            aria-label={`Pokaż szczegóły pieczęci pliku ${file.fileName}`}
+            onClick={() => setSealDetailsOpen(true)}
+          />
         ) : null}
         {readOnly ? (
           <Chip size="small" variant="outlined" label={FILE_ROLE_LABELS[file.role]} />
@@ -276,6 +376,14 @@ const FileRow = ({
           </>
         )}
       </Stack>
+      {file.role === 'signed-digital' && file.sealed ? (
+        <SealDetailsDialog
+          documentId={documentId}
+          file={file}
+          open={sealDetailsOpen}
+          onClose={() => setSealDetailsOpen(false)}
+        />
+      ) : null}
     </ListItem>
   );
 };
@@ -386,9 +494,11 @@ export const DocumentDetailPage = ({
   const search = useSearch({ from: '/app/documents/$id' });
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
+  const documentTypesQuery = useQuery(actions.documentTypes);
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const documentLinksQuery = useQuery(actions.documentLinks(documentId));
   const documentCommentsQuery = useQuery(actions.documentComments(documentId));
+  const metadataProposalsQuery = useQuery(actions.documentMetadataProposals(documentId));
   const identityQuery = useQuery(actions.me);
   const signatureRecordsQuery = useQuery(actions.signatureRecords(documentId));
   const sourceUpdateRequestQuery = useQuery(
@@ -401,7 +511,7 @@ export const DocumentDetailPage = ({
   const [fileToDelete, setFileToDelete] = useState<DocumentFile>();
   const [fileToMove, setFileToMove] = useState<DocumentFile>();
   const [moveTitle, setMoveTitle] = useState('');
-  const [moveDocType, setMoveDocType] = useState<DocumentType>('umowa-uod');
+  const [moveDocType, setMoveDocType] = useState<DocumentTypeSlug>('');
   const [uploadingRole, setUploadingRole] = useState<DocumentFileRole>();
   const [sourceUpdateOpen, setSourceUpdateOpen] = useState(false);
   const [documentLinkOpen, setDocumentLinkOpen] = useState(false);
@@ -514,6 +624,12 @@ export const DocumentDetailPage = ({
       await queryClient.invalidateQueries(actions.documentLinksInvalidates());
     },
   });
+  const approveDocumentLink = useMutation({
+    ...actions.approveDocumentLink,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentLinksInvalidates());
+    },
+  });
   const addDocumentComment = useMutation({
     ...actions.addDocumentComment,
     onSuccess: async () => {
@@ -525,6 +641,34 @@ export const DocumentDetailPage = ({
     ...actions.deleteDocumentComment,
     onSuccess: async () => {
       await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
+    },
+  });
+  const approveDocumentComment = useMutation({
+    ...actions.approveDocumentComment,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
+    },
+  });
+  const approveMetadataProposal = useMutation({
+    ...actions.approveDocumentMetadataProposal,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries(actions.documentsInvalidates()),
+        queryClient.invalidateQueries(
+          actions.documentMetadataProposalsInvalidates(documentId),
+        ),
+      ]);
+    },
+  });
+  const rejectMetadataProposal = useMutation({
+    ...actions.rejectDocumentMetadataProposal,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries(actions.documentsInvalidates()),
+        queryClient.invalidateQueries(
+          actions.documentMetadataProposalsInvalidates(documentId),
+        ),
+      ]);
     },
   });
 
@@ -553,6 +697,7 @@ export const DocumentDetailPage = ({
   }
 
   const document = documentQuery.data.document;
+  const typeOptions = documentTypesQuery.data?.documentTypes ?? [];
   const isTrashed = document.deletedAt !== null;
   const isDraft = document.draft;
   const activeSourceUpdate = sourceUpdateRequestQuery.data?.request ?? null;
@@ -570,6 +715,7 @@ export const DocumentDetailPage = ({
     signatureRecordsQuery.isSuccess &&
     !legacySignedWithoutRecords;
   const currentUserId = identityQuery.data?.userId;
+  const canApprove = identityQuery.data?.tenant !== null && identityQuery.data?.tenant !== undefined;
   const currentApproval = activeSourceUpdate?.approvals.find(
     (approval) => approval.approverId === currentUserId,
   );
@@ -747,10 +893,13 @@ export const DocumentDetailPage = ({
             direction="row"
             sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
           >
-            <Typography variant="h1">{document.title}</Typography>
+            <Typography variant="h1">
+              {document.title}
+              <PendingDraftsDot counts={document.pendingDrafts} />
+            </Typography>
             <Chip
               variant="outlined"
-              label={DOCUMENT_TYPE_LABELS[document.docType]}
+              label={documentTypeLabel(typeOptions, document.docType)}
             />
             {isDraft ? <Chip color="warning" variant="outlined" label="Szkic" /> : null}
             {document.signatureNotRequired ? (
@@ -767,7 +916,7 @@ export const DocumentDetailPage = ({
               </Typography>
             ) : null}
             <Typography variant="body2">
-              {document.person ?? 'Bez przypisanej osoby'}
+              {document.person ?? 'Bez przypisanej strony'}
             </Typography>
           </Stack>
             {document.tags.length ? (
@@ -975,6 +1124,27 @@ export const DocumentDetailPage = ({
           {purgeDocument.error.message}
         </Alert>
       ) : null}
+      <MetadataProposalsSection
+        document={document}
+        documentTypes={typeOptions}
+        proposals={metadataProposalsQuery.data?.items ?? []}
+        loading={metadataProposalsQuery.isPending}
+        {...(metadataProposalsQuery.error
+          ? { error: metadataProposalsQuery.error.message }
+          : {})}
+        canApprove={canApprove}
+        pending={approveMetadataProposal.isPending || rejectMetadataProposal.isPending}
+        {...(approveMetadataProposal.error || rejectMetadataProposal.error
+          ? {
+              actionError:
+                approveMetadataProposal.error?.message ??
+                rejectMetadataProposal.error?.message ??
+                '',
+            }
+          : {})}
+        onApprove={(proposalId) => approveMetadataProposal.mutate(proposalId)}
+        onReject={(proposalId) => rejectMetadataProposal.mutate(proposalId)}
+      />
       <Paper variant="outlined" sx={{ mt: 4, p: 3 }}>
         <Stack
           direction="row"
@@ -1008,20 +1178,33 @@ export const DocumentDetailPage = ({
                   disablePadding
                   divider
                   secondaryAction={
-                    !isTrashed ? (
-                      <Button
-                        color="error"
-                        size="small"
-                        disabled={unlinkDocuments.isPending}
-                        onClick={() =>
-                          unlinkDocuments.mutate({
-                            documentId,
-                            otherDocumentId: link.document.id,
-                          })
-                        }
-                      >
-                        Usuń
-                      </Button>
+                    (link.draft && canApprove) || !isTrashed ? (
+                      <Stack direction="row" sx={{ gap: 1 }}>
+                        {link.draft && canApprove ? (
+                          <Button
+                            size="small"
+                            disabled={approveDocumentLink.isPending}
+                            onClick={() => approveDocumentLink.mutate(link.linkId)}
+                          >
+                            Zatwierdź
+                          </Button>
+                        ) : null}
+                        {!isTrashed ? (
+                          <Button
+                            color="error"
+                            size="small"
+                            disabled={unlinkDocuments.isPending}
+                            onClick={() =>
+                              unlinkDocuments.mutate({
+                                documentId,
+                                otherDocumentId: link.document.id,
+                              })
+                            }
+                          >
+                            Usuń
+                          </Button>
+                        ) : null}
+                      </Stack>
                     ) : null
                   }
                   sx={{ opacity: link.document.deletedAt ? 0.55 : 1 }}
@@ -1030,9 +1213,18 @@ export const DocumentDetailPage = ({
                     to="/app/documents/$id"
                     params={{ id: link.document.id }}
                   >
-                    <ListItemText primary={link.document.title} />
-                    <Stack direction="row" sx={{ gap: 1, mr: isTrashed ? 0 : 8 }}>
-                      {link.label ? <Chip size="small" label={link.label} /> : null}
+                    <ListItemText
+                      primary={link.document.title}
+                      secondary={link.label ?? undefined}
+                    />
+                    <Stack
+                      direction="row"
+                      sx={{
+                        gap: 1,
+                        mr: (link.draft && canApprove) || !isTrashed ? 16 : 0,
+                      }}
+                    >
+                      {link.draft ? <Chip size="small" label="Szkic" /> : null}
                       {link.document.deletedAt ? (
                         <Chip size="small" variant="outlined" label="W koszu" />
                       ) : null}
@@ -1060,6 +1252,11 @@ export const DocumentDetailPage = ({
             {unlinkDocuments.error.message}
           </Alert>
         ) : null}
+        {approveDocumentLink.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {approveDocumentLink.error.message}
+          </Alert>
+        ) : null}
       </Paper>
       <Paper component="section" variant="outlined" sx={{ mt: 3, p: 3 }}>
         <Typography variant="h2" component="h2">
@@ -1083,28 +1280,51 @@ export const DocumentDetailPage = ({
                 disableGutters
                 divider
                 secondaryAction={
-                  !isTrashed && comment.author.accountId === currentUserId ? (
-                    <Tooltip title="Usuń komentarz" describeChild disableInteractive>
-                      <IconButton
-                        aria-label={`Usuń komentarz ${comment.id}`}
-                        color="error"
-                        size="small"
-                        disabled={deleteDocumentComment.isPending}
-                        onClick={() =>
-                          deleteDocumentComment.mutate({
-                            documentId,
-                            commentId: comment.id,
-                          })
-                        }
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Tooltip>
+                  (comment.draft && canApprove) ||
+                  (!isTrashed && comment.author.accountId === currentUserId) ? (
+                    <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}>
+                      {comment.draft && canApprove ? (
+                        <Button
+                          size="small"
+                          disabled={approveDocumentComment.isPending}
+                          onClick={() => approveDocumentComment.mutate(comment.id)}
+                        >
+                          Zatwierdź
+                        </Button>
+                      ) : null}
+                      {!isTrashed && comment.author.accountId === currentUserId ? (
+                        <Tooltip title="Usuń komentarz" describeChild disableInteractive>
+                          <IconButton
+                            aria-label={`Usuń komentarz ${comment.id}`}
+                            color="error"
+                            size="small"
+                            disabled={deleteDocumentComment.isPending}
+                            onClick={() =>
+                              deleteDocumentComment.mutate({
+                                documentId,
+                                commentId: comment.id,
+                              })
+                            }
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
+                      ) : null}
+                    </Stack>
                   ) : null
                 }
                 sx={{ alignItems: 'flex-start', py: 1.5 }}
               >
-                <Box sx={{ flex: 1, mr: comment.author.accountId === currentUserId ? 5 : 0 }}>
+                <Box
+                  sx={{
+                    flex: 1,
+                    mr:
+                      (comment.draft && canApprove) ||
+                      (!isTrashed && comment.author.accountId === currentUserId)
+                        ? 12
+                        : 0,
+                  }}
+                >
                   <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
                     <Typography component="span" variant="subtitle1">
                       {comment.author.name}
@@ -1112,6 +1332,7 @@ export const DocumentDetailPage = ({
                     <Typography component="time" variant="body2" color="text.secondary">
                       {formatPolishDateTime(comment.createdAt)}
                     </Typography>
+                    {comment.draft ? <Chip size="small" label="Szkic" /> : null}
                   </Stack>
                   <DocumentCommentBody variant="body2">
                     {comment.body}
@@ -1154,6 +1375,11 @@ export const DocumentDetailPage = ({
         {deleteDocumentComment.isError ? (
           <Alert severity="error" sx={{ mt: 2 }}>
             {deleteDocumentComment.error.message}
+          </Alert>
+        ) : null}
+        {approveDocumentComment.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {approveDocumentComment.error.message}
           </Alert>
         ) : null}
       </Paper>
@@ -1199,6 +1425,7 @@ export const DocumentDetailPage = ({
           person: document.person ?? '',
           tags: document.tags,
         }}
+        documentTypes={typeOptions}
         pending={updateDocument.isPending}
         error={updateDocument.error?.message}
         personOptions={personOptions}
@@ -1339,9 +1566,9 @@ export const DocumentDetailPage = ({
                   setMoveDocType(documentTypeSchema.parse(event.target.value))
                 }
               >
-                {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
-                  <MenuItem key={value} value={value}>
-                    {label}
+                {typeOptions.map((documentType) => (
+                  <MenuItem key={documentType.slug} value={documentType.slug}>
+                    {documentType.label}
                   </MenuItem>
                 ))}
               </Select>

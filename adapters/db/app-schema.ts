@@ -17,6 +17,7 @@ import {
 
 import type {
   PadCurrentDocument,
+  DocumentMetadataChanges,
   PadQueuedSubmission,
   PadSignatureRequest,
   PadSubmittedStrokes,
@@ -56,6 +57,21 @@ export const tenantAdmins = pgTable(
     // C3 invariant: role is a closed set enforced at the DB (not only the TS enum).
     check('tenant_admins_role_check', sql`${table.role} IN ('owner', 'admin')`),
   ],
+);
+
+export const documentTypes = pgTable(
+  'document_types',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull(),
+    label: text('label').notNull(),
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.tenantId, table.slug] })],
 );
 
 export const invitations = pgTable(
@@ -206,9 +222,7 @@ export const documents = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
-    docType: text('doc_type', {
-      enum: ['umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny'],
-    }).notNull(),
+    docType: text('doc_type').notNull(),
     documentDate: date('document_date').notNull(),
     periodStart: date('period_start'),
     periodEnd: date('period_end'),
@@ -223,10 +237,6 @@ export const documents = pgTable(
   (table) => [
     index('documents_tenant_date_idx').on(table.tenantId, table.documentDate),
     uniqueIndex('documents_tenant_id_uidx').on(table.tenantId, table.id),
-    check(
-      'documents_doc_type_check',
-      sql`${table.docType} IN ('umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny')`,
-    ),
     check(
       'documents_period_order_check',
       sql`${table.periodStart} IS NULL OR ${table.periodEnd} IS NULL OR ${table.periodStart} <= ${table.periodEnd}`,
@@ -246,6 +256,7 @@ export const documentComments = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     body: text('body').notNull(),
+    draft: boolean('draft').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -277,6 +288,7 @@ export const documentLinks = pgTable(
     fromDocumentId: uuid('from_document_id').notNull(),
     toDocumentId: uuid('to_document_id').notNull(),
     label: text('label'),
+    draft: boolean('draft').notNull().default(false),
   },
   (table) => [
     foreignKey({
@@ -300,6 +312,39 @@ export const documentLinks = pgTable(
     check(
       'document_links_label_check',
       sql`${table.label} IS NULL OR (${table.label} = btrim(${table.label}) AND length(${table.label}) BETWEEN 1 AND 60)`,
+    ),
+  ],
+);
+
+export const documentMetadataProposals = pgTable(
+  'document_metadata_proposals',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id').notNull(),
+    changes: jsonb('proposed_changes').$type<DocumentMetadataChanges>().notNull(),
+    creatorAccountId: text('creator_account_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: 'document_metadata_proposals_document_fk',
+      columns: [table.tenantId, table.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }).onDelete('cascade'),
+    index('document_metadata_proposals_tenant_document_created_idx').on(
+      table.tenantId,
+      table.documentId,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      'document_metadata_proposals_changes_check',
+      sql`jsonb_typeof(${table.changes}) = 'object' AND ${table.changes} <> '{}'::jsonb`,
     ),
   ],
 );

@@ -8,9 +8,13 @@ import {
   activeSourceUpdateRequestQuery,
   cancelSourceUpdateRequestMutation,
   addDocumentCommentMutation,
+  approveDocumentCommentMutation,
+  approveDocumentLinkMutation,
+  approveDocumentMetadataProposalMutation,
   changePasswordMutation,
   createApiTokenMutation,
   createDocumentMutation,
+  createDocumentTypeMutation,
   createSavedSearchMutation,
   createSignatureRecordMutation,
   createSourceUpdateRequestMutation,
@@ -18,14 +22,20 @@ import {
   decideSourceUpdateRequestMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
+  deleteDocumentTypeMutation,
   deleteDocumentCommentMutation,
   deleteSavedSearchMutation,
   directFileUploadMutation,
   documentQuery,
+  documentTypesInvalidates,
+  documentTypesQuery,
   documentCommentsInvalidates,
   documentCommentsQuery,
   documentLinksInvalidates,
   documentLinksQuery,
+  documentMetadataProposalsInvalidates,
+  documentMetadataProposalsQuery,
+  documentFileSealQuery,
   documentsInvalidates,
   documentsQuery,
   exportDocumentsMutation,
@@ -36,10 +46,12 @@ import {
   purgeDocumentMutation,
   pendingSourceUpdateRequestsQuery,
   requestPasswordResetMutation,
+  rejectDocumentMetadataProposalMutation,
   requireDocumentSignatureMutation,
   resetPasswordMutation,
   requestFileUploadMutation,
   restoreDocumentMutation,
+  renameDocumentTypeMutation,
   revokeApiTokenMutation,
   savedSearchesInvalidates,
   savedSearchesQuery,
@@ -120,6 +132,33 @@ const errorResponse = (code: 'conflict' | 'unauthorized', message: string) =>
 const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 describe('document query descriptors', () => {
+  it('caches immutable file seal verification by file version', async () => {
+    const verification = {
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    };
+    const fetchImpl = vi.fn<typeof fetch>(() => response({ verification }));
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const query = documentFileSealQuery(api, document.id, documentFile.id);
+
+    expect(query.queryKey).toEqual([
+      'documents',
+      'detail',
+      document.id,
+      'file',
+      documentFile.id,
+      'seal',
+    ]);
+    expect(query.staleTime).toBe(Infinity);
+    await expect(newClient().fetchQuery(query)).resolves.toEqual({ verification });
+  });
+
   it('executes the list queryFn and unwraps its API result', async () => {
     const fetchImpl = vi.fn<typeof fetch>(() => response({ documents: [] }));
     const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
@@ -136,9 +175,22 @@ describe('document query descriptors', () => {
     const link = {
       linkId: '66666666-6666-4666-8666-666666666666',
       label: null,
+      draft: true,
       document: { ...document, id: otherDocumentId },
     };
-    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).endsWith('/approve')) {
+        return response({
+          link: {
+            id: link.linkId,
+            tenantId: document.tenantId,
+            fromDocumentId: document.id,
+            toDocumentId: otherDocumentId,
+            label: null,
+            draft: false,
+          },
+        });
+      }
       if (init?.method === 'POST') return response({ link });
       if (init?.method === 'DELETE') return response({ deleted: true });
       return response({ links: [link] });
@@ -156,6 +208,9 @@ describe('document query descriptors', () => {
       }),
     ).resolves.toEqual({ link });
     await expect(
+      new MutationObserver(client, approveDocumentLinkMutation(api)).mutate(link.linkId),
+    ).resolves.toMatchObject({ link: { id: link.linkId, draft: false } });
+    await expect(
       new MutationObserver(client, unlinkDocumentsMutation(api)).mutate({
         documentId: document.id,
         otherDocumentId,
@@ -171,6 +226,7 @@ describe('document query descriptors', () => {
       documentId: document.id,
       author: { accountId: 'user-1', name: 'Owner' },
       body: 'Pierwszy',
+      draft: true,
       createdAt: '2026-08-16T10:00:00.000Z',
     };
     const second = {
@@ -180,6 +236,9 @@ describe('document query descriptors', () => {
       createdAt: '2026-08-16T11:00:00.000Z',
     };
     const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      if (String(input).endsWith('/approve')) {
+        return response({ comment: { ...first, draft: false } });
+      }
       if (init?.method === 'POST') return response({ comment: first });
       if (init?.method === 'DELETE') return response({ deleted: true });
       return String(input).includes('cursor=next-page')
@@ -204,6 +263,9 @@ describe('document query descriptors', () => {
       }),
     ).resolves.toEqual({ comment: first });
     await expect(
+      new MutationObserver(client, approveDocumentCommentMutation(api)).mutate(first.id),
+    ).resolves.toEqual({ comment: { ...first, draft: false } });
+    await expect(
       new MutationObserver(client, deleteDocumentCommentMutation(api)).mutate({
         documentId: document.id,
         commentId: first.id,
@@ -211,6 +273,44 @@ describe('document query descriptors', () => {
     ).resolves.toEqual({ deleted: true });
     expect(documentCommentsInvalidates(document.id)).toEqual({
       queryKey: ['document-comments', document.id],
+    });
+  });
+
+  it('binds paginated metadata proposal queries and resolution mutations', async () => {
+    const first = {
+      id: '55555555-5555-4555-8555-555555555555',
+      tenantId: 'tenant-default',
+      documentId: document.id,
+      changes: { title: 'Pierwsza' },
+      creator: { accountId: 'user-1', name: 'Owner' },
+      createdAt: '2026-08-16T10:00:00.000Z',
+    };
+    const second = {
+      ...first,
+      id: '66666666-6666-4666-8666-666666666666',
+      changes: { person: 'Anna Nowak' },
+    };
+    const fetchImpl = vi.fn<typeof fetch>((input) => {
+      if (String(input).endsWith('/approve')) return response({ document });
+      if (String(input).endsWith('/reject')) return response({ deleted: true });
+      return String(input).includes('cursor=next-page')
+        ? response({ items: [second], nextCursor: null })
+        : response({ items: [first], nextCursor: 'next-page' });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const client = newClient();
+
+    await expect(
+      client.fetchQuery(documentMetadataProposalsQuery(api, document.id)),
+    ).resolves.toEqual({ items: [first, second], nextCursor: null });
+    await expect(
+      new MutationObserver(client, approveDocumentMetadataProposalMutation(api)).mutate(first.id),
+    ).resolves.toEqual({ document });
+    await expect(
+      new MutationObserver(client, rejectDocumentMetadataProposalMutation(api)).mutate(second.id),
+    ).resolves.toEqual({ deleted: true });
+    expect(documentMetadataProposalsInvalidates(document.id)).toEqual({
+      queryKey: ['document-metadata-proposals', document.id],
     });
   });
 
@@ -226,7 +326,11 @@ describe('document query descriptors', () => {
     expect(meQuery(api).queryKey).toEqual(['me']);
     expect(query.queryKey).toEqual(['documents', 'detail', document.id]);
     await expect(newClient().fetchQuery(query)).resolves.toEqual({
-      document: { ...document, files: [] },
+      document: {
+        ...document,
+        files: [],
+        pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
+      },
     });
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(`/api/documents/${document.id}`);
 
@@ -276,6 +380,9 @@ describe('document mutation descriptors', () => {
       if (url.includes('/files/') && url.endsWith('/move')) {
         return response({ document: { ...document, files: [documentFile] } });
       }
+      if (url.endsWith(`/api/documents/${document.id}`) && init?.method === 'PATCH') {
+        return response({ outcome: 'updated', document, proposal: null });
+      }
       if (init?.method === 'DELETE') return response({ deleted: true });
       return response({ document });
     });
@@ -297,7 +404,7 @@ describe('document mutation descriptors', () => {
     await expect(observe(create).mutate(input)).resolves.toEqual({ document });
     await expect(
       observe(updateDocumentMutation(api)).mutate({ documentId: document.id, input }),
-    ).resolves.toEqual({ document });
+    ).resolves.toEqual({ outcome: 'updated', document, proposal: null });
     await expect(
       observe(waiveDocumentSignatureMutation(api)).mutate(document.id),
     ).resolves.toEqual({ document });
@@ -429,6 +536,43 @@ describe('saved search query descriptors', () => {
     await expect(
       observe(deleteSavedSearchMutation(api)).mutate(savedSearch.id),
     ).resolves.toEqual({ deleted: true });
+  });
+});
+
+describe('document type query descriptors', () => {
+  it('executes list/create/rename/delete and invalidates label consumers', async () => {
+    const documentType = { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 60 };
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'GET') return response({ documentTypes: [documentType] });
+      if (init?.method === 'DELETE') return response({ deleted: true });
+      return response({ documentType });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const client = newClient();
+    const observe = <TData, TVariables>(
+      descriptor: ConstructorParameters<typeof MutationObserver<TData, Error, TVariables>>[1],
+    ) => new MutationObserver(client, descriptor);
+
+    await expect(client.fetchQuery(documentTypesQuery(api))).resolves.toEqual({
+      documentTypes: [documentType],
+    });
+    await expect(
+      observe(createDocumentTypeMutation(api)).mutate({ label: documentType.label }),
+    ).resolves.toEqual({ documentType });
+    await expect(
+      observe(renameDocumentTypeMutation(api)).mutate({
+        slug: documentType.slug,
+        input: { label: 'Kontrakt' },
+      }),
+    ).resolves.toEqual({ documentType });
+    await expect(
+      observe(deleteDocumentTypeMutation(api)).mutate(documentType.slug),
+    ).resolves.toEqual({ deleted: true });
+    expect(documentTypesInvalidates()).toEqual([
+      { queryKey: ['document-types'] },
+      { queryKey: ['documents'] },
+      { queryKey: ['saved-searches'] },
+    ]);
   });
 });
 

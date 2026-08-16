@@ -662,10 +662,15 @@ absent from a capability's list is denied.
 Personal API tokens resolve from `Authorization: Bearer pat_...` before session
 auth. A valid token becomes the owning user's identity plus an `apiToken` scope
 restriction; the normal owner/admin grant must still pass, then `decide`
-intersects the token scopes. `read` grants only document list/show/file/export
-reads. `write` grants document write operations except document/file deletion
+intersects the token scopes. `read` grants document list/show/file/export
+reads, the tenant document-type dictionary listing and file seal
+verification. `write` grants document write operations except document/file deletion
 and approval. `write:draft` grants document writes only where the operation creates
-or targets a draft document. Token management, account/auth identity, saved
+or targets a draft document, with two approval-gated exceptions that may target any
+document: link and comment creation stores draft annotations, and metadata updates
+file metadata-change proposals. A `write:draft` token never edits document metadata
+directly; a session user must approve a proposal before its changes are applied. Token
+management, account/auth identity, saved
 search management, user-preference management, tenant settings, signature
 records, approval and all deletes are session-only.
 
@@ -1119,13 +1124,19 @@ code.
   captured links over its HTTP API. The auth mail senders in `create-auth.ts`
   are consumers of `sendMail`, not the port's shape.
 - `DocumentRepository`: tenant-scoped archive metadata and file records.
+- `DocumentTypeRepository`: tenant-scoped document-type dictionary and usage lookup.
 - `DocumentLinkRepository`: tenant-scoped, bidirectional related-document pairs.
+- `DocumentMetadataProposalRepository`: tenant-scoped pending document metadata changes
+  with creator attribution and individual approval or rejection.
 - `TenantSettingsRepository`: tenant-scoped signature-record retention, PDF-seal
   enablement and declared/actual date policy.
 - `SignatureRecordRepository`: signing-session stamp data and PDF-seal evidence,
   listed by document.
 - `PdfSealPort`: vendor-contained PAdES/CMS signing selected from environment
-  credentials in server composition; verification is a read-only CLI adapter.
+  credentials in server composition.
+- `PdfSealVerificationPort`: read-only PAdES/CMS verification for stored document
+  files, implemented by the PDF seal adapter and wired in server composition;
+  the CLI also uses the same pure verification function directly.
 - `StoragePort`: private document bytes, metadata and upload targets.
 - `TenantDomainRepository`, `TenantRepository`, `TenantAccessReader`: read-only
   tenant-resolution and archive-access plumbing.

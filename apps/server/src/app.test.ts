@@ -11,11 +11,13 @@ import {
 } from '#core/contract/index.js';
 import {
   MAX_PAD_STROKES_BYTES,
+  DEFAULT_DOCUMENT_TYPES,
   PAD_STROKES_TOO_LARGE_MESSAGE,
   ok,
   type Document,
   type DocumentComment,
   type DocumentListFilter,
+  type DocumentType,
   type PadSession,
   type PadQueuedSubmission,
   type SourceUpdateRequest,
@@ -81,6 +83,7 @@ const baseDeps = (): AppDeps => ({
     findById: async () => null,
     findDeletedById: async () => null,
     findAnyById: async () => null,
+    getPendingDraftCounts: async () => ({ comments: 0, links: 0, metadataProposals: 0 }),
     listFiles: async () => [],
     listFilesIncludingDeleted: async () => [],
     listAllFilesIncludingDeleted: async () => [],
@@ -102,6 +105,15 @@ const baseDeps = (): AppDeps => ({
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
   },
+  documentTypes: {
+    listByTenant: async () => [...DEFAULT_DOCUMENT_TYPES],
+    findBySlug: async (_tenantId, slug) =>
+      DEFAULT_DOCUMENT_TYPES.find((documentType) => documentType.slug === slug) ?? null,
+    create: async () => null,
+    rename: async () => null,
+    delete: async () => false,
+    isUsedByAnyDocument: async () => false,
+  },
   documentComments: {
     listByDocument: async () => [],
     create: async (input) => ({
@@ -110,8 +122,10 @@ const baseDeps = (): AppDeps => ({
       documentId: input.documentId,
       author: { accountId: input.authorAccountId, name: 'Demo' },
       body: input.body,
+      draft: input.draft,
       createdAt: '2026-08-16T10:00:00.000Z',
     }),
+    approve: async () => null,
     findById: async () => null,
     delete: async () => false,
   },
@@ -119,7 +133,15 @@ const baseDeps = (): AppDeps => ({
     create: async () => null,
     findBetween: async () => null,
     listForDocument: async () => [],
+    approve: async () => null,
     deleteBetween: async () => false,
+  },
+  documentMetadataProposals: {
+    listByDocument: async () => [],
+    create: async () => { throw new Error('not implemented'); },
+    findById: async () => null,
+    apply: async () => null,
+    reject: async () => false,
   },
   padSessions: {
     create: async (input) => ({
@@ -194,6 +216,18 @@ const baseDeps = (): AppDeps => ({
     decide: async () => null,
     cancel: async () => null,
     complete: async () => null,
+  },
+  pdfSealVerification: {
+    verify: () => ({
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    }),
   },
   storage: {
     put: async () => ok(undefined),
@@ -347,6 +381,7 @@ describe('buildApp', () => {
                 documentId: comment.documentId,
                 author: { accountId: comment.authorAccountId, name: 'Demo' },
                 body: comment.body,
+                draft: comment.draft,
                 createdAt: comment.createdAt,
               },
             ]
@@ -359,7 +394,21 @@ describe('buildApp', () => {
           documentId: input.documentId,
           author: { accountId: input.authorAccountId, name: 'Demo' },
           body: input.body,
+          draft: input.draft,
           createdAt: '2026-08-16T12:00:00.000Z',
+        };
+      },
+      approve: async () => {
+        if (!comment) return null;
+        comment = { ...comment, draft: false };
+        return {
+          id: comment.id,
+          tenantId: comment.tenantId,
+          documentId: comment.documentId,
+          author: { accountId: comment.authorAccountId, name: 'Demo' },
+          body: comment.body,
+          draft: comment.draft,
+          createdAt: comment.createdAt,
         };
       },
       findById: async () => comment,
@@ -385,6 +434,16 @@ describe('buildApp', () => {
     expect(await listed.json()).toMatchObject({
       ok: true,
       data: { items: [{ author: { name: 'Demo' } }] },
+    });
+
+    const approved = await buildApp(deps).request(
+      API_ROUTES.documentCommentApprove.path.replace(':commentId', commentId),
+      { method: API_ROUTES.documentCommentApprove.method, headers },
+    );
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({
+      ok: true,
+      data: { comment: { id: commentId, draft: false } },
     });
 
     const deleted = await buildApp(deps).request(
@@ -484,7 +543,11 @@ describe('buildApp', () => {
     deps.documents.listByTenant = async (tenantId, filter) => {
       seenTenant = tenantId;
       seenFilter = filter;
-      return [{ ...row, signers: [{ accountId: 'account-1', name: 'Maria Choma' }] }];
+      return [{
+        ...row,
+        pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
+        signers: [{ accountId: 'account-1', name: 'Maria Choma' }],
+      }];
     };
     const response = await buildApp(deps).request(
       `${API_PATHS.documents}?signatureStatus=needs-signature&signerAccountId=account-1`,
@@ -675,9 +738,18 @@ describe('buildApp', () => {
       {
         linkId: '33333333-3333-4333-8333-333333333333',
         label: 'podstawa',
+        draft: false,
         document: other,
       },
     ];
+    deps.documentLinks.approve = async (tenantId, linkId) => ({
+      id: linkId,
+      tenantId,
+      fromDocumentId: documentId,
+      toDocumentId: otherDocumentId,
+      label: 'podstawa',
+      draft: false,
+    });
     deps.documentLinks.deleteBetween = async () => true;
     const app = buildApp(deps);
     const linksPath = API_ROUTES.documentLinks.path.replace(':documentId', documentId);
@@ -701,6 +773,22 @@ describe('buildApp', () => {
     expect(await listed.json()).toMatchObject({
       ok: true,
       data: { links: [{ document: { title: 'Uchwała' } }] },
+    });
+
+    const approved = await app.request(
+      API_ROUTES.documentLinkApprove.path.replace(
+        ':linkId',
+        '33333333-3333-4333-8333-333333333333',
+      ),
+      {
+        method: API_ROUTES.documentLinkApprove.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({
+      ok: true,
+      data: { link: { draft: false } },
     });
 
     const deleted = await app.request(
@@ -908,6 +996,48 @@ describe('buildApp', () => {
     expect(await listed.json()).toMatchObject({
       ok: true,
       data: { items: [{ id: recordId }], nextCursor: null },
+    });
+  });
+
+  it('serves seal verification details through the document file route', async () => {
+    const deps = authorizedDeps();
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const fileId = '22222222-2222-4222-8222-222222222222';
+    deps.documents.findFile = async (tenantId, requestedDocumentId, requestedFileId) =>
+      tenantId === tenant.id &&
+      requestedDocumentId === documentId &&
+      requestedFileId === fileId
+        ? {
+            id: fileId,
+            documentId,
+            role: 'signed-digital',
+            fileName: 'umowa-podpisana.pdf',
+            contentType: 'application/pdf',
+            sizeBytes: 3,
+            storageKey: 'documents/tenant-default/document/file',
+            sealed: true,
+            createdAt: '2026-08-16T10:00:00.000Z',
+          }
+        : null;
+    deps.storage.get = async () => ok(new Uint8Array([1, 2, 3]));
+
+    const response = await buildApp(deps).request(
+      API_ROUTES.documentFileSeal.path
+        .replace(':documentId', documentId)
+        .replace(':fileId', fileId),
+      { headers: { [TENANT_HEADER]: tenant.slug } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        verification: {
+          subject: 'Amazing Company Sp. z o.o.',
+          name: 'Amazing Company Sp. z o.o.',
+          reason: 'Signed by: Anna Nowak',
+        },
+      },
     });
   });
 
@@ -1387,6 +1517,77 @@ describe('buildApp', () => {
     );
     expect(deleted.status).toBe(200);
     expect(await deleted.json()).toMatchObject({ ok: true, data: { deleted: true } });
+  });
+
+  it('lists, creates, renames and deletes document types', async () => {
+    const deps = authorizedDeps();
+    let rows: DocumentType[] = DEFAULT_DOCUMENT_TYPES.map((documentType) => ({
+      ...documentType,
+    }));
+    deps.documentTypes = {
+      listByTenant: async () => rows,
+      findBySlug: async (_tenantId, slug) =>
+        rows.find((documentType) => documentType.slug === slug) ?? null,
+      create: async (input) => {
+        const created = {
+          slug: input.slug,
+          label: input.label,
+          position: input.position,
+        };
+        rows = [...rows, created];
+        return created;
+      },
+      rename: async (_tenantId, slug, label) => {
+        const found = rows.find((documentType) => documentType.slug === slug);
+        if (!found) return null;
+        found.label = label;
+        return found;
+      },
+      delete: async (_tenantId, slug) => {
+        const before = rows.length;
+        rows = rows.filter((documentType) => documentType.slug !== slug);
+        return rows.length < before;
+      },
+      isUsedByAnyDocument: async () => false,
+    };
+    const app = buildApp(deps);
+    const headers = { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' };
+
+    const list = await app.request(API_ROUTES.documentTypes.path, { headers });
+    expect(await list.json()).toEqual({
+      ok: true,
+      data: { documentTypes: DEFAULT_DOCUMENT_TYPES },
+    });
+
+    const created = await app.request(API_ROUTES.documentTypesCreate.path, {
+      method: API_ROUTES.documentTypesCreate.method,
+      headers,
+      body: JSON.stringify({ label: 'Umowa z klientem' }),
+    });
+    expect(created.status).toBe(200);
+    expect(await created.json()).toMatchObject({
+      ok: true,
+      data: { documentType: { slug: 'umowa-z-klientem', position: 60 } },
+    });
+
+    const renamed = await app.request(
+      API_ROUTES.documentTypeRename.path.replace(':slug', 'umowa-z-klientem'),
+      {
+        method: API_ROUTES.documentTypeRename.method,
+        headers,
+        body: JSON.stringify({ label: 'Kontrakt z klientem' }),
+      },
+    );
+    expect(await renamed.json()).toMatchObject({
+      ok: true,
+      data: { documentType: { slug: 'umowa-z-klientem', label: 'Kontrakt z klientem' } },
+    });
+
+    const deleted = await app.request(
+      API_ROUTES.documentTypeDelete.path.replace(':slug', 'umowa-z-klientem'),
+      { method: API_ROUTES.documentTypeDelete.method, headers },
+    );
+    expect(await deleted.json()).toEqual({ ok: true, data: { deleted: true } });
   });
 
   it('rejects anonymous saved search access with the unauthorized taxonomy', async () => {

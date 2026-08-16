@@ -6,14 +6,20 @@ import {
   createInvitationSchema,
   createApiTokenSchema,
   createDocumentSchema,
+  createDocumentTypeSchema,
   createDocumentCommentSchema,
   createSavedSearchSchema,
   createSignatureRecordSchema,
   createSourceUpdateRequestSchema,
   documentFileSchema,
   documentCommentListItemSchema,
+  documentDetailSchema,
+  documentMetadataChangesSchema,
+  documentMetadataProposalListItemSchema,
+  documentLinkSchema,
   documentListItemSchema,
   documentListFilterSchema,
+  documentTypeDefinitionSchema,
   linkedDocumentSchema,
   linkDocumentsInputSchema,
   documentSchema,
@@ -33,6 +39,7 @@ import {
   padSessionStateOutputSchema as domainPadSessionStateOutputSchema,
   padSessionSubmissionConsumeOutputSchema as domainPadSessionSubmissionConsumeOutputSchema,
   padStrokeSubmissionSchema as domainPadSessionSubmitInputSchema,
+  pdfSealVerificationSchema,
   moveDocumentFileSchema,
   paginationQuerySchema,
   publicTenantProfileSchema,
@@ -45,6 +52,7 @@ import {
   setUserPreferenceSchema,
   staffRoleSchema,
   updateDocumentSchema,
+  renameDocumentTypeSchema,
   updateTenantSettingsSchema,
   userPreferenceKeySchema,
   userPreferenceSchema,
@@ -113,9 +121,27 @@ export const documentCreateOutputSchema = z.object({
   document: documentSchema,
 });
 
-export const documentGetOutputSchema = z.object({
-  document: documentWithFilesSchema,
+export const documentTypeListOutputSchema = z.object({
+  documentTypes: z.array(documentTypeDefinitionSchema),
 });
+
+export const documentTypeCreateInputSchema = createDocumentTypeSchema;
+
+export const documentTypeCreateOutputSchema = z.object({
+  documentType: documentTypeDefinitionSchema,
+});
+
+export const documentTypeRenameInputSchema = renameDocumentTypeSchema;
+
+export const documentTypeRenameOutputSchema = z.object({
+  documentType: documentTypeDefinitionSchema,
+});
+
+export const documentTypeDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
+
+export const documentGetOutputSchema = z.object({ document: documentDetailSchema });
 
 export const documentCommentListInputSchema = paginationQuerySchema;
 
@@ -129,14 +155,44 @@ export const documentCommentCreateOutputSchema = z.object({
   comment: documentCommentListItemSchema,
 });
 
+export const documentCommentApproveOutputSchema = z.object({
+  comment: documentCommentListItemSchema,
+});
+
 export const documentCommentDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
-export const documentUpdateInputSchema = updateDocumentSchema;
+export const documentUpdateInputSchema = z.union([
+  updateDocumentSchema,
+  documentMetadataChangesSchema,
+]);
 
-export const documentUpdateOutputSchema = z.object({
+export const documentUpdateOutputSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('updated'),
+    document: documentSchema,
+    proposal: z.null(),
+  }),
+  z.object({
+    outcome: z.literal('proposed'),
+    document: documentSchema,
+    proposal: documentMetadataProposalListItemSchema,
+  }),
+]);
+
+export const documentMetadataProposalListInputSchema = paginationQuerySchema;
+
+export const documentMetadataProposalListOutputSchema = paginatedOutputSchema(
+  documentMetadataProposalListItemSchema,
+);
+
+export const documentMetadataProposalApproveOutputSchema = z.object({
   document: documentSchema,
+});
+
+export const documentMetadataProposalRejectOutputSchema = z.object({
+  deleted: z.literal(true),
 });
 
 export const documentApproveOutputSchema = z.object({
@@ -159,6 +215,10 @@ export const documentLinkCreateInputSchema = linkDocumentsInputSchema;
 
 export const documentLinkCreateOutputSchema = z.object({
   link: linkedDocumentSchema,
+});
+
+export const documentLinkApproveOutputSchema = z.object({
+  link: documentLinkSchema,
 });
 
 export const documentLinkListOutputSchema = z.object({
@@ -202,6 +262,10 @@ export const finalizeFileUploadInputSchema = finalizeFileUploadSchema;
 
 export const documentFileOutputSchema = z.object({
   file: documentFileSchema,
+});
+
+export const documentFileSealOutputSchema = z.object({
+  verification: pdfSealVerificationSchema,
 });
 
 export const serverUploadMetadataSchema = fileUploadRequestSchema;
@@ -422,15 +486,35 @@ export const API_ROUTES = {
   me: { method: 'GET', path: '/api/me' },
   documents: { method: 'GET', path: '/api/documents' },
   documentsCreate: { method: 'POST', path: '/api/documents' },
+  documentTypes: { method: 'GET', path: '/api/document-types' },
+  documentTypesCreate: { method: 'POST', path: '/api/document-types' },
+  documentTypeRename: { method: 'PATCH', path: '/api/document-types/:slug' },
+  documentTypeDelete: { method: 'DELETE', path: '/api/document-types/:slug' },
   documentsTrash: { method: 'GET', path: '/api/documents/trash' },
   document: { method: 'GET', path: '/api/documents/:documentId' },
   documentComments: { method: 'GET', path: '/api/documents/:documentId/comments' },
   documentCommentCreate: { method: 'POST', path: '/api/documents/:documentId/comments' },
+  documentCommentApprove: {
+    method: 'POST',
+    path: '/api/document-comments/:commentId/approve',
+  },
   documentCommentDelete: {
     method: 'DELETE',
     path: '/api/documents/:documentId/comments/:commentId',
   },
   documentUpdate: { method: 'PATCH', path: '/api/documents/:documentId' },
+  documentMetadataProposals: {
+    method: 'GET',
+    path: '/api/documents/:documentId/metadata-proposals',
+  },
+  documentMetadataProposalApprove: {
+    method: 'POST',
+    path: '/api/document-metadata-proposals/:proposalId/approve',
+  },
+  documentMetadataProposalReject: {
+    method: 'POST',
+    path: '/api/document-metadata-proposals/:proposalId/reject',
+  },
   documentApprove: { method: 'POST', path: '/api/documents/:documentId/approve' },
   documentUnapprove: { method: 'POST', path: '/api/documents/:documentId/unapprove' },
   documentWaiveSignature: {
@@ -443,6 +527,10 @@ export const API_ROUTES = {
   },
   documentLinks: { method: 'GET', path: '/api/documents/:documentId/links' },
   documentLinkCreate: { method: 'POST', path: '/api/documents/:documentId/links' },
+  documentLinkApprove: {
+    method: 'POST',
+    path: '/api/document-links/:linkId/approve',
+  },
   documentLinkDelete: {
     method: 'DELETE',
     path: '/api/documents/:documentId/links/:otherDocumentId',
@@ -473,6 +561,10 @@ export const API_ROUTES = {
   documentFileContent: {
     method: 'GET',
     path: '/api/documents/:documentId/files/:fileId/content',
+  },
+  documentFileSeal: {
+    method: 'GET',
+    path: '/api/documents/:documentId/files/:fileId/seal',
   },
   documentFileExport: {
     method: 'GET',

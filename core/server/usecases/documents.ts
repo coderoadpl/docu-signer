@@ -1,6 +1,7 @@
 import {
   createDocumentSchema,
   documentListFilterSchema,
+  documentMetadataChangesSchema,
   err,
   exportTooLarge,
   exportDocumentsSchema,
@@ -17,21 +18,30 @@ import {
   type AppError,
   type CreateDocument,
   type Document,
+  type DocumentDetail,
   type DocumentFile,
   type DocumentListFilter,
   type DocumentListItem,
+  type DocumentMetadataChanges,
+  type DocumentMetadataProposalListItem,
   type DocumentWithFiles,
   type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
   type MoveDocumentFile,
   type Result,
-  type UpdateDocument,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { DocumentRepository, IdGenerator, StoragePort, UploadTarget } from '../ports.js';
+import type {
+  DocumentRepository,
+  DocumentMetadataProposalRepository,
+  DocumentTypeRepository,
+  IdGenerator,
+  StoragePort,
+  UploadTarget,
+} from '../ports.js';
 import {
   attemptPdfSeal,
   preparePdfSeal,
@@ -41,10 +51,24 @@ import {
 
 export interface DocumentDeps {
   documents: DocumentRepository;
+  documentMetadataProposals: DocumentMetadataProposalRepository;
+  documentTypes: DocumentTypeRepository;
   storage: StoragePort;
   ids: IdGenerator;
   pdfSealing?: PdfSealingDeps;
 }
+
+export type DocumentUpdateResult =
+  | {
+      outcome: 'updated';
+      document: Document;
+      proposal: null;
+    }
+  | {
+      outcome: 'proposed';
+      document: Document;
+      proposal: DocumentMetadataProposalListItem;
+    };
 
 export type FileUploadTarget =
   | { kind: 'direct'; key: string; target: UploadTarget }
@@ -74,6 +98,15 @@ const findDocument = async (
   const found = await deps.documents.findById(tenantId, documentId);
   return found ? ok(found) : err(notFound('Document not found'));
 };
+
+const validateDocumentType = async (
+  tenantId: string,
+  slug: string,
+  deps: DocumentDeps,
+): Promise<Result<void, AppError>> =>
+  (await deps.documentTypes.findBySlug(tenantId, slug))
+    ? ok(undefined)
+    : err(validation('Unknown document type'));
 
 const tokenHasWrite = (ctx: Ctx): boolean =>
   ctx.identity.apiToken?.scopes.includes('write') ?? false;
@@ -108,6 +141,8 @@ export const createDocument = async (
   if (!scope.ok) return scope;
   const parsed = createDocumentSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document', parsed.error.flatten()));
+  const validDocumentType = await validateDocumentType(scope.value, parsed.data.docType, deps);
+  if (!validDocumentType.ok) return validDocumentType;
   if (tokenNeedsDraftDocument(ctx) && parsed.data.draft !== true) {
     return err(forbidden('write:draft tokens can only create draft documents'));
   }
@@ -150,13 +185,16 @@ export const getDocument = async (
   ctx: Ctx,
   documentId: string,
   deps: DocumentDeps,
-): Promise<Result<DocumentWithFiles, AppError>> => {
+): Promise<Result<DocumentDetail, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:read');
   if (!scope.ok) return scope;
   const document = await deps.documents.findAnyById(scope.value, documentId);
   if (!document) return err(notFound('Document not found'));
-  const files = await deps.documents.listFilesIncludingDeleted(scope.value, documentId);
-  return ok({ ...document, files });
+  const [files, pendingDrafts] = await Promise.all([
+    deps.documents.listFilesIncludingDeleted(scope.value, documentId),
+    deps.documents.getPendingDraftCounts(scope.value, documentId),
+  ]);
+  return ok({ ...document, files, pendingDrafts });
 };
 
 export const listTrashedDocuments = async (
@@ -182,22 +220,88 @@ export const listTrashedDocuments = async (
 export const updateDocument = async (
   ctx: Ctx,
   documentId: string,
-  input: UpdateDocument,
+  input: unknown,
   deps: DocumentDeps,
-): Promise<Result<Document, AppError>> => {
+): Promise<Result<DocumentUpdateResult, AppError>> => {
   const scope = authorizeTenant(ctx, 'document:write');
   if (!scope.ok) return scope;
+  if (tokenNeedsDraftDocument(ctx)) {
+    const fullUpdate = updateDocumentSchema.safeParse(input);
+    const parsedChanges = documentMetadataChangesSchema.safeParse(
+      fullUpdate.success
+        ? {
+            ...fullUpdate.data,
+            periodStart: fullUpdate.data.periodStart ?? null,
+            periodEnd: fullUpdate.data.periodEnd ?? null,
+            person: fullUpdate.data.person ?? null,
+          }
+        : input,
+    );
+    if (!parsedChanges.success) {
+      return err(validation('Invalid document metadata proposal', parsedChanges.error.flatten()));
+    }
+    const validDocumentType = parsedChanges.data.docType === undefined
+      ? ok(undefined)
+      : await validateDocumentType(scope.value, parsedChanges.data.docType, deps);
+    if (!validDocumentType.ok) return validDocumentType;
+    const document = await findDocument(scope.value, documentId, deps);
+    if (!document.ok) return document;
+    const proposed = parsedChanges.data;
+    const changes: DocumentMetadataChanges = {
+      ...(proposed.title === undefined || proposed.title === document.value.title
+        ? {}
+        : { title: proposed.title }),
+      ...(proposed.docType === undefined || proposed.docType === document.value.docType
+        ? {}
+        : { docType: proposed.docType }),
+      ...(proposed.documentDate === undefined ||
+      proposed.documentDate === document.value.documentDate
+        ? {}
+        : { documentDate: proposed.documentDate }),
+      ...(proposed.periodStart === undefined ||
+      proposed.periodStart === document.value.periodStart
+        ? {}
+        : { periodStart: proposed.periodStart }),
+      ...(proposed.periodEnd === undefined || proposed.periodEnd === document.value.periodEnd
+        ? {}
+        : { periodEnd: proposed.periodEnd }),
+      ...(proposed.person === undefined || proposed.person === document.value.person
+        ? {}
+        : { person: proposed.person }),
+      ...(proposed.tags === undefined ||
+      JSON.stringify(proposed.tags) === JSON.stringify(document.value.tags)
+        ? {}
+        : { tags: proposed.tags }),
+    };
+    const changed = documentMetadataChangesSchema.safeParse(changes);
+    if (!changed.success) {
+      return err(validation('Document metadata is unchanged'));
+    }
+    const proposal = await deps.documentMetadataProposals.create({
+      id: deps.ids.nextId(),
+      tenantId: scope.value,
+      documentId,
+      changes: changed.data,
+      creatorAccountId: ctx.identity.userId,
+    });
+    return ok({ outcome: 'proposed', document: document.value, proposal });
+  }
   const parsed = updateDocumentSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document', parsed.error.flatten()));
-  const document = await requireDraftDocumentForToken(ctx, scope.value, documentId, deps);
-  if (!document.ok) return document;
-  const updated = await deps.documents.update(scope.value, documentId, {
+  const validDocumentType = await validateDocumentType(scope.value, parsed.data.docType, deps);
+  if (!validDocumentType.ok) return validDocumentType;
+  const normalized = {
     ...parsed.data,
     periodStart: parsed.data.periodStart ?? null,
     periodEnd: parsed.data.periodEnd ?? null,
     person: parsed.data.person ?? null,
+  };
+  const updated = await deps.documents.update(scope.value, documentId, {
+    ...normalized,
   });
-  return updated ? ok(updated) : err(notFound('Document not found'));
+  return updated
+    ? ok({ outcome: 'updated', document: updated, proposal: null })
+    : err(notFound('Document not found'));
 };
 
 export const approveDocument = async (
@@ -493,6 +597,8 @@ export const moveDocumentFile = async (
   if (!scope.ok) return scope;
   const parsed = moveDocumentFileSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document payload', parsed.error.flatten()));
+  const validDocumentType = await validateDocumentType(scope.value, parsed.data.docType, deps);
+  if (!validDocumentType.ok) return validDocumentType;
   const source = await findDocument(scope.value, documentId, deps);
   if (!source.ok) return source;
   if (tokenNeedsDraftDocument(ctx) && !source.value.draft) {

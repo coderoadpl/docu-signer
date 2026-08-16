@@ -8,7 +8,7 @@ import { clearMailpit, fetchMagicLink } from '../scripts/mailpit.js';
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
 const DEMO_PASSWORD = 'demo1234';
 const MAGIC_EMAIL = 'mag@example.com';
-const MAILPIT_API_URL = 'http://localhost:47980';
+const MAILPIT_API_URL = 'http://localhost:9980';
 const PRODUCT_PASS_SCREENSHOT_DIR = process.env['PRODUCT_PASS_SCREENSHOT_DIR'];
 const documentCreateResponseSchema = z.object({
   ok: z.literal(true),
@@ -182,7 +182,7 @@ const createSignableDocument = async (page: Page, title: string, sourceName: str
   await page.getByRole('button', { name: 'Dodaj dokument' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Dodaj dokument' });
   await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
-  await dialog.getByLabel('Osoba').fill('Jan Kowalski');
+  await dialog.getByLabel('Strona').fill('Jan Kowalski');
   await enterPolishDate(dialog, 'Data podpisania', '01.01.2026');
   await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
 
@@ -212,7 +212,7 @@ const createSourceDocument = async (
   await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
   await dialog.getByLabel('Typ').click();
   await page.getByRole('option', { name: docType }).click();
-  await dialog.getByLabel('Osoba').fill('Jan Kowalski');
+  await dialog.getByLabel('Strona').fill('Jan Kowalski');
   await enterPolishDate(dialog, 'Data podpisania', '01.01.2026');
   await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
@@ -478,7 +478,7 @@ test('creates, uploads, previews and exports an archived document', async ({
   await page.getByRole('button', { name: 'Dodaj dokument' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Dodaj dokument' });
   await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
-  await dialog.getByLabel('Osoba').fill('Jan Kowalski');
+  await dialog.getByLabel('Strona').fill('Jan Kowalski');
   await dialog.getByLabel('Tagi').fill('e2e, podpis');
   await enterPolishDate(dialog, 'Data podpisania', '01.01.2026');
   await dialog.getByText('Okres').click();
@@ -653,7 +653,7 @@ test('moves a document to trash and restores it', async ({ page }) => {
   await page.getByRole('button', { name: 'Dodaj dokument' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Dodaj dokument' });
   await dialog.getByRole('textbox', { name: 'Tytuł' }).fill(title);
-  await dialog.getByLabel('Osoba').fill('Jan Kowalski');
+  await dialog.getByLabel('Strona').fill('Jan Kowalski');
   await enterPolishDate(dialog, 'Data podpisania', '02.08.2026');
   await dialog.getByRole('button', { name: 'Dodaj dokument' }).click();
 

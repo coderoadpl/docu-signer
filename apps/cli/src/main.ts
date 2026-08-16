@@ -18,6 +18,8 @@ import {
   apiTokenCreateInputSchema,
   documentCommentCreateInputSchema,
   documentCreateInputSchema,
+  documentTypeCreateInputSchema,
+  documentTypeRenameInputSchema,
   documentLinkCreateInputSchema,
   invitationCreateInputSchema,
   tenantSettingsUpdateInputSchema,
@@ -25,6 +27,8 @@ import {
 import {
   appError,
   canonicalSlugSchema,
+  documentMetadataChangesSchema,
+  documentTypeSchema,
   err,
   internal,
   notFound,
@@ -35,6 +39,7 @@ import {
   type DocumentCommentListItem,
   type DocumentListFilter,
   type DocumentListItem,
+  type DocumentMetadataProposalListItem,
   type LinkedDocument,
   type Result,
 } from '#core/domain/index.js';
@@ -140,6 +145,7 @@ const tokenListFilterSchema = z.object({
 });
 const documentListOptionsSchema = z.object({
   signer: z.string().trim().min(1).optional(),
+  pendingDrafts: z.boolean().optional(),
 });
 const documentLinkBatchArgsSchema = z.object({
   targetId: z.uuid(),
@@ -148,6 +154,49 @@ const documentLinkBatchArgsSchema = z.object({
 });
 const documentLinkPairArgsSchema = z.object({ id: z.uuid(), otherId: z.uuid() });
 const documentCommentArgsSchema = documentCommentCreateInputSchema.extend({ id: z.uuid() });
+const annotationIdSchema = z.uuid();
+const documentProposalUpdateOptionsSchema = z
+  .object({
+    id: z.uuid(),
+    title: z.string().trim().min(1).optional(),
+    type: documentTypeSchema.optional(),
+    date: z.iso.date().optional(),
+    periodStart: z.iso.date().optional(),
+    clearPeriodStart: z.boolean(),
+    periodEnd: z.iso.date().optional(),
+    clearPeriodEnd: z.boolean(),
+    person: z.string().trim().min(1).optional(),
+    clearPerson: z.boolean(),
+    tag: z.array(z.string().trim().min(1)).optional(),
+    clearTags: z.boolean(),
+  })
+  .refine((value) => value.periodStart === undefined || !value.clearPeriodStart, {
+    message: 'Use either --period-start or --clear-period-start',
+  })
+  .refine((value) => value.periodEnd === undefined || !value.clearPeriodEnd, {
+    message: 'Use either --period-end or --clear-period-end',
+  })
+  .refine((value) => value.person === undefined || !value.clearPerson, {
+    message: 'Use either --person or --clear-person',
+  })
+  .refine((value) => value.tag === undefined || !value.clearTags, {
+    message: 'Use either --tag or --clear-tags',
+  })
+  .refine(
+    (value) =>
+      value.title !== undefined ||
+      value.type !== undefined ||
+      value.date !== undefined ||
+      value.periodStart !== undefined ||
+      value.clearPeriodStart ||
+      value.periodEnd !== undefined ||
+      value.clearPeriodEnd ||
+      value.person !== undefined ||
+      value.clearPerson ||
+      value.tag !== undefined ||
+      value.clearTags,
+    { message: 'Provide at least one metadata change' },
+  );
 
 interface LinkedDocumentOutcome {
   documentId: string;
@@ -206,10 +255,16 @@ export const linkDocumentsToTarget = async (
 };
 export const documentListFilterFromOptions = (
   options: z.output<typeof documentListOptionsSchema>,
-): DocumentListFilter =>
-  options.signer === undefined ? {} : { signerAccountId: options.signer };
+): DocumentListFilter => ({
+  ...(options.signer === undefined ? {} : { signerAccountId: options.signer }),
+  ...(options.pendingDrafts ? { draft: 'all' as const, pendingDrafts: 'true' as const } : {}),
+});
 const booleanOptionSchema = z.enum(['true', 'false']).transform((value) => value === 'true');
 const tenantDateModeOptionSchema = z.enum(['declared', 'actual']);
+const documentTypeSlugArgsSchema = z.object({ slug: documentTypeSchema });
+const documentTypeRenameArgsSchema = documentTypeRenameInputSchema.extend({
+  slug: documentTypeSchema,
+});
 
 export const verifySealBytes = (
   bytes: Uint8Array,
@@ -227,6 +282,8 @@ export const verifySealBytes = (
 const formatSealVerification = (verification: PdfSealVerification): string =>
   [
     `subject: ${verification.subject}`,
+    `name: ${verification.name ?? '-'}`,
+    `reason: ${verification.reason ?? '-'}`,
     `declared-time: ${verification.declaredAt}`,
     `integrity: ${verification.integrity ? 'valid' : 'invalid'}`,
   ].join('\n');
@@ -571,6 +628,65 @@ tenantSettings
     );
   });
 
+const documentType = program
+  .command('document-type')
+  .description('Manage document types for the active tenant');
+
+documentType.command('list').description('List document types').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.listDocumentTypes(), ctx.json, (data) =>
+    data.documentTypes
+      .map((item) => `${item.position}\t${item.label}\t${item.slug}`)
+      .join('\n'),
+  );
+});
+
+documentType
+  .command('add <label...>')
+  .description('Add a document type')
+  .action(async (label: string[]) => {
+    const ctx = cliCtx();
+    const input = parseArgs(
+      documentTypeCreateInputSchema,
+      { label: label.join(' ') },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(await ctx.api.createDocumentType(input), ctx.json, (data) =>
+      `added: ${data.documentType.label} (${data.documentType.slug})`,
+    );
+  });
+
+documentType
+  .command('rename <slug> <label...>')
+  .description('Rename a document type')
+  .action(async (slug: string, label: string[]) => {
+    const ctx = cliCtx();
+    const input = parseArgs(
+      documentTypeRenameArgsSchema,
+      { slug, label: label.join(' ') },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(
+      await ctx.api.renameDocumentType(input.slug, { label: input.label }),
+      ctx.json,
+      (data) => `renamed: ${data.documentType.label} (${data.documentType.slug})`,
+    );
+  });
+
+documentType
+  .command('remove <slug>')
+  .description('Remove a document type')
+  .action(async (slug: string) => {
+    const ctx = cliCtx();
+    const input = parseArgs(documentTypeSlugArgsSchema, { slug }, ctx.json);
+    if (input === undefined) return;
+    emit(await ctx.api.deleteDocumentType(input.slug), ctx.json, () =>
+      `removed: ${input.slug}`,
+    );
+  });
+
 const origin = program.command('origin').description('API-origin profiles');
 
 origin.command('list').description('List configured API origins').action(() => {
@@ -624,12 +740,148 @@ document
   .command('list')
   .description('List documents')
   .option('--signer <accountId>', 'filter by contributing account ID')
-  .action(async (options: { signer?: string }) => {
+  .option('--pending-drafts', 'filter by pending draft annotations or metadata proposals', false)
+  .action(async (options: { signer?: string; pendingDrafts: boolean }) => {
     const ctx = cliCtx();
     const parsed = parseArgs(documentListOptionsSchema, options, ctx.json);
     if (parsed === undefined) return;
     emit(await ctx.api.listDocuments(documentListFilterFromOptions(parsed)), ctx.json, (data) =>
       formatDocumentRows(data.documents),
+    );
+  });
+
+document
+  .command('propose-update <id>')
+  .description('Propose document metadata changes with a write:draft token')
+  .option('--title <title>', 'title')
+  .option('--type <slug>', 'document type slug')
+  .option('--date <date>', 'signature date (YYYY-MM-DD)')
+  .option('--period-start <date>', 'period start (YYYY-MM-DD)')
+  .option('--clear-period-start', 'clear period start', false)
+  .option('--period-end <date>', 'period end (YYYY-MM-DD)')
+  .option('--clear-period-end', 'clear period end', false)
+  .option('--person <person>', 'person')
+  .option('--clear-person', 'clear person', false)
+  .option('--tag <tag...>', 'replace tags')
+  .option('--clear-tags', 'clear tags', false)
+  .action(
+    async (
+      id: string,
+      options: {
+        title?: string;
+        type?: string;
+        date?: string;
+        periodStart?: string;
+        clearPeriodStart: boolean;
+        periodEnd?: string;
+        clearPeriodEnd: boolean;
+        person?: string;
+        clearPerson: boolean;
+        tag?: string[];
+        clearTags: boolean;
+      },
+    ) => {
+      const ctx = cliCtx();
+      const parsed = parseArgs(
+        documentProposalUpdateOptionsSchema,
+        { id, ...options },
+        ctx.json,
+      );
+      if (parsed === undefined) return;
+      const input = parseArgs(
+        documentMetadataChangesSchema,
+        {
+          ...(parsed.title === undefined ? {} : { title: parsed.title }),
+          ...(parsed.type === undefined ? {} : { docType: parsed.type }),
+          ...(parsed.date === undefined ? {} : { documentDate: parsed.date }),
+          ...(parsed.clearPeriodStart
+            ? { periodStart: null }
+            : parsed.periodStart === undefined
+              ? {}
+              : { periodStart: parsed.periodStart }),
+          ...(parsed.clearPeriodEnd
+            ? { periodEnd: null }
+            : parsed.periodEnd === undefined
+              ? {}
+              : { periodEnd: parsed.periodEnd }),
+          ...(parsed.clearPerson
+            ? { person: null }
+            : parsed.person === undefined
+              ? {}
+              : { person: parsed.person }),
+          ...(parsed.clearTags
+            ? { tags: [] }
+            : parsed.tag === undefined
+              ? {}
+              : { tags: parsed.tag }),
+        },
+        ctx.json,
+      );
+      if (input === undefined) return;
+      emit(await ctx.api.proposeDocumentUpdate(parsed.id, input), ctx.json, (data) =>
+        data.outcome === 'proposed'
+          ? `proposed: ${data.proposal.id}`
+          : `updated directly: ${data.document.title} (${data.document.id})`,
+      );
+    },
+  );
+
+const documentProposal = document.command('proposal').description('Metadata proposals');
+
+documentProposal
+  .command('list <id>')
+  .description('List pending metadata proposals for a document')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    const documentId = parseArgs(annotationIdSchema, id, ctx.json);
+    if (documentId === undefined) return;
+    const items: DocumentMetadataProposalListItem[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await ctx.api.listDocumentMetadataProposals(documentId, {
+        limit: 100,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      if (!page.ok) {
+        emit(page, ctx.json, () => '');
+        return;
+      }
+      items.push(...page.value.items);
+      cursor = page.value.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    emit(ok({ proposals: items }), ctx.json, (data) =>
+      data.proposals.length === 0
+        ? 'no pending metadata proposals'
+        : data.proposals
+            .map(
+              (proposal) =>
+                `- ${proposal.createdAt}\t${proposal.creator.name}\t${Object.keys(proposal.changes).join(', ')}\t(${proposal.id})`,
+            )
+            .join('\n'),
+    );
+  });
+
+document
+  .command('approve-proposal <proposalId>')
+  .description('Approve a pending document metadata proposal')
+  .action(async (proposalId: string) => {
+    const ctx = cliCtx();
+    const id = parseArgs(annotationIdSchema, proposalId, ctx.json);
+    if (id === undefined) return;
+    emit(await ctx.api.approveDocumentMetadataProposal(id), ctx.json, (data) =>
+      `approved proposal: ${id} → ${data.document.title}`,
+    );
+  });
+
+document
+  .command('reject-proposal <proposalId>')
+  .description('Reject a pending document metadata proposal')
+  .action(async (proposalId: string) => {
+    const ctx = cliCtx();
+    const id = parseArgs(annotationIdSchema, proposalId, ctx.json);
+    if (id === undefined) return;
+    emit(await ctx.api.rejectDocumentMetadataProposal(id), ctx.json, () =>
+      `rejected proposal: ${id}`,
     );
   });
 
@@ -752,6 +1004,18 @@ document
   });
 
 document
+  .command('approve-comment <id>')
+  .description('Approve a draft document comment')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    const commentId = parseArgs(annotationIdSchema, id, ctx.json);
+    if (commentId === undefined) return;
+    emit(await ctx.api.approveDocumentComment(commentId), ctx.json, (data) =>
+      `approved comment: ${data.comment.id}`,
+    );
+  });
+
+document
   .command('link <targetId> <ids...>')
   .description('Link one or more documents to a target document')
   .option('--label <text>', 'short relationship label')
@@ -795,6 +1059,18 @@ document
   });
 
 document
+  .command('approve-link <id>')
+  .description('Approve a draft document link')
+  .action(async (id: string) => {
+    const ctx = cliCtx();
+    const linkId = parseArgs(annotationIdSchema, id, ctx.json);
+    if (linkId === undefined) return;
+    emit(await ctx.api.approveDocumentLink(linkId), ctx.json, (data) =>
+      `approved link: ${data.link.id}`,
+    );
+  });
+
+document
   .command('verify-seal <id>')
   .description('Download the newest signed-digital PDF and verify its organization seal')
   .action(async (id: string) => {
@@ -825,7 +1101,7 @@ document
 document
   .command('add <title...>')
   .description('Create a document entry')
-  .requiredOption('--type <type>', 'umowa-uod|uchwala|protokol|rachunek|inny')
+  .requiredOption('--type <slug>', 'document type slug')
   .requiredOption('--date <date>', 'signature date (YYYY-MM-DD)')
   .option('--period-start <date>', 'period start (YYYY-MM-DD)')
   .option('--period-end <date>', 'period end (YYYY-MM-DD)')

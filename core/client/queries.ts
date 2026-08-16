@@ -16,6 +16,7 @@ import {
   type AcceptInvitation,
   type CreateApiToken,
   type CreateDocument,
+  type CreateDocumentType,
   type CreateDocumentComment,
   type CreateInvitation,
   type CreateSavedSearch,
@@ -24,11 +25,13 @@ import {
   type DecideSourceUpdateRequest,
   type DocumentListFilter,
   type DocumentCommentListItem,
+  type DocumentMetadataProposalListItem,
   type LinkDocumentsInput,
   type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
   type MoveDocumentFile,
+  type RenameDocumentType,
   type PadCurrentDocument,
   type PadSessionMode,
   type PadStrokeSubmission,
@@ -128,6 +131,13 @@ const documentsScopes = {
   detail: (documentId: string) => ['documents', 'detail', documentId] as const,
   file: (documentId: string, fileId: string) =>
     ['documents', 'detail', documentId, 'file', fileId] as const,
+  fileSeal: (documentId: string, fileId: string) =>
+    ['documents', 'detail', documentId, 'file', fileId, 'seal'] as const,
+};
+
+const documentTypeScopes = {
+  all: () => ['document-types'] as const,
+  lists: () => ['document-types', 'list'] as const,
 };
 
 const documentLinksScopes = {
@@ -138,6 +148,12 @@ const documentLinksScopes = {
 const documentCommentScopes = {
   all: () => ['document-comments'] as const,
   document: (documentId: string) => ['document-comments', documentId] as const,
+};
+
+const documentMetadataProposalScopes = {
+  all: () => ['document-metadata-proposals'] as const,
+  document: (documentId: string) =>
+    ['document-metadata-proposals', documentId] as const,
 };
 
 export const documentLinksInvalidates = () => ({ queryKey: documentLinksScopes.all() });
@@ -223,6 +239,37 @@ export const documentsQuery = (api: ApiClient, filter: DocumentListFilter = {}) 
     call: ({ signal }) => api.listDocuments(filter, signal),
   });
 
+export const documentTypesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: documentTypeScopes.lists(),
+    call: ({ signal }) => api.listDocumentTypes(signal),
+  });
+
+export const createDocumentTypeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentTypeScopes.all(), 'create'],
+    call: (input: CreateDocumentType) => api.createDocumentType(input),
+  });
+
+export const renameDocumentTypeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentTypeScopes.all(), 'rename'],
+    call: ({ slug, input }: { slug: string; input: RenameDocumentType }) =>
+      api.renameDocumentType(slug, input),
+  });
+
+export const deleteDocumentTypeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentTypeScopes.all(), 'delete'],
+    call: (slug: string) => api.deleteDocumentType(slug),
+  });
+
+export const documentTypesInvalidates = (): Array<{ queryKey: readonly unknown[] }> => [
+  { queryKey: documentTypeScopes.all() },
+  { queryKey: documentsScopes.all() },
+  { queryKey: savedSearchScopes.all() },
+];
+
 export const trashedDocumentsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: documentsScopes.trash(),
@@ -270,6 +317,54 @@ export const documentCommentsQuery = (api: ApiClient, documentId: string) =>
     call: ({ signal }) => listAllDocumentComments(api, documentId, signal),
   });
 
+const listAllDocumentMetadataProposals = async (
+  api: ApiClient,
+  documentId: string,
+  signal: AbortSignal,
+) => {
+  const items: DocumentMetadataProposalListItem[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await api.listDocumentMetadataProposals(
+      documentId,
+      {
+        limit: MAX_PAGE_LIMIT,
+        ...(cursor === undefined ? {} : { cursor }),
+      },
+      signal,
+    );
+    if (!page.ok) return page;
+    items.push(...page.value.items);
+    cursor = page.value.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return ok({ items, nextCursor: null });
+};
+
+export const documentMetadataProposalsQuery = (
+  api: ApiClient,
+  documentId: string,
+) =>
+  defineQuery({
+    queryKey: documentMetadataProposalScopes.document(documentId),
+    call: ({ signal }) => listAllDocumentMetadataProposals(api, documentId, signal),
+  });
+
+export const approveDocumentMetadataProposalMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentMetadataProposalScopes.all(), 'approve'],
+    call: (proposalId: string) => api.approveDocumentMetadataProposal(proposalId),
+  });
+
+export const rejectDocumentMetadataProposalMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentMetadataProposalScopes.all(), 'reject'],
+    call: (proposalId: string) => api.rejectDocumentMetadataProposal(proposalId),
+  });
+
+export const documentMetadataProposalsInvalidates = (documentId: string) => ({
+  queryKey: documentMetadataProposalScopes.document(documentId),
+});
+
 export const addDocumentCommentMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...documentCommentScopes.all(), 'create'],
@@ -284,6 +379,12 @@ export const deleteDocumentCommentMutation = (api: ApiClient) =>
       api.deleteDocumentComment(documentId, commentId),
   });
 
+export const approveDocumentCommentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentCommentScopes.all(), 'approve'],
+    call: (commentId: string) => api.approveDocumentComment(commentId),
+  });
+
 export const documentCommentsInvalidates = (documentId: string) => ({
   queryKey: documentCommentScopes.document(documentId),
 });
@@ -296,6 +397,17 @@ export const documentFileQuery = (
   defineQuery({
     queryKey: documentsScopes.file(documentId, fileId),
     call: ({ signal }) => api.downloadDocumentFile(documentId, fileId, signal),
+  });
+
+export const documentFileSealQuery = (
+  api: ApiClient,
+  documentId: string,
+  fileId: string,
+) =>
+  defineQuery({
+    queryKey: documentsScopes.fileSeal(documentId, fileId),
+    staleTime: Infinity,
+    call: ({ signal }) => api.getDocumentFileSealVerification(documentId, fileId, signal),
   });
 
 export const createDocumentMutation = (api: ApiClient) =>
@@ -328,6 +440,12 @@ export const unlinkDocumentsMutation = (api: ApiClient) =>
     mutationKey: [...documentLinksScopes.all(), 'delete'],
     call: ({ documentId, otherDocumentId }: { documentId: string; otherDocumentId: string }) =>
       api.unlinkDocuments(documentId, otherDocumentId),
+  });
+
+export const approveDocumentLinkMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentLinksScopes.all(), 'approve'],
+    call: (linkId: string) => api.approveDocumentLink(linkId),
   });
 
 export const approveDocumentMutation = (api: ApiClient) =>

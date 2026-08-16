@@ -103,6 +103,78 @@ const renderPage = async (
 };
 
 describe('DocumentDetailPage', () => {
+  it('shows pending metadata diffs and approves or rejects each proposal', async () => {
+    const approve = vi.fn();
+    const reject = vi.fn();
+    const firstId = '61616161-6161-4161-8161-616161616161';
+    const secondId = '62626262-6262-4262-8262-626262626262';
+    let proposals = [
+      {
+        id: firstId,
+        tenantId: 'tenant-1',
+        documentId: DOCUMENT_ID,
+        changes: { title: 'Nowy tytuł', person: null, tags: ['ważne', 'pilne'] },
+        creator: { accountId: 'user-importer', name: 'Importer' },
+        createdAt: '2026-08-16T10:00:00.000Z',
+      },
+      {
+        id: secondId,
+        tenantId: 'tenant-1',
+        documentId: DOCUMENT_ID,
+        changes: { documentDate: '2026-08-20' },
+        creator: { accountId: 'user-importer', name: 'Importer' },
+        createdAt: '2026-08-16T11:00:00.000Z',
+      },
+    ];
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            document: {
+              ...document,
+              pendingDrafts: { comments: 0, links: 0, metadataProposals: proposals.length },
+            },
+          },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/metadata-proposals`, () =>
+        HttpResponse.json({ ok: true, data: { items: proposals, nextCursor: null } }),
+      ),
+      http.post(`/api/document-metadata-proposals/${firstId}/approve`, () => {
+        approve();
+        proposals = proposals.filter((proposal) => proposal.id !== firstId);
+        return HttpResponse.json({ ok: true, data: { document: { ...document, title: 'Nowy tytuł' } } });
+      }),
+      http.post(`/api/document-metadata-proposals/${secondId}/reject`, () => {
+        reject();
+        proposals = proposals.filter((proposal) => proposal.id !== secondId);
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    expect(
+      await screen.findByLabelText('2 propozycje zmian'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Umowa z Anną → Nowy tytuł')).toBeInTheDocument();
+    expect(screen.getByText('Anna Nowak → Brak')).toBeInTheDocument();
+    expect(screen.getByText('ważne → ważne, pilne')).toBeInTheDocument();
+    const firstRow = screen.getByText('Umowa z Anną → Nowy tytuł').closest('li');
+    if (!firstRow) throw new Error('Proposal row was not rendered');
+    await userEvent.click(within(firstRow).getByRole('button', { name: 'Zatwierdź' }));
+    await waitFor(() => expect(approve).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.queryByText('Umowa z Anną → Nowy tytuł')).not.toBeInTheDocument(),
+    );
+
+    const secondRow = screen.getByText('18.07.2026 → 20.08.2026').closest('li');
+    if (!secondRow) throw new Error('Proposal row was not rendered');
+    await userEvent.click(within(secondRow).getByRole('button', { name: 'Odrzuć' }));
+    await waitFor(() => expect(reject).toHaveBeenCalledOnce());
+    expect(await screen.findByText('Brak proponowanych zmian.')).toBeInTheDocument();
+  });
+
   it('renders, adds, and restricts comment deletion to the current user', async () => {
     const ownCommentId = '67676767-6767-4767-8767-676767676767';
     const foreignCommentId = '68686868-6868-4868-8868-686868686868';
@@ -233,6 +305,153 @@ describe('DocumentDetailPage', () => {
     await userEvent.click(within(linkedRow).getByRole('button', { name: 'Usuń' }));
     await waitFor(() => expect(remove).toHaveBeenCalledOnce());
     await waitFor(() => expect(screen.queryByText('Umowa ramowa')).not.toBeInTheDocument());
+  });
+
+  it('renders draft annotation chips and approves links and comments', async () => {
+    const linkId = '66666666-6666-4666-8666-666666666666';
+    const commentId = '67676767-6767-4767-8767-676767676767';
+    const approveLink = vi.fn();
+    const approveComment = vi.fn();
+    let linkDraft = true;
+    let commentDraft = true;
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/links`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            links: [{
+              linkId,
+              label: null,
+              draft: linkDraft,
+              document: {
+                ...document,
+                id: RELATED_ID,
+                title: 'Umowa ramowa',
+                files: undefined,
+                signers: undefined,
+              },
+            }],
+          },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/comments`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            items: [{
+              id: commentId,
+              tenantId: 'tenant-1',
+              documentId: DOCUMENT_ID,
+              author: { accountId: 'user-other', name: 'Anna Nowak' },
+              body: 'Komentarz do zatwierdzenia',
+              draft: commentDraft,
+              createdAt: '2026-08-16T12:00:00.000Z',
+            }],
+            nextCursor: null,
+          },
+        }),
+      ),
+      http.post(`/api/document-links/${linkId}/approve`, () => {
+        approveLink();
+        linkDraft = false;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            link: {
+              id: linkId,
+              tenantId: 'tenant-1',
+              fromDocumentId: DOCUMENT_ID,
+              toDocumentId: RELATED_ID,
+              label: null,
+              draft: false,
+            },
+          },
+        });
+      }),
+      http.post(`/api/document-comments/${commentId}/approve`, () => {
+        approveComment();
+        commentDraft = false;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            comment: {
+              id: commentId,
+              tenantId: 'tenant-1',
+              documentId: DOCUMENT_ID,
+              author: { accountId: 'user-other', name: 'Anna Nowak' },
+              body: 'Komentarz do zatwierdzenia',
+              draft: false,
+              createdAt: '2026-08-16T12:00:00.000Z',
+            },
+          },
+        });
+      }),
+    );
+    await renderPage();
+
+    const linkedRow = (await screen.findByText('Umowa ramowa')).closest('li');
+    const commentRow = screen.getByText('Komentarz do zatwierdzenia').closest('li');
+    expect(linkedRow).not.toBeNull();
+    expect(commentRow).not.toBeNull();
+    if (!linkedRow || !commentRow) throw new Error('Draft annotation rows were not rendered');
+    expect(within(linkedRow).getByText('Szkic')).toBeInTheDocument();
+    expect(within(commentRow).getByText('Szkic')).toBeInTheDocument();
+
+    await userEvent.click(within(linkedRow).getByRole('button', { name: 'Zatwierdź' }));
+    await waitFor(() => expect(approveLink).toHaveBeenCalledOnce());
+    await waitFor(() => expect(within(linkedRow).queryByText('Szkic')).not.toBeInTheDocument());
+
+    await userEvent.click(within(commentRow).getByRole('button', { name: 'Zatwierdź' }));
+    await waitFor(() => expect(approveComment).toHaveBeenCalledOnce());
+    await waitFor(() => expect(within(commentRow).queryByText('Szkic')).not.toBeInTheDocument());
+  });
+
+  it('keeps draft chips visible without approval buttons when approval is unavailable', async () => {
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'visitor',
+            email: 'visitor@example.com',
+            name: 'Visitor',
+            tenant: null,
+          },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/links`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            links: [{
+              linkId: '66666666-6666-4666-8666-666666666666',
+              label: null,
+              draft: true,
+              document: {
+                ...document,
+                id: RELATED_ID,
+                title: 'Umowa ramowa',
+                files: undefined,
+                signers: undefined,
+              },
+            }],
+          },
+        }),
+      ),
+    );
+    await renderPage();
+
+    const linkedRow = (await screen.findByText('Umowa ramowa')).closest('li');
+    expect(linkedRow).not.toBeNull();
+    if (!linkedRow) throw new Error('Draft link row was not rendered');
+    expect(within(linkedRow).getByText('Szkic')).toBeInTheDocument();
+    expect(within(linkedRow).queryByRole('button', { name: 'Zatwierdź' })).not.toBeInTheDocument();
   });
 
   it('collapses related documents beyond three entries', async () => {
@@ -542,7 +761,7 @@ describe('DocumentDetailPage', () => {
     await waitFor(() => expect(remove).toHaveBeenCalledOnce());
   });
 
-  it('shows a quiet seal chip only for sealed signed-digital files', async () => {
+  it('opens seal verification details from the sealed-file chip', async () => {
     const signedFile = files[2];
     if (!signedFile) throw new Error('Missing signed file fixture');
     const sealedFile = { ...signedFile, sealed: true };
@@ -560,6 +779,23 @@ describe('DocumentDetailPage', () => {
           data: { document: { ...document, files: [sealedFile, unsealedFile] } },
         }),
       ),
+      http.get(`/api/documents/${DOCUMENT_ID}/files/${SIGNED_ID}/seal`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            verification: {
+              subject: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+              name: 'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+              reason: 'Signed by: Anna Żółć, Marek Nowak',
+              declaredAt: '2026-08-16T10:00:00.000Z',
+              byteRangeValid: true,
+              digestValid: true,
+              signatureValid: true,
+              integrity: true,
+            },
+          },
+        }),
+      ),
     );
     await renderPage();
 
@@ -570,6 +806,100 @@ describe('DocumentDetailPage', () => {
     if (!sealedRow || !unsealedRow) return;
     expect(within(sealedRow).getByText('Pieczęć')).toBeInTheDocument();
     expect(within(unsealedRow).queryByText('Pieczęć')).not.toBeInTheDocument();
+
+    await userEvent.click(
+      within(sealedRow).getByRole('button', {
+        name: `Pokaż szczegóły pieczęci pliku ${sealedFile.fileName}`,
+      }),
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Szczegóły pieczęci' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Pieczęć jest kryptograficznie poprawna/u)).toBeInTheDocument();
+    expect(
+      screen.getByText('Amazing Company Sp. z o.o. — pieczęć dokumentowa'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('16.08.2026')).toBeInTheDocument();
+    expect(screen.getByText('Anna Żółć, Marek Nowak')).toBeInTheDocument();
+    expect(screen.getByText('Signed by: Anna Żółć, Marek Nowak')).toBeInTheDocument();
+    expect(screen.queryByText('2026-08-16T10:00:00.000Z')).not.toBeInTheDocument();
+  });
+
+  it('shows the seal verification error inside the dialog', async () => {
+    const signedFile = files[2];
+    if (!signedFile) throw new Error('Missing signed file fixture');
+    const sealedFile = { ...signedFile, sealed: true };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, files: [sealedFile] } },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/files/${SIGNED_ID}/seal`, () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            error: { code: 'validation', message: 'Pieczęć nie może zostać zweryfikowana' },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    await renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: `Pokaż szczegóły pieczęci pliku ${sealedFile.fileName}`,
+      }),
+    );
+    expect(
+      await screen.findByText(/Pieczęć nie może zostać zweryfikowana/u),
+    ).toBeInTheDocument();
+  });
+
+  it('names each failed partial seal check in an invalid verdict', async () => {
+    const signedFile = files[2];
+    if (!signedFile) throw new Error('Missing signed file fixture');
+    const sealedFile = { ...signedFile, sealed: true };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, files: [sealedFile] } },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/files/${SIGNED_ID}/seal`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            verification: {
+              subject: 'Amazing Company Sp. z o.o.',
+              name: null,
+              reason: null,
+              declaredAt: '2026-08-16T10:00:00.000Z',
+              byteRangeValid: false,
+              digestValid: false,
+              signatureValid: false,
+              integrity: false,
+            },
+          },
+        }),
+      ),
+    );
+    await renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: `Pokaż szczegóły pieczęci pliku ${sealedFile.fileName}`,
+      }),
+    );
+    expect(
+      await screen.findByText(
+        'Pieczęć jest nieprawidłowa. Nieprawidłowe kontrole: zakres bajtów dokumentu, skrót dokumentu, podpis kryptograficzny.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Brak danych')).toBeInTheDocument();
   });
 
   it('edits metadata and uploads through both storage paths', async () => {
@@ -583,7 +913,10 @@ describe('DocumentDetailPage', () => {
       ),
       http.patch(`/api/documents/${DOCUMENT_ID}`, async ({ request }) => {
         update(await request.json());
-        return HttpResponse.json({ ok: true, data: { document } });
+        return HttpResponse.json({
+          ok: true,
+          data: { outcome: 'updated', document, proposal: null },
+        });
       }),
       http.post(
         `/api/documents/${DOCUMENT_ID}/files/upload-request`,
@@ -773,7 +1106,7 @@ describe('DocumentDetailPage', () => {
     await renderPage();
 
     expect(
-      await screen.findByText(/Bez przypisanej osoby/),
+      await screen.findByText(/Bez przypisanej strony/),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'Podgląd' }),

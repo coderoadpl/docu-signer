@@ -34,6 +34,7 @@ describe('CLI command surface', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('account');
     expect(result.stdout).toContain('document');
+    expect(result.stdout).toContain('document-type');
     expect(result.stdout).toContain('login');
     expect(result.stdout).toContain('health');
     expect(result.stdout).toContain('invitation');
@@ -93,9 +94,19 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('link');
     expect(documentHelp.stdout).toContain('unlink');
     expect(documentHelp.stdout).toContain('comment');
+    expect(documentHelp.stdout).toContain('approve-link');
+    expect(documentHelp.stdout).toContain('approve-comment');
+    expect(documentHelp.stdout).toContain('propose-update');
+    expect(documentHelp.stdout).toContain('proposal');
+    expect(documentHelp.stdout).toContain('approve-proposal');
+    expect(documentHelp.stdout).toContain('reject-proposal');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
     expect(listHelp.stdout).toContain('--signer <accountId>');
+    expect(listHelp.stdout).toContain('--pending-drafts');
+    const proposalHelp = run('document', 'proposal', '--help');
+    expect(proposalHelp.status).toBe(0);
+    expect(proposalHelp.stdout).toContain('list');
   }, CLI_TEST_TIMEOUT_MS);
 
   it('maps the signer option to the document list contract filter', () => {
@@ -103,6 +114,10 @@ describe('CLI command surface', () => {
       signerAccountId: 'account-1',
     });
     expect(documentListFilterFromOptions({})).toEqual({});
+    expect(documentListFilterFromOptions({ pendingDrafts: true })).toEqual({
+      draft: 'all',
+      pendingDrafts: 'true',
+    });
   });
 
   it('maps invalid related-document IDs to the validation exit code', () => {
@@ -130,6 +145,55 @@ describe('CLI command surface', () => {
     });
   }, CLI_TEST_TIMEOUT_MS);
 
+  it('maps invalid annotation approval IDs to the validation exit code', () => {
+    for (const command of [
+      'approve-link',
+      'approve-comment',
+      'approve-proposal',
+      'reject-proposal',
+    ]) {
+      const result = run('--json', 'document', command, 'bad-id');
+      expect(result.status).toBe(2);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: false,
+        error: { code: 'validation' },
+      });
+    }
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('requires at least one metadata change for a proposal', () => {
+    const result = run(
+      '--json',
+      'document',
+      'propose-update',
+      '11111111-1111-4111-8111-111111111111',
+    );
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('maps reversed proposal period dates to one validation envelope', () => {
+    const result = run(
+      '--json',
+      'document',
+      'propose-update',
+      '11111111-1111-4111-8111-111111111111',
+      '--period-start',
+      '2026-05-01',
+      '--period-end',
+      '2026-01-01',
+    );
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(result.stderr).toBe('');
+  }, CLI_TEST_TIMEOUT_MS);
+
   it('documents the minimal invitation commands', () => {
     const invitationHelp = run('invitation', '--help');
     expect(invitationHelp.status).toBe(0);
@@ -142,6 +206,22 @@ describe('CLI command surface', () => {
     const settingsHelp = run('tenant-settings', 'set', '--help');
     expect(settingsHelp.status).toBe(0);
     expect(settingsHelp.stdout).toContain('--signature-box-enabled <value>');
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('documents document type management verbs and validates required labels', () => {
+    const help = run('document-type', '--help');
+    expect(help.status).toBe(0);
+    expect(help.stdout).toContain('list');
+    expect(help.stdout).toContain('add');
+    expect(help.stdout).toContain('rename');
+    expect(help.stdout).toContain('remove');
+
+    const missingLabel = run('--json', 'document-type', 'add');
+    expect(missingLabel.status).toBe(2);
+    expect(JSON.parse(missingLabel.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
   }, CLI_TEST_TIMEOUT_MS);
 
   it('requires an explicit signature policy for source updates', () => {
@@ -207,6 +287,7 @@ describe('document link batch', () => {
             link: {
               linkId: '44444444-4444-4444-8444-444444444444',
               label: 'podstawa',
+              draft: true,
               document: {
                 id: targetId,
                 tenantId: 'tenant-default',
@@ -242,7 +323,7 @@ describe('document link batch', () => {
         details: {
           targetId,
           outcomes: [
-            { documentId: firstId, status: 'linked', targetId },
+            { documentId: firstId, status: 'linked', targetId, link: { draft: true } },
             {
               documentId: secondId,
               error: { code: 'not_found' },
@@ -294,6 +375,7 @@ describe('document show comments', () => {
       documentId,
       author: { accountId: 'user-owner', name: 'Owner' },
       body: 'Pierwszy',
+      draft: true,
       createdAt: '2026-08-16T10:00:00.000Z',
     };
     const second = {

@@ -10,8 +10,11 @@ import {
   invitationCreateInputSchema,
   TENANT_HEADER,
   documentCreateInputSchema,
+  documentTypeCreateInputSchema,
+  documentTypeRenameInputSchema,
   documentCommentCreateInputSchema,
   documentCommentListInputSchema,
+  documentMetadataProposalListInputSchema,
   documentLinkCreateInputSchema,
   documentFileMoveInputSchema,
   documentListInputSchema,
@@ -48,10 +51,14 @@ import {
 } from '#core/domain/index.js';
 import {
   approveDocument,
+  approveDocumentComment,
+  approveDocumentLink,
+  approveDocumentMetadataProposal,
   addDocumentComment,
   createApiToken,
   createInvitation,
   createDocument,
+  createDocumentType,
   createPadSession,
   createSavedSearch,
   createSignatureRecord,
@@ -64,6 +71,7 @@ import {
   cancelSourceUpdateRequest,
   completeSourceUpdateRequest,
   deleteDocument,
+  deleteDocumentType,
   deleteDocumentComment,
   deleteSavedSearch,
   exportDocuments,
@@ -71,6 +79,7 @@ import {
   getDocument,
   getFileContent,
   getFileExport,
+  getDocumentFileSealVerification,
   getUserPreference,
   getTenantSettings,
   getActivePadSession,
@@ -79,8 +88,10 @@ import {
   joinOwnPadSession,
   linkDocuments,
   listDocuments,
+  listDocumentTypes,
   listDocumentComments,
   listDocumentLinks,
+  listDocumentMetadataProposals,
   listApiTokens,
   listInvitations,
   listTrashedDocuments,
@@ -91,9 +102,11 @@ import {
   moveDocumentFile,
   purgeDocument,
   removeFile,
+  rejectDocumentMetadataProposal,
   resolveApiTokenIdentity,
   resolveIdentity,
   restoreDocument,
+  renameDocumentType,
   revokeApiToken,
   revokeInvitation,
   requestFileUpload,
@@ -646,6 +659,7 @@ export const buildApp = (deps: AppDeps) => {
       signatureStatus: c.req.query('signatureStatus'),
       signerAccountId: c.req.query('signerAccountId'),
       draft: c.req.query('draft'),
+      pendingDrafts: c.req.query('pendingDrafts'),
     });
     if (!parsed.success) {
       return respond(err(validation('Invalid document filters', parsed.error.flatten())));
@@ -667,6 +681,45 @@ export const buildApp = (deps: AppDeps) => {
     }
     const result = await createDocument(ctxOf(c.get('identity')), parsed.data, deps);
     return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.documentTypes.path, async (c) => {
+    const result = await listDocumentTypes(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ documentTypes: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentTypesCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentTypeCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document type', parsed.error.flatten())));
+    }
+    const result = await createDocumentType(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result.ok ? ok({ documentType: result.value }) : result);
+  });
+
+  app.patch(API_ROUTES.documentTypeRename.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentTypeRenameInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document type', parsed.error.flatten())));
+    }
+    const result = await renameDocumentType(
+      ctxOf(c.get('identity')),
+      c.req.param('slug'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ documentType: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentTypeDelete.path, async (c) => {
+    const result = await deleteDocumentType(
+      ctxOf(c.get('identity')),
+      c.req.param('slug'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
   });
 
   app.get(API_ROUTES.documentsTrash.path, async (c) => {
@@ -711,6 +764,15 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ comment: result.value }) : result);
   });
 
+  app.post(API_ROUTES.documentCommentApprove.path, async (c) => {
+    const result = await approveDocumentComment(
+      ctxOf(c.get('identity')),
+      c.req.param('commentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ comment: result.value }) : result);
+  });
+
   app.delete(API_ROUTES.documentCommentDelete.path, async (c) => {
     const result = await deleteDocumentComment(
       ctxOf(c.get('identity')),
@@ -733,7 +795,42 @@ export const buildApp = (deps: AppDeps) => {
       parsed.data,
       deps,
     );
+    return respond(result);
+  });
+
+  app.get(API_ROUTES.documentMetadataProposals.path, async (c) => {
+    const parsed = documentMetadataProposalListInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid metadata proposal pagination', parsed.error.flatten())));
+    }
+    const result = await listDocumentMetadataProposals(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result);
+  });
+
+  app.post(API_ROUTES.documentMetadataProposalApprove.path, async (c) => {
+    const result = await approveDocumentMetadataProposal(
+      ctxOf(c.get('identity')),
+      c.req.param('proposalId'),
+      deps,
+    );
     return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentMetadataProposalReject.path, async (c) => {
+    const result = await rejectDocumentMetadataProposal(
+      ctxOf(c.get('identity')),
+      c.req.param('proposalId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
   });
 
   app.post(API_ROUTES.documentApprove.path, async (c) => {
@@ -791,6 +888,15 @@ export const buildApp = (deps: AppDeps) => {
       ctxOf(c.get('identity')),
       c.req.param('documentId'),
       parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ link: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentLinkApprove.path, async (c) => {
+    const result = await approveDocumentLink(
+      ctxOf(c.get('identity')),
+      c.req.param('linkId'),
       deps,
     );
     return respond(result.ok ? ok({ link: result.value }) : result);
@@ -959,6 +1065,16 @@ export const buildApp = (deps: AppDeps) => {
         disposition,
       ),
     });
+  });
+
+  app.get(API_ROUTES.documentFileSeal.path, async (c) => {
+    const result = await getDocumentFileSealVerification(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ verification: result.value }) : result);
   });
 
   app.get(API_ROUTES.documentFileExport.path, async (c) => {

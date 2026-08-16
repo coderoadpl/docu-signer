@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { fetchMagicLink } from '../scripts/mailpit.js';
 
 const MAGIC_USER = 'mag@example.com';
-const MAILPIT_API_URL = 'http://localhost:47980';
+const MAILPIT_API_URL = 'http://localhost:9980';
 
 test('magic link signs in a trusted archive user', async ({ page }) => {
   await page.goto('/login');

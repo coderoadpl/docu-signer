@@ -68,16 +68,17 @@ export const AppLayout = () => {
   const me = useQuery(actions.me);
   const code = errorCodeOf(me.error);
   const unauthorized = code === 'unauthorized';
+  const settledUnauthorized = unauthorized && !me.isFetching;
   const forbidden = code === 'forbidden';
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [unauthorized, navigate]);
+    if (settledUnauthorized) void navigate({ to: '/login' });
+  }, [settledUnauthorized, navigate]);
 
-  if (me.isPending) {
+  if (me.isPending || (unauthorized && me.isFetching)) {
     return <Shell state={{ kind: 'loading', label: 'Ładowanie aplikacji…' }} />;
   }
-  if (unauthorized) return null;
+  if (settledUnauthorized) return null;
   if (forbidden) {
     return <Shell state={noArchiveAccessState} />;
   }

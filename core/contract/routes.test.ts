@@ -7,15 +7,24 @@ import {
   apiTokenCreateInputSchema,
   apiTokenCreateOutputSchema,
   documentCreateInputSchema,
+  documentTypeCreateInputSchema,
+  documentTypeCreateOutputSchema,
+  documentTypeDeleteOutputSchema,
+  documentTypeListOutputSchema,
+  documentTypeRenameInputSchema,
+  documentTypeRenameOutputSchema,
   documentCommentCreateInputSchema,
   documentCommentListOutputSchema,
   documentGetOutputSchema,
+  documentFileSealOutputSchema,
   documentListInputSchema,
   documentListOutputSchema,
+  documentMetadataProposalListOutputSchema,
   documentLinkCreateInputSchema,
   documentLinkListOutputSchema,
   documentRestoreOutputSchema,
   documentTrashListOutputSchema,
+  documentUpdateOutputSchema,
   exportDocumentsInputSchema,
   fileUploadRequestInputSchema,
   finalizeFileUploadInputSchema,
@@ -69,6 +78,14 @@ describe('API route contract', () => {
       method: 'GET',
       path: '/api/documents/trash',
     });
+    expect(API_ROUTES.documentTypes).toEqual({
+      method: 'GET',
+      path: '/api/document-types',
+    });
+    expect(API_ROUTES.documentTypeRename).toEqual({
+      method: 'PATCH',
+      path: '/api/document-types/:slug',
+    });
     expect(API_ROUTES.documentRestore).toEqual({
       method: 'POST',
       path: '/api/documents/:documentId/restore',
@@ -81,6 +98,10 @@ describe('API route contract', () => {
       method: 'DELETE',
       path: '/api/documents/:documentId/comments/:commentId',
     });
+    expect(API_ROUTES.documentCommentApprove).toEqual({
+      method: 'POST',
+      path: '/api/document-comments/:commentId/approve',
+    });
     expect(API_ROUTES.documentPurge).toEqual({
       method: 'DELETE',
       path: '/api/documents/:documentId/purge',
@@ -88,6 +109,10 @@ describe('API route contract', () => {
     expect(API_ROUTES.documentFileMove).toEqual({
       method: 'POST',
       path: '/api/documents/:documentId/files/:fileId/move',
+    });
+    expect(API_ROUTES.documentFileSeal).toEqual({
+      method: 'GET',
+      path: '/api/documents/:documentId/files/:fileId/seal',
     });
     expect(API_ROUTES.documentApprove).toEqual({
       method: 'POST',
@@ -116,6 +141,22 @@ describe('API route contract', () => {
     expect(API_ROUTES.documentLinkDelete).toEqual({
       method: 'DELETE',
       path: '/api/documents/:documentId/links/:otherDocumentId',
+    });
+    expect(API_ROUTES.documentLinkApprove).toEqual({
+      method: 'POST',
+      path: '/api/document-links/:linkId/approve',
+    });
+    expect(API_ROUTES.documentMetadataProposals).toEqual({
+      method: 'GET',
+      path: '/api/documents/:documentId/metadata-proposals',
+    });
+    expect(API_ROUTES.documentMetadataProposalApprove).toEqual({
+      method: 'POST',
+      path: '/api/document-metadata-proposals/:proposalId/approve',
+    });
+    expect(API_ROUTES.documentMetadataProposalReject).toEqual({
+      method: 'POST',
+      path: '/api/document-metadata-proposals/:proposalId/reject',
     });
     expect(API_ROUTES.savedSearches).toEqual({
       method: 'GET',
@@ -363,6 +404,34 @@ describe('API route contract', () => {
     ).toBe(true);
     expect(documentTrashListOutputSchema.safeParse({ documents: [{ ...document, files: [] }] }).success).toBe(true);
     expect(documentRestoreOutputSchema.safeParse({ document: { ...document, deletedAt: null } }).success).toBe(true);
+    const proposal = {
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-default',
+      documentId: document.id,
+      changes: { title: 'Nowy tytuł' },
+      creator: { accountId: 'account-1', name: 'Maria Choma' },
+      createdAt: '2026-08-16T10:00:00.000Z',
+    };
+    expect(
+      documentMetadataProposalListOutputSchema.safeParse({
+        items: [proposal],
+        nextCursor: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      documentUpdateOutputSchema.safeParse({
+        outcome: 'proposed',
+        document,
+        proposal,
+      }).success,
+    ).toBe(true);
+    expect(
+      documentUpdateOutputSchema.safeParse({
+        outcome: 'updated',
+        document,
+        proposal: null,
+      }).success,
+    ).toBe(true);
     expect(
       documentTrashListOutputSchema.safeParse({
         documents: [{ ...document, deletedAt: '2026-08-02', files: [] }],
@@ -381,6 +450,47 @@ describe('API route contract', () => {
         },
       }).success,
     ).toBe(true);
+  });
+
+  it('validates document type dictionary envelopes', () => {
+    const documentType = { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 60 };
+    expect(documentTypeCreateInputSchema.parse({ label: ' Umowa z klientem ' })).toEqual({
+      label: 'Umowa z klientem',
+    });
+    expect(documentTypeRenameInputSchema.safeParse({ label: '' }).success).toBe(false);
+    expect(documentTypeListOutputSchema.safeParse({ documentTypes: [documentType] }).success).toBe(true);
+    expect(documentTypeCreateOutputSchema.safeParse({ documentType }).success).toBe(true);
+    expect(documentTypeRenameOutputSchema.safeParse({ documentType }).success).toBe(true);
+    expect(documentTypeDeleteOutputSchema.safeParse({ deleted: true }).success).toBe(true);
+  });
+
+  it('validates the PDF seal verification response', () => {
+    expect(
+      documentFileSealOutputSchema.parse({
+        verification: {
+          subject: 'Amazing Company Sp. z o.o.',
+          name: 'Amazing Company Sp. z o.o.',
+          reason: 'Signed by: Anna Nowak',
+          declaredAt: '2026-08-16T10:00:00.000Z',
+          byteRangeValid: true,
+          digestValid: true,
+          signatureValid: true,
+          integrity: true,
+        },
+      }),
+    ).toMatchObject({ verification: { name: 'Amazing Company Sp. z o.o.' } });
+    expect(
+      documentFileSealOutputSchema.safeParse({
+        verification: {
+          subject: 'Amazing Company Sp. z o.o.',
+          declaredAt: '2026-08-16T10:00:00.000Z',
+          byteRangeValid: true,
+          digestValid: true,
+          signatureValid: true,
+          integrity: true,
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it('rejects invalid health and readiness payloads', () => {
@@ -432,6 +542,7 @@ describe('API route contract', () => {
       documentListInputSchema.safeParse({ signatureStatus: 'not-required' }).success,
     ).toBe(true);
     expect(documentListInputSchema.safeParse({ draft: 'all' }).success).toBe(true);
+    expect(documentListInputSchema.safeParse({ pendingDrafts: 'true' }).success).toBe(true);
     expect(
       documentListInputSchema.safeParse({ signerAccountId: 'account-1' }).success,
     ).toBe(true);
@@ -449,7 +560,7 @@ describe('API route contract', () => {
     expect(
       documentCreateInputSchema.safeParse({
         title: 'Umowa',
-        docType: 'contract',
+        docType: 'Invalid_Type',
         documentDate: '2026-08-01',
       }).success,
     ).toBe(false);
@@ -652,7 +763,7 @@ describe('API route contract', () => {
     expect(
       savedSearchCreateInputSchema.safeParse({
         name: 'Błędny typ',
-        filter: { docType: 'contract' },
+        filter: { docType: 'Invalid_Type' },
       }).success,
     ).toBe(false);
     expect(
