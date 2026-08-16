@@ -176,6 +176,13 @@
       "when": 1786875073332,
       "tag": "0024_talented_madripoor",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786881946078,
+      "tag": "0025_ancient_lethal_legion",
+      "breakpoints": true
     }
   ]
 }

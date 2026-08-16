@@ -87,6 +87,8 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('unapprove');
     expect(documentHelp.stdout).toContain('waive-signature');
     expect(documentHelp.stdout).toContain('require-signature');
+    expect(documentHelp.stdout).toContain('link');
+    expect(documentHelp.stdout).toContain('unlink');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
     expect(listHelp.stdout).toContain('--signer <accountId>');
@@ -98,6 +100,15 @@ describe('CLI command surface', () => {
     });
     expect(documentListFilterFromOptions({})).toEqual({});
   });
+
+  it('maps invalid related-document IDs to the validation exit code', () => {
+    const result = run('--json', 'document', 'unlink', 'bad-id', 'other-bad-id');
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  }, CLI_TEST_TIMEOUT_MS);
 
   it('documents the minimal invitation commands', () => {
     const invitationHelp = run('invitation', '--help');

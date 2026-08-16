@@ -101,6 +101,12 @@ const baseDeps = (): AppDeps => ({
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
   },
+  documentLinks: {
+    create: async () => null,
+    findBetween: async () => null,
+    listForDocument: async () => [],
+    deleteBetween: async () => false,
+  },
   padSessions: {
     create: async (input) => ({
       ...input,
@@ -537,6 +543,80 @@ describe('buildApp', () => {
       ok: true,
       data: { document: { signatureNotRequired: false } },
     });
+  });
+
+  it('creates, lists, and removes document links through contract routes', async () => {
+    const deps = authorizedDeps();
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const otherDocumentId = '22222222-2222-4222-8222-222222222222';
+    const documentRow = (id: string, title: string): Document => ({
+      id,
+      tenantId: tenant.id,
+      title,
+      docType: 'inny',
+      documentDate: '2026-08-16',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      draft: false,
+      signatureNotRequired: false,
+      createdAt: '2026-08-16T10:00:00.000Z',
+      updatedAt: '2026-08-16T10:00:00.000Z',
+      deletedAt: null,
+    });
+    const first = documentRow(documentId, 'Umowa');
+    const other = documentRow(otherDocumentId, 'Uchwała');
+    deps.ids = { nextId: () => '33333333-3333-4333-8333-333333333333' };
+    deps.documents.findAnyById = async (tenantId, id) =>
+      tenantId === tenant.id
+        ? [first, other].find((document) => document.id === id) ?? null
+        : null;
+    deps.documentLinks.create = async (tenantId, input) => ({ tenantId, ...input });
+    deps.documentLinks.findBetween = async () => null;
+    deps.documentLinks.listForDocument = async () => [
+      {
+        linkId: '33333333-3333-4333-8333-333333333333',
+        label: 'podstawa',
+        document: other,
+      },
+    ];
+    deps.documentLinks.deleteBetween = async () => true;
+    const app = buildApp(deps);
+    const linksPath = API_ROUTES.documentLinks.path.replace(':documentId', documentId);
+
+    const created = await app.request(linksPath, {
+      method: API_ROUTES.documentLinkCreate.method,
+      headers: { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' },
+      body: JSON.stringify({ otherDocumentId, label: ' podstawa ' }),
+    });
+    expect(created.status).toBe(200);
+    expect(await created.json()).toMatchObject({
+      ok: true,
+      data: { link: { label: 'podstawa', document: { id: otherDocumentId } } },
+    });
+
+    const listed = await app.request(linksPath, {
+      method: API_ROUTES.documentLinks.method,
+      headers: { [TENANT_HEADER]: tenant.slug },
+    });
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      ok: true,
+      data: { links: [{ document: { title: 'Uchwała' } }] },
+    });
+
+    const deleted = await app.request(
+      API_ROUTES.documentLinkDelete.path
+        .replace(':documentId', documentId)
+        .replace(':otherDocumentId', otherDocumentId),
+      {
+        method: API_ROUTES.documentLinkDelete.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ ok: true, data: { deleted: true } });
   });
 
   it('lists trash, restores and purges documents through the contract routes', async () => {

@@ -17,6 +17,7 @@ import {
 import {
   apiTokenCreateInputSchema,
   documentCreateInputSchema,
+  documentLinkCreateInputSchema,
   invitationCreateInputSchema,
   tenantSettingsUpdateInputSchema,
 } from '#core/contract/index.js';
@@ -133,6 +134,10 @@ const tokenListFilterSchema = z.object({
 });
 const documentListOptionsSchema = z.object({
   signer: z.string().trim().min(1).optional(),
+});
+const documentLinkPairArgsSchema = z.object({
+  id: z.uuid(),
+  otherId: z.uuid(),
 });
 export const documentListFilterFromOptions = (
   options: z.output<typeof documentListOptionsSchema>,
@@ -605,8 +610,14 @@ document
       return;
     }
     const recordsResult = await ctx.api.listSignatureRecords(id, { limit: 1 });
+    const linksResult = await ctx.api.listDocumentLinks(id);
+    if (!linksResult.ok) {
+      emit(linksResult, ctx.json, () => '');
+      return;
+    }
     const data = {
       document: documentResult.value.document,
+      linkedDocuments: linksResult.value.links,
       signatureRecordsExist: signatureRecordsProbeResult(recordsResult),
     };
     emit(ok(data), ctx.json, (value) => {
@@ -617,8 +628,47 @@ document
         value.signatureRecordsExist === null
           ? ''
           : `signature-records=${String(value.signatureRecordsExist)}\n`;
-      return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\n${records}${files || '  no files'}`;
+      const links = value.linkedDocuments.length === 0
+        ? '  no linked documents'
+        : value.linkedDocuments
+            .map((link) => `  - ${link.document.title}\t${link.label ?? 'bez etykiety'}\t(${link.document.id})`)
+            .join('\n');
+      return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\n${records}${files || '  no files'}\nlinked documents:\n${links}`;
     });
+  });
+
+document
+  .command('link <id> <otherId>')
+  .description('Link two related documents')
+  .option('--label <text>', 'short relationship label')
+  .action(async (id: string, otherId: string, options: { label?: string }) => {
+    const ctx = cliCtx();
+    const pair = parseArgs(documentLinkPairArgsSchema, { id, otherId }, ctx.json);
+    if (pair === undefined) return;
+    const input = parseArgs(
+      documentLinkCreateInputSchema,
+      {
+        otherDocumentId: pair.otherId,
+        ...(options.label === undefined ? {} : { label: options.label }),
+      },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(await ctx.api.linkDocuments(pair.id, input), ctx.json, (data) =>
+      `linked: ${data.link.document.title} (${data.link.document.id})${data.link.label ? ` [${data.link.label}]` : ''}`,
+    );
+  });
+
+document
+  .command('unlink <id> <otherId>')
+  .description('Remove a related-document link')
+  .action(async (id: string, otherId: string) => {
+    const ctx = cliCtx();
+    const pair = parseArgs(documentLinkPairArgsSchema, { id, otherId }, ctx.json);
+    if (pair === undefined) return;
+    emit(await ctx.api.unlinkDocuments(pair.id, pair.otherId), ctx.json, () =>
+      `unlinked: ${pair.id} ↔ ${pair.otherId}`,
+    );
   });
 
 document
