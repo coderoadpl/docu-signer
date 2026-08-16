@@ -81,7 +81,8 @@ afterAll(async () => {
   });
 });
 
-const totpEnableSchema = z.object({ totpURI: z.string(), backupCodes: z.array(z.string()) });
+const totpUriSchema = z.object({ totpURI: z.string() });
+const totpEnableSchema = totpUriSchema.extend({ backupCodes: z.array(z.string()) });
 const secretOf = (totpURI: string): string => {
   const secret = new URL(totpURI).searchParams.get('secret');
   if (!secret) throw new Error('totpURI carried no secret');
@@ -100,6 +101,10 @@ describe('TOTP 2FA against the real Better Auth stack (US-028a)', () => {
     const enabled = await call('/api/auth/two-factor/enable', { password }, token);
     expect(enabled.status).toBe(200);
     const { totpURI } = totpEnableSchema.parse(enabled.json);
+
+    const resumed = await call('/api/auth/two-factor/get-totp-uri', { password }, token);
+    expect(resumed.status).toBe(200);
+    expect(secretOf(totpUriSchema.parse(resumed.json).totpURI)).toBe(secretOf(totpURI));
 
     const code = generateSync({ secret: secretOf(totpURI) });
     const verified = await call('/api/auth/two-factor/verify-totp', { code }, token);

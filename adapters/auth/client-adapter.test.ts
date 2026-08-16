@@ -298,10 +298,60 @@ describe('createBetterAuthClientAdapter (web)', () => {
   });
 
   it('enableTwoFactor parses the enrolment payload', async () => {
-    stubJsonResponse({ totpURI: 'otpauth://totp/x', backupCodes: ['a'] });
+    const paths: string[] = [];
+    let callCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      paths.push(String(url));
+      callCount += 1;
+      return Promise.resolve(
+        callCount === 1
+          ? new Response(JSON.stringify({ code: 'TOTP_NOT_ENABLED', message: 'TOTP not enabled' }), {
+              status: 400,
+              headers: { 'content-type': 'application/json' },
+            })
+          : new Response(JSON.stringify({ totpURI: 'otpauth://totp/x', backupCodes: ['a'] }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
     const adapter = createBetterAuthClientAdapter('http://localhost:47100');
     const result = await adapter.enableTwoFactor({ password: 'pw' });
     expect(result).toMatchObject({ ok: true, value: { totpURI: 'otpauth://totp/x' } });
+    expect(paths).toEqual([
+      'http://localhost:47100/api/auth/two-factor/get-totp-uri',
+      'http://localhost:47100/api/auth/two-factor/enable',
+    ]);
+  });
+
+  it('enableTwoFactor resumes an existing secret without rotating it', async () => {
+    const paths: string[] = [];
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      paths.push(String(url));
+      return Promise.resolve(
+        new Response(JSON.stringify({ totpURI: 'otpauth://totp/x?secret=STABLE' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = createBetterAuthClientAdapter('http://localhost:47100');
+
+    expect(await adapter.enableTwoFactor({ password: 'pw' })).toEqual({
+      ok: true,
+      value: { totpURI: 'otpauth://totp/x?secret=STABLE', backupCodes: [] },
+    });
+    expect(await adapter.enableTwoFactor({ password: 'pw' })).toEqual({
+      ok: true,
+      value: { totpURI: 'otpauth://totp/x?secret=STABLE', backupCodes: [] },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(paths).toEqual([
+      'http://localhost:47100/api/auth/two-factor/get-totp-uri',
+      'http://localhost:47100/api/auth/two-factor/get-totp-uri',
+    ]);
   });
 
   it('verifyTotp and disableTwoFactor resolve ok on success', async () => {
