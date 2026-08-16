@@ -255,6 +255,18 @@ export const unapproveDocumentMutation = (api: ApiClient) =>
     call: (documentId: string) => api.unapproveDocument(documentId),
   });
 
+export const waiveDocumentSignatureMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'waive-signature'],
+    call: (documentId: string) => api.waiveDocumentSignature(documentId),
+  });
+
+export const requireDocumentSignatureMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'require-signature'],
+    call: (documentId: string) => api.requireDocumentSignature(documentId),
+  });
+
 export const deleteDocumentMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...documentsScopes.all(), 'delete'],

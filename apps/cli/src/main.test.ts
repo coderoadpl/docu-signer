@@ -85,6 +85,8 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('update-source');
     expect(documentHelp.stdout).toContain('verify-seal');
     expect(documentHelp.stdout).toContain('unapprove');
+    expect(documentHelp.stdout).toContain('waive-signature');
+    expect(documentHelp.stdout).toContain('require-signature');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
     expect(listHelp.stdout).toContain('--signer <accountId>');

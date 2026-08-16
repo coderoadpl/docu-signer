@@ -186,6 +186,8 @@ describe('API client', () => {
       const url = String(input);
       if (url.endsWith('/unapprove')) return json({ ok: true, data: { document } });
       if (url.endsWith('/approve')) return json({ ok: true, data: { document } });
+      if (url.endsWith('/waive-signature')) return json({ ok: true, data: { document } });
+      if (url.endsWith('/require-signature')) return json({ ok: true, data: { document } });
       if (url.endsWith('/api/api-tokens') && init?.method === 'GET') {
         return json({ ok: true, data: { apiTokens: [token] } });
       }
@@ -214,6 +216,8 @@ describe('API client', () => {
 
     await api.approveDocument(document.id);
     await api.unapproveDocument(document.id);
+    await api.waiveDocumentSignature(document.id);
+    await api.requireDocumentSignature(document.id);
     await api.listApiTokens();
     await api.createApiToken({ name: 'Importer', scopes: ['write:draft'] });
     await api.revokeApiToken(token.id);
@@ -226,16 +230,24 @@ describe('API client', () => {
     expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
     expect(String(fetchImpl.mock.calls[1]?.[0])).toBe(`/api/documents/${document.id}/unapprove`);
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' });
-    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe('/api/api-tokens');
-    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'GET' });
-    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      `/api/documents/${document.id}/waive-signature`,
+    );
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'POST' });
+    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
+      `/api/documents/${document.id}/require-signature`,
+    );
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'POST' });
+    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe('/api/api-tokens');
+    expect(fetchImpl.mock.calls[4]?.[1]).toMatchObject({ method: 'GET' });
+    expect(fetchImpl.mock.calls[5]?.[1]).toMatchObject({
       method: 'POST',
       body: JSON.stringify({ name: 'Importer', scopes: ['write:draft'] }),
     });
-    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe(`/api/api-tokens/${token.id}/revoke`);
-    expect(String(fetchImpl.mock.calls[5]?.[0])).toBe('/api/me/preferences/documents.columns');
-    expect(fetchImpl.mock.calls[5]?.[1]).toMatchObject({ method: 'GET' });
-    expect(fetchImpl.mock.calls[6]?.[1]).toMatchObject({
+    expect(String(fetchImpl.mock.calls[6]?.[0])).toBe(`/api/api-tokens/${token.id}/revoke`);
+    expect(String(fetchImpl.mock.calls[7]?.[0])).toBe('/api/me/preferences/documents.columns');
+    expect(fetchImpl.mock.calls[7]?.[1]).toMatchObject({ method: 'GET' });
+    expect(fetchImpl.mock.calls[8]?.[1]).toMatchObject({
       method: 'PUT',
       body: JSON.stringify({ value: { order: ['title'], visible: ['title'] } }),
     });

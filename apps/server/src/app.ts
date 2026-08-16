@@ -90,6 +90,7 @@ import {
   revokeInvitation,
   requestFileUpload,
   requestPadSignature,
+  requireDocumentSignature,
   setPadCurrentDocument,
   serverUpload,
   setUserPreference,
@@ -97,6 +98,7 @@ import {
   updateTenantSettings,
   updateDocument,
   unapproveDocument,
+  waiveDocumentSignature,
   type Ctx,
 } from '#core/server/index.js';
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
@@ -684,6 +686,24 @@ export const buildApp = (deps: AppDeps) => {
 
   app.post(API_ROUTES.documentUnapprove.path, async (c) => {
     const result = await unapproveDocument(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentWaiveSignature.path, async (c) => {
+    const result = await waiveDocumentSignature(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentRequireSignature.path, async (c) => {
+    const result = await requireDocumentSignature(
       ctxOf(c.get('identity')),
       c.req.param('documentId'),
       deps,

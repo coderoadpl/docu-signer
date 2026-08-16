@@ -107,10 +107,15 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
       conditions.push(sql`coalesce(${documents.periodStart}, ${documents.documentDate}) <= ${filter.dateTo}`);
     }
     if (filter.signatureStatus === 'needs-signature') {
-      conditions.push(sql`${hasSourceFile} AND NOT ${hasSignedFile}`);
+      conditions.push(
+        sql`${hasSourceFile} AND NOT ${hasSignedFile} AND NOT ${documents.signatureNotRequired}`,
+      );
     }
     if (filter.signatureStatus === 'signed') {
       conditions.push(hasSignedFile);
+    }
+    if (filter.signatureStatus === 'not-required') {
+      conditions.push(sql`${documents.signatureNotRequired} AND NOT ${hasSignedFile}`);
     }
     if (filter.signerAccountId) {
       conditions.push(sql`exists (
@@ -324,6 +329,22 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     const rows = await db
       .update(documents)
       .set({ draft: true, updatedAt: sql`now()` })
+      .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
+      .returning();
+    return rows[0] ? toDocument(rows[0]) : null;
+  },
+  waiveSignature: async (tenantId, documentId) => {
+    const rows = await db
+      .update(documents)
+      .set({ signatureNotRequired: true, updatedAt: sql`now()` })
+      .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
+      .returning();
+    return rows[0] ? toDocument(rows[0]) : null;
+  },
+  requireSignature: async (tenantId, documentId) => {
+    const rows = await db
+      .update(documents)
+      .set({ signatureNotRequired: false, updatedAt: sql`now()` })
       .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
       .returning();
     return rows[0] ? toDocument(rows[0]) : null;

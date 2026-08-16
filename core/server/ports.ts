@@ -45,7 +45,10 @@ export interface DocumentRepository {
     documentIds: string[],
   ): Promise<DocumentFile[]>;
   create(
-    input: Omit<Document, 'createdAt' | 'updatedAt' | 'deletedAt' | 'draft'> & { draft?: boolean },
+    input: Omit<
+      Document,
+      'createdAt' | 'updatedAt' | 'deletedAt' | 'draft' | 'signatureNotRequired'
+    > & { draft?: boolean; signatureNotRequired?: boolean },
   ): Promise<Document>;
   update(
     tenantId: string,
@@ -57,6 +60,8 @@ export interface DocumentRepository {
   ): Promise<Document | null>;
   approve(tenantId: string, documentId: string): Promise<Document | null>;
   unapprove(tenantId: string, documentId: string): Promise<Document | null>;
+  waiveSignature(tenantId: string, documentId: string): Promise<Document | null>;
+  requireSignature(tenantId: string, documentId: string): Promise<Document | null>;
   delete(tenantId: string, documentId: string): Promise<boolean>;
   restore(tenantId: string, documentId: string): Promise<Document | null>;
   purge(tenantId: string, documentId: string): Promise<boolean>;

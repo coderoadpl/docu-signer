@@ -29,11 +29,13 @@ import {
   purgeDocument,
   removeFile,
   requestFileUpload,
+  requireDocumentSignature,
   restoreDocument,
   serverUpload,
   type DocumentDeps,
   unapproveDocument,
   updateDocument,
+  waiveDocumentSignature,
 } from './documents.js';
 
 const documentId = '11111111-1111-4111-8111-111111111111';
@@ -75,6 +77,7 @@ const documentRow = (tenantId = 'tenant-acme'): Document => ({
   person: null,
   tags: ['contract'],
   draft: false,
+  signatureNotRequired: false,
   createdAt: '2026-07-01T10:00:00.000Z',
   updatedAt: '2026-07-01T10:00:00.000Z',
   deletedAt: null,
@@ -160,6 +163,7 @@ const fake = (
       const created: Document = {
         ...input,
         draft: input.draft ?? false,
+        signatureNotRequired: input.signatureNotRequired ?? false,
         createdAt: '2026-07-01T10:00:00.000Z',
         updatedAt: '2026-07-01T10:00:00.000Z',
         deletedAt: null,
@@ -197,6 +201,34 @@ const fake = (
       const unapproved = { ...current, draft: true, updatedAt: '2026-07-02T10:00:00.000Z' };
       documents[index] = unapproved;
       return unapproved;
+    },
+    waiveSignature: async (tenantId, id) => {
+      const index = documents.findIndex(
+        (document) => document.tenantId === tenantId && document.id === id,
+      );
+      const current = documents[index];
+      if (!current) return null;
+      const waived = {
+        ...current,
+        signatureNotRequired: true,
+        updatedAt: '2026-07-02T10:00:00.000Z',
+      };
+      documents[index] = waived;
+      return waived;
+    },
+    requireSignature: async (tenantId, id) => {
+      const index = documents.findIndex(
+        (document) => document.tenantId === tenantId && document.id === id,
+      );
+      const current = documents[index];
+      if (!current) return null;
+      const required = {
+        ...current,
+        signatureNotRequired: false,
+        updatedAt: '2026-07-02T10:00:00.000Z',
+      };
+      documents[index] = required;
+      return required;
     },
     delete: async (tenantId, id) => {
       const index = documents.findIndex(
@@ -389,6 +421,14 @@ describe('documents use-cases', () => {
         name: 'unapproveDocument',
         run: (deps) => unapproveDocument(ctx(member), documentId, deps),
       },
+      {
+        name: 'waiveDocumentSignature',
+        run: (deps) => waiveDocumentSignature(ctx(member), documentId, deps),
+      },
+      {
+        name: 'requireDocumentSignature',
+        run: (deps) => requireDocumentSignature(ctx(member), documentId, deps),
+      },
       { name: 'deleteDocument', run: (deps) => deleteDocument(ctx(member), documentId, deps) },
       { name: 'restoreDocument', run: (deps) => restoreDocument(ctx(member), documentId, deps) },
       { name: 'purgeDocument', run: (deps) => purgeDocument(ctx(member), documentId, deps) },
@@ -459,6 +499,8 @@ describe('documents use-cases', () => {
         vi.spyOn(state.deps.documents, 'update'),
         vi.spyOn(state.deps.documents, 'approve'),
         vi.spyOn(state.deps.documents, 'unapprove'),
+        vi.spyOn(state.deps.documents, 'waiveSignature'),
+        vi.spyOn(state.deps.documents, 'requireSignature'),
         vi.spyOn(state.deps.documents, 'delete'),
         vi.spyOn(state.deps.documents, 'restore'),
         vi.spyOn(state.deps.documents, 'purge'),
@@ -493,6 +535,14 @@ describe('documents use-cases', () => {
     expect(listSpy).toHaveBeenCalledWith('tenant-acme', {
       signatureStatus: 'needs-signature',
       signerAccountId: 'account-1',
+    });
+    await listDocuments(
+      ctx(staff('tenant-acme')),
+      { signatureStatus: 'not-required' },
+      state.deps,
+    );
+    expect(listSpy).toHaveBeenLastCalledWith('tenant-acme', {
+      signatureStatus: 'not-required',
     });
     state.deps.documents.listByTenant = async () => [
       {
@@ -531,6 +581,12 @@ describe('documents use-cases', () => {
       ok: true,
       value: { draft: true },
     });
+    expect(
+      await waiveDocumentSignature(ctx(staff('tenant-acme')), draft.value.id, state.deps),
+    ).toMatchObject({ ok: true, value: { signatureNotRequired: true } });
+    expect(
+      await requireDocumentSignature(ctx(staff('tenant-acme')), draft.value.id, state.deps),
+    ).toMatchObject({ ok: true, value: { signatureNotRequired: false } });
     expect(await deleteDocument(ctx(staff('tenant-acme')), documentId, state.deps)).toEqual({
       ok: true,
       value: undefined,
@@ -1013,6 +1069,12 @@ describe('documents use-cases', () => {
       ok: false,
       error: { code: 'not_found' },
     });
+    expect(
+      await waiveDocumentSignature(ctx(staff('tenant-acme')), documentId, state.deps),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(
+      await requireDocumentSignature(ctx(staff('tenant-acme')), documentId, state.deps),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(
       await getFileContent(ctx(staff('tenant-acme')), documentId, fileId, state.deps),
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });
