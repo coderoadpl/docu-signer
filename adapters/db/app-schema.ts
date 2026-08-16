@@ -97,6 +97,7 @@ export const tenantSettings = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     storeSignatureRecords: boolean('store_signature_records').notNull().default(true),
     pdfSealEnabled: boolean('pdf_seal_enabled').notNull().default(false),
+    signatureBoxEnabled: boolean('signature_box_enabled').notNull().default(false),
     dateMode: text('date_mode', { enum: ['declared', 'actual'] }).notNull().default('declared'),
   },
   (table) => [

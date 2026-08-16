@@ -73,6 +73,23 @@ export const TenantSettingsSection = () => {
             </Typography>
           }
         />
+        <FormControlLabel
+          sx={{ alignItems: 'flex-start' }}
+          control={
+            <Switch
+              checked={stored?.signatureBoxEnabled ?? false}
+              disabled={disabled}
+              onChange={(event) =>
+                update.mutate({ signatureBoxEnabled: event.target.checked })
+              }
+            />
+          }
+          label={
+            <Typography variant="body2" sx={{ pt: '0.5rem' }}>
+              Widoczna adnotacja podpisów na PDF
+            </Typography>
+          }
+        />
         <FormControl size="small" disabled={disabled} sx={{ maxWidth: 520 }}>
           <InputLabel id="tenant-date-mode-label">Tryb dat</InputLabel>
           <Select

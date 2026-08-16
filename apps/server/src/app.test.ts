@@ -660,6 +660,7 @@ describe('buildApp', () => {
         tenantId,
         storeSignatureRecords: storedSettings,
         pdfSealEnabled: false,
+        signatureBoxEnabled: false,
         dateMode: 'declared',
       }),
       set: async (tenantId, settings) => {
@@ -690,6 +691,7 @@ describe('buildApp', () => {
         settings: {
           storeSignatureRecords: true,
           pdfSealEnabled: false,
+          signatureBoxEnabled: false,
           dateMode: 'declared',
         },
       },
@@ -705,6 +707,7 @@ describe('buildApp', () => {
         settings: {
           storeSignatureRecords: false,
           pdfSealEnabled: false,
+          signatureBoxEnabled: false,
           dateMode: 'declared',
         },
       },

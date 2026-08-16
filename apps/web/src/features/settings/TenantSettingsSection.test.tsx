@@ -19,7 +19,9 @@ describe('TenantSettingsSection', () => {
               tenantId: 'tenant-default',
               storeSignatureRecords: false,
               pdfSealEnabled: false,
+              signatureBoxEnabled: false,
               dateMode: 'declared',
+              sealCertificateSubject: 'Amazing Company Sp. z o.o.',
             },
           },
         }),
@@ -34,7 +36,9 @@ describe('TenantSettingsSection', () => {
               tenantId: 'tenant-default',
               storeSignatureRecords: true,
               pdfSealEnabled: true,
+              signatureBoxEnabled: true,
               dateMode: 'actual',
+              sealCertificateSubject: 'Amazing Company Sp. z o.o.',
             },
           },
         });
@@ -55,6 +59,10 @@ describe('TenantSettingsSection', () => {
     const seal = screen.getByRole('switch', { name: /pieczęć cyfrowa pdf/i });
     await userEvent.click(seal);
     await waitFor(() => expect(update).toHaveBeenCalledWith({ pdfSealEnabled: true }));
+
+    const box = screen.getByRole('switch', { name: /widoczna adnotacja podpisów/i });
+    await userEvent.click(box);
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ signatureBoxEnabled: true }));
 
     await userEvent.click(screen.getByRole('combobox', { name: 'Tryb dat' }));
     await userEvent.click(screen.getByRole('option', { name: /daty rzeczywiste/i }));

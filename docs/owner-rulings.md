@@ -35,6 +35,13 @@ after all" — the approving review is the release decision; the merge
 mechanics may be executed by the agent once the approval and the four green
 checks are in place.)
 
+## 2026-08-15 — visible signers annotation on flattened PDFs
+
+Given in the implementation specification that supplied the owner's final
+layout reference and required a tenant flag defaulting off.
+
+> Owner ruling 2026-08-15 sanctions this visible artifact change.
+
 ## 2026-08-07 — storing signature ink per document
 
 Reverses the 2026-08-01 rule that signature ink is never stored separately.
