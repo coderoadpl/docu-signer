@@ -50,6 +50,13 @@ each.
   architecture.md §Environments still documents the upstream two-ruleset wall
   (including a `production` branch) — read it as the pattern this fork's
   `main`-only wall adapts.
+- A long-lived `staging` integration branch batches feature PRs (owner ruling
+  2026-08-15 late: the agent merges PRs into `staging` on green
+  `check`/`smoke`/`e2e`; `ai-review` deliberately runs only on PRs targeting
+  `main`, so Opus reviews the whole batch once on the collective
+  `staging → main` promotion PR, where the owner-approval wall applies).
+  `staging` deployments are Vercel Previews; production still releases only
+  from `main`.
 - Production deploys from `main` (Vercel tracks `main`); the upstream
   `main → production` promotion stage is collapsed into the owner-review wall
   on `main` itself — there is no `production` branch in this fork.
