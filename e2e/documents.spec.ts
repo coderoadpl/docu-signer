@@ -490,7 +490,7 @@ test('creates, uploads, previews and exports an archived document', async ({
   await expect(page.getByText('Data podpisania: 01.01.2026')).toBeVisible();
   await expect(page.getByText('Okres: 01.01.2026 - 31.12.2026')).toBeVisible();
 
-  await page.getByRole('button', { name: '← Dokumenty' }).click();
+  await page.getByRole('link', { name: '← Dokumenty' }).click();
   await page.getByLabel('Tag').fill('e2e');
   await page.getByRole('button', { name: 'Oś czasu' }).click();
   const timeline = page.getByRole('region', { name: 'Oś czasu dokumentów' });
@@ -504,7 +504,7 @@ test('creates, uploads, previews and exports an archived document', async ({
   await savedSearchDialog.getByRole('button', { name: 'Zapisz teczkę' }).click();
   await expect(savedSearchDialog).toBeHidden();
   await page.getByLabel('Tag').fill('');
-  await page.getByRole('link', { name: `E2E ${stamp}` }).click();
+  await page.getByRole('link', { name: `E2E ${stamp}`, exact: true }).click();
   await expect(page.getByRole('rowheader', { name: title, exact: true })).toBeVisible();
   await page.getByRole('rowheader', { name: title, exact: true }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
@@ -667,7 +667,7 @@ test('moves a document to trash and restores it', async ({ page }) => {
   await deleteDialog.getByRole('button', { name: 'Przenieś do kosza' }).click();
 
   await expect(page.getByRole('heading', { name: 'Dokumenty' })).toBeVisible();
-  await page.getByRole('link', { name: 'Kosz' }).click();
+  await page.getByRole('link', { name: /^Kosz( \d+)?$/ }).click();
   const trashRow = page
     .getByRole('row')
     .filter({ has: page.getByRole('cell', { name: title, exact: true }) });
@@ -708,7 +708,7 @@ test('keeps draft filters after approving a draft and returning to the list', as
 
   await page.getByRole('button', { name: 'Zatwierdź' }).click();
   await expect(page.getByText('Szkic. Dokument jest widoczny')).toBeHidden();
-  await page.getByRole('button', { name: '← Dokumenty' }).click();
+  await page.getByRole('link', { name: '← Dokumenty' }).click();
 
   await expect(page.getByLabel('Szukaj po tytule')).toHaveValue(title);
   await expect(page.getByLabel('Szkice')).toContainText('Tylko szkice');
@@ -1077,7 +1077,7 @@ test('mass signing passes through an already signed document', async ({ page }) 
   });
   await page.goto(`/app/documents/${documentId}`);
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  await page.getByRole('button', { name: '← Dokumenty' }).click();
+  await page.getByRole('link', { name: '← Dokumenty' }).click();
 
   await page.getByLabel('Szukaj po tytule').fill(titlePrefix);
   await expect

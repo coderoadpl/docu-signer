@@ -1,13 +1,14 @@
 import { Button, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { createLink } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 
+const RouterButton = createLink(Button);
+
 export const SourceUpdatesPage = () => {
-  const navigate = useNavigate();
   const requests = useQuery(actions.pendingSourceUpdateRequests);
   const documents = useQuery(actions.documents({ draft: 'all' }));
   if (requests.isPending || documents.isPending) {
@@ -59,17 +60,13 @@ export const SourceUpdatesPage = () => {
                       Nowe źródło czeka na Twoją akceptację.
                     </Typography>
                   </Stack>
-                  <Button
+                  <RouterButton
                     variant="contained"
-                    onClick={() =>
-                      void navigate({
-                        to: '/app/documents/$id',
-                        params: { id: request.documentId },
-                      })
-                    }
+                    to="/app/documents/$id"
+                    params={{ id: request.documentId }}
                   >
                     Otwórz dokument
-                  </Button>
+                  </RouterButton>
                 </Stack>
               </Paper>
             );

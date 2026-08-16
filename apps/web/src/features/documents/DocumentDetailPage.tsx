@@ -28,7 +28,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { createLink, useNavigate, useSearch } from '@tanstack/react-router';
 
 import { replaySignatureRecordsPdf } from '#core/client/index.js';
 import {
@@ -66,6 +66,9 @@ import {
   sourceUpdateNeedsReplay,
   sourceUpdateReadyToComplete,
 } from './source-update.logic.js';
+
+const RouterButton = createLink(Button);
+const RouterListItemButton = createLink(ListItemButton);
 
 const FILE_ROLES: DocumentFileRole[] = [
   'source',
@@ -723,13 +726,14 @@ export const DocumentDetailPage = ({
 
   return (
     <PageContainer>
-      <Button
+      <RouterButton
         size="small"
         color="inherit"
-        onClick={() => void navigate({ to: '/app/documents', search: documentsSearch })}
+        to="/app/documents"
+        search={documentsSearch}
       >
         ← Dokumenty
-      </Button>
+      </RouterButton>
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         sx={{ mt: 3, gap: 3, justifyContent: 'space-between' }}
@@ -1017,13 +1021,9 @@ export const DocumentDetailPage = ({
                 }
                 sx={{ opacity: link.document.deletedAt ? 0.55 : 1 }}
               >
-                <ListItemButton
-                  onClick={() =>
-                    void navigate({
-                      to: '/app/documents/$id',
-                      params: { id: link.document.id },
-                    })
-                  }
+                <RouterListItemButton
+                  to="/app/documents/$id"
+                  params={{ id: link.document.id }}
                 >
                   <ListItemText primary={link.document.title} />
                   <Stack direction="row" sx={{ gap: 1, mr: isTrashed ? 0 : 8 }}>
@@ -1032,7 +1032,7 @@ export const DocumentDetailPage = ({
                       <Chip size="small" variant="outlined" label="W koszu" />
                     ) : null}
                   </Stack>
-                </ListItemButton>
+                </RouterListItemButton>
               </ListItem>
             ))}
           </List>

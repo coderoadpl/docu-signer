@@ -36,7 +36,7 @@ describe('NotFoundPage', () => {
       screen.getByRole('heading', { name: 'Nie znaleziono strony' }),
     ).toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole('button', { name: 'Wróć do dokumentów' }),
+      screen.getByRole('link', { name: 'Wróć do dokumentów' }),
     );
     expect(await screen.findByText('Lista dokumentów')).toBeInTheDocument();
   });
