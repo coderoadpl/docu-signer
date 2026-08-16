@@ -1127,7 +1127,10 @@ code.
 - `SignatureRecordRepository`: signing-session stamp data and PDF-seal evidence,
   listed by document.
 - `PdfSealPort`: vendor-contained PAdES/CMS signing selected from environment
-  credentials in server composition; verification is a read-only CLI adapter.
+  credentials in server composition.
+- `PdfSealVerificationPort`: read-only PAdES/CMS verification for stored document
+  files, implemented by the PDF seal adapter and wired in server composition;
+  the CLI also uses the same pure verification function directly.
 - `StoragePort`: private document bytes, metadata and upload targets.
 - `TenantDomainRepository`, `TenantRepository`, `TenantAccessReader`: read-only
   tenant-resolution and archive-access plumbing.

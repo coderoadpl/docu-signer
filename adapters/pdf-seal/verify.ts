@@ -1,13 +1,13 @@
 import forge from 'node-forge';
+import { PDFHexString } from 'pdf-lib';
 
-export interface PdfSealVerification {
-  subject: string;
-  declaredAt: string;
-  byteRangeValid: boolean;
-  digestValid: boolean;
-  signatureValid: boolean;
-  integrity: boolean;
-}
+import {
+  pdfSealVerificationSchema,
+  type PdfSealVerification,
+} from '#core/domain/index.js';
+import type { PdfSealVerificationPort } from '#core/server/index.js';
+
+export type { PdfSealVerification } from '#core/domain/index.js';
 
 const children = (node: forge.asn1.Asn1): forge.asn1.Asn1[] => {
   if (!Array.isArray(node.value)) throw new Error('Expected constructed ASN.1 value');
@@ -79,6 +79,14 @@ const signingTime = (attributes: forge.asn1.Asn1[]): Date => {
   throw new Error('CMS signingTime has an unsupported encoding');
 };
 
+const pdfTextEntry = (source: string, key: 'Name' | 'Reason'): string | null => {
+  const matches = [...source.matchAll(new RegExp(`/${key}\\s*<([0-9a-f\\s]+)>`, 'giu'))];
+  const encoded = matches.at(-1)?.[1];
+  return encoded === undefined
+    ? null
+    : PDFHexString.of(encoded.replaceAll(/\s/gu, '')).decodeText();
+};
+
 const pdfSignature = (pdf: Buffer) => {
   const source = pdf.toString('latin1');
   const matches = [...source.matchAll(
@@ -96,6 +104,10 @@ const pdfSignature = (pdf: Buffer) => {
   if (contentsMarker < 0 || contentsStart < 0 || contentsEnd < 0) {
     throw new Error('PDF signature contents are absent');
   }
+  const objectStartMatches = [...source.slice(0, match.index).matchAll(/\d+\s+\d+\s+obj\b/gu)];
+  const objectStart = objectStartMatches.at(-1)?.index ?? 0;
+  const objectEnd = source.indexOf('endobj', contentsEnd);
+  const dictionarySource = source.slice(objectStart, objectEnd < 0 ? contentsEnd : objectEnd);
   const byteRangeValid =
     firstStart === 0 &&
     firstLength === contentsStart &&
@@ -109,7 +121,13 @@ const pdfSignature = (pdf: Buffer) => {
   if (!/^[0-9a-f]+$/iu.test(cmsHex) || cmsHex.length % 2 !== 0) {
     throw new Error('PDF signature contents are not hexadecimal CMS');
   }
-  return { byteRangeValid, signedBytes, cms: exactDer(Buffer.from(cmsHex, 'hex')) };
+  return {
+    byteRangeValid,
+    signedBytes,
+    cms: exactDer(Buffer.from(cmsHex, 'hex')),
+    name: pdfTextEntry(dictionarySource, 'Name'),
+    reason: pdfTextEntry(dictionarySource, 'Reason'),
+  };
 };
 
 export const verifyPdfSeal = (input: Uint8Array): PdfSealVerification => {
@@ -176,12 +194,18 @@ export const verifyPdfSeal = (input: Uint8Array): PdfSealVerification => {
     signatureValid = false;
   }
   const byteRangeValid = signature.byteRangeValid;
-  return {
+  return pdfSealVerificationSchema.parse({
     subject: subjectName(certificate),
+    name: signature.name,
+    reason: signature.reason,
     declaredAt: signingTime(attributes).toISOString(),
     byteRangeValid,
     digestValid,
     signatureValid,
     integrity: byteRangeValid && digestValid && signatureValid,
-  };
+  });
 };
+
+export const createPdfSealVerificationPort = (): PdfSealVerificationPort => ({
+  verify: verifyPdfSeal,
+});

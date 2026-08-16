@@ -228,6 +228,8 @@ export const verifySealBytes = (
 const formatSealVerification = (verification: PdfSealVerification): string =>
   [
     `subject: ${verification.subject}`,
+    `name: ${verification.name ?? '-'}`,
+    `reason: ${verification.reason ?? '-'}`,
     `declared-time: ${verification.declaredAt}`,
     `integrity: ${verification.integrity ? 'valid' : 'invalid'}`,
   ].join('\n');

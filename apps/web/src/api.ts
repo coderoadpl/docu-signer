@@ -37,6 +37,7 @@ import {
   disableTwoFactorMutation,
   directFileUploadMutation,
   documentFileQuery,
+  documentFileSealQuery,
   documentLinksInvalidates,
   documentLinksQuery,
   documentCommentsInvalidates,
@@ -135,6 +136,8 @@ export const actions = {
   documentLinksInvalidates,
   documentFile: (documentId: string, fileId: string) =>
     documentFileQuery(apiClient, documentId, fileId),
+  documentFileSeal: (documentId: string, fileId: string) =>
+    documentFileSealQuery(apiClient, documentId, fileId),
   createDocument: createDocumentMutation(apiClient),
   updateDocument: updateDocumentMutation(apiClient),
   linkDocuments: linkDocumentsMutation(apiClient),

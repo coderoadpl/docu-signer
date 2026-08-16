@@ -176,6 +176,18 @@ beforeAll(async () => {
     tenantAccounts: createTenantAccountRepository(db),
     signatureRecords: createSignatureRecordRepository(db),
     sourceUpdateRequests: createSourceUpdateRequestRepository(db),
+    pdfSealVerification: {
+      verify: () => ({
+        subject: 'Amazing Company Sp. z o.o.',
+        name: 'Amazing Company Sp. z o.o.',
+        reason: 'Signed by: Anna Nowak',
+        declaredAt: '2026-08-16T10:00:00.000Z',
+        byteRangeValid: true,
+        digestValid: true,
+        signatureValid: true,
+        integrity: true,
+      }),
+    },
     savedSearches: {
       listByTenant: async () => [],
       create: async (input) => ({ ...input, createdAt: '2026-08-02T00:00:00.000Z' }),

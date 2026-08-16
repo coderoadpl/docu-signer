@@ -42,6 +42,7 @@ import {
   pdfSealCertificateSubject,
   type PdfSealCredentials,
 } from '#adapters/pdf-seal/signpdf.js';
+import { createPdfSealVerificationPort } from '#adapters/pdf-seal/verify.js';
 import { createConsoleWarningLogger } from '#adapters/logging/console-warning.js';
 import type {
   AuthPort,
@@ -59,6 +60,7 @@ import type {
   PadSessionRepository,
   PadSessionSecretPort,
   PdfSealingDeps,
+  PdfSealVerificationPort,
   RateLimitPort,
   SavedSearchRepository,
   SignatureRecordRepository,
@@ -92,6 +94,7 @@ export interface AppDeps {
   signatureRecords: SignatureRecordRepository;
   sourceUpdateRequests: SourceUpdateRequestRepository;
   pdfSealing?: PdfSealingDeps;
+  pdfSealVerification: PdfSealVerificationPort;
   storage: StoragePort;
   tenantDomains: TenantDomainRepository;
   /**
@@ -293,6 +296,7 @@ export const createDeps = (env: Env): AppDeps => {
       tenantSettings,
       warnings,
     },
+    pdfSealVerification: createPdfSealVerificationPort(),
     storage,
     tenantDomains,
     email,

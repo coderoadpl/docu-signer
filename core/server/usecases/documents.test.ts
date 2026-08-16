@@ -37,6 +37,7 @@ import {
   updateDocument,
   waiveDocumentSignature,
 } from './documents.js';
+import { getDocumentFileSealVerification } from './document-seal-verification.js';
 
 const documentId = '11111111-1111-4111-8111-111111111111';
 const fileId = '22222222-2222-4222-8222-222222222222';
@@ -394,6 +395,125 @@ const createInput = {
 };
 
 describe('documents use-cases', () => {
+  it('authorizes seal verification before repository access', async () => {
+    const state = fake([documentRow()], [{ ...fileRow(), role: 'signed-digital', sealed: true }]);
+    const findFile = vi.spyOn(state.deps.documents, 'findFile');
+    const verify = vi.fn(() => ({
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    }));
+
+    await expect(
+      getDocumentFileSealVerification(ctx(member), documentId, fileId, {
+        ...state.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(findFile).not.toHaveBeenCalled();
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unsealed signed-digital file before loading its bytes', async () => {
+    const state = fake([documentRow()], [{ ...fileRow(), role: 'signed-digital', sealed: false }]);
+    const storageGet = vi.spyOn(state.deps.storage, 'get');
+    const verify = vi.fn();
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...state.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(storageGet).not.toHaveBeenCalled();
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { role: 'source' as const, contentType: 'application/pdf', sealed: true },
+    { role: 'signed-digital' as const, contentType: 'image/jpeg', sealed: true },
+  ])('refuses an ineligible sealed file %#', async (filePatch) => {
+    const state = fake([documentRow()], [{ ...fileRow(), ...filePatch }]);
+    const verify = vi.fn();
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...state.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('returns not found for a missing seal file or stored content', async () => {
+    const missingFile = fake([documentRow()]);
+    const sealedFile = { ...fileRow(), role: 'signed-digital' as const, sealed: true };
+    const missingContent = fake([documentRow()], [sealedFile]);
+    missingContent.blobs.clear();
+    const verify = vi.fn();
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...missingFile.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'not_found' } });
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...missingContent.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('passes storage failures through without invoking the verifier', async () => {
+    const sealedFile = { ...fileRow(), role: 'signed-digital' as const, sealed: true };
+    const state = fake([documentRow()], [sealedFile]);
+    const failure = err(internal('storage unavailable'));
+    const verify = vi.fn();
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...state.deps,
+        storage: { ...state.deps.storage, get: async () => failure },
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toBe(failure);
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('loads and verifies a tenant-owned sealed signed-digital PDF', async () => {
+    const sealedFile = { ...fileRow(), role: 'signed-digital' as const, sealed: true };
+    const state = fake([documentRow()], [sealedFile]);
+    const verification = {
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak, Marek Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    };
+    const verify = vi.fn(() => verification);
+    const findFile = vi.spyOn(state.deps.documents, 'findFile');
+
+    await expect(
+      getDocumentFileSealVerification(ctx(staff('tenant-acme')), documentId, fileId, {
+        ...state.deps,
+        pdfSealVerification: { verify },
+      }),
+    ).resolves.toEqual({ ok: true, value: verification });
+    expect(findFile).toHaveBeenCalledWith('tenant-acme', documentId, fileId);
+    expect(verify).toHaveBeenCalledWith(new Uint8Array([1, 2, 3]));
+  });
+
   it('denies every document use-case before any repository access', async () => {
     const input = {
       fileName: 'scan.pdf',

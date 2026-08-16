@@ -20,6 +20,7 @@ import {
   documentFileDeleteOutputSchema,
   documentFileMoveOutputSchema,
   documentFileOutputSchema,
+  documentFileSealOutputSchema,
   documentGetOutputSchema,
   documentListOutputSchema,
   documentLinkCreateOutputSchema,
@@ -588,6 +589,19 @@ export const createApiClient = (options: ApiClientOptions) => ({
       options,
       API_ROUTES.documentFileContent.method,
       pathWith(API_ROUTES.documentFileContent.path, { documentId, fileId }),
+      undefined,
+      signal,
+    ),
+  getDocumentFileSealVerification: (
+    documentId: string,
+    fileId: string,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.documentFileSeal.method,
+      pathWith(API_ROUTES.documentFileSeal.path, { documentId, fileId }),
+      documentFileSealOutputSchema,
       undefined,
       signal,
     ),

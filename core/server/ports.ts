@@ -18,6 +18,7 @@ import type {
   PadSessionMode,
   PadSignatureRequest,
   PadSubmittedStrokes,
+  PdfSealVerification,
   PdfSealMetadata,
   PublicInvitation,
   SavedSearch,
@@ -244,6 +245,10 @@ export type PdfSealPort =
         | { kind: 'failed'; reason: string }
       >;
     };
+
+export interface PdfSealVerificationPort {
+  verify(bytes: Uint8Array): PdfSealVerification;
+}
 
 export interface WarningLoggerPort {
   warn(message: string, details?: Record<string, unknown>): void;
