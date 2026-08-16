@@ -41,12 +41,20 @@ export const uploadDocumentFile = async (
   file: UploadFile,
   role: DocumentFileRole,
   transport: UploadTransport,
+  contributorAccountIds?: readonly string[],
 ): Promise<DocumentFile> => {
   if (!isAcceptedDocumentFile(file)) {
     throw new Error('Dozwolone są pliki PDF i obrazy.');
   }
   const contentType = file.type || 'application/octet-stream';
-  const request = { fileName: file.name, contentType, role };
+  const request = {
+    fileName: file.name,
+    contentType,
+    role,
+    ...(contributorAccountIds
+      ? { contributorAccountIds: [...contributorAccountIds] }
+      : {}),
+  };
   const requested = await transport.request(request);
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (requested.upload.kind === 'server') {
@@ -59,5 +67,8 @@ export const uploadDocumentFile = async (
     contentType,
     sizeBytes: file.size,
     role,
+    ...(contributorAccountIds
+      ? { contributorAccountIds: [...contributorAccountIds] }
+      : {}),
   })).file;
 };

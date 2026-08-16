@@ -1,5 +1,13 @@
 import forge from 'node-forge';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
+import {
+  PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  PDFSignature,
+  PDFString,
+  StandardFonts,
+} from 'pdf-lib';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -104,6 +112,12 @@ const sealingDeps = async (dateMode: 'declared' | 'actual'): Promise<PdfSealingD
     create: async () => null,
     recordSeal: async () => {},
   },
+  tenantAccounts: {
+    listByTenant: async () => [
+      { accountId: 'user-anna', name: 'Anna Żółć' },
+      { accountId: 'user-marek', name: 'Marek Nowak' },
+    ],
+  },
   tenantSettings: {
     get: async () => ({
       tenantId: 'tenant-1',
@@ -137,6 +151,20 @@ const document = {
   deletedAt: null,
 };
 
+const dictionaryText = (dictionary: PDFDict, key: string): string => {
+  const value = dictionary.lookup(PDFName.of(key));
+  if (!(value instanceof PDFString) && !(value instanceof PDFHexString)) {
+    throw new Error(`Signature dictionary ${key} is not text`);
+  }
+  return value.decodeText();
+};
+
+const signatureDictionary = (field: PDFSignature): PDFDict => {
+  const value = field.acroField.V();
+  if (!(value instanceof PDFDict)) throw new Error('Signature field has no dictionary');
+  return value;
+};
+
 describe('signpdf PAdES adapter', () => {
   afterEach(() => vi.useRealTimers());
 
@@ -151,7 +179,13 @@ describe('signpdf PAdES adapter', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-09T14:15:16.789Z'));
     const sealed = await attemptPdfSeal(
-      { tenantId: 'tenant-1', document, bytes: await samplePdf(), dateMode },
+      {
+        tenantId: 'tenant-1',
+        document,
+        bytes: await samplePdf(),
+        dateMode,
+        contributorAccountIds: ['user-anna', 'user-marek'],
+      },
       await sealingDeps(dateMode),
     );
     expect(sealed).not.toBeNull();
@@ -169,12 +203,43 @@ describe('signpdf PAdES adapter', () => {
     expect(sealed.metadata.appliedAt).toBe('2026-08-09T14:15:16.789Z');
   });
 
+  it('writes claimed signer names, certificate subject and unique seal field names', async () => {
+    const adapter = createSignPdfSeal(await credentials());
+    if (!adapter.configured) throw new Error('Fixture seal adapter is not configured');
+    const first = await adapter.seal({
+      bytes: await samplePdf(),
+      signingTime: new Date('2026-08-09T14:15:16.000Z'),
+      contributorNames: ['Anna Żółć', 'Marek Nowak'],
+    });
+    if (first.kind !== 'sealed') throw new Error(first.reason);
+    const second = await adapter.seal({
+      bytes: first.bytes,
+      signingTime: new Date('2026-08-09T14:16:17.000Z'),
+      contributorNames: ['Marek Nowak'],
+    });
+    if (second.kind !== 'sealed') throw new Error(second.reason);
+    const pdf = await PDFDocument.load(second.bytes);
+    const fields = pdf.getForm().getFields()
+      .filter((field) => field instanceof PDFSignature);
+    expect(fields.map((field) => field.getName())).toEqual(['Pieczec-1', 'Pieczec-2']);
+    const dictionaries = fields.map((field) => signatureDictionary(field));
+    expect(dictionaries.map((dictionary) => dictionaryText(dictionary, 'Reason'))).toEqual([
+      'Signed by: Anna Żółć, Marek Nowak',
+      'Signed by: Marek Nowak',
+    ]);
+    expect(dictionaries.map((dictionary) => dictionaryText(dictionary, 'Name'))).toEqual([
+      'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+      'Amazing Company Sp. z o.o. — pieczęć dokumentowa',
+    ]);
+  });
+
   it('detects a byte changed inside the signed ranges', async () => {
     const adapter = createSignPdfSeal(await credentials());
     if (!adapter.configured) throw new Error('Fixture seal adapter is not configured');
     const sealed = await adapter.seal({
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
+      contributorNames: ['Anna Żółć'],
     });
     if (sealed.kind !== 'sealed') throw new Error(sealed.reason);
     const tampered = new Uint8Array(sealed.bytes);
@@ -203,6 +268,7 @@ describe('signpdf PAdES adapter', () => {
     const sealed = await adapter.seal({
       bytes: await samplePdf(),
       signingTime: new Date('2051-08-09T14:15:16.000Z'),
+      contributorNames: ['Anna Żółć'],
     });
     if (sealed.kind !== 'sealed') throw new Error(sealed.reason);
     expect(verifyPdfSeal(sealed.bytes)).toMatchObject({
@@ -231,6 +297,7 @@ describe('signpdf PAdES adapter', () => {
     await expect(adapter.seal({
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
+      contributorNames: ['Anna Żółć'],
     })).resolves.toMatchObject({
       kind: 'failed',
       reason: expect.stringContaining('common name'),
@@ -255,6 +322,7 @@ describe('signpdf PAdES adapter', () => {
     await expect(noKey.seal({
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
+      contributorNames: ['Anna Żółć'],
     })).resolves.toMatchObject({
       kind: 'failed',
       reason: expect.stringContaining('no private key'),
@@ -266,6 +334,7 @@ describe('signpdf PAdES adapter', () => {
     await expect(mismatched.seal({
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
+      contributorNames: ['Anna Żółć'],
     })).resolves.toMatchObject({
       kind: 'failed',
       reason: expect.stringContaining('matching its private key'),
@@ -280,6 +349,7 @@ describe('signpdf PAdES adapter', () => {
     const input = {
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
+      contributorNames: ['Anna Żółć'],
     };
     Object.defineProperty(input, 'signingTime', { value: undefined });
     const sealed = await adapter.seal(input);
@@ -293,6 +363,7 @@ describe('signpdf PAdES adapter', () => {
     const sealed = await adapter.seal({
       bytes: await samplePdf(),
       signingTime: new Date('2026-08-09T14:15:16.000Z'),
+      contributorNames: ['Anna Żółć'],
     });
     if (sealed.kind !== 'sealed') throw new Error(sealed.reason);
     const invalidRange = Buffer.from(sealed.bytes);
@@ -422,6 +493,7 @@ describe('signpdf PAdES adapter', () => {
         document,
         bytes: new Uint8Array([1, 2, 3]),
         dateMode: 'declared',
+        contributorAccountIds: ['user-anna'],
       },
       failed,
     )).resolves.toBeNull();
@@ -436,7 +508,13 @@ describe('signpdf PAdES adapter', () => {
       seal: async () => { throw new Error('fixture failure'); },
     };
     await expect(attemptPdfSeal(
-      { tenantId: 'tenant-1', document, bytes: await samplePdf(), dateMode: 'declared' },
+      {
+        tenantId: 'tenant-1',
+        document,
+        bytes: await samplePdf(),
+        dateMode: 'declared',
+        contributorAccountIds: ['user-anna'],
+      },
       exploded,
     )).rejects.toThrow('fixture failure');
 
@@ -450,7 +528,13 @@ describe('signpdf PAdES adapter', () => {
       }),
     };
     await expect(attemptPdfSeal(
-      { tenantId: 'tenant-1', document, bytes: await samplePdf(), dateMode: 'declared' },
+      {
+        tenantId: 'tenant-1',
+        document,
+        bytes: await samplePdf(),
+        dateMode: 'declared',
+        contributorAccountIds: ['user-anna'],
+      },
       oversized,
     )).resolves.toBeNull();
     expect(oversized.warnings.warn).toHaveBeenCalledWith(

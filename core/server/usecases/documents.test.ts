@@ -809,6 +809,7 @@ describe('documents use-cases', () => {
         create: async () => null,
         recordSeal: async () => {},
       },
+      tenantAccounts: { listByTenant: async () => [] },
       tenantSettings: {
         get: async () => ({
           tenantId: 'tenant-acme',
@@ -852,6 +853,7 @@ describe('documents use-cases', () => {
         create: async () => null,
         recordSeal: async () => {},
       },
+      tenantAccounts: { listByTenant: async () => [] },
       tenantSettings: {
         get: async () => ({
           tenantId: 'tenant-acme',
@@ -877,6 +879,59 @@ describe('documents use-cases', () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  it('resolves signing-order contributor names before calling the seal port', async () => {
+    const state = fake([documentRow()]);
+    const seal = vi.fn(async (input: {
+      bytes: Uint8Array;
+      signingTime: Date;
+      contributorNames: string[];
+    }) => ({
+      kind: 'sealed' as const,
+      bytes: input.bytes,
+      subject: 'Acme Inc',
+    }));
+    state.deps.pdfSealing = {
+      ids: state.deps.ids,
+      pdfSeal: { configured: true, seal },
+      signatureRecords: {
+        listByDocument: async () => [],
+        create: async () => null,
+        recordSeal: async () => {},
+      },
+      tenantAccounts: {
+        listByTenant: async () => [
+          { accountId: 'u1', name: 'Demo' },
+          { accountId: 'u2', name: 'Maria Żak' },
+        ],
+      },
+      tenantSettings: {
+        get: async () => ({
+          tenantId: 'tenant-acme',
+          storeSignatureRecords: true,
+          pdfSealEnabled: true,
+          dateMode: 'declared',
+        }),
+        set: async (tenantId, settings) => ({ tenantId, ...settings }),
+      },
+      warnings: { warn: vi.fn() },
+    };
+    await expect(serverUpload(
+      ctx(staff('tenant-acme')),
+      documentId,
+      {
+        fileName: 'agreement-signed.pdf',
+        contentType: 'application/pdf',
+        role: 'signed-digital',
+        contributorAccountIds: ['u2', 'u1', 'u2'],
+        bytes: new Uint8Array([1, 2, 3]),
+      },
+      state.deps,
+    )).resolves.toMatchObject({ ok: true });
+    expect(seal).toHaveBeenCalledWith(expect.objectContaining({
+      contributorNames: ['Maria Żak', 'Demo'],
+    }));
+  });
+
   it('keeps the original upload when the sealed PDF exceeds the file limit', async () => {
     const state = fake([documentRow()]);
     const warn = vi.fn();
@@ -895,6 +950,9 @@ describe('documents use-cases', () => {
         listByDocument: async () => [],
         create: async () => null,
         recordSeal,
+      },
+      tenantAccounts: {
+        listByTenant: async () => [{ accountId: 'u1', name: 'Demo' }],
       },
       tenantSettings: {
         get: async () => ({

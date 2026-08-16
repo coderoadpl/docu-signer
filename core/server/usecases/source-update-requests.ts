@@ -14,6 +14,7 @@ import {
   type CreateSourceUpdateRequest,
   type DecideSourceUpdateRequest,
   type Result,
+  type SignatureRecord,
   type SourceUpdateRequest,
 } from '#core/domain/index.js';
 
@@ -51,6 +52,17 @@ const parseDocumentId = (documentId: string): Result<string, AppError> => {
   const parsed = sourceUpdateRequestSchema.shape.documentId.safeParse(documentId);
   return parsed.success ? ok(parsed.data) : err(validation('Invalid document id'));
 };
+
+const signatureContributorAccountIds = (
+  records: SignatureRecord[],
+): string[] => [...records]
+  .sort(
+    (left, right) =>
+      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+  )
+  .flatMap((record) =>
+    record.payload.map((stamp) => stamp.contributedBy ?? record.signedBy),
+  );
 
 export const createSourceUpdateRequest = async (
   ctx: Ctx,
@@ -313,7 +325,13 @@ export const completeSourceUpdateRequest = async (
       const bytes = await deps.storage.get(signedFile.storageKey);
       const sealed = bytes.ok && bytes.value
         ? await attemptPdfSeal(
-          { tenantId: scope.value, document, bytes: bytes.value, dateMode },
+          {
+            tenantId: scope.value,
+            document,
+            bytes: bytes.value,
+            dateMode,
+            contributorAccountIds: signatureContributorAccountIds(records),
+          },
           deps.pdfSealing,
         )
         : null;

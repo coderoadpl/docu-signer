@@ -360,7 +360,13 @@ const finalizeUpload = async (
       const storedBytes = await deps.storage.get(parsed.data.key);
       if (storedBytes.ok && storedBytes.value) {
         const sealed = await attemptPdfSeal(
-          { tenantId, document, bytes: storedBytes.value, dateMode },
+          {
+            tenantId,
+            document,
+            bytes: storedBytes.value,
+            dateMode,
+            contributorAccountIds: parsed.data.contributorAccountIds ?? [signedBy],
+          },
           deps.pdfSealing,
         );
         if (sealed) {
@@ -447,6 +453,9 @@ export const serverUpload = async (
       contentType: input.contentType,
       sizeBytes: input.bytes.byteLength,
       role: input.role,
+      ...(input.contributorAccountIds
+        ? { contributorAccountIds: input.contributorAccountIds }
+        : {}),
     },
     deps,
   );

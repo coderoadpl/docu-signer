@@ -9,6 +9,7 @@ import type {
   IdGenerator,
   PdfSealPort,
   SignatureRecordRepository,
+  TenantAccountRepository,
   TenantSettingsRepository,
   WarningLoggerPort,
 } from '../ports.js';
@@ -17,6 +18,7 @@ export interface PdfSealingDeps {
   ids: IdGenerator;
   pdfSeal: PdfSealPort;
   signatureRecords: SignatureRecordRepository;
+  tenantAccounts: TenantAccountRepository;
   tenantSettings: TenantSettingsRepository;
   warnings: WarningLoggerPort;
 }
@@ -52,6 +54,7 @@ export const attemptPdfSeal = async (
     document: Document;
     bytes: Uint8Array;
     dateMode: TenantDateMode;
+    contributorAccountIds: string[];
   },
   deps: PdfSealingDeps,
 ): Promise<{ bytes: Uint8Array; metadata: PdfSealMetadata } | null> => {
@@ -62,9 +65,26 @@ export const attemptPdfSeal = async (
     input.document.documentDate,
     appliedAt,
   );
+  const accounts = await deps.tenantAccounts.listByTenant(input.tenantId);
+  const nameByAccountId = new Map(
+    accounts.map((account) => [account.accountId, account.name]),
+  );
+  const contributorAccountIds = [...new Set(input.contributorAccountIds)];
+  const contributorNames = contributorAccountIds.flatMap((accountId) => {
+    const name = nameByAccountId.get(accountId);
+    return name ? [name] : [];
+  });
+  if (contributorNames.length !== contributorAccountIds.length) {
+    deps.warnings.warn('PDF seal skipped because a contributor account could not be resolved', {
+      tenantId: input.tenantId,
+      documentId: input.document.id,
+    });
+    return null;
+  }
   const sealed = await deps.pdfSeal.seal({
     bytes: input.bytes,
     signingTime,
+    contributorNames,
   });
   const outcome = sealed.kind === 'sealed' && sealed.bytes.byteLength > MAX_DOCUMENT_FILE_BYTES
     ? { kind: 'failed', reason: 'size-limit' } as const
