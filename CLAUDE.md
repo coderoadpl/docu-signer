@@ -106,8 +106,18 @@ before ai-review may accept them; the rulings are archived verbatim in
   them, and hand-sign any source PDF in a full-screen pen/touch/mouse flow.
   A full-screen mass-review queue shows each selected source or newest digital
   signature and supports lightweight metadata editing without signing controls.
+  The mass-review reader falls back signed-digital → scan → source, so
+  paper-only documents open on their scan. Documents that never get signed
+  (e.g. rachunki) can be marked "Nie wymaga podpisu" — singly, in bulk, or via
+  the CLI `document waive-signature|require-signature` pair — which removes
+  them from the needs-signature filter and mass-signing queues and shows a
+  quiet gray chip instead of a pending state.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
-  replaces the source. When the tenant's PDF-seal setting is on, the server
+  replaces the source. With the tenant's signature-box setting on, that
+  flatten also bakes a visible first-page annotation (top-right: the signers
+  in order with their declared signing times); re-signing a signed file
+  redraws the cumulative annotation over the previous one at the same anchor.
+  When the tenant's PDF-seal setting is on, the server
   then adds an invisible, externally verifiable PAdES organization seal; Tryb
   dat chooses its signer-claimed time from the entered signing date or the true
   wall clock. With the signature-record setting on, each signing session also
@@ -135,9 +145,9 @@ before ai-review may accept them; the rulings are archived verbatim in
   2026-08-02, recorded in FOUNDATION.md).
 - Konto: display-name editing (Profil — the name the app bar and signer
   attribution render), personal passkeys, API tokens, two-factor
-  authentication and the tenant-wide signature-ink storage, PDF-seal and Tryb
-  dat controls (Ustawienia organizacji). Removed upstream verticals stay
-  removed.
+  authentication and the tenant-wide signature-ink storage, PDF-seal,
+  signature-box annotation and Tryb dat controls (Ustawienia organizacji).
+  Removed upstream verticals stay removed.
 
 ## Layer rules (enforced, but know them anyway)
 
