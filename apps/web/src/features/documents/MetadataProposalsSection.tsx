@@ -15,7 +15,7 @@ import type {
   DocumentType,
 } from '#core/domain/index.js';
 
-import { formatPolishDate, formatPolishDateTime } from '../../lib/format-date.js';
+import { formatPolishDate } from '../../lib/format-date.js';
 import { documentTypeLabel } from './documents.logic.js';
 
 const textValue = (value: string | null): string => value ?? 'Brak';
@@ -117,7 +117,7 @@ export const MetadataProposalsSection = ({
           <ListItem key={proposal.id} disableGutters divider sx={{ alignItems: 'flex-start', py: 2 }}>
             <Stack sx={{ width: '100%', gap: 1.25 }}>
               <Typography variant="body2" color="text.secondary">
-                {proposal.creator.name} · {formatPolishDateTime(proposal.createdAt)}
+                {proposal.creator.name}
               </Typography>
               {proposalDiff(document, proposal, documentTypes).map((entry) => (
                 <Stack key={entry.label} direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 0.5 }}>
