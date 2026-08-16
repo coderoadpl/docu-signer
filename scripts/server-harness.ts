@@ -5,8 +5,8 @@ import { delay, fail, rootDir, SmokeFailure, tsxBin } from './smoke-cli.js';
 
 // The dev/CI Mailpit (docker-compose.dev.yml): the real smtp adapter delivers
 // here and the magic-link phase reads the message back over its HTTP API.
-export const MAILPIT_SMTP_PORT = 47925;
-export const MAILPIT_API_URL = 'http://localhost:47980';
+export const MAILPIT_SMTP_PORT = 9925;
+export const MAILPIT_API_URL = 'http://localhost:9980';
 
 export const ephemeralPort = (): Promise<number> =>
   new Promise((resolve, reject) => {
