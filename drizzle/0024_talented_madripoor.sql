@@ -1,1 +1,1 @@
-ALTER TABLE "tenant_settings" ADD COLUMN "signature_box_enabled" boolean DEFAULT false NOT NULL;
+ALTER TABLE "tenant_settings" ADD COLUMN IF NOT EXISTS "signature_box_enabled" boolean DEFAULT false NOT NULL;
