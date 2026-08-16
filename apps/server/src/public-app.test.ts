@@ -94,6 +94,19 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
   },
+  documentComments: {
+    listByDocument: async () => [],
+    create: async (input) => ({
+      id: input.id,
+      tenantId: input.tenantId,
+      documentId: input.documentId,
+      author: { accountId: input.authorAccountId, name: 'Owner' },
+      body: input.body,
+      createdAt: '2026-08-16T10:00:00.000Z',
+    }),
+    findById: async () => null,
+    delete: async () => false,
+  },
   documentLinks: {
     create: async () => null,
     findBetween: async () => null,

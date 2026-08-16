@@ -41,7 +41,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { createLink, Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { ApiError } from '#core/client/index.js';
@@ -160,6 +160,9 @@ const MoreVertIcon = () => (
     <path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
   </SvgIcon>
 );
+
+const RouterCardActionArea = createLink(CardActionArea);
+const RouterMenuItem = createLink(MenuItem);
 
 const DOCUMENT_COLUMNS_KEY = 'documents.columns';
 const TEXT_FILTER_DEBOUNCE_MS = 300;
@@ -1161,14 +1164,10 @@ export const DocumentsPage = () => {
                                 )
                               }
                             />
-                            <CardActionArea
-                              onClick={() =>
-                                void navigate({
-                                  to: '/app/documents/$id',
-                                  params: { id: document.id },
-                                  search: currentDocumentsSearch,
-                                })
-                              }
+                            <RouterCardActionArea
+                              to="/app/documents/$id"
+                              params={{ id: document.id }}
+                              search={currentDocumentsSearch}
                             >
                               <CardContent>
                                 <Typography variant="h2">{document.title}</Typography>
@@ -1188,7 +1187,7 @@ export const DocumentsPage = () => {
                                   {formatPolishDate(document.documentDate)} · Pliki: {document.files.length}
                                 </Typography>
                               </CardContent>
-                            </CardActionArea>
+                            </RouterCardActionArea>
                           </Stack>
                         </Card>
                       ))}
@@ -1311,7 +1310,17 @@ export const DocumentsPage = () => {
                         colSpan={visibleColumnIds.length}
                         sx={{ pt: 1.25, pb: 0.5 }}
                       >
-                        <DocumentTitleText component="span">{document.title}</DocumentTitleText>
+                        <Link
+                          to="/app/documents/$id"
+                          params={{ id: document.id }}
+                          search={currentDocumentsSearch}
+                          onClick={(event) => event.stopPropagation()}
+                          style={{ color: 'inherit', textDecoration: 'none' }}
+                        >
+                          <DocumentTitleText component="span">
+                            {document.title}
+                          </DocumentTitleText>
+                        </Link>
                       </DocumentRecordTitleCell>
                       <TableCell
                         align="right"
@@ -1376,20 +1385,16 @@ export const DocumentsPage = () => {
         open={Boolean(rowMenuAnchor)}
         onClose={closeRowMenu}
       >
-        <MenuItem
-          onClick={() => {
-            const document = rowMenuDocument;
-            closeRowMenu();
-            if (!document) return;
-            void navigate({
-              to: '/app/documents/$id',
-              params: { id: document.id },
-              search: currentDocumentsSearch,
-            });
-          }}
-        >
-          Otwórz
-        </MenuItem>
+        {rowMenuDocument ? (
+          <RouterMenuItem
+            to="/app/documents/$id"
+            params={{ id: rowMenuDocument.id }}
+            search={currentDocumentsSearch}
+            onClick={closeRowMenu}
+          >
+            Otwórz
+          </RouterMenuItem>
+        ) : null}
         <MenuItem
           onClick={() => {
             const document = rowMenuDocument;

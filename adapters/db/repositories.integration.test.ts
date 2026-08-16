@@ -5,6 +5,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDocumentRepository } from './documents-repository.js';
+import { createDocumentCommentRepository } from './document-comments-repository.js';
 import { createDocumentLinkRepository } from './document-links-repository.js';
 import { createPadSessionRepository } from './pad-sessions-repository.js';
 import { createApiTokenRepository } from './api-tokens-repository.js';
@@ -519,6 +520,81 @@ describe('DocumentRepository', () => {
     await expect(repository.purge('tenant-a', id)).resolves.toBe(false);
     await expect(repository.findAnyById('tenant-a', id)).resolves.toBeNull();
     await expect(repository.listFilesIncludingDeleted('tenant-a', id)).resolves.toEqual([]);
+  });
+});
+
+describe('DocumentCommentRepository', () => {
+  it('round-trips attributed comments, enforces tenant scope and body constraints, and cascades on purge', async () => {
+    const documents = createDocumentRepository(db);
+    const comments = createDocumentCommentRepository(db);
+    const documentId = '31313131-3131-4131-8131-313131313131';
+    const firstCommentId = '32323232-3232-4232-8232-323232323232';
+    const secondCommentId = '33323232-3232-4232-8232-323232323232';
+    await documents.create({
+      id: documentId,
+      tenantId: 'tenant-a',
+      title: 'Komentowana umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-16',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: ['comments-itest'],
+    });
+
+    await expect(
+      comments.create({
+        id: firstCommentId,
+        tenantId: 'tenant-a',
+        documentId,
+        authorAccountId: 'user-owner',
+        body: 'Pierwszy komentarz',
+      }),
+    ).resolves.toMatchObject({
+      id: firstCommentId,
+      author: { accountId: 'user-owner', name: 'Owner' },
+      body: 'Pierwszy komentarz',
+      createdAt: expect.any(String),
+    });
+    await comments.create({
+      id: secondCommentId,
+      tenantId: 'tenant-a',
+      documentId,
+      authorAccountId: 'user-owner',
+      body: 'Drugi komentarz',
+    });
+
+    await expect(
+      comments.listByDocument('tenant-b', documentId, null, 10),
+    ).resolves.toEqual([]);
+    await expect(
+      comments.listByDocument('tenant-a', documentId, null, 10),
+    ).resolves.toMatchObject([
+      { id: firstCommentId, author: { name: 'Owner' } },
+      { id: secondCommentId, author: { name: 'Owner' } },
+    ]);
+    await expect(
+      comments.findById('tenant-b', documentId, firstCommentId),
+    ).resolves.toBeNull();
+    await expect(
+      comments.delete('tenant-b', documentId, firstCommentId),
+    ).resolves.toBe(false);
+    await expect(
+      pool.query(
+        `INSERT INTO document_comments
+           (id, tenant_id, document_id, author_account_id, body)
+         VALUES
+           ('34343434-3434-4434-8434-343434343434', 'tenant-a', $1, 'user-owner', ' niepoprawny ')`,
+        [documentId],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      comments.delete('tenant-a', documentId, firstCommentId),
+    ).resolves.toBe(true);
+    await expect(documents.purge('tenant-a', documentId)).resolves.toBe(true);
+    await expect(
+      comments.listByDocument('tenant-a', documentId, null, 10),
+    ).resolves.toEqual([]);
   });
 });
 

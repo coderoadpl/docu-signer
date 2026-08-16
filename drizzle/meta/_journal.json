@@ -183,6 +183,13 @@
       "when": 1786881946078,
       "tag": "0025_ancient_lethal_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786891659467,
+      "tag": "0026_low_dexter_bennett",
+      "breakpoints": true
     }
   ]
 }

@@ -28,7 +28,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { createLink, useNavigate, useSearch } from '@tanstack/react-router';
 
 import { replaySignatureRecordsPdf } from '#core/client/index.js';
 import {
@@ -42,8 +42,8 @@ import {
 import { actions } from '../../api.js';
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
-import { formatPolishDate } from '../../lib/format-date.js';
-import { FileDropZone, NoWrapButton } from '../../theme.js';
+import { formatPolishDate, formatPolishDateTime } from '../../lib/format-date.js';
+import { DocumentCommentBody, FileDropZone, NoWrapButton } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import { SourceUpdateDialog } from './SourceUpdateDialog.js';
 import {
@@ -67,6 +67,9 @@ import {
   sourceUpdateReadyToComplete,
 } from './source-update.logic.js';
 
+const RouterButton = createLink(Button);
+const RouterListItemButton = createLink(ListItemButton);
+
 const FILE_ROLES: DocumentFileRole[] = [
   'source',
   'signed-scan',
@@ -89,6 +92,12 @@ const DownloadIcon = () => (
 const MoreVertIcon = () => (
   <SvgIcon fontSize="small">
     <path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
+  </SvgIcon>
+);
+
+const DeleteIcon = () => (
+  <SvgIcon fontSize="small">
+    <path d="M7 21a2 2 0 0 1-2-2V7h14v12a2 2 0 0 1-2 2H7Zm10-16H7V3h3l1-1h2l1 1h3v2Zm-8 4v8h2V9H9Zm4 0v8h2V9h-2Z" />
   </SvgIcon>
 );
 
@@ -379,6 +388,7 @@ export const DocumentDetailPage = ({
   const documentQuery = useQuery(actions.document(documentId));
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const documentLinksQuery = useQuery(actions.documentLinks(documentId));
+  const documentCommentsQuery = useQuery(actions.documentComments(documentId));
   const identityQuery = useQuery(actions.me);
   const signatureRecordsQuery = useQuery(actions.signatureRecords(documentId));
   const sourceUpdateRequestQuery = useQuery(
@@ -398,6 +408,7 @@ export const DocumentDetailPage = ({
   const [documentLinkSearch, setDocumentLinkSearch] = useState('');
   const [documentLinkTargetId, setDocumentLinkTargetId] = useState('');
   const [documentLinkLabel, setDocumentLinkLabel] = useState('');
+  const [commentBody, setCommentBody] = useState('');
   const [sourceUpdatePending, setSourceUpdatePending] = useState(false);
   const [sourceUpdateError, setSourceUpdateError] = useState<string>();
   const [uploadErrors, setUploadErrors] = useState<
@@ -502,6 +513,19 @@ export const DocumentDetailPage = ({
       await queryClient.invalidateQueries(actions.documentLinksInvalidates());
     },
   });
+  const addDocumentComment = useMutation({
+    ...actions.addDocumentComment,
+    onSuccess: async () => {
+      setCommentBody('');
+      await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
+    },
+  });
+  const deleteDocumentComment = useMutation({
+    ...actions.deleteDocumentComment,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
+    },
+  });
 
   if (documentQuery.isPending) {
     return (
@@ -552,6 +576,7 @@ export const DocumentDetailPage = ({
   const personOptions = uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]);
   const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
   const linkedDocuments = documentLinksQuery.data?.links ?? [];
+  const comments = documentCommentsQuery.data?.items ?? [];
   const linkedDocumentIds = new Set(
     linkedDocuments.map((link) => link.document.id),
   );
@@ -701,13 +726,14 @@ export const DocumentDetailPage = ({
 
   return (
     <PageContainer>
-      <Button
+      <RouterButton
         size="small"
         color="inherit"
-        onClick={() => void navigate({ to: '/app/documents', search: documentsSearch })}
+        to="/app/documents"
+        search={documentsSearch}
       >
         ← Dokumenty
-      </Button>
+      </RouterButton>
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         sx={{ mt: 3, gap: 3, justifyContent: 'space-between' }}
@@ -995,13 +1021,9 @@ export const DocumentDetailPage = ({
                 }
                 sx={{ opacity: link.document.deletedAt ? 0.55 : 1 }}
               >
-                <ListItemButton
-                  onClick={() =>
-                    void navigate({
-                      to: '/app/documents/$id',
-                      params: { id: link.document.id },
-                    })
-                  }
+                <RouterListItemButton
+                  to="/app/documents/$id"
+                  params={{ id: link.document.id }}
                 >
                   <ListItemText primary={link.document.title} />
                   <Stack direction="row" sx={{ gap: 1, mr: isTrashed ? 0 : 8 }}>
@@ -1010,7 +1032,7 @@ export const DocumentDetailPage = ({
                       <Chip size="small" variant="outlined" label="W koszu" />
                     ) : null}
                   </Stack>
-                </ListItemButton>
+                </RouterListItemButton>
               </ListItem>
             ))}
           </List>
@@ -1018,6 +1040,102 @@ export const DocumentDetailPage = ({
         {unlinkDocuments.isError ? (
           <Alert severity="error" sx={{ mt: 2 }}>
             {unlinkDocuments.error.message}
+          </Alert>
+        ) : null}
+      </Paper>
+      <Paper component="section" variant="outlined" sx={{ mt: 3, p: 3 }}>
+        <Typography variant="h2" component="h2">
+          Komentarze
+        </Typography>
+        {documentCommentsQuery.isPending ? (
+          <LinearProgress sx={{ mt: 2 }} />
+        ) : documentCommentsQuery.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {documentCommentsQuery.error.message}
+          </Alert>
+        ) : comments.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Brak komentarzy.
+          </Typography>
+        ) : (
+          <List disablePadding sx={{ mt: 1 }}>
+            {comments.map((comment) => (
+              <ListItem
+                key={comment.id}
+                disableGutters
+                divider
+                secondaryAction={
+                  !isTrashed && comment.author.accountId === currentUserId ? (
+                    <Tooltip title="Usuń komentarz" describeChild disableInteractive>
+                      <IconButton
+                        aria-label={`Usuń komentarz ${comment.id}`}
+                        color="error"
+                        size="small"
+                        disabled={deleteDocumentComment.isPending}
+                        onClick={() =>
+                          deleteDocumentComment.mutate({
+                            documentId,
+                            commentId: comment.id,
+                          })
+                        }
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
+                  ) : null
+                }
+                sx={{ alignItems: 'flex-start', py: 1.5 }}
+              >
+                <Box sx={{ flex: 1, mr: comment.author.accountId === currentUserId ? 5 : 0 }}>
+                  <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                    <Typography component="span" variant="subtitle1">
+                      {comment.author.name}
+                    </Typography>
+                    <Typography component="time" variant="body2" color="text.secondary">
+                      {formatPolishDateTime(comment.createdAt)}
+                    </Typography>
+                  </Stack>
+                  <DocumentCommentBody variant="body2">
+                    {comment.body}
+                  </DocumentCommentBody>
+                </Box>
+              </ListItem>
+            ))}
+          </List>
+        )}
+        {!isTrashed ? (
+          <Stack sx={{ mt: 2.5, gap: 1.5, alignItems: 'flex-start' }}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              label="Komentarz"
+              value={commentBody}
+              slotProps={{ htmlInput: { maxLength: 2000 } }}
+              onChange={(event) => setCommentBody(event.target.value)}
+            />
+            <Button
+              variant="contained"
+              disabled={!commentBody.trim() || addDocumentComment.isPending}
+              onClick={() =>
+                addDocumentComment.mutate({
+                  documentId,
+                  input: { body: commentBody },
+                })
+              }
+            >
+              Dodaj komentarz
+            </Button>
+          </Stack>
+        ) : null}
+        {addDocumentComment.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {addDocumentComment.error.message}
+          </Alert>
+        ) : null}
+        {deleteDocumentComment.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {deleteDocumentComment.error.message}
           </Alert>
         ) : null}
       </Paper>

@@ -253,6 +253,10 @@ describe('DocumentsPage', () => {
     expect(
       await screen.findByRole('rowheader', { name: 'Umowa z Anną' }),
     ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^Umowa z Anną$/u })).toHaveAttribute(
+      'href',
+      `/app/documents/${DOCUMENT_ID}`,
+    );
     vi.useFakeTimers();
     const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
     fireEvent.change(screen.getByLabelText('Szukaj po tytule'), {

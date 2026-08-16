@@ -16,6 +16,7 @@ import {
 } from '#core/client/index.js';
 import {
   apiTokenCreateInputSchema,
+  documentCommentCreateInputSchema,
   documentCreateInputSchema,
   documentLinkCreateInputSchema,
   invitationCreateInputSchema,
@@ -31,6 +32,7 @@ import {
   unauthorized,
   validation,
   type AppError,
+  type DocumentCommentListItem,
   type DocumentListFilter,
   type DocumentListItem,
   type LinkedDocument,
@@ -145,6 +147,7 @@ const documentLinkBatchArgsSchema = z.object({
   label: documentLinkCreateInputSchema.shape.label,
 });
 const documentLinkPairArgsSchema = z.object({ id: z.uuid(), otherId: z.uuid() });
+const documentCommentArgsSchema = documentCommentCreateInputSchema.extend({ id: z.uuid() });
 
 interface LinkedDocumentOutcome {
   documentId: string;
@@ -661,6 +664,37 @@ export const signatureRecordsProbeResult = (
   recordsResult: { ok: true; value: { items: readonly unknown[] } } | { ok: false },
 ): boolean | null => (recordsResult.ok ? recordsResult.value.items.length > 0 : null);
 
+export const listAllDocumentComments = async (
+  api: Pick<ApiClient, 'listDocumentComments'>,
+  documentId: string,
+) => {
+  const items: DocumentCommentListItem[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await api.listDocumentComments(documentId, {
+      limit: 100,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    if (!page.ok) return page;
+    items.push(...page.value.items);
+    cursor = page.value.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return ok({ items, nextCursor: null });
+};
+
+const formatDocumentComments = (comments: DocumentCommentListItem[]): string =>
+  comments.length === 0
+    ? '  no comments'
+    : comments
+        .map(
+          (comment) =>
+            `  - ${comment.createdAt}\t${comment.author.name}\n${comment.body
+              .split('\n')
+              .map((line) => `    ${line}`)
+              .join('\n')}`,
+        )
+        .join('\n');
+
 document
   .command('show <id>')
   .description('Show a document and its attachments')
@@ -677,8 +711,14 @@ document
       emit(linksResult, ctx.json, () => '');
       return;
     }
+    const commentsResult = await listAllDocumentComments(ctx.api, id);
+    if (!commentsResult.ok) {
+      emit(commentsResult, ctx.json, () => '');
+      return;
+    }
     const data = {
       document: documentResult.value.document,
+      comments: commentsResult.value.items,
       linkedDocuments: linksResult.value.links,
       signatureRecordsExist: signatureRecordsProbeResult(recordsResult),
     };
@@ -695,8 +735,20 @@ document
         : value.linkedDocuments
             .map((link) => `  - ${link.document.title}\t${link.label ?? 'bez etykiety'}\t(${link.document.id})`)
             .join('\n');
-      return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\n${records}${files || '  no files'}\nlinked documents:\n${links}`;
+      return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\n${records}${files || '  no files'}\nlinked documents:\n${links}\ncomments:\n${formatDocumentComments(value.comments)}`;
     });
+  });
+
+document
+  .command('comment <id> <text>')
+  .description('Add a comment to a document')
+  .action(async (id: string, text: string) => {
+    const ctx = cliCtx();
+    const input = parseArgs(documentCommentArgsSchema, { id, body: text }, ctx.json);
+    if (input === undefined) return;
+    emit(await ctx.api.addDocumentComment(input.id, { body: input.body }), ctx.json, (data) =>
+      `commented: ${data.comment.author.name} (${data.comment.id})`,
+    );
   });
 
 document

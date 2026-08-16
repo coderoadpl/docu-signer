@@ -234,6 +234,39 @@ export const documents = pgTable(
   ],
 );
 
+export const documentComments = pgTable(
+  'document_comments',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id').notNull(),
+    authorAccountId: text('author_account_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: 'document_comments_document_fk',
+      columns: [table.tenantId, table.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }).onDelete('cascade'),
+    index('document_comments_tenant_document_created_idx').on(
+      table.tenantId,
+      table.documentId,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      'document_comments_body_check',
+      sql`${table.body} = btrim(${table.body}) AND length(${table.body}) BETWEEN 1 AND 2000`,
+    ),
+  ],
+);
+
 export const documentLinks = pgTable(
   'document_links',
   {

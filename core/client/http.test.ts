@@ -76,6 +76,47 @@ describe('API client', () => {
     expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
+  it('lists, creates, and deletes document comments through contract paths', async () => {
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const commentId = '22222222-2222-4222-8222-222222222222';
+    const comment = {
+      id: commentId,
+      tenantId: 'tenant-default',
+      documentId,
+      author: { accountId: 'user-owner', name: 'Owner' },
+      body: 'Treść komentarza',
+      createdAt: '2026-08-16T10:00:00.000Z',
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'POST') return json({ ok: true, data: { comment } });
+      if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
+      return json({ ok: true, data: { items: [comment], nextCursor: null } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(
+      api.listDocumentComments(documentId, { cursor: 'opaque', limit: 10 }),
+    ).resolves.toMatchObject({ ok: true, value: { items: [{ id: commentId }] } });
+    await expect(
+      api.addDocumentComment(documentId, { body: comment.body }),
+    ).resolves.toMatchObject({ ok: true, value: { comment: { id: commentId } } });
+    await expect(api.deleteDocumentComment(documentId, commentId)).resolves.toEqual({
+      ok: true,
+      value: { deleted: true },
+    });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      `/api/documents/${documentId}/comments?cursor=opaque&limit=10`,
+    );
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ body: comment.body }),
+    });
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      `/api/documents/${documentId}/comments/${commentId}`,
+    );
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
+  });
+
   it('sends tenant document filters and write bodies', async () => {
     const document = {
       id: '11111111-1111-4111-8111-111111111111',

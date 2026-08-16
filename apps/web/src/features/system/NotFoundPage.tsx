@@ -1,12 +1,12 @@
 import { Button } from '@mui/material';
-import { useNavigate } from '@tanstack/react-router';
+import { createLink } from '@tanstack/react-router';
 
 import { PageContainer } from '../../components/layout/PageContainer.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 
-export const NotFoundPage = () => {
-  const navigate = useNavigate();
+const RouterButton = createLink(Button);
 
+export const NotFoundPage = () => {
   return (
     <PageContainer>
       <StatusView
@@ -14,12 +14,12 @@ export const NotFoundPage = () => {
           kind: 'empty',
           title: 'Nie znaleziono strony',
           action: (
-            <Button
+            <RouterButton
               variant="contained"
-              onClick={() => void navigate({ to: '/app/documents' })}
+              to="/app/documents"
             >
               Wróć do dokumentów
-            </Button>
+            </RouterButton>
           ),
         }}
       />

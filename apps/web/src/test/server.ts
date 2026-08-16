@@ -61,6 +61,9 @@ export const server = setupServer(
       data: { accounts: [{ accountId: 'user-owner', name: 'Owner' }] },
     }),
   ),
+  http.get('*/api/documents/:documentId/comments', () =>
+    HttpResponse.json({ ok: true, data: { items: [], nextCursor: null } }),
+  ),
   http.get('*/api/documents/:documentId/signature-records', () =>
     HttpResponse.json({ ok: true, data: { items: [], nextCursor: null } }),
   ),

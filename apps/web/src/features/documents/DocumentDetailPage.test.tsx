@@ -103,6 +103,89 @@ const renderPage = async (
 };
 
 describe('DocumentDetailPage', () => {
+  it('renders, adds, and restricts comment deletion to the current user', async () => {
+    const ownCommentId = '67676767-6767-4767-8767-676767676767';
+    const foreignCommentId = '68686868-6868-4868-8868-686868686868';
+    const addedCommentId = '69696969-6969-4969-8969-696969696969';
+    const createdAt = new Date(2026, 7, 16, 14, 5).toISOString();
+    const add = vi.fn();
+    const remove = vi.fn();
+    let comments = [
+      {
+        id: ownCommentId,
+        tenantId: 'tenant-1',
+        documentId: DOCUMENT_ID,
+        author: { accountId: 'user-owner', name: 'Owner' },
+        body: 'Pierwsza linia\nDruga linia',
+        createdAt,
+      },
+      {
+        id: foreignCommentId,
+        tenantId: 'tenant-1',
+        documentId: DOCUMENT_ID,
+        author: { accountId: 'user-other', name: 'Anna Nowak' },
+        body: 'Komentarz Anny',
+        createdAt,
+      },
+    ];
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/comments`, () =>
+        HttpResponse.json({ ok: true, data: { items: comments, nextCursor: null } }),
+      ),
+      http.post(`/api/documents/${DOCUMENT_ID}/comments`, async ({ request }) => {
+        const body: unknown = await request.json();
+        add(body);
+        if (
+          typeof body !== 'object' ||
+          body === null ||
+          !('body' in body) ||
+          typeof body.body !== 'string'
+        ) {
+          return HttpResponse.json(
+            { ok: false, error: { code: 'validation', message: 'Invalid comment' } },
+            { status: 400 },
+          );
+        }
+        const comment = {
+          id: addedCommentId,
+          tenantId: 'tenant-1',
+          documentId: DOCUMENT_ID,
+          author: { accountId: 'user-owner', name: 'Owner' },
+          body: body.body.trim(),
+          createdAt,
+        };
+        comments = [...comments, comment];
+        return HttpResponse.json({ ok: true, data: { comment } });
+      }),
+      http.delete(`/api/documents/${DOCUMENT_ID}/comments/${ownCommentId}`, () => {
+        remove();
+        comments = comments.filter((comment) => comment.id !== ownCommentId);
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'Komentarze' })).toBeInTheDocument();
+    expect(screen.getByText('Owner')).toBeInTheDocument();
+    expect(screen.getAllByText('Anna Nowak')).toHaveLength(2);
+    expect(screen.getAllByText('16.08.2026 14:05')).toHaveLength(2);
+    const preservedBody = screen.getByText(/Pierwsza linia/u);
+    expect(preservedBody).toHaveStyle({ whiteSpace: 'pre-wrap' });
+    expect(screen.getByLabelText(`Usuń komentarz ${ownCommentId}`)).toBeInTheDocument();
+    expect(screen.queryByLabelText(`Usuń komentarz ${foreignCommentId}`)).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Komentarz' }), 'Nowy komentarz');
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj komentarz' }));
+    await waitFor(() => expect(add).toHaveBeenCalledWith({ body: 'Nowy komentarz' }));
+    expect(await screen.findByText('Nowy komentarz')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText(`Usuń komentarz ${ownCommentId}`));
+    await waitFor(() => expect(remove).toHaveBeenCalledOnce());
+  });
+
   it('renders related documents with labels and removes a link', async () => {
     const remove = vi.fn();
     let links = [
@@ -138,6 +221,10 @@ describe('DocumentDetailPage', () => {
       await screen.findByRole('heading', { name: 'Powiązane dokumenty' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Umowa ramowa')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Umowa ramowa/u })).toHaveAttribute(
+      'href',
+      `/app/documents/${RELATED_ID}`,
+    );
     expect(screen.getByText('podstawa')).toBeInTheDocument();
     expect(screen.getByText('W koszu')).toBeInTheDocument();
     const linkedRow = screen.getByText('Umowa ramowa').closest('li');
@@ -304,7 +391,7 @@ describe('DocumentDetailPage', () => {
     );
 
     expect(await screen.findByRole('heading', { name: 'Umowa z Anną' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '← Dokumenty' }));
+    fireEvent.click(screen.getByRole('link', { name: '← Dokumenty' }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/app/documents'));
     expect(router.state.location.search).toMatchObject({ q: 'Szkic', szkice: true });
