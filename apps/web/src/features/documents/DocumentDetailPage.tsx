@@ -35,6 +35,7 @@ import {
   documentTypeSchema,
   type DocumentFile,
   type DocumentFileRole,
+  type PdfSealVerification,
   type SourceUpdateRequest,
   type DocumentType,
 } from '#core/domain/index.js';
@@ -141,6 +142,95 @@ const ConfirmDialog = ({
   </Dialog>
 );
 
+const sealFailureLabels = (verification: PdfSealVerification): string[] => [
+  ...(verification.byteRangeValid ? [] : ['zakres bajtów dokumentu']),
+  ...(verification.digestValid ? [] : ['skrót dokumentu']),
+  ...(verification.signatureValid ? [] : ['podpis kryptograficzny']),
+];
+
+const sealSignerNames = (verification: PdfSealVerification): string => {
+  const claimed = [verification.name, verification.reason]
+    .flatMap((value) => {
+      const match = value?.match(/^Signed by:\s*(.+)$/iu);
+      return match?.[1]?.split(',').map((name) => name.trim()).filter(Boolean) ?? [];
+    });
+  const fallback = verification.name && verification.name !== verification.subject
+    ? [verification.name]
+    : [];
+  return [...new Set(claimed.length ? claimed : fallback)].join(', ');
+};
+
+const SealDetailsDialog = ({
+  documentId,
+  file,
+  open,
+  onClose,
+}: {
+  documentId: string;
+  file: DocumentFile;
+  open: boolean;
+  onClose: () => void;
+}) => {
+  const verificationQuery = useQuery({
+    ...actions.documentFileSeal(documentId, file.id),
+    enabled: open,
+  });
+  const verification = verificationQuery.data?.verification;
+  const signerNames = verification ? sealSignerNames(verification) : '';
+  const failures = verification ? sealFailureLabels(verification) : [];
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>Szczegóły pieczęci</DialogTitle>
+      <DialogContent dividers>
+        {verificationQuery.isPending ? (
+          <LinearProgress aria-label="Ładowanie szczegółów pieczęci" />
+        ) : verificationQuery.isError ? (
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" onClick={() => void verificationQuery.refetch()}>
+                Spróbuj ponownie
+              </Button>
+            }
+          >
+            Nie udało się pobrać szczegółów pieczęci: {verificationQuery.error.message}
+          </Alert>
+        ) : verification ? (
+          <Stack sx={{ gap: 2 }}>
+            <Alert severity={verification.integrity ? 'success' : 'error'}>
+              {verification.integrity
+                ? 'Pieczęć jest kryptograficznie poprawna, a dokument nie został zmieniony od chwili opieczętowania.'
+                : `Pieczęć jest nieprawidłowa. Nieprawidłowe kontrole: ${failures.join(', ')}.`}
+            </Alert>
+            <Box>
+              <Typography variant="subtitle2">Podmiot certyfikatu</Typography>
+              <Typography>{verification.subject}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2">Deklarowana data podpisania</Typography>
+              <Typography>{formatPolishDate(verification.declaredAt)}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2">Podpisujący</Typography>
+              <Typography>{signerNames || 'Brak danych'}</Typography>
+            </Box>
+            {verification.reason ? (
+              <Box>
+                <Typography variant="subtitle2">Powód</Typography>
+                <Typography>{verification.reason}</Typography>
+              </Box>
+            ) : null}
+          </Stack>
+        ) : null}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Zamknij</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const FileRow = ({
   documentId,
   file,
@@ -158,6 +248,7 @@ const FileRow = ({
 }) => {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [afterMenuClose, setAfterMenuClose] = useState<(() => void) | undefined>();
+  const [sealDetailsOpen, setSealDetailsOpen] = useState(false);
   const contentUrl = actions.documentFileContentUrl(documentId, file.id);
   const exportUrl = actions.documentFileExportUrl(documentId, file.id);
   const closeMenu = () => setMenuAnchor(null);
@@ -193,7 +284,14 @@ const FileRow = ({
         sx={{ alignItems: 'center', flexShrink: 0, gap: 0.5 }}
       >
         {file.role === 'signed-digital' && file.sealed ? (
-          <Chip size="small" variant="outlined" label="Pieczęć" />
+          <Chip
+            clickable
+            size="small"
+            variant="outlined"
+            label="Pieczęć"
+            aria-label={`Pokaż szczegóły pieczęci pliku ${file.fileName}`}
+            onClick={() => setSealDetailsOpen(true)}
+          />
         ) : null}
         {readOnly ? (
           <Chip size="small" variant="outlined" label={FILE_ROLE_LABELS[file.role]} />
@@ -276,6 +374,14 @@ const FileRow = ({
           </>
         )}
       </Stack>
+      {file.role === 'signed-digital' && file.sealed ? (
+        <SealDetailsDialog
+          documentId={documentId}
+          file={file}
+          open={sealDetailsOpen}
+          onClose={() => setSealDetailsOpen(false)}
+        />
+      ) : null}
     </ListItem>
   );
 };

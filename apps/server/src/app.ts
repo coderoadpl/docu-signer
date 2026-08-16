@@ -73,6 +73,7 @@ import {
   getDocument,
   getFileContent,
   getFileExport,
+  getDocumentFileSealVerification,
   getUserPreference,
   getTenantSettings,
   getActivePadSession,
@@ -979,6 +980,16 @@ export const buildApp = (deps: AppDeps) => {
         disposition,
       ),
     });
+  });
+
+  app.get(API_ROUTES.documentFileSeal.path, async (c) => {
+    const result = await getDocumentFileSealVerification(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      c.req.param('fileId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ verification: result.value }) : result);
   });
 
   app.get(API_ROUTES.documentFileExport.path, async (c) => {

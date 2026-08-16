@@ -28,6 +28,7 @@ import {
   documentCommentsQuery,
   documentLinksInvalidates,
   documentLinksQuery,
+  documentFileSealQuery,
   documentsInvalidates,
   documentsQuery,
   exportDocumentsMutation,
@@ -122,6 +123,33 @@ const errorResponse = (code: 'conflict' | 'unauthorized', message: string) =>
 const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 describe('document query descriptors', () => {
+  it('caches immutable file seal verification by file version', async () => {
+    const verification = {
+      subject: 'Amazing Company Sp. z o.o.',
+      name: 'Amazing Company Sp. z o.o.',
+      reason: 'Signed by: Anna Nowak',
+      declaredAt: '2026-08-16T10:00:00.000Z',
+      byteRangeValid: true,
+      digestValid: true,
+      signatureValid: true,
+      integrity: true,
+    };
+    const fetchImpl = vi.fn<typeof fetch>(() => response({ verification }));
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const query = documentFileSealQuery(api, document.id, documentFile.id);
+
+    expect(query.queryKey).toEqual([
+      'documents',
+      'detail',
+      document.id,
+      'file',
+      documentFile.id,
+      'seal',
+    ]);
+    expect(query.staleTime).toBe(Infinity);
+    await expect(newClient().fetchQuery(query)).resolves.toEqual({ verification });
+  });
+
   it('executes the list queryFn and unwraps its API result', async () => {
     const fetchImpl = vi.fn<typeof fetch>(() => response({ documents: [] }));
     const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });

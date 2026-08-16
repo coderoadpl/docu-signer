@@ -10,6 +10,7 @@ import {
   documentCommentCreateInputSchema,
   documentCommentListOutputSchema,
   documentGetOutputSchema,
+  documentFileSealOutputSchema,
   documentListInputSchema,
   documentListOutputSchema,
   documentLinkCreateInputSchema,
@@ -92,6 +93,10 @@ describe('API route contract', () => {
     expect(API_ROUTES.documentFileMove).toEqual({
       method: 'POST',
       path: '/api/documents/:documentId/files/:fileId/move',
+    });
+    expect(API_ROUTES.documentFileSeal).toEqual({
+      method: 'GET',
+      path: '/api/documents/:documentId/files/:fileId/seal',
     });
     expect(API_ROUTES.documentApprove).toEqual({
       method: 'POST',
@@ -389,6 +394,35 @@ describe('API route contract', () => {
         },
       }).success,
     ).toBe(true);
+  });
+
+  it('validates the PDF seal verification response', () => {
+    expect(
+      documentFileSealOutputSchema.parse({
+        verification: {
+          subject: 'Amazing Company Sp. z o.o.',
+          name: 'Amazing Company Sp. z o.o.',
+          reason: 'Signed by: Anna Nowak',
+          declaredAt: '2026-08-16T10:00:00.000Z',
+          byteRangeValid: true,
+          digestValid: true,
+          signatureValid: true,
+          integrity: true,
+        },
+      }),
+    ).toMatchObject({ verification: { name: 'Amazing Company Sp. z o.o.' } });
+    expect(
+      documentFileSealOutputSchema.safeParse({
+        verification: {
+          subject: 'Amazing Company Sp. z o.o.',
+          declaredAt: '2026-08-16T10:00:00.000Z',
+          byteRangeValid: true,
+          digestValid: true,
+          signatureValid: true,
+          integrity: true,
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it('rejects invalid health and readiness payloads', () => {
