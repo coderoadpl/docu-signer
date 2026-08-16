@@ -24,7 +24,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { createLink, Link, useNavigate } from '@tanstack/react-router';
 
 import type { DocumentWithFiles } from '#core/domain/index.js';
 
@@ -35,6 +35,8 @@ import { formatPolishDate } from '../../lib/format-date.js';
 import { DOCUMENT_TYPE_LABELS } from './documents.logic.js';
 
 const TRASH_EMPTY_CONFIRMATION = 'OPRÓŻNIJ KOSZ';
+
+const RouterCardActionArea = createLink(CardActionArea);
 
 const trashErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Nie udało się wykonać akcji w koszu.';
@@ -191,7 +193,12 @@ export const TrashPage = () => {
                 return (
                   <Card key={document.id} variant="outlined">
                     <Stack direction="row" sx={{ alignItems: 'stretch' }}>
-                      <CardActionArea disabled={busy} onClick={() => openDocument(document.id)}>
+                      <RouterCardActionArea
+                        to="/app/documents/$id"
+                        params={{ id: document.id }}
+                        search={{}}
+                        disabled={busy}
+                      >
                         <CardContent>
                           <Typography variant="h2">{document.title}</Typography>
                           <Stack direction="row" sx={{ mt: 1, gap: 0.75, flexWrap: 'wrap' }}>
@@ -210,7 +217,7 @@ export const TrashPage = () => {
                             {document.person ?? 'Bez przypisanej osoby'}
                           </Typography>
                         </CardContent>
-                      </CardActionArea>
+                      </RouterCardActionArea>
                     </Stack>
                     <Stack direction="row" sx={{ gap: 1, p: 2, pt: 0 }}>
                       <Button
@@ -268,9 +275,17 @@ export const TrashPage = () => {
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="subtitle2" component="span">
-                            {document.title}
-                          </Typography>
+                          <Link
+                            to="/app/documents/$id"
+                            params={{ id: document.id }}
+                            search={{}}
+                            onClick={(event) => event.stopPropagation()}
+                            style={{ color: 'inherit', textDecoration: 'none' }}
+                          >
+                            <Typography variant="subtitle2" component="span">
+                              {document.title}
+                            </Typography>
+                          </Link>
                           {busy ? (
                             <LinearProgress
                               aria-label={`Przetwarzanie dokumentu ${document.title}`}

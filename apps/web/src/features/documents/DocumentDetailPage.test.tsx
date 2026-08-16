@@ -138,6 +138,10 @@ describe('DocumentDetailPage', () => {
       await screen.findByRole('heading', { name: 'Powiązane dokumenty' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Umowa ramowa')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Umowa ramowa/u })).toHaveAttribute(
+      'href',
+      `/app/documents/${RELATED_ID}`,
+    );
     expect(screen.getByText('podstawa')).toBeInTheDocument();
     expect(screen.getByText('W koszu')).toBeInTheDocument();
     const linkedRow = screen.getByText('Umowa ramowa').closest('li');
@@ -304,7 +308,7 @@ describe('DocumentDetailPage', () => {
     );
 
     expect(await screen.findByRole('heading', { name: 'Umowa z Anną' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '← Dokumenty' }));
+    fireEvent.click(screen.getByRole('link', { name: '← Dokumenty' }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/app/documents'));
     expect(router.state.location.search).toMatchObject({ q: 'Szkic', szkice: true });
