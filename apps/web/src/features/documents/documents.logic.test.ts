@@ -208,6 +208,26 @@ describe('document view logic', () => {
     ).toEqual({ q: 'Szkic', szkice: true });
   });
 
+  it('round-trips the pending-drafts option through URLs and saved searches', () => {
+    const parsed = documentsSearchSchema.parse({ szkice: 'pending' });
+    expect(documentFiltersFromSearch(parsed)).toMatchObject({ draft: 'pending' });
+    expect(
+      documentsSearchFromState('list', {
+        ...emptyDocumentFilters(),
+        draft: 'pending',
+      }),
+    ).toEqual({ szkice: 'pending' });
+    expect(
+      toDocumentFilter({
+        ...emptyDocumentFilters(),
+        draft: 'pending',
+      }),
+    ).toEqual({ draft: 'all', pendingDrafts: 'true' });
+    expect(
+      toDocumentFilterValues({ draft: 'all', pendingDrafts: 'true' }),
+    ).toMatchObject({ draft: 'pending' });
+  });
+
   it('round-trips the signer account through URLs and saved filters', () => {
     const parsed = documentsSearchSchema.parse({ podpisal: 'account-1' });
     expect(documentFiltersFromSearch(parsed)).toMatchObject({ signerAccountId: 'account-1' });

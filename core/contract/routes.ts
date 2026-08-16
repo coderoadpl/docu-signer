@@ -13,6 +13,9 @@ import {
   createSourceUpdateRequestSchema,
   documentFileSchema,
   documentCommentListItemSchema,
+  documentDetailSchema,
+  documentMetadataChangesSchema,
+  documentMetadataProposalListItemSchema,
   documentLinkSchema,
   documentListItemSchema,
   documentListFilterSchema,
@@ -138,9 +141,7 @@ export const documentTypeDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
-export const documentGetOutputSchema = z.object({
-  document: documentWithFilesSchema,
-});
+export const documentGetOutputSchema = z.object({ document: documentDetailSchema });
 
 export const documentCommentListInputSchema = paginationQuerySchema;
 
@@ -162,10 +163,36 @@ export const documentCommentDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
-export const documentUpdateInputSchema = updateDocumentSchema;
+export const documentUpdateInputSchema = z.union([
+  updateDocumentSchema,
+  documentMetadataChangesSchema,
+]);
 
-export const documentUpdateOutputSchema = z.object({
+export const documentUpdateOutputSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('updated'),
+    document: documentSchema,
+    proposal: z.null(),
+  }),
+  z.object({
+    outcome: z.literal('proposed'),
+    document: documentSchema,
+    proposal: documentMetadataProposalListItemSchema,
+  }),
+]);
+
+export const documentMetadataProposalListInputSchema = paginationQuerySchema;
+
+export const documentMetadataProposalListOutputSchema = paginatedOutputSchema(
+  documentMetadataProposalListItemSchema,
+);
+
+export const documentMetadataProposalApproveOutputSchema = z.object({
   document: documentSchema,
+});
+
+export const documentMetadataProposalRejectOutputSchema = z.object({
+  deleted: z.literal(true),
 });
 
 export const documentApproveOutputSchema = z.object({
@@ -476,6 +503,18 @@ export const API_ROUTES = {
     path: '/api/documents/:documentId/comments/:commentId',
   },
   documentUpdate: { method: 'PATCH', path: '/api/documents/:documentId' },
+  documentMetadataProposals: {
+    method: 'GET',
+    path: '/api/documents/:documentId/metadata-proposals',
+  },
+  documentMetadataProposalApprove: {
+    method: 'POST',
+    path: '/api/document-metadata-proposals/:proposalId/approve',
+  },
+  documentMetadataProposalReject: {
+    method: 'POST',
+    path: '/api/document-metadata-proposals/:proposalId/reject',
+  },
   documentApprove: { method: 'POST', path: '/api/documents/:documentId/approve' },
   documentUnapprove: { method: 'POST', path: '/api/documents/:documentId/unapprove' },
   documentWaiveSignature: {

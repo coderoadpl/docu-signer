@@ -10,6 +10,7 @@ import {
   addDocumentCommentMutation,
   approveDocumentCommentMutation,
   approveDocumentLinkMutation,
+  approveDocumentMetadataProposalMutation,
   changePasswordMutation,
   createApiTokenMutation,
   createDocumentMutation,
@@ -32,6 +33,8 @@ import {
   documentCommentsQuery,
   documentLinksInvalidates,
   documentLinksQuery,
+  documentMetadataProposalsInvalidates,
+  documentMetadataProposalsQuery,
   documentFileSealQuery,
   documentsInvalidates,
   documentsQuery,
@@ -43,6 +46,7 @@ import {
   purgeDocumentMutation,
   pendingSourceUpdateRequestsQuery,
   requestPasswordResetMutation,
+  rejectDocumentMetadataProposalMutation,
   requireDocumentSignatureMutation,
   resetPasswordMutation,
   requestFileUploadMutation,
@@ -272,6 +276,44 @@ describe('document query descriptors', () => {
     });
   });
 
+  it('binds paginated metadata proposal queries and resolution mutations', async () => {
+    const first = {
+      id: '55555555-5555-4555-8555-555555555555',
+      tenantId: 'tenant-default',
+      documentId: document.id,
+      changes: { title: 'Pierwsza' },
+      creator: { accountId: 'user-1', name: 'Owner' },
+      createdAt: '2026-08-16T10:00:00.000Z',
+    };
+    const second = {
+      ...first,
+      id: '66666666-6666-4666-8666-666666666666',
+      changes: { person: 'Anna Nowak' },
+    };
+    const fetchImpl = vi.fn<typeof fetch>((input) => {
+      if (String(input).endsWith('/approve')) return response({ document });
+      if (String(input).endsWith('/reject')) return response({ deleted: true });
+      return String(input).includes('cursor=next-page')
+        ? response({ items: [second], nextCursor: null })
+        : response({ items: [first], nextCursor: 'next-page' });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const client = newClient();
+
+    await expect(
+      client.fetchQuery(documentMetadataProposalsQuery(api, document.id)),
+    ).resolves.toEqual({ items: [first, second], nextCursor: null });
+    await expect(
+      new MutationObserver(client, approveDocumentMetadataProposalMutation(api)).mutate(first.id),
+    ).resolves.toEqual({ document });
+    await expect(
+      new MutationObserver(client, rejectDocumentMetadataProposalMutation(api)).mutate(second.id),
+    ).resolves.toEqual({ deleted: true });
+    expect(documentMetadataProposalsInvalidates(document.id)).toEqual({
+      queryKey: ['document-metadata-proposals', document.id],
+    });
+  });
+
   it('executes the detail queryFn and builds identity scope', async () => {
     const fetchImpl = vi.fn<typeof fetch>((input) =>
       String(input).endsWith('/api/documents/trash')
@@ -284,7 +326,11 @@ describe('document query descriptors', () => {
     expect(meQuery(api).queryKey).toEqual(['me']);
     expect(query.queryKey).toEqual(['documents', 'detail', document.id]);
     await expect(newClient().fetchQuery(query)).resolves.toEqual({
-      document: { ...document, files: [] },
+      document: {
+        ...document,
+        files: [],
+        pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
+      },
     });
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(`/api/documents/${document.id}`);
 
@@ -334,6 +380,9 @@ describe('document mutation descriptors', () => {
       if (url.includes('/files/') && url.endsWith('/move')) {
         return response({ document: { ...document, files: [documentFile] } });
       }
+      if (url.endsWith(`/api/documents/${document.id}`) && init?.method === 'PATCH') {
+        return response({ outcome: 'updated', document, proposal: null });
+      }
       if (init?.method === 'DELETE') return response({ deleted: true });
       return response({ document });
     });
@@ -355,7 +404,7 @@ describe('document mutation descriptors', () => {
     await expect(observe(create).mutate(input)).resolves.toEqual({ document });
     await expect(
       observe(updateDocumentMutation(api)).mutate({ documentId: document.id, input }),
-    ).resolves.toEqual({ document });
+    ).resolves.toEqual({ outcome: 'updated', document, proposal: null });
     await expect(
       observe(waiveDocumentSignatureMutation(api)).mutate(document.id),
     ).resolves.toEqual({ document });

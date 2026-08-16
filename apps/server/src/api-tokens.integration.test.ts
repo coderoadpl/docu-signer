@@ -14,6 +14,7 @@ import { createDocumentRepository } from '#adapters/db/documents-repository.js';
 import { createDocumentTypeRepository } from '#adapters/db/document-types-repository.js';
 import { seedDefaultDocumentTypes } from '#adapters/db/document-types-seed.js';
 import { createDocumentCommentRepository } from '#adapters/db/document-comments-repository.js';
+import { createDocumentMetadataProposalRepository } from '#adapters/db/document-metadata-proposals-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
@@ -36,6 +37,8 @@ import {
   documentCommentCreateOutputSchema,
   documentCreateOutputSchema,
   documentFileOutputSchema,
+  documentMetadataProposalListOutputSchema,
+  documentUpdateOutputSchema,
   looseEnvelopeSchema,
 } from '#core/contract/index.js';
 import { ok, type AppError, type Result } from '#core/domain/index.js';
@@ -166,6 +169,7 @@ beforeAll(async () => {
     documents: createDocumentRepository(db),
     documentTypes: createDocumentTypeRepository(db),
     documentComments: createDocumentCommentRepository(db),
+    documentMetadataProposals: createDocumentMetadataProposalRepository(db),
     documentLinks: {
       create: async () => null,
       findBetween: async () => null,
@@ -222,7 +226,7 @@ afterAll(async () => {
 });
 
 describe('API token HTTP integration', () => {
-  it('forbids draft-token document edits after approval but creates draft annotations', async () => {
+  it('turns draft-token edits into proposals and creates draft annotations', async () => {
     const createdToken = await app.request(API_ROUTES.apiTokensCreate.path, {
       method: API_ROUTES.apiTokensCreate.method,
       headers: { [TENANT_HEADER]: 'default', 'content-type': 'application/json' },
@@ -275,7 +279,7 @@ describe('API token HTTP integration', () => {
     );
     expect(approved.status).toBe(200);
 
-    const denied = await app.request(
+    const proposed = await app.request(
       API_ROUTES.documentUpdate.path.replace(':documentId', documentData.document.id),
       {
         method: API_ROUTES.documentUpdate.method,
@@ -284,16 +288,43 @@ describe('API token HTTP integration', () => {
           authorization: `Bearer ${tokenData.value}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({
-          title: 'Should fail',
-          docType: 'inny',
-          documentDate: '2026-08-02',
-          tags: [],
-        }),
+        body: JSON.stringify({ title: 'Proposed title' }),
       },
     );
-    expect(denied.status).toBe(403);
-    expect(await denied.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(proposed.status).toBe(200);
+    const proposedData = await expectData(proposed, documentUpdateOutputSchema);
+    expect(proposedData).toMatchObject({
+      outcome: 'proposed',
+      document: { title: 'Imported draft' },
+      proposal: { changes: { title: 'Proposed title' } },
+    });
+    if (proposedData.outcome !== 'proposed') throw new Error('Expected proposal outcome');
+
+    const proposalList = await app.request(
+      API_ROUTES.documentMetadataProposals.path.replace(
+        ':documentId',
+        documentData.document.id,
+      ),
+      { headers: { [TENANT_HEADER]: 'default' } },
+    );
+    expect(proposalList.status).toBe(200);
+    await expectData(proposalList, documentMetadataProposalListOutputSchema);
+
+    const approvedProposal = await app.request(
+      API_ROUTES.documentMetadataProposalApprove.path.replace(
+        ':proposalId',
+        proposedData.proposal.id,
+      ),
+      {
+        method: API_ROUTES.documentMetadataProposalApprove.method,
+        headers: { [TENANT_HEADER]: 'default' },
+      },
+    );
+    expect(approvedProposal.status).toBe(200);
+    expect(await approvedProposal.json()).toMatchObject({
+      ok: true,
+      data: { document: { title: 'Proposed title' } },
+    });
 
     const createdComment = await app.request(
       API_ROUTES.documentCommentCreate.path.replace(':documentId', documentData.document.id),

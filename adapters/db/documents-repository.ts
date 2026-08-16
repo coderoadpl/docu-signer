@@ -4,15 +4,20 @@ import {
   documentFileSchema,
   documentSchema,
   documentWithSignersSchema,
+  pendingDraftCountsSchema,
   type Document,
   type DocumentFile,
   type DocumentWithSigners,
+  type PendingDraftCounts,
 } from '#core/domain/index.js';
 import type { DocumentRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import {
+  documentComments,
   documentFiles,
+  documentLinks,
+  documentMetadataProposals,
   documents,
   signatureRecords,
   sourceUpdateRequests,
@@ -34,10 +39,12 @@ const toDocumentFile = (
 
 const toDocumentWithSigners = (row: {
   document: typeof documents.$inferSelect;
+  pending_drafts: unknown;
   signers: unknown;
 }): DocumentWithSigners =>
   documentWithSignersSchema.parse({
     ...toDocument(row.document),
+    pendingDrafts: row.pending_drafts,
     signers: row.signers,
   });
 
@@ -70,6 +77,34 @@ const documentSigners = sql<unknown>`
     '[]'::jsonb
   )
 `.as('signers');
+
+const pendingDrafts = sql<unknown>`
+  jsonb_build_object(
+    'comments', (
+      SELECT count(*)
+      FROM document_comments comment
+      WHERE comment.tenant_id = documents.tenant_id
+        AND comment.document_id = documents.id
+        AND comment.draft = true
+    ),
+    'links', (
+      SELECT count(*)
+      FROM document_links link
+      WHERE link.tenant_id = documents.tenant_id
+        AND link.draft = true
+        AND (
+          link.from_document_id = documents.id
+          OR link.to_document_id = documents.id
+        )
+    ),
+    'metadataProposals', (
+      SELECT count(*)
+      FROM document_metadata_proposals proposal
+      WHERE proposal.tenant_id = documents.tenant_id
+        AND proposal.document_id = documents.id
+    )
+  )
+`.as('pending_drafts');
 
 export const createDocumentRepository = (db: Db): DocumentRepository => ({
   listByTenant: async (tenantId, filter) => {
@@ -139,8 +174,34 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
     if (filter.draft === undefined || filter.draft === 'false') {
       conditions.push(eq(documents.draft, false));
     }
+    if (filter.pendingDrafts === 'true') {
+      conditions.push(sql`(
+        EXISTS (
+          SELECT 1 FROM ${documentComments}
+          WHERE ${documentComments.tenantId} = ${documents.tenantId}
+            AND ${documentComments.documentId} = ${documents.id}
+            AND ${documentComments.draft} = true
+        ) OR EXISTS (
+          SELECT 1 FROM ${documentLinks}
+          WHERE ${documentLinks.tenantId} = ${documents.tenantId}
+            AND ${documentLinks.draft} = true
+            AND (
+              ${documentLinks.fromDocumentId} = ${documents.id}
+              OR ${documentLinks.toDocumentId} = ${documents.id}
+            )
+        ) OR EXISTS (
+          SELECT 1 FROM ${documentMetadataProposals}
+          WHERE ${documentMetadataProposals.tenantId} = ${documents.tenantId}
+            AND ${documentMetadataProposals.documentId} = ${documents.id}
+        )
+      )`);
+    }
     const rows = await db
-      .select({ document: documents, signers: documentSigners })
+      .select({
+        document: documents,
+        pending_drafts: pendingDrafts,
+        signers: documentSigners,
+      })
       .from(documents)
       .where(and(...conditions))
       .orderBy(desc(documents.documentDate), desc(documents.createdAt));
@@ -194,6 +255,16 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
       )
       .limit(1);
     return rows[0] ? toDocument(rows[0]) : null;
+  },
+  getPendingDraftCounts: async (tenantId, documentId): Promise<PendingDraftCounts> => {
+    const rows = await db
+      .select({ pending_drafts: pendingDrafts })
+      .from(documents)
+      .where(and(eq(documents.tenantId, tenantId), eq(documents.id, documentId)))
+      .limit(1);
+    return pendingDraftCountsSchema.parse(
+      rows[0]?.pending_drafts ?? { comments: 0, links: 0, metadataProposals: 0 },
+    );
   },
   listFiles: async (tenantId, documentId) => {
     const rows = await db

@@ -11,6 +11,7 @@ import { DEFAULT_DOCUMENT_TYPES } from '#core/domain/index.js';
 import { createDocumentRepository } from './documents-repository.js';
 import { createDocumentCommentRepository } from './document-comments-repository.js';
 import { createDocumentLinkRepository } from './document-links-repository.js';
+import { createDocumentMetadataProposalRepository } from './document-metadata-proposals-repository.js';
 import { createDocumentTypeRepository } from './document-types-repository.js';
 import { createPadSessionRepository } from './pad-sessions-repository.js';
 import { createApiTokenRepository } from './api-tokens-repository.js';
@@ -50,12 +51,11 @@ beforeAll(async () => {
     { id: 'tenant-a', slug: 'a', name: 'A', createdAt: '2026-08-01T00:00:00.000Z' },
     { id: 'tenant-b', slug: 'b', name: 'B', createdAt: '2026-08-01T00:00:00.000Z' },
   ]);
-  const migration = await readFile(
-    new URL('../../drizzle/0028_smooth_bishop.sql', import.meta.url),
-    'utf8',
-  );
-  await pool.query(migration.replaceAll('--> statement-breakpoint', ''));
-  await pool.query(migration.replaceAll('--> statement-breakpoint', ''));
+  for (const fileName of ['0028_smooth_bishop.sql', '0029_worthless_thor.sql']) {
+    const migration = await readFile(new URL(`../../drizzle/${fileName}`, import.meta.url), 'utf8');
+    await pool.query(migration.replaceAll('--> statement-breakpoint', ''));
+    await pool.query(migration.replaceAll('--> statement-breakpoint', ''));
+  }
   await db.insert(tenantAdmins).values([
     { id: 'grant-owner', tenantId: 'tenant-a', userId: 'user-owner', role: 'owner' },
     { id: 'grant-admin', tenantId: 'tenant-b', userId: 'user-admin', role: 'admin' },
@@ -788,6 +788,98 @@ describe('DocumentLinkRepository', () => {
     ]);
     await expect(links.deleteBetween('tenant-a', second.id, first.id)).resolves.toBe(true);
     await expect(links.listForDocument('tenant-a', first.id)).resolves.toEqual([]);
+  });
+});
+
+describe('DocumentMetadataProposalRepository', () => {
+  it('round-trips proposals and filters documents with any pending draft source', async () => {
+    const documents = createDocumentRepository(db);
+    const comments = createDocumentCommentRepository(db);
+    const links = createDocumentLinkRepository(db);
+    const proposals = createDocumentMetadataProposalRepository(db);
+    const rows = await Promise.all(
+      [
+        ['81818181-8181-4181-8181-818181818181', 'Komentarz'],
+        ['82828282-8282-4282-8282-828282828282', 'Powiązanie A'],
+        ['83838383-8383-4383-8383-838383838383', 'Powiązanie B'],
+        ['84848484-8484-4484-8484-848484848484', 'Propozycja'],
+      ].map(([id, title]) =>
+        documents.create({
+          id: id ?? '',
+          tenantId: 'tenant-a',
+          title: title ?? '',
+          docType: 'umowa-uod',
+          documentDate: '2026-08-16',
+          periodStart: null,
+          periodEnd: null,
+          person: null,
+          tags: ['pending-drafts-itest'],
+        }),
+      ),
+    );
+    const [commentDocument, linkFrom, linkTo, proposalDocument] = rows;
+    if (!commentDocument || !linkFrom || !linkTo || !proposalDocument) {
+      throw new Error('Missing integration document');
+    }
+    await comments.create({
+      id: '85858585-8585-4585-8585-858585858585',
+      tenantId: 'tenant-a',
+      documentId: commentDocument.id,
+      authorAccountId: 'user-owner',
+      body: 'Szkic komentarza',
+      draft: true,
+    });
+    await links.create('tenant-a', {
+      id: '86868686-8686-4686-8686-868686868686',
+      fromDocumentId: linkFrom.id,
+      toDocumentId: linkTo.id,
+      label: null,
+      draft: true,
+    });
+    const created = await proposals.create({
+      id: '87878787-8787-4787-8787-878787878787',
+      tenantId: 'tenant-a',
+      documentId: proposalDocument.id,
+      creatorAccountId: 'user-owner',
+      changes: { title: 'Zatwierdzona propozycja', person: 'Anna Nowak' },
+    });
+    expect(created).toMatchObject({
+      creator: { accountId: 'user-owner', name: 'Owner' },
+      changes: { title: 'Zatwierdzona propozycja', person: 'Anna Nowak' },
+    });
+    await expect(
+      proposals.listByDocument('tenant-b', proposalDocument.id, null, 10),
+    ).resolves.toEqual([]);
+    await expect(
+      documents.listByTenant('tenant-a', {
+        tag: 'pending-drafts-itest',
+        draft: 'all',
+        pendingDrafts: 'true',
+      }),
+    ).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: commentDocument.id, pendingDrafts: { comments: 1, links: 0, metadataProposals: 0 } }),
+      expect.objectContaining({ id: linkFrom.id, pendingDrafts: { comments: 0, links: 1, metadataProposals: 0 } }),
+      expect.objectContaining({ id: linkTo.id, pendingDrafts: { comments: 0, links: 1, metadataProposals: 0 } }),
+      expect.objectContaining({ id: proposalDocument.id, pendingDrafts: { comments: 0, links: 0, metadataProposals: 1 } }),
+    ]));
+    await expect(
+      proposals.apply('tenant-a', created.id, created.changes),
+    ).resolves.toMatchObject({
+      id: proposalDocument.id,
+      title: 'Zatwierdzona propozycja',
+      person: 'Anna Nowak',
+    });
+    await expect(proposals.findById('tenant-a', created.id)).resolves.toBeNull();
+    const rejected = await proposals.create({
+      id: '88888888-8888-4888-8888-888888888888',
+      tenantId: 'tenant-a',
+      documentId: proposalDocument.id,
+      creatorAccountId: 'user-owner',
+      changes: { tags: ['odrzucone'] },
+    });
+    await expect(proposals.reject('tenant-b', rejected.id)).resolves.toBe(false);
+    await expect(proposals.reject('tenant-a', rejected.id)).resolves.toBe(true);
+    await expect(proposals.reject('tenant-a', rejected.id)).resolves.toBe(false);
   });
 });
 

@@ -5,6 +5,10 @@ import type {
   DocumentComment,
   DocumentCommentCursor,
   DocumentCommentListItem,
+  DocumentMetadataChanges,
+  DocumentMetadataProposal,
+  DocumentMetadataProposalCursor,
+  DocumentMetadataProposalListItem,
   DocumentFile,
   DocumentLink,
   DocumentListFilter,
@@ -19,6 +23,7 @@ import type {
   PadSessionMode,
   PadSignatureRequest,
   PadSubmittedStrokes,
+  PendingDraftCounts,
   PdfSealVerification,
   PdfSealMetadata,
   PublicInvitation,
@@ -45,6 +50,7 @@ export interface DocumentRepository {
   findById(tenantId: string, documentId: string): Promise<Document | null>;
   findDeletedById(tenantId: string, documentId: string): Promise<Document | null>;
   findAnyById(tenantId: string, documentId: string): Promise<Document | null>;
+  getPendingDraftCounts(tenantId: string, documentId: string): Promise<PendingDraftCounts>;
   listFiles(tenantId: string, documentId: string): Promise<DocumentFile[]>;
   listFilesIncludingDeleted(tenantId: string, documentId: string): Promise<DocumentFile[]>;
   listAllFilesIncludingDeleted(tenantId: string, documentId: string): Promise<DocumentFile[]>;
@@ -95,6 +101,28 @@ export interface DocumentRepository {
     targetDocumentId: string,
   ): Promise<DocumentFile | null>;
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
+}
+
+export interface DocumentMetadataProposalRepository {
+  listByDocument(
+    tenantId: string,
+    documentId: string,
+    cursor: DocumentMetadataProposalCursor | null,
+    limit: number,
+  ): Promise<DocumentMetadataProposalListItem[]>;
+  create(
+    input: Omit<DocumentMetadataProposal, 'createdAt'>,
+  ): Promise<DocumentMetadataProposalListItem>;
+  findById(
+    tenantId: string,
+    proposalId: string,
+  ): Promise<DocumentMetadataProposal | null>;
+  apply(
+    tenantId: string,
+    proposalId: string,
+    changes: DocumentMetadataChanges,
+  ): Promise<Document | null>;
+  reject(tenantId: string, proposalId: string): Promise<boolean>;
 }
 
 export interface DocumentTypeRepository {

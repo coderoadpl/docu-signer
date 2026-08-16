@@ -14,6 +14,7 @@ import {
   documentTypeRenameInputSchema,
   documentCommentCreateInputSchema,
   documentCommentListInputSchema,
+  documentMetadataProposalListInputSchema,
   documentLinkCreateInputSchema,
   documentFileMoveInputSchema,
   documentListInputSchema,
@@ -52,6 +53,7 @@ import {
   approveDocument,
   approveDocumentComment,
   approveDocumentLink,
+  approveDocumentMetadataProposal,
   addDocumentComment,
   createApiToken,
   createInvitation,
@@ -89,6 +91,7 @@ import {
   listDocumentTypes,
   listDocumentComments,
   listDocumentLinks,
+  listDocumentMetadataProposals,
   listApiTokens,
   listInvitations,
   listTrashedDocuments,
@@ -99,6 +102,7 @@ import {
   moveDocumentFile,
   purgeDocument,
   removeFile,
+  rejectDocumentMetadataProposal,
   resolveApiTokenIdentity,
   resolveIdentity,
   restoreDocument,
@@ -655,6 +659,7 @@ export const buildApp = (deps: AppDeps) => {
       signatureStatus: c.req.query('signatureStatus'),
       signerAccountId: c.req.query('signerAccountId'),
       draft: c.req.query('draft'),
+      pendingDrafts: c.req.query('pendingDrafts'),
     });
     if (!parsed.success) {
       return respond(err(validation('Invalid document filters', parsed.error.flatten())));
@@ -790,7 +795,42 @@ export const buildApp = (deps: AppDeps) => {
       parsed.data,
       deps,
     );
+    return respond(result);
+  });
+
+  app.get(API_ROUTES.documentMetadataProposals.path, async (c) => {
+    const parsed = documentMetadataProposalListInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid metadata proposal pagination', parsed.error.flatten())));
+    }
+    const result = await listDocumentMetadataProposals(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result);
+  });
+
+  app.post(API_ROUTES.documentMetadataProposalApprove.path, async (c) => {
+    const result = await approveDocumentMetadataProposal(
+      ctxOf(c.get('identity')),
+      c.req.param('proposalId'),
+      deps,
+    );
     return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.documentMetadataProposalReject.path, async (c) => {
+    const result = await rejectDocumentMetadataProposal(
+      ctxOf(c.get('identity')),
+      c.req.param('proposalId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
   });
 
   app.post(API_ROUTES.documentApprove.path, async (c) => {

@@ -68,7 +68,7 @@ export interface DocumentFilterValues {
   dateTo: string;
   signatureStatus: DocumentSignatureStatus | '';
   signerAccountId: string;
-  draft: 'false' | 'true' | 'all';
+  draft: 'false' | 'true' | 'all' | 'pending';
 }
 
 export type DocumentsView = 'list' | 'timeline';
@@ -82,9 +82,10 @@ const draftParamSchema = z.preprocess(
   (value: unknown) => {
     if (value === true || value === 'true' || value === '"true"') return true;
     if (value === 'all' || value === '"all"') return 'all';
+    if (value === 'pending' || value === '"pending"') return 'pending';
     return value;
   },
-  z.union([z.literal(true), z.literal('all')]).optional(),
+  z.union([z.literal(true), z.literal('all'), z.literal('pending')]).optional(),
 ).catch(undefined);
 const documentsSearchInputSchema = z.object({
   widok: z.literal('os-czasu').optional().catch(undefined),
@@ -190,6 +191,7 @@ export const documentsSearchFromState = (
   ...(values.signerAccountId ? { podpisal: values.signerAccountId } : {}),
   ...(values.draft === 'true' ? { szkice: true as const } : {}),
   ...(values.draft === 'all' ? { szkice: 'all' as const } : {}),
+  ...(values.draft === 'pending' ? { szkice: 'pending' as const } : {}),
   ...(values.dateFrom ? { od: values.dateFrom } : {}),
   ...(values.dateTo ? { do: values.dateTo } : {}),
 });
@@ -241,7 +243,7 @@ export const toDocumentFilter = (values: {
   dateTo: string;
   signatureStatus: DocumentSignatureStatus | '';
   signerAccountId: string;
-  draft: 'false' | 'true' | 'all';
+  draft: 'false' | 'true' | 'all' | 'pending';
 }): DocumentListFilter => ({
   ...(values.text.trim() ? { text: values.text.trim() } : {}),
   ...(values.docType ? { docType: values.docType } : {}),
@@ -253,7 +255,11 @@ export const toDocumentFilter = (values: {
   ...(values.signerAccountId.trim()
     ? { signerAccountId: values.signerAccountId.trim() }
     : {}),
-  ...(values.draft === 'false' ? {} : { draft: values.draft }),
+  ...(values.draft === 'false'
+    ? {}
+    : values.draft === 'pending'
+      ? { draft: 'all' as const, pendingDrafts: 'true' as const }
+      : { draft: values.draft }),
 });
 
 export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilterValues => ({
@@ -265,7 +271,7 @@ export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilte
   dateTo: filter.dateTo ?? '',
   signatureStatus: filter.signatureStatus ?? '',
   signerAccountId: filter.signerAccountId ?? '',
-  draft: filter.draft ?? 'false',
+  draft: filter.pendingDrafts === 'true' ? 'pending' : (filter.draft ?? 'false'),
 });
 
 export const hasDocumentFilter = (filter: DocumentListFilter): boolean =>
@@ -402,6 +408,7 @@ export const documentFilterSummary = (
     filter.signerAccountId ? `Podpisał(a): ${filter.signerAccountId}` : '',
     filter.draft === 'true' ? 'Szkice: tylko szkice' : '',
     filter.draft === 'all' ? 'Szkice: razem z zatwierdzonymi' : '',
+    filter.pendingDrafts === 'true' ? 'Szkice: z niezatwierdzonymi zmianami' : '',
   ].filter(Boolean);
   return parts.length ? parts.join(' · ') : 'Wszystkie dokumenty';
 };

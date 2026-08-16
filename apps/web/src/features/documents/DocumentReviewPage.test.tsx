@@ -212,7 +212,11 @@ describe('DocumentReviewPage', () => {
         update(input);
         return HttpResponse.json({
           ok: true,
-          data: { document: { ...document, title: 'Zmieniony tytuł' } },
+          data: {
+            outcome: 'updated',
+            document: { ...document, title: 'Zmieniony tytuł' },
+            proposal: null,
+          },
         });
       }),
     );

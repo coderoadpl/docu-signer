@@ -103,6 +103,78 @@ const renderPage = async (
 };
 
 describe('DocumentDetailPage', () => {
+  it('shows pending metadata diffs and approves or rejects each proposal', async () => {
+    const approve = vi.fn();
+    const reject = vi.fn();
+    const firstId = '61616161-6161-4161-8161-616161616161';
+    const secondId = '62626262-6262-4262-8262-626262626262';
+    let proposals = [
+      {
+        id: firstId,
+        tenantId: 'tenant-1',
+        documentId: DOCUMENT_ID,
+        changes: { title: 'Nowy tytuł', person: null, tags: ['ważne', 'pilne'] },
+        creator: { accountId: 'user-importer', name: 'Importer' },
+        createdAt: '2026-08-16T10:00:00.000Z',
+      },
+      {
+        id: secondId,
+        tenantId: 'tenant-1',
+        documentId: DOCUMENT_ID,
+        changes: { documentDate: '2026-08-20' },
+        creator: { accountId: 'user-importer', name: 'Importer' },
+        createdAt: '2026-08-16T11:00:00.000Z',
+      },
+    ];
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            document: {
+              ...document,
+              pendingDrafts: { comments: 0, links: 0, metadataProposals: proposals.length },
+            },
+          },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/metadata-proposals`, () =>
+        HttpResponse.json({ ok: true, data: { items: proposals, nextCursor: null } }),
+      ),
+      http.post(`/api/document-metadata-proposals/${firstId}/approve`, () => {
+        approve();
+        proposals = proposals.filter((proposal) => proposal.id !== firstId);
+        return HttpResponse.json({ ok: true, data: { document: { ...document, title: 'Nowy tytuł' } } });
+      }),
+      http.post(`/api/document-metadata-proposals/${secondId}/reject`, () => {
+        reject();
+        proposals = proposals.filter((proposal) => proposal.id !== secondId);
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    expect(
+      await screen.findByLabelText('2 propozycje zmian'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Umowa z Anną → Nowy tytuł')).toBeInTheDocument();
+    expect(screen.getByText('Anna Nowak → Brak')).toBeInTheDocument();
+    expect(screen.getByText('ważne → ważne, pilne')).toBeInTheDocument();
+    const firstRow = screen.getByText('Umowa z Anną → Nowy tytuł').closest('li');
+    if (!firstRow) throw new Error('Proposal row was not rendered');
+    await userEvent.click(within(firstRow).getByRole('button', { name: 'Zatwierdź' }));
+    await waitFor(() => expect(approve).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.queryByText('Umowa z Anną → Nowy tytuł')).not.toBeInTheDocument(),
+    );
+
+    const secondRow = screen.getByText('18.07.2026 → 20.08.2026').closest('li');
+    if (!secondRow) throw new Error('Proposal row was not rendered');
+    await userEvent.click(within(secondRow).getByRole('button', { name: 'Odrzuć' }));
+    await waitFor(() => expect(reject).toHaveBeenCalledOnce());
+    expect(await screen.findByText('Brak proponowanych zmian.')).toBeInTheDocument();
+  });
+
   it('renders, adds, and restricts comment deletion to the current user', async () => {
     const ownCommentId = '67676767-6767-4767-8767-676767676767';
     const foreignCommentId = '68686868-6868-4868-8868-686868686868';
@@ -841,7 +913,10 @@ describe('DocumentDetailPage', () => {
       ),
       http.patch(`/api/documents/${DOCUMENT_ID}`, async ({ request }) => {
         update(await request.json());
-        return HttpResponse.json({ ok: true, data: { document } });
+        return HttpResponse.json({
+          ok: true,
+          data: { outcome: 'updated', document, proposal: null },
+        });
       }),
       http.post(
         `/api/documents/${DOCUMENT_ID}/files/upload-request`,

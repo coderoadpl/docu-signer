@@ -46,6 +46,8 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { formatPolishDate, formatPolishDateTime } from '../../lib/format-date.js';
 import { DocumentCommentBody, FileDropZone, NoWrapButton } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
+import { MetadataProposalsSection } from './MetadataProposalsSection.js';
+import { PendingDraftsDot } from './PendingDraftsDot.js';
 import { SourceUpdateDialog } from './SourceUpdateDialog.js';
 import {
   FILE_ROLE_LABELS,
@@ -496,6 +498,7 @@ export const DocumentDetailPage = ({
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const documentLinksQuery = useQuery(actions.documentLinks(documentId));
   const documentCommentsQuery = useQuery(actions.documentComments(documentId));
+  const metadataProposalsQuery = useQuery(actions.documentMetadataProposals(documentId));
   const identityQuery = useQuery(actions.me);
   const signatureRecordsQuery = useQuery(actions.signatureRecords(documentId));
   const sourceUpdateRequestQuery = useQuery(
@@ -644,6 +647,28 @@ export const DocumentDetailPage = ({
     ...actions.approveDocumentComment,
     onSuccess: async () => {
       await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
+    },
+  });
+  const approveMetadataProposal = useMutation({
+    ...actions.approveDocumentMetadataProposal,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries(actions.documentsInvalidates()),
+        queryClient.invalidateQueries(
+          actions.documentMetadataProposalsInvalidates(documentId),
+        ),
+      ]);
+    },
+  });
+  const rejectMetadataProposal = useMutation({
+    ...actions.rejectDocumentMetadataProposal,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries(actions.documentsInvalidates()),
+        queryClient.invalidateQueries(
+          actions.documentMetadataProposalsInvalidates(documentId),
+        ),
+      ]);
     },
   });
 
@@ -868,7 +893,10 @@ export const DocumentDetailPage = ({
             direction="row"
             sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
           >
-            <Typography variant="h1">{document.title}</Typography>
+            <Typography variant="h1">
+              {document.title}
+              <PendingDraftsDot counts={document.pendingDrafts} />
+            </Typography>
             <Chip
               variant="outlined"
               label={documentTypeLabel(typeOptions, document.docType)}
@@ -1096,6 +1124,27 @@ export const DocumentDetailPage = ({
           {purgeDocument.error.message}
         </Alert>
       ) : null}
+      <MetadataProposalsSection
+        document={document}
+        documentTypes={typeOptions}
+        proposals={metadataProposalsQuery.data?.items ?? []}
+        loading={metadataProposalsQuery.isPending}
+        {...(metadataProposalsQuery.error
+          ? { error: metadataProposalsQuery.error.message }
+          : {})}
+        canApprove={canApprove}
+        pending={approveMetadataProposal.isPending || rejectMetadataProposal.isPending}
+        {...(approveMetadataProposal.error || rejectMetadataProposal.error
+          ? {
+              actionError:
+                approveMetadataProposal.error?.message ??
+                rejectMetadataProposal.error?.message ??
+                '',
+            }
+          : {})}
+        onApprove={(proposalId) => approveMetadataProposal.mutate(proposalId)}
+        onReject={(proposalId) => rejectMetadataProposal.mutate(proposalId)}
+      />
       <Paper variant="outlined" sx={{ mt: 4, p: 3 }}>
         <Stack
           direction="row"

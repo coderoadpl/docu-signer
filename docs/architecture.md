@@ -1123,6 +1123,8 @@ code.
 - `DocumentRepository`: tenant-scoped archive metadata and file records.
 - `DocumentTypeRepository`: tenant-scoped document-type dictionary and usage lookup.
 - `DocumentLinkRepository`: tenant-scoped, bidirectional related-document pairs.
+- `DocumentMetadataProposalRepository`: tenant-scoped pending document metadata changes
+  with creator attribution and individual approval or rejection.
 - `TenantSettingsRepository`: tenant-scoped signature-record retention, PDF-seal
   enablement and declared/actual date policy.
 - `SignatureRecordRepository`: signing-session stamp data and PDF-seal evidence,

@@ -4,6 +4,7 @@ import { createDb } from '#adapters/db/client.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
 import { createDocumentCommentRepository } from '#adapters/db/document-comments-repository.js';
 import { createDocumentLinkRepository } from '#adapters/db/document-links-repository.js';
+import { createDocumentMetadataProposalRepository } from '#adapters/db/document-metadata-proposals-repository.js';
 import { createDocumentTypeRepository } from '#adapters/db/document-types-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createSavedSearchRepository } from '#adapters/db/saved-searches-repository.js';
@@ -52,6 +53,7 @@ import type {
   DocumentRepository,
   DocumentCommentRepository,
   DocumentLinkRepository,
+  DocumentMetadataProposalRepository,
   DocumentTypeRepository,
   EmailPort,
   HealthPort,
@@ -86,6 +88,7 @@ export interface AppDeps {
   documents: DocumentRepository;
   documentComments: DocumentCommentRepository;
   documentLinks: DocumentLinkRepository;
+  documentMetadataProposals: DocumentMetadataProposalRepository;
   documentTypes: DocumentTypeRepository;
   padSessions: PadSessionRepository;
   padSessionSecrets: PadSessionSecretPort;
@@ -283,6 +286,7 @@ export const createDeps = (env: Env): AppDeps => {
     documents: createDocumentRepository(db),
     documentComments: createDocumentCommentRepository(db),
     documentLinks: createDocumentLinkRepository(db),
+    documentMetadataProposals: createDocumentMetadataProposalRepository(db),
     documentTypes,
     padSessions: createPadSessionRepository(db),
     padSessionSecrets: createPadSessionSecrets(),

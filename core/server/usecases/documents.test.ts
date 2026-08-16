@@ -10,11 +10,16 @@ import {
   type AppError,
   type Document,
   type DocumentFile,
+  type DocumentMetadataProposal,
   type Identity,
   type Result,
 } from '#core/domain/index.js';
 
-import type { DocumentRepository, StoragePort } from '../ports.js';
+import type {
+  DocumentMetadataProposalRepository,
+  DocumentRepository,
+  StoragePort,
+} from '../ports.js';
 import {
   approveDocument,
   createDocument,
@@ -103,6 +108,7 @@ const fake = (
 ) => {
   const documents = [...initialDocuments];
   const files = [...initialFiles];
+  const proposals: DocumentMetadataProposal[] = [];
   const blobs = new Map<string, Uint8Array>();
   for (const file of files) blobs.set(file.storageKey, new Uint8Array([1, 2, 3]));
 
@@ -110,7 +116,11 @@ const fake = (
     listByTenant: async (tenantId) =>
       documents
         .filter((document) => document.tenantId === tenantId && document.deletedAt === null)
-        .map((document) => ({ ...document, signers: [] })),
+        .map((document) => ({
+          ...document,
+          pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
+          signers: [],
+        })),
     listDeletedByTenant: async (tenantId) =>
       documents.filter((document) => document.tenantId === tenantId && document.deletedAt !== null),
     findById: async (tenantId, id) =>
@@ -125,6 +135,7 @@ const fake = (
       ) ?? null,
     findAnyById: async (tenantId, id) =>
       documents.find((document) => document.tenantId === tenantId && document.id === id) ?? null,
+    getPendingDraftCounts: async () => ({ comments: 0, links: 0, metadataProposals: 0 }),
     listFiles: async (tenantId, id) =>
       files.filter(
         (file) =>
@@ -353,6 +364,38 @@ const fake = (
     },
   };
 
+  const documentMetadataProposals: DocumentMetadataProposalRepository = {
+    listByDocument: async (tenantId, id) =>
+      proposals
+        .filter((proposal) => proposal.tenantId === tenantId && proposal.documentId === id)
+        .map((proposal) => ({
+          id: proposal.id,
+          tenantId: proposal.tenantId,
+          documentId: proposal.documentId,
+          changes: proposal.changes,
+          creator: { accountId: proposal.creatorAccountId, name: 'Demo' },
+          createdAt: proposal.createdAt,
+        })),
+    create: async (input) => {
+      const created = { ...input, createdAt: '2026-07-02T10:00:00.000Z' };
+      proposals.push(created);
+      return {
+        id: created.id,
+        tenantId: created.tenantId,
+        documentId: created.documentId,
+        changes: created.changes,
+        creator: { accountId: created.creatorAccountId, name: 'Demo' },
+        createdAt: created.createdAt,
+      };
+    },
+    findById: async (tenantId, proposalId) =>
+      proposals.find(
+        (proposal) => proposal.tenantId === tenantId && proposal.id === proposalId,
+      ) ?? null,
+    apply: async () => null,
+    reject: async () => false,
+  };
+
   const storage: StoragePort = {
     put: async (key, bytes) => {
       blobs.set(key, bytes);
@@ -373,6 +416,7 @@ const fake = (
   const ids = [...idSequence];
   const deps: DocumentDeps = {
     documents: repo,
+    documentMetadataProposals,
     documentTypes: {
       listByTenant: async () => [...DEFAULT_DOCUMENT_TYPES],
       findBySlug: async (_tenantId, slug) =>
@@ -389,6 +433,7 @@ const fake = (
     deps,
     documents,
     files,
+    proposals,
     blobs,
   };
 };
@@ -678,6 +723,7 @@ describe('documents use-cases', () => {
     state.deps.documents.listByTenant = async () => [
       {
         ...documentRow(),
+        pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
         signers: [{ accountId: 'account-1', name: 'Maria Choma' }],
       },
     ];
@@ -696,7 +742,7 @@ describe('documents use-cases', () => {
         { ...createInput, title: 'Updated' },
         state.deps,
       ),
-    ).toMatchObject({ ok: true, value: { title: 'Updated' } });
+    ).toMatchObject({ ok: true, value: { outcome: 'updated', document: { title: 'Updated' } } });
     const draft = await createDocument(
       ctx(staff('tenant-acme')),
       { ...createInput, title: 'Draft', draft: true },
@@ -841,7 +887,7 @@ describe('documents use-cases', () => {
     expect(state.documents.some((document) => document.id === documentId)).toBe(true);
   });
 
-  it('enforces write:draft token restrictions on create, modify, delete, and approve', async () => {
+  it('creates a metadata proposal for write:draft updates without mutating the document', async () => {
     const draftToken = {
       ...staff('tenant-acme'),
       apiToken: { id: '55555555-5555-4555-8555-555555555555', scopes: ['write:draft'] as const },
@@ -858,10 +904,65 @@ describe('documents use-cases', () => {
       await updateDocument(
         ctx(draftToken),
         documentId,
-        { ...createInput, title: 'Nope' },
+        { title: 'Nope' },
         state.deps,
       ),
-    ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    ).toMatchObject({
+      ok: true,
+      value: {
+        outcome: 'proposed',
+        document: { title: 'Agreement' },
+        proposal: { changes: { title: 'Nope' } },
+      },
+    });
+    expect(state.documents.find((document) => document.id === documentId)?.title).toBe('Agreement');
+    await expect(
+      updateDocument(
+        ctx(draftToken),
+        documentId,
+        {
+          docType: 'inny',
+          documentDate: '2026-07-02',
+          periodStart: '2026-07-01',
+          periodEnd: '2026-07-31',
+          person: 'Anna Nowak',
+          tags: ['changed'],
+        },
+        state.deps,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        outcome: 'proposed',
+        proposal: {
+          changes: {
+            docType: 'inny',
+            documentDate: '2026-07-02',
+            periodStart: '2026-07-01',
+            periodEnd: '2026-07-31',
+            person: 'Anna Nowak',
+            tags: ['changed'],
+          },
+        },
+      },
+    });
+    await expect(
+      updateDocument(
+        ctx(draftToken),
+        documentId,
+        {
+          title: 'Agreement',
+          docType: 'umowa-uod',
+          documentDate: '2026-07-01',
+          periodStart: null,
+          periodEnd: null,
+          person: null,
+          tags: ['contract'],
+        },
+        state.deps,
+      ),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(state.proposals).toHaveLength(2);
     expect(
       await serverUpload(
         ctx(draftToken),

@@ -19,10 +19,12 @@ import {
   documentFileSealOutputSchema,
   documentListInputSchema,
   documentListOutputSchema,
+  documentMetadataProposalListOutputSchema,
   documentLinkCreateInputSchema,
   documentLinkListOutputSchema,
   documentRestoreOutputSchema,
   documentTrashListOutputSchema,
+  documentUpdateOutputSchema,
   exportDocumentsInputSchema,
   fileUploadRequestInputSchema,
   finalizeFileUploadInputSchema,
@@ -143,6 +145,18 @@ describe('API route contract', () => {
     expect(API_ROUTES.documentLinkApprove).toEqual({
       method: 'POST',
       path: '/api/document-links/:linkId/approve',
+    });
+    expect(API_ROUTES.documentMetadataProposals).toEqual({
+      method: 'GET',
+      path: '/api/documents/:documentId/metadata-proposals',
+    });
+    expect(API_ROUTES.documentMetadataProposalApprove).toEqual({
+      method: 'POST',
+      path: '/api/document-metadata-proposals/:proposalId/approve',
+    });
+    expect(API_ROUTES.documentMetadataProposalReject).toEqual({
+      method: 'POST',
+      path: '/api/document-metadata-proposals/:proposalId/reject',
     });
     expect(API_ROUTES.savedSearches).toEqual({
       method: 'GET',
@@ -390,6 +404,34 @@ describe('API route contract', () => {
     ).toBe(true);
     expect(documentTrashListOutputSchema.safeParse({ documents: [{ ...document, files: [] }] }).success).toBe(true);
     expect(documentRestoreOutputSchema.safeParse({ document: { ...document, deletedAt: null } }).success).toBe(true);
+    const proposal = {
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-default',
+      documentId: document.id,
+      changes: { title: 'Nowy tytuł' },
+      creator: { accountId: 'account-1', name: 'Maria Choma' },
+      createdAt: '2026-08-16T10:00:00.000Z',
+    };
+    expect(
+      documentMetadataProposalListOutputSchema.safeParse({
+        items: [proposal],
+        nextCursor: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      documentUpdateOutputSchema.safeParse({
+        outcome: 'proposed',
+        document,
+        proposal,
+      }).success,
+    ).toBe(true);
+    expect(
+      documentUpdateOutputSchema.safeParse({
+        outcome: 'updated',
+        document,
+        proposal: null,
+      }).success,
+    ).toBe(true);
     expect(
       documentTrashListOutputSchema.safeParse({
         documents: [{ ...document, deletedAt: '2026-08-02', files: [] }],
@@ -500,6 +542,7 @@ describe('API route contract', () => {
       documentListInputSchema.safeParse({ signatureStatus: 'not-required' }).success,
     ).toBe(true);
     expect(documentListInputSchema.safeParse({ draft: 'all' }).success).toBe(true);
+    expect(documentListInputSchema.safeParse({ pendingDrafts: 'true' }).success).toBe(true);
     expect(
       documentListInputSchema.safeParse({ signerAccountId: 'account-1' }).success,
     ).toBe(true);

@@ -27,6 +27,9 @@ import {
   documentFileSealOutputSchema,
   documentGetOutputSchema,
   documentListOutputSchema,
+  documentMetadataProposalApproveOutputSchema,
+  documentMetadataProposalListOutputSchema,
+  documentMetadataProposalRejectOutputSchema,
   documentLinkCreateOutputSchema,
   documentLinkApproveOutputSchema,
   documentLinkDeleteOutputSchema,
@@ -95,6 +98,7 @@ import {
   type CreateDocumentType,
   type CreateDocumentComment,
   type DocumentListFilter,
+  type DocumentMetadataChanges,
   type LinkDocumentsInput,
   type ExportDocuments,
   type FileUploadRequest,
@@ -484,6 +488,50 @@ export const createApiClient = (options: ApiClientOptions) => ({
       pathWith(API_ROUTES.documentUpdate.path, { documentId }),
       documentUpdateOutputSchema,
       input,
+      signal,
+    ),
+  proposeDocumentUpdate: (
+    documentId: string,
+    input: DocumentMetadataChanges,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.documentUpdate.method,
+      pathWith(API_ROUTES.documentUpdate.path, { documentId }),
+      documentUpdateOutputSchema,
+      input,
+      signal,
+    ),
+  listDocumentMetadataProposals: (
+    documentId: string,
+    input: { cursor?: string | undefined; limit?: number | undefined } = {},
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.documentMetadataProposals.method,
+      `${pathWith(API_ROUTES.documentMetadataProposals.path, { documentId })}${paginationQueryString(input)}`,
+      documentMetadataProposalListOutputSchema,
+      undefined,
+      signal,
+    ),
+  approveDocumentMetadataProposal: (proposalId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentMetadataProposalApprove.method,
+      pathWith(API_ROUTES.documentMetadataProposalApprove.path, { proposalId }),
+      documentMetadataProposalApproveOutputSchema,
+      {},
+      signal,
+    ),
+  rejectDocumentMetadataProposal: (proposalId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentMetadataProposalReject.method,
+      pathWith(API_ROUTES.documentMetadataProposalReject.path, { proposalId }),
+      documentMetadataProposalRejectOutputSchema,
+      {},
       signal,
     ),
   approveDocument: (documentId: string, signal?: AbortSignal) =>

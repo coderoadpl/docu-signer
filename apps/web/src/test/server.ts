@@ -78,6 +78,9 @@ export const server = setupServer(
   http.get('*/api/documents/:documentId/comments', () =>
     HttpResponse.json({ ok: true, data: { items: [], nextCursor: null } }),
   ),
+  http.get('*/api/documents/:documentId/metadata-proposals', () =>
+    HttpResponse.json({ ok: true, data: { items: [], nextCursor: null } }),
+  ),
   http.get('*/api/documents/:documentId/signature-records', () =>
     HttpResponse.json({ ok: true, data: { items: [], nextCursor: null } }),
   ),
