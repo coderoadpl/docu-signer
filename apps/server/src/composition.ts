@@ -37,6 +37,7 @@ import { createSignatureRecordRepository } from '#adapters/db/signature-records-
 import { createSourceUpdateRequestRepository } from '#adapters/db/source-update-requests-repository.js';
 import {
   createSignPdfSeal,
+  pdfSealCertificateSubject,
   type PdfSealCredentials,
 } from '#adapters/pdf-seal/signpdf.js';
 import { createConsoleWarningLogger } from '#adapters/logging/console-warning.js';
@@ -80,6 +81,7 @@ export interface AppDeps {
   savedSearches: SavedSearchRepository;
   userPreferences: UserPreferenceRepository;
   tenantSettings: TenantSettingsRepository;
+  sealCertificateSubject?: string;
   tenantAccounts: TenantAccountRepository;
   signatureRecords: SignatureRecordRepository;
   sourceUpdateRequests: SourceUpdateRequestRepository;
@@ -197,8 +199,14 @@ export const createDeps = (env: Env): AppDeps => {
   const passwordResetEnabled = selectPasswordResetEnabled(env);
   const storage = selectStoragePort(env);
   const tenantSettings = createTenantSettingsRepository(db);
+  const tenantAccounts = createTenantAccountRepository(db);
   const signatureRecords = createSignatureRecordRepository(db);
   const warnings = createConsoleWarningLogger();
+  const pdfSealCredentials = selectPdfSealCredentials(env);
+  const pdfSeal = createSignPdfSeal(pdfSealCredentials);
+  const sealCertificateSubject = pdfSealCredentials
+    ? pdfSealCertificateSubject(pdfSealCredentials)
+    : undefined;
   if (!emailConfigured) {
     warnings.warn(
       'Outbound email is not configured; using the no-op email port so invitations remain creatable through the UI copy-link fallback.',
@@ -265,13 +273,15 @@ export const createDeps = (env: Env): AppDeps => {
     savedSearches: createSavedSearchRepository(db),
     userPreferences: createUserPreferenceRepository(db),
     tenantSettings,
-    tenantAccounts: createTenantAccountRepository(db),
+    ...(sealCertificateSubject ? { sealCertificateSubject } : {}),
+    tenantAccounts,
     signatureRecords,
     sourceUpdateRequests: createSourceUpdateRequestRepository(db),
     pdfSealing: {
       ids: { nextId: () => randomUUID() },
-      pdfSeal: createSignPdfSeal(selectPdfSealCredentials(env)),
+      pdfSeal,
       signatureRecords,
+      tenantAccounts,
       tenantSettings,
       warnings,
     },

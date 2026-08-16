@@ -83,6 +83,8 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     update: async () => null,
     approve: async () => null,
     unapprove: async () => null,
+    waiveSignature: async () => null,
+    requireSignature: async () => null,
     delete: async () => false,
     restore: async () => null,
     purge: async () => false,

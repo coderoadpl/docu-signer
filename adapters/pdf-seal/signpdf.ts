@@ -1,5 +1,11 @@
 import forge from 'node-forge';
-import { PDFDocument } from 'pdf-lib';
+import {
+  PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  PDFSignature,
+} from 'pdf-lib';
 
 import { pdflibAddPlaceholder } from '@signpdf/placeholder-pdf-lib';
 import { SignPdf } from '@signpdf/signpdf';
@@ -241,29 +247,68 @@ const signerAndSubject = (
   };
 };
 
+export const pdfSealCertificateSubject = (
+  credentials: PdfSealCredentials,
+): string =>
+  credentials.kind === 'p12'
+    ? certificateSubject(
+        p12Certificate(
+          Buffer.from(credentials.base64, 'base64'),
+          credentials.passphrase,
+        ),
+      )
+    : certificateSubject(forge.pki.certificateFromPem(credentials.certificate));
+
 export const createSignPdfSeal = (
   credentials: PdfSealCredentials | null,
 ): PdfSealPort => {
   if (!credentials) return { configured: false };
   return {
     configured: true,
-    seal: async ({ bytes, signingTime }) => {
+    seal: async ({ bytes, signingTime, contributorNames }) => {
       try {
         const pdf = await PDFDocument.load(bytes);
         const prepared = signerAndSubject(credentials);
+        const existingSignatureCount = pdf.getForm().getFields()
+          .filter((field) => field instanceof PDFSignature)
+          .length;
         pdflibAddPlaceholder({
           pdfDoc: pdf,
-          reason: 'Pieczęć organizacji',
+          reason: `Signed by: ${contributorNames.join(', ')}`,
           contactInfo: '',
           name: prepared.subject,
-          location: 'Polska',
+          location: 'Poland',
           signingTime,
           signatureLength: 16_384,
           subFilter: SUBFILTER_ETSI_CADES_DETACHED,
           widgetRect: [0, 0, 0, 0],
           appName: 'docu-signer',
         });
-        const placeholder = await pdf.save({ useObjectStreams: false });
+        const signatureField = pdf.getForm().getFields().at(-1);
+        if (!(signatureField instanceof PDFSignature)) {
+          throw new Error('Seal signature field was not created');
+        }
+        signatureField.acroField.setPartialName(`Pieczec-${existingSignatureCount + 1}`);
+        const placeholderPdf = await PDFDocument.load(
+          await pdf.save({ useObjectStreams: false }),
+        );
+        const placeholderField = placeholderPdf.getForm().getFields().at(-1);
+        if (!(placeholderField instanceof PDFSignature)) {
+          throw new Error('Seal signature field could not be loaded');
+        }
+        const signatureDictionary = placeholderField.acroField.V();
+        if (!(signatureDictionary instanceof PDFDict)) {
+          throw new Error('Seal signature dictionary could not be loaded');
+        }
+        signatureDictionary.set(
+          PDFName.of('Reason'),
+          PDFHexString.fromText(`Signed by: ${contributorNames.join(', ')}`),
+        );
+        signatureDictionary.set(
+          PDFName.of('Name'),
+          PDFHexString.fromText(prepared.subject),
+        );
+        const placeholder = await placeholderPdf.save({ useObjectStreams: false });
         const sealed = await signPdf.sign(
           Buffer.from(placeholder),
           prepared.signer,

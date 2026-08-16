@@ -235,7 +235,9 @@ const toColumnPreferenceValue = (
 const signedStatus = (document: DocumentWithFiles) =>
   hasSignedDocumentFile(document)
     ? 'signed'
-    : 'needs-signature';
+    : document.signatureNotRequired
+      ? 'not-required'
+      : 'needs-signature';
 
 const signerInitials = (name: string): string => {
   const parts = name.trim().split(/\s+/u);
@@ -250,7 +252,7 @@ type BulkDialog = 'add-tags' | 'remove-tag' | 'person' | 'type';
 interface BulkSummary {
   changed: number;
   errors: number;
-  kind: 'approved' | 'changed' | 'unapproved';
+  kind: 'approved' | 'changed' | 'required' | 'unapproved' | 'waived';
 }
 
 const toUpdateDocumentInput = (
@@ -327,6 +329,8 @@ export const DocumentsPage = () => {
   });
   const bulkApproveDocument = useMutation(actions.approveDocument);
   const bulkUnapproveDocument = useMutation(actions.unapproveDocument);
+  const bulkWaiveDocumentSignature = useMutation(actions.waiveDocumentSignature);
+  const bulkRequireDocumentSignature = useMutation(actions.requireDocumentSignature);
   const bulkUpdateDocument = useMutation(actions.updateDocument);
   const bulkDeleteDocument = useMutation(actions.deleteDocument);
   const createSavedSearch = useMutation({
@@ -387,6 +391,12 @@ export const DocumentsPage = () => {
   );
   const selectedDraftDocuments = selectedDocuments.filter((document) => document.draft);
   const selectedApprovedDocuments = selectedDocuments.filter((document) => !document.draft);
+  const selectedSignatureRequiredDocuments = selectedDocuments.filter(
+    (document) => !document.signatureNotRequired,
+  );
+  const selectedSignatureWaivedDocuments = selectedDocuments.filter(
+    (document) => document.signatureNotRequired,
+  );
   const massReviewDocumentIds = massReviewQueueDocumentIds(selectedDocuments);
   const massSigningTargets = massSigningQueueTargets(selectedDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
@@ -590,7 +600,7 @@ export const DocumentsPage = () => {
           size="small"
           color={status === 'signed' ? 'success' : 'default'}
           variant="outlined"
-          label={SIGNATURE_STATUS_LABELS[status]}
+          label={status === 'not-required' ? 'Nie wymaga' : SIGNATURE_STATUS_LABELS[status]}
         />
       );
     }
@@ -800,10 +810,10 @@ export const DocumentsPage = () => {
             >
               <Button
                 variant="contained"
-                disabled={selectedDocuments.length === 0 || bulkBusy}
+                disabled={massSigningTargets.length === 0 || bulkBusy}
                 onClick={startMassSigning}
               >
-                Masowe podpisywanie ({selectedDocuments.length})
+                Masowe podpisywanie ({massSigningTargets.length})
               </Button>
               <Button
                 variant="contained"
@@ -846,6 +856,42 @@ export const DocumentsPage = () => {
                   }
                 >
                   Cofnij do szkicu ({selectedApprovedDocuments.length})
+                </Button>
+              ) : null}
+              <Button
+                variant="outlined"
+                disabled={selectedSignatureRequiredDocuments.length === 0 || bulkBusy}
+                onClick={() =>
+                  void runBulk(
+                    async (document) => {
+                      await bulkWaiveDocumentSignature.mutateAsync(document.id);
+                    },
+                    {
+                      documents: selectedSignatureRequiredDocuments,
+                      summaryKind: 'waived',
+                    },
+                  )
+                }
+              >
+                Nie wymaga podpisu ({selectedSignatureRequiredDocuments.length})
+              </Button>
+              {selectedSignatureWaivedDocuments.length > 0 ? (
+                <Button
+                  variant="outlined"
+                  disabled={bulkBusy}
+                  onClick={() =>
+                    void runBulk(
+                      async (document) => {
+                        await bulkRequireDocumentSignature.mutateAsync(document.id);
+                      },
+                      {
+                        documents: selectedSignatureWaivedDocuments,
+                        summaryKind: 'required',
+                      },
+                    )
+                  }
+                >
+                  Wymaga podpisu ({selectedSignatureWaivedDocuments.length})
                 </Button>
               ) : null}
               <Button
@@ -919,6 +965,10 @@ export const DocumentsPage = () => {
             ? `Zatwierdzono ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
             : bulkSummary.kind === 'unapproved'
               ? `Cofnięto do szkicu ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
+            : bulkSummary.kind === 'waived'
+              ? `Oznaczono jako niewymagające podpisu ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
+            : bulkSummary.kind === 'required'
+              ? `Przywrócono wymaganie podpisu ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
             : `Operacje zbiorcze: ${bulkSummary.changed} zmieniono, ${bulkSummary.errors} błędów.`}
         </Alert>
       ) : null}

@@ -49,6 +49,7 @@ export const server = setupServer(
           tenantId: 'tenant-default',
           storeSignatureRecords: true,
           pdfSealEnabled: false,
+          signatureBoxEnabled: false,
           dateMode: 'declared',
         },
       },

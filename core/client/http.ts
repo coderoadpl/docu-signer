@@ -19,9 +19,11 @@ import {
   documentGetOutputSchema,
   documentListOutputSchema,
   documentPurgeOutputSchema,
+  documentRequireSignatureOutputSchema,
   documentRestoreOutputSchema,
   documentTrashListOutputSchema,
   documentUnapproveOutputSchema,
+  documentWaiveSignatureOutputSchema,
   documentUpdateOutputSchema,
   fileUploadRequestOutputSchema,
   looseEnvelopeSchema,
@@ -356,6 +358,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  waiveDocumentSignature: (documentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentWaiveSignature.method,
+      pathWith(API_ROUTES.documentWaiveSignature.path, { documentId }),
+      documentWaiveSignatureOutputSchema,
+      {},
+      signal,
+    ),
+  requireDocumentSignature: (documentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentRequireSignature.method,
+      pathWith(API_ROUTES.documentRequireSignature.path, { documentId }),
+      documentRequireSignatureOutputSchema,
+      {},
+      signal,
+    ),
   deleteDocument: (documentId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -408,9 +428,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
   ): Promise<WriteResult<z.output<typeof documentFileOutputSchema>>> => {
     const fetchImpl = options.fetchImpl ?? fetch;
     const traceparent = options.traceparent?.();
+    const contributorQuery = input.contributorAccountIds
+      ?.map((accountId) => `&contributorAccountId=${encodeURIComponent(accountId)}`)
+      .join('') ?? '';
     const path =
       pathWith(API_ROUTES.documentFileServerUpload.path, { documentId }) +
-      `?fileName=${encodeURIComponent(input.fileName)}&role=${encodeURIComponent(input.role)}`;
+      `?fileName=${encodeURIComponent(input.fileName)}&role=${encodeURIComponent(input.role)}${contributorQuery}`;
     let response: Response;
     try {
       response = await fetchImpl(`${options.baseUrl}${path}`, {

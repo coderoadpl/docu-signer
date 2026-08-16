@@ -127,6 +127,14 @@ export const documentUnapproveOutputSchema = z.object({
   document: documentSchema,
 });
 
+export const documentWaiveSignatureOutputSchema = z.object({
+  document: documentSchema,
+});
+
+export const documentRequireSignatureOutputSchema = z.object({
+  document: documentSchema,
+});
+
 export const documentDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
@@ -256,7 +264,23 @@ export const tenantSettingsUpdateOutputSchema = z.object({
 
 export const signatureRecordListInputSchema = paginationQuerySchema;
 
-export const signatureRecordListOutputSchema = paginatedOutputSchema(signatureRecordSchema);
+export const signatureRecordSignerBoxEntrySchema = tenantAccountSchema.extend({
+  declaredAt: z.iso.datetime(),
+});
+
+export type SignatureRecordSignerBoxEntry = z.infer<
+  typeof signatureRecordSignerBoxEntrySchema
+>;
+
+export const signatureRecordListItemSchema = signatureRecordSchema.extend({
+  signerBoxEntries: z.array(signatureRecordSignerBoxEntrySchema).min(1).nullable(),
+});
+
+export type SignatureRecordListItem = z.infer<typeof signatureRecordListItemSchema>;
+
+export const signatureRecordListOutputSchema = paginatedOutputSchema(
+  signatureRecordListItemSchema,
+);
 
 export const signatureRecordCreateInputSchema = createSignatureRecordSchema;
 
@@ -367,6 +391,14 @@ export const API_ROUTES = {
   documentUpdate: { method: 'PATCH', path: '/api/documents/:documentId' },
   documentApprove: { method: 'POST', path: '/api/documents/:documentId/approve' },
   documentUnapprove: { method: 'POST', path: '/api/documents/:documentId/unapprove' },
+  documentWaiveSignature: {
+    method: 'POST',
+    path: '/api/documents/:documentId/waive-signature',
+  },
+  documentRequireSignature: {
+    method: 'POST',
+    path: '/api/documents/:documentId/require-signature',
+  },
   documentDelete: { method: 'DELETE', path: '/api/documents/:documentId' },
   documentRestore: { method: 'POST', path: '/api/documents/:documentId/restore' },
   documentPurge: { method: 'DELETE', path: '/api/documents/:documentId/purge' },

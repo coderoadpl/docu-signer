@@ -186,6 +186,8 @@ describe('API client', () => {
       const url = String(input);
       if (url.endsWith('/unapprove')) return json({ ok: true, data: { document } });
       if (url.endsWith('/approve')) return json({ ok: true, data: { document } });
+      if (url.endsWith('/waive-signature')) return json({ ok: true, data: { document } });
+      if (url.endsWith('/require-signature')) return json({ ok: true, data: { document } });
       if (url.endsWith('/api/api-tokens') && init?.method === 'GET') {
         return json({ ok: true, data: { apiTokens: [token] } });
       }
@@ -214,6 +216,8 @@ describe('API client', () => {
 
     await api.approveDocument(document.id);
     await api.unapproveDocument(document.id);
+    await api.waiveDocumentSignature(document.id);
+    await api.requireDocumentSignature(document.id);
     await api.listApiTokens();
     await api.createApiToken({ name: 'Importer', scopes: ['write:draft'] });
     await api.revokeApiToken(token.id);
@@ -226,16 +230,24 @@ describe('API client', () => {
     expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
     expect(String(fetchImpl.mock.calls[1]?.[0])).toBe(`/api/documents/${document.id}/unapprove`);
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' });
-    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe('/api/api-tokens');
-    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'GET' });
-    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      `/api/documents/${document.id}/waive-signature`,
+    );
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'POST' });
+    expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
+      `/api/documents/${document.id}/require-signature`,
+    );
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'POST' });
+    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe('/api/api-tokens');
+    expect(fetchImpl.mock.calls[4]?.[1]).toMatchObject({ method: 'GET' });
+    expect(fetchImpl.mock.calls[5]?.[1]).toMatchObject({
       method: 'POST',
       body: JSON.stringify({ name: 'Importer', scopes: ['write:draft'] }),
     });
-    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe(`/api/api-tokens/${token.id}/revoke`);
-    expect(String(fetchImpl.mock.calls[5]?.[0])).toBe('/api/me/preferences/documents.columns');
-    expect(fetchImpl.mock.calls[5]?.[1]).toMatchObject({ method: 'GET' });
-    expect(fetchImpl.mock.calls[6]?.[1]).toMatchObject({
+    expect(String(fetchImpl.mock.calls[6]?.[0])).toBe(`/api/api-tokens/${token.id}/revoke`);
+    expect(String(fetchImpl.mock.calls[7]?.[0])).toBe('/api/me/preferences/documents.columns');
+    expect(fetchImpl.mock.calls[7]?.[1]).toMatchObject({ method: 'GET' });
+    expect(fetchImpl.mock.calls[8]?.[1]).toMatchObject({
       method: 'PUT',
       body: JSON.stringify({ value: { order: ['title'], visible: ['title'] } }),
     });
@@ -415,6 +427,7 @@ describe('API client', () => {
           contributedBy: 'user-1',
         },
       ],
+      signerBoxEntries: null,
       createdAt: '2026-08-07T10:00:00.000Z',
     };
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
@@ -422,13 +435,13 @@ describe('API client', () => {
       if (url.endsWith('/api/tenant-settings') && init?.method === 'GET') {
         return json({
           ok: true,
-          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: true, pdfSealEnabled: false, dateMode: 'declared' } },
+          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: true, pdfSealEnabled: false, signatureBoxEnabled: false, dateMode: 'declared' } },
         });
       }
       if (url.endsWith('/api/tenant-settings') && init?.method === 'PUT') {
         return json({
           ok: true,
-          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: false, pdfSealEnabled: true, dateMode: 'actual' } },
+          data: { settings: { tenantId: 'tenant-default', storeSignatureRecords: false, pdfSealEnabled: true, signatureBoxEnabled: true, dateMode: 'actual' } },
         });
       }
       if (init?.method === 'GET') {
@@ -440,7 +453,7 @@ describe('API client', () => {
 
     await expect(api.getTenantSettings()).resolves.toMatchObject({
       ok: true,
-      value: { settings: { storeSignatureRecords: true, pdfSealEnabled: false, dateMode: 'declared' } },
+      value: { settings: { storeSignatureRecords: true, pdfSealEnabled: false, signatureBoxEnabled: false, dateMode: 'declared' } },
     });
     await api.updateTenantSettings({ storeSignatureRecords: false });
     await api.listSignatureRecords(documentId, { cursor: 'opaque', limit: 1 });

@@ -45,7 +45,10 @@ export interface DocumentRepository {
     documentIds: string[],
   ): Promise<DocumentFile[]>;
   create(
-    input: Omit<Document, 'createdAt' | 'updatedAt' | 'deletedAt' | 'draft'> & { draft?: boolean },
+    input: Omit<
+      Document,
+      'createdAt' | 'updatedAt' | 'deletedAt' | 'draft' | 'signatureNotRequired'
+    > & { draft?: boolean; signatureNotRequired?: boolean },
   ): Promise<Document>;
   update(
     tenantId: string,
@@ -57,6 +60,8 @@ export interface DocumentRepository {
   ): Promise<Document | null>;
   approve(tenantId: string, documentId: string): Promise<Document | null>;
   unapprove(tenantId: string, documentId: string): Promise<Document | null>;
+  waiveSignature(tenantId: string, documentId: string): Promise<Document | null>;
+  requireSignature(tenantId: string, documentId: string): Promise<Document | null>;
   delete(tenantId: string, documentId: string): Promise<boolean>;
   restore(tenantId: string, documentId: string): Promise<Document | null>;
   purge(tenantId: string, documentId: string): Promise<boolean>;
@@ -155,7 +160,7 @@ export interface TenantSettingsRepository {
   get(tenantId: string): Promise<TenantSettings | null>;
   set(
     tenantId: string,
-    settings: Omit<TenantSettings, 'tenantId'>,
+    settings: Omit<TenantSettings, 'tenantId' | 'sealCertificateSubject'>,
   ): Promise<TenantSettings>;
 }
 
@@ -191,6 +196,7 @@ export type PdfSealPort =
       seal(input: {
         bytes: Uint8Array;
         signingTime: Date;
+        contributorNames: string[];
       }): Promise<
         | { kind: 'sealed'; bytes: Uint8Array; subject: string }
         | { kind: 'failed'; reason: string }

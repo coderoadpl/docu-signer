@@ -48,6 +48,7 @@ export const FILE_ROLE_SHORT_LABELS: Record<DocumentFileRole, string> = {
 export const SIGNATURE_STATUS_LABELS: Record<DocumentSignatureStatus, string> = {
   'needs-signature': 'Do podpisania',
   signed: 'Podpisane',
+  'not-required': 'Nie wymaga podpisu',
 };
 
 export interface DocumentFormValues {
@@ -138,12 +139,15 @@ export const documentReviewSearchSchema = z.preprocess(
   (value) => (typeof value === 'object' && value !== null ? value : {}),
   documentsSearchInputSchema.extend({
     kolejka: queueParamSchema,
-    tryb: z.enum(['zrodlo', 'podpisany', 'edycja']).optional().catch(undefined),
+    tryb: z
+      .enum(['zrodlo', 'skan', 'podpisany', 'edycja'])
+      .optional()
+      .catch(undefined),
   }),
 );
 
 export type DocumentReviewSearchParams = z.infer<typeof documentReviewSearchSchema>;
-export type DocumentReviewMode = 'source' | 'signed' | 'edit';
+export type DocumentReviewMode = 'source' | 'scan' | 'signed' | 'edit';
 
 export const emptyDocumentFilters = (): DocumentFilterValues => ({
   text: '',
@@ -468,7 +472,7 @@ export const newestSignablePdfFile = (
 
 export const newestDocumentFileByRole = (
   document: Pick<DocumentWithFiles, 'files'>,
-  role: 'source' | 'signed-digital',
+  role: DocumentFileRole,
 ): DocumentFile | undefined =>
   document.files.filter((file) => file.role === role).sort(newestFileFirst)[0];
 
@@ -482,7 +486,7 @@ const documentsInCanonicalOrder = <Document extends CanonicalGroupedDocumentInpu
 export const massSigningQueueTargets = (
   documents: DocumentWithFiles[],
 ): SigningQueueTarget[] =>
-  documentsInCanonicalOrder(documents)
+  documentsInCanonicalOrder(documents.filter((document) => !document.signatureNotRequired))
     .flatMap((document) => {
       const file = newestSignablePdfFile(document);
       return file ? [{ documentId: document.id, fileId: file.id }] : [];
@@ -505,7 +509,13 @@ export const reviewQueueFromSearch = (
 export const reviewModeFromSearch = (
   search: Pick<DocumentReviewSearchParams, 'tryb'>,
 ): DocumentReviewMode =>
-  search.tryb === 'podpisany' ? 'signed' : search.tryb === 'edycja' ? 'edit' : 'source';
+  search.tryb === 'podpisany'
+    ? 'signed'
+    : search.tryb === 'skan'
+      ? 'scan'
+      : search.tryb === 'edycja'
+        ? 'edit'
+        : 'source';
 
 export const signingQueueSearch = ({
   signedCount,

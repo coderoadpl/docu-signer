@@ -85,6 +85,8 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('update-source');
     expect(documentHelp.stdout).toContain('verify-seal');
     expect(documentHelp.stdout).toContain('unapprove');
+    expect(documentHelp.stdout).toContain('waive-signature');
+    expect(documentHelp.stdout).toContain('require-signature');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
     expect(listHelp.stdout).toContain('--signer <accountId>');
@@ -103,6 +105,12 @@ describe('CLI command surface', () => {
     expect(invitationHelp.stdout).toContain('create');
     expect(invitationHelp.stdout).toContain('list');
     expect(invitationHelp.stdout).toContain('revoke');
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('documents the visible signers box tenant flag', () => {
+    const settingsHelp = run('tenant-settings', 'set', '--help');
+    expect(settingsHelp.status).toBe(0);
+    expect(settingsHelp.stdout).toContain('--signature-box-enabled <value>');
   }, CLI_TEST_TIMEOUT_MS);
 
   it('requires an explicit signature policy for source updates', () => {

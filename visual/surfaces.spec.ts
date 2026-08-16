@@ -56,7 +56,7 @@ test('authenticated app bar chrome', async ({ page }) => {
 
   const chrome = page.getByRole('banner');
   await expect(chrome).toContainText('Archiwum dokumentów');
-  await expect(chrome).toContainText(DEMO_EMAIL);
+  await expect(chrome).toContainText('Demo User');
 
   await expect(chrome).toHaveScreenshot('app-shell-chrome.png');
 });

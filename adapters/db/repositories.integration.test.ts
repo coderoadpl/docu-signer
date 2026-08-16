@@ -270,6 +270,17 @@ describe('DocumentRepository', () => {
       person: 'Anna Nowak',
       tags: ['status-filter'],
     });
+    await repository.create({
+      id: '20202020-2020-4202-8202-202020202020',
+      tenantId: 'tenant-a',
+      title: 'Nie wymaga',
+      docType: 'rachunek',
+      documentDate: '2026-07-31',
+      periodStart: null,
+      periodEnd: null,
+      person: 'Anna Nowak',
+      tags: ['status-filter'],
+    });
     await repository.createFile('tenant-a', {
       id: '15151515-1515-4151-8151-151515151515',
       documentId: '12121212-1212-4121-8121-121212121212',
@@ -306,6 +317,19 @@ describe('DocumentRepository', () => {
       sizeBytes: 3,
       storageKey: 'documents/tenant-a/status/other/file',
     });
+    await repository.createFile('tenant-a', {
+      id: '21212121-2121-4212-8212-212121212121',
+      documentId: '20202020-2020-4202-8202-202020202020',
+      role: 'source',
+      fileName: 'rachunek.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      storageKey: 'documents/tenant-a/status/waived/source',
+    });
+    await expect(
+      repository.waiveSignature('tenant-a', '20202020-2020-4202-8202-202020202020'),
+    ).resolves.toMatchObject({ signatureNotRequired: true });
+    await repository.waiveSignature('tenant-a', '13131313-1313-4131-8131-131313131313');
 
     await expect(
       repository.listByTenant('tenant-a', {
@@ -319,6 +343,15 @@ describe('DocumentRepository', () => {
         signatureStatus: 'signed',
       }),
     ).resolves.toMatchObject([{ title: 'Podpisany' }]);
+    await expect(
+      repository.listByTenant('tenant-a', {
+        tag: 'status-filter',
+        signatureStatus: 'not-required',
+      }),
+    ).resolves.toMatchObject([{ title: 'Nie wymaga' }]);
+    await expect(
+      repository.requireSignature('tenant-a', '20202020-2020-4202-8202-202020202020'),
+    ).resolves.toMatchObject({ signatureNotRequired: false });
   });
 
   it('aggregates distinct signer accounts and filters without crossing tenants', async () => {
@@ -561,22 +594,26 @@ describe('TenantSettingsRepository', () => {
     await expect(repository.set('tenant-a', {
       storeSignatureRecords: false,
       pdfSealEnabled: true,
+      signatureBoxEnabled: true,
       dateMode: 'actual',
     })).resolves.toEqual({
       tenantId: 'tenant-a',
       storeSignatureRecords: false,
       pdfSealEnabled: true,
+      signatureBoxEnabled: true,
       dateMode: 'actual',
     });
     await expect(repository.get('tenant-b')).resolves.toBeNull();
     await expect(repository.set('tenant-a', {
       storeSignatureRecords: true,
       pdfSealEnabled: false,
+      signatureBoxEnabled: false,
       dateMode: 'declared',
     })).resolves.toEqual({
       tenantId: 'tenant-a',
       storeSignatureRecords: true,
       pdfSealEnabled: false,
+      signatureBoxEnabled: false,
       dateMode: 'declared',
     });
   });

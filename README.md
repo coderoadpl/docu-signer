@@ -71,7 +71,7 @@ Full command set (<!--count:cli-command-groups-->13<!--/count--> top-level group
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
 `origin list|use`, `account change-password|request-password-reset`,
 `tenant-settings show|set`,
-`document list|trash-list|search|show|add|approve|unapprove|upload|verify-seal|export|remove|restore|purge`,
+`document list|trash-list|search|show|add|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
 `token create|list|revoke`, `public profile`.
 
 Every command also accepts `--token <value>` (or the `APP_CLI_TOKEN` env var)
@@ -122,7 +122,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`,
   server ↔ Vercel CSP sync, dead links), and vitest with coverage across
-  **<!--count:test-files-->106<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->108<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → document archive →
@@ -203,7 +203,8 @@ humans who own the platform; the architecture (`docs/architecture.md`
   with one approving **owner** review plus green
   `check`/`smoke`/`e2e`/`ai-review` before anything lands, with no bypass
   actors (see FOUNDATION.md) — the agent (a machine account) prepares PRs;
-  the owner promotes by approving and merging personally. The same commit flows feature
+  the owner promotes by approving — the merge itself may then be executed by
+  either party. The same commit flows feature
   branch → preview → `main` (production); only env vars differ, and the owner
   reviews the diff **before** the merge that triggers the secret-exposed
   production build.

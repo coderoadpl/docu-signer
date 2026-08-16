@@ -9,6 +9,8 @@ import {
   type CanvasPdfMetrics,
   type SigningStamp,
 } from './signing.js';
+import { drawSignersBox } from './signers-box-pdf.js';
+import type { SignersBoxModel } from './signers-box.js';
 
 const viewportTransformSchema = z.tuple([
   z.number(),
@@ -99,6 +101,7 @@ export const renderSourcePage = async (
 export const flattenSignedPdf = async (
   sourceBytes: Uint8Array,
   stamps: readonly SigningStampWithMetrics[],
+  signersBox?: SignersBoxModel,
 ): Promise<Uint8Array> => {
   const { PDFDocument, rgb } = await import('pdf-lib');
   const pdf = await PDFDocument.load(sourceBytes, { updateMetadata: false });
@@ -121,5 +124,6 @@ export const flattenSignedPdf = async (
       });
     }
   }
+  if (signersBox) await drawSignersBox(pdf, signersBox);
   return pdf.save();
 };

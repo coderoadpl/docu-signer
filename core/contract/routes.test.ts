@@ -85,6 +85,14 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/documents/:documentId/unapprove',
     });
+    expect(API_ROUTES.documentWaiveSignature).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/waive-signature',
+    });
+    expect(API_ROUTES.documentRequireSignature).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/require-signature',
+    });
     expect(API_ROUTES.savedSearches).toEqual({
       method: 'GET',
       path: '/api/saved-searches',
@@ -396,6 +404,9 @@ describe('API route contract', () => {
     expect(
       documentListInputSchema.safeParse({ signatureStatus: 'needs-signature' }).success,
     ).toBe(true);
+    expect(
+      documentListInputSchema.safeParse({ signatureStatus: 'not-required' }).success,
+    ).toBe(true);
     expect(documentListInputSchema.safeParse({ draft: 'all' }).success).toBe(true);
     expect(
       documentListInputSchema.safeParse({ signerAccountId: 'account-1' }).success,
@@ -491,12 +502,17 @@ describe('API route contract', () => {
           tenantId: 'tenant-default',
           storeSignatureRecords: true,
           pdfSealEnabled: false,
+          signatureBoxEnabled: false,
           dateMode: 'declared',
+          sealCertificateSubject: 'Amazing Company Sp. z o.o.',
         },
       }).success,
     ).toBe(true);
     expect(
       tenantSettingsUpdateInputSchema.safeParse({ storeSignatureRecords: false }).success,
+    ).toBe(true);
+    expect(
+      tenantSettingsUpdateInputSchema.safeParse({ signatureBoxEnabled: true }).success,
     ).toBe(true);
     expect(
       tenantSettingsUpdateInputSchema.safeParse({ storeSignatureRecords: 'false' }).success,
@@ -539,7 +555,21 @@ describe('API route contract', () => {
       }).success,
     ).toBe(true);
     expect(
-      signatureRecordListOutputSchema.safeParse({ items: [record], nextCursor: null }).success,
+      signatureRecordListOutputSchema.safeParse({
+        items: [
+          {
+            ...record,
+            signerBoxEntries: [
+              {
+                accountId: 'user-1',
+                name: 'Owner',
+                declaredAt: '2026-08-07T10:00:00.000Z',
+              },
+            ],
+          },
+        ],
+        nextCursor: null,
+      }).success,
     ).toBe(true);
     expect(
       signatureRecordCreateInputSchema.safeParse({

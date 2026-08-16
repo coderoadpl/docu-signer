@@ -295,11 +295,20 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
   const documentsQuery = useQuery(actions.documents({ draft: 'all' }));
   const document = documentQuery.data?.document;
   const sourceFile = document ? newestDocumentFileByRole(document, 'source') : undefined;
+  const scanFile = document
+    ? newestDocumentFileByRole(document, 'signed-scan')
+    : undefined;
   const signedFile = document
     ? newestDocumentFileByRole(document, 'signed-digital')
     : undefined;
-  const mode = search.tryb === undefined && signedFile ? 'signed' : requestedMode;
-  const selectedFile = mode === 'signed' ? signedFile : sourceFile;
+  const defaultMode: DocumentReviewMode = signedFile
+    ? 'signed'
+    : scanFile
+      ? 'scan'
+      : 'source';
+  const mode = search.tryb === undefined ? defaultMode : requestedMode;
+  const selectedFile =
+    mode === 'signed' ? signedFile : mode === 'scan' ? scanFile : sourceFile;
   const fileQuery = useQuery({
     ...actions.documentFile(documentId, selectedFile?.id ?? ''),
     enabled: mode !== 'edit' && selectedFile !== undefined,
@@ -343,14 +352,30 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
   }, [listSearch, navigate, queueIndex]);
 
   useEffect(() => {
-    if (mode !== 'signed' || !document || signedFile) return;
+    if (
+      !document ||
+      (mode !== 'signed' && mode !== 'scan') ||
+      (mode === 'signed' && signedFile) ||
+      (mode === 'scan' && scanFile)
+    ) {
+      return;
+    }
     void navigate({
       to: '/app/documents/$id/review',
       params: { id: documentId },
       search: { ...listSearch, kolejka: search.kolejka },
       replace: true,
     });
-  }, [document, documentId, listSearch, mode, navigate, search.kolejka, signedFile]);
+  }, [
+    document,
+    documentId,
+    listSearch,
+    mode,
+    navigate,
+    scanFile,
+    search.kolejka,
+    signedFile,
+  ]);
 
   useEffect(() => {
     setPageNumber(1);
@@ -478,9 +503,11 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
       kolejka: search.kolejka,
       ...(nextMode === 'signed'
         ? { tryb: 'podpisany' as const }
-        : nextMode === 'edit'
-          ? { tryb: 'edycja' as const }
-          : { tryb: 'zrodlo' as const }),
+        : nextMode === 'scan'
+          ? { tryb: 'skan' as const }
+          : nextMode === 'edit'
+            ? { tryb: 'edycja' as const }
+            : { tryb: 'zrodlo' as const }),
     }),
     [listSearch, search.kolejka],
   );
@@ -533,6 +560,7 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
           }}
         >
           <ToggleButton value="source">Źródło</ToggleButton>
+          {scanFile ? <ToggleButton value="scan">Skan</ToggleButton> : null}
           <Tooltip
             title={signedFile ? '' : 'Ten dokument nie ma podpisanego pliku cyfrowego'}
           >

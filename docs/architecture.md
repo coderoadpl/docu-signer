@@ -1361,7 +1361,9 @@ foundation):
   reads the diff on the `main → production` PR and approves it; the merge is what
   triggers the production build. So the review precedes the build that sees
   production secrets — the correct ordering. Never an agent, never a
-  self-approval.
+  self-approval. (Fork reality 2026-08-15: the owner-only step is the
+  approving review; executing the merge after that approval may be delegated
+  to the agent — rulings in owner-rulings.md.)
 - **Two teams, one login** (paid-app topology). The commercial app's production
   lives on its own **Pro** team; the **Hobby** team hosts non-commercial work. One
   login spans both, but a pause, suspension or plan-limit hit on one team does not

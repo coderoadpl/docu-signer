@@ -26,7 +26,11 @@ const documentFileRoleSchema = z.enum([
 
 export type DocumentFileRole = z.infer<typeof documentFileRoleSchema>;
 
-export const documentSignatureStatusSchema = z.enum(['needs-signature', 'signed']);
+export const documentSignatureStatusSchema = z.enum([
+  'needs-signature',
+  'signed',
+  'not-required',
+]);
 
 export type DocumentSignatureStatus = z.infer<typeof documentSignatureStatusSchema>;
 
@@ -47,6 +51,7 @@ const documentFieldsSchema = z.object({
   person: z.string().nullable(),
   tags: z.array(z.string()),
   draft: z.boolean().default(false),
+  signatureNotRequired: z.boolean().default(false),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   deletedAt: z.iso.datetime().nullable().default(null),
@@ -205,6 +210,7 @@ export const fileUploadRequestSchema = z.object({
   fileName: z.string().trim().min(1),
   contentType: documentUploadContentTypeSchema,
   role: documentFileRoleSchema,
+  contributorAccountIds: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export type FileUploadRequest = z.infer<typeof fileUploadRequestSchema>;
@@ -215,6 +221,7 @@ export const finalizeFileUploadSchema = z.object({
   contentType: documentUploadContentTypeSchema,
   sizeBytes: z.number().int().nonnegative().max(MAX_DOCUMENT_FILE_BYTES),
   role: documentFileRoleSchema,
+  contributorAccountIds: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export type FinalizeFileUpload = z.infer<typeof finalizeFileUploadSchema>;

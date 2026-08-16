@@ -25,7 +25,40 @@ approving review and the four green checks are in place, the owner ruled:)
 > Merguję osobiście
 
 (Gloss: the owner performs the merge personally; the agent's authority ends
-at opening the pull request.)
+at opening the pull request. Reversed later the same evening — asked to
+execute merges of PRs the owner had already approved, the owner ruled:)
+
+> a nie mzoesz ty mergowac? przecez dalem approve
+
+(Gloss, verbatim spelling preserved: "can't you merge? I gave the approve
+after all" — the approving review is the release decision; the merge
+mechanics may be executed by the agent once the approval and the four green
+checks are in place.)
+
+## 2026-08-15 — visible signers annotation on flattened PDFs
+
+Extends the 2026-08-09 invisible-touch scope: the flattened artifact may now
+carry VISIBLE generated content, behind a tenant setting defaulting off.
+Given in the working session; the owner then iterated the layout live on a
+mockup and locked it ("tak teraz jest super"). Verbatim spelling preserved:
+
+> Po namysle zrobmy w ustawieniach ten box na PDFie z imionami i nazwiskami
+> podpisujacych po kolei i datami podpisow
+
+(Gloss: on reflection, add — as a setting — the box on the PDF with the
+signers' names in order and the signature dates.)
+
+The next day the owner rejected the single-stale-box limitation for re-signed
+files and specified the overlay mechanic himself:
+
+> Nie moze tak zostac jak jest ze jest yylko 1 start box. Trzeba jakos
+> wyyslic zeby nowy box pojawial sie na starym zasaalniajac stary - w nowym
+> zawsze ebdzie o linijka wiecej wiec jak damy mu biale tlo to powinien to
+> zrobic nie?
+
+(Gloss: it cannot stay at one stale box; the new box must cover the old one —
+it always has one more row, so an opaque white background at the same anchor
+covers it.)
 
 ## 2026-08-07 — storing signature ink per document
 

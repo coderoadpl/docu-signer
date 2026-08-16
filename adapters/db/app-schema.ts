@@ -97,6 +97,7 @@ export const tenantSettings = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     storeSignatureRecords: boolean('store_signature_records').notNull().default(true),
     pdfSealEnabled: boolean('pdf_seal_enabled').notNull().default(false),
+    signatureBoxEnabled: boolean('signature_box_enabled').notNull().default(false),
     dateMode: text('date_mode', { enum: ['declared', 'actual'] }).notNull().default('declared'),
   },
   (table) => [
@@ -213,6 +214,7 @@ export const documents = pgTable(
     person: text('person'),
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     draft: boolean('draft').notNull().default(false),
+    signatureNotRequired: boolean('signature_not_required').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),

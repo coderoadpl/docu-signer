@@ -30,10 +30,10 @@ import {
   type PadSessionMode,
   type PadStrokeSubmission,
   type SetUserPreference,
-  type SignatureRecord,
   type UpdateDocument,
   type UpdateTenantSettings,
 } from '#core/domain/index.js';
+import type { SignatureRecordListItem } from '#core/contract/index.js';
 
 import type {
   AuthClientPort,
@@ -43,6 +43,7 @@ import type {
   PasswordResetCompletion,
   PasswordResetRequest,
   SocialSignInInput,
+  UpdateUserInput,
 } from './auth-port.js';
 import {
   unwrap,
@@ -254,6 +255,18 @@ export const unapproveDocumentMutation = (api: ApiClient) =>
     call: (documentId: string) => api.unapproveDocument(documentId),
   });
 
+export const waiveDocumentSignatureMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'waive-signature'],
+    call: (documentId: string) => api.waiveDocumentSignature(documentId),
+  });
+
+export const requireDocumentSignatureMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentsScopes.all(), 'require-signature'],
+    call: (documentId: string) => api.requireDocumentSignature(documentId),
+  });
+
 export const deleteDocumentMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...documentsScopes.all(), 'delete'],
@@ -451,7 +464,7 @@ const listAllSignatureRecords = async (
   documentId: string,
   signal: AbortSignal,
 ) => {
-  const items: SignatureRecord[] = [];
+  const items: SignatureRecordListItem[] = [];
   let cursor: string | undefined;
   do {
     const page = await api.listSignatureRecords(
@@ -662,6 +675,12 @@ export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, 
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-out'],
     call: () => auth.signOut(),
+  });
+
+export const updateUserMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'update-user'],
+    call: (input: UpdateUserInput) => auth.updateUser(input),
   });
 
 export const changePasswordMutation = (auth: AuthClientPort) =>

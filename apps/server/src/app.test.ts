@@ -90,6 +90,8 @@ const baseDeps = (): AppDeps => ({
     update: async () => null,
     approve: async () => null,
     unapprove: async () => null,
+    waiveSignature: async () => null,
+    requireSignature: async () => null,
     delete: async () => false,
     restore: async () => null,
     purge: async () => false,
@@ -371,6 +373,7 @@ describe('buildApp', () => {
       person: null,
       tags: [],
       draft: false,
+      signatureNotRequired: false,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
       deletedAt: null,
@@ -429,6 +432,7 @@ describe('buildApp', () => {
     deps.documents.create = async (input) => ({
       ...input,
       draft: input.draft ?? false,
+      signatureNotRequired: input.signatureNotRequired ?? false,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
       deletedAt: null,
@@ -451,7 +455,7 @@ describe('buildApp', () => {
     });
   });
 
-  it('approves and reverts a document through the contract routes', async () => {
+  it('updates approval and signature requirement through the contract routes', async () => {
     const deps = authorizedDeps();
     const documentId = '11111111-1111-4111-8111-111111111111';
     const row: Document = {
@@ -465,6 +469,7 @@ describe('buildApp', () => {
       person: null,
       tags: [],
       draft: true,
+      signatureNotRequired: false,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
       deletedAt: null,
@@ -472,6 +477,12 @@ describe('buildApp', () => {
     deps.documents.approve = async (tenantId, id) =>
       tenantId === tenant.id && id === documentId ? { ...row, draft: false } : null;
     deps.documents.unapprove = async (tenantId, id) =>
+      tenantId === tenant.id && id === documentId ? row : null;
+    deps.documents.waiveSignature = async (tenantId, id) =>
+      tenantId === tenant.id && id === documentId
+        ? { ...row, signatureNotRequired: true }
+        : null;
+    deps.documents.requireSignature = async (tenantId, id) =>
       tenantId === tenant.id && id === documentId ? row : null;
     const app = buildApp(deps);
 
@@ -500,6 +511,32 @@ describe('buildApp', () => {
       ok: true,
       data: { document: { draft: true } },
     });
+
+    const waived = await app.request(
+      API_ROUTES.documentWaiveSignature.path.replace(':documentId', documentId),
+      {
+        method: API_ROUTES.documentWaiveSignature.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(waived.status).toBe(200);
+    expect(await waived.json()).toMatchObject({
+      ok: true,
+      data: { document: { signatureNotRequired: true } },
+    });
+
+    const required = await app.request(
+      API_ROUTES.documentRequireSignature.path.replace(':documentId', documentId),
+      {
+        method: API_ROUTES.documentRequireSignature.method,
+        headers: { [TENANT_HEADER]: tenant.slug },
+      },
+    );
+    expect(required.status).toBe(200);
+    expect(await required.json()).toMatchObject({
+      ok: true,
+      data: { document: { signatureNotRequired: false } },
+    });
   });
 
   it('lists trash, restores and purges documents through the contract routes', async () => {
@@ -515,6 +552,7 @@ describe('buildApp', () => {
       person: null,
       tags: [],
       draft: false,
+      signatureNotRequired: false,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-02T00:00:00.000Z',
       deletedAt: '2026-08-02T00:00:00.000Z',
@@ -579,6 +617,7 @@ describe('buildApp', () => {
       person: null,
       tags: [],
       draft: false,
+      signatureNotRequired: false,
       createdAt: '2026-08-07T10:00:00.000Z',
       updatedAt: '2026-08-07T10:00:00.000Z',
       deletedAt: null,
@@ -621,6 +660,7 @@ describe('buildApp', () => {
         tenantId,
         storeSignatureRecords: storedSettings,
         pdfSealEnabled: false,
+        signatureBoxEnabled: false,
         dateMode: 'declared',
       }),
       set: async (tenantId, settings) => {
@@ -651,6 +691,7 @@ describe('buildApp', () => {
         settings: {
           storeSignatureRecords: true,
           pdfSealEnabled: false,
+          signatureBoxEnabled: false,
           dateMode: 'declared',
         },
       },
@@ -666,6 +707,7 @@ describe('buildApp', () => {
         settings: {
           storeSignatureRecords: false,
           pdfSealEnabled: false,
+          signatureBoxEnabled: false,
           dateMode: 'declared',
         },
       },
@@ -940,6 +982,7 @@ describe('buildApp', () => {
       person: null,
       tags: [],
       draft: false,
+      signatureNotRequired: false,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
       deletedAt: null,
@@ -1004,6 +1047,7 @@ describe('buildApp', () => {
       person: null,
       tags: [],
       draft: true,
+      signatureNotRequired: false,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
       deletedAt: null,
@@ -1032,6 +1076,7 @@ describe('buildApp', () => {
     deps.documents.create = async (input) => ({
       ...input,
       draft: input.draft ?? false,
+      signatureNotRequired: input.signatureNotRequired ?? false,
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
       deletedAt: null,
@@ -1179,6 +1224,7 @@ describe('buildApp', () => {
       person: null,
       tags: [],
       draft: false,
+      signatureNotRequired: false,
       createdAt: '2026-08-08T10:00:00.000Z',
       updatedAt: '2026-08-08T10:00:00.000Z',
       deletedAt: null,
