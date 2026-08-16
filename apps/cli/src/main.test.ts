@@ -175,6 +175,25 @@ describe('CLI command surface', () => {
     });
   }, CLI_TEST_TIMEOUT_MS);
 
+  it('maps reversed proposal period dates to one validation envelope', () => {
+    const result = run(
+      '--json',
+      'document',
+      'propose-update',
+      '11111111-1111-4111-8111-111111111111',
+      '--period-start',
+      '2026-05-01',
+      '--period-end',
+      '2026-01-01',
+    );
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(result.stderr).toBe('');
+  }, CLI_TEST_TIMEOUT_MS);
+
   it('documents the minimal invitation commands', () => {
     const invitationHelp = run('invitation', '--help');
     expect(invitationHelp.status).toBe(0);

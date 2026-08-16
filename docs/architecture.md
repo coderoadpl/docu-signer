@@ -665,8 +665,10 @@ restriction; the normal owner/admin grant must still pass, then `decide`
 intersects the token scopes. `read` grants only document list/show/file/export
 reads. `write` grants document write operations except document/file deletion
 and approval. `write:draft` grants document writes only where the operation creates
-or targets a draft document, except that link and comment creation may target any
-document and those writes store draft annotations awaiting session-user approval. Token
+or targets a draft document, with two approval-gated exceptions that may target any
+document: link and comment creation stores draft annotations, and metadata updates
+file metadata-change proposals. A `write:draft` token never edits document metadata
+directly; a session user must approve a proposal before its changes are applied. Token
 management, account/auth identity, saved
 search management, user-preference management, tenant settings, signature
 records, approval and all deletes are session-only.

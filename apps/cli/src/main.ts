@@ -788,31 +788,36 @@ document
         ctx.json,
       );
       if (parsed === undefined) return;
-      const input = documentMetadataChangesSchema.parse({
-        ...(parsed.title === undefined ? {} : { title: parsed.title }),
-        ...(parsed.type === undefined ? {} : { docType: parsed.type }),
-        ...(parsed.date === undefined ? {} : { documentDate: parsed.date }),
-        ...(parsed.clearPeriodStart
-          ? { periodStart: null }
-          : parsed.periodStart === undefined
-            ? {}
-            : { periodStart: parsed.periodStart }),
-        ...(parsed.clearPeriodEnd
-          ? { periodEnd: null }
-          : parsed.periodEnd === undefined
-            ? {}
-            : { periodEnd: parsed.periodEnd }),
-        ...(parsed.clearPerson
-          ? { person: null }
-          : parsed.person === undefined
-            ? {}
-            : { person: parsed.person }),
-        ...(parsed.clearTags
-          ? { tags: [] }
-          : parsed.tag === undefined
-            ? {}
-            : { tags: parsed.tag }),
-      });
+      const input = parseArgs(
+        documentMetadataChangesSchema,
+        {
+          ...(parsed.title === undefined ? {} : { title: parsed.title }),
+          ...(parsed.type === undefined ? {} : { docType: parsed.type }),
+          ...(parsed.date === undefined ? {} : { documentDate: parsed.date }),
+          ...(parsed.clearPeriodStart
+            ? { periodStart: null }
+            : parsed.periodStart === undefined
+              ? {}
+              : { periodStart: parsed.periodStart }),
+          ...(parsed.clearPeriodEnd
+            ? { periodEnd: null }
+            : parsed.periodEnd === undefined
+              ? {}
+              : { periodEnd: parsed.periodEnd }),
+          ...(parsed.clearPerson
+            ? { person: null }
+            : parsed.person === undefined
+              ? {}
+              : { person: parsed.person }),
+          ...(parsed.clearTags
+            ? { tags: [] }
+            : parsed.tag === undefined
+              ? {}
+              : { tags: parsed.tag }),
+        },
+        ctx.json,
+      );
+      if (input === undefined) return;
       emit(await ctx.api.proposeDocumentUpdate(parsed.id, input), ctx.json, (data) =>
         data.outcome === 'proposed'
           ? `proposed: ${data.proposal.id}`
