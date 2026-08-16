@@ -114,6 +114,10 @@ before ai-review may accept them; the rulings are archived verbatim in
   the CLI `document waive-signature|require-signature` pair — which removes
   them from the needs-signature filter and mass-signing queues and shows a
   quiet gray chip instead of a pending state.
+  Document links and comments created by a `write:draft`-scoped API token are
+  draft annotations awaiting session-user approval; they remain fully visible
+  and behave like approved annotations except for the `Szkic` marker and
+  `Zatwierdź` action.
   Signing flattens ink client-side into a new `signed-digital` PDF; it never
   replaces the source. With the tenant's signature-box setting on, that
   flatten also bakes a visible first-page annotation (top-right: the signers

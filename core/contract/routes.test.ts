@@ -95,6 +95,10 @@ describe('API route contract', () => {
       method: 'DELETE',
       path: '/api/documents/:documentId/comments/:commentId',
     });
+    expect(API_ROUTES.documentCommentApprove).toEqual({
+      method: 'POST',
+      path: '/api/document-comments/:commentId/approve',
+    });
     expect(API_ROUTES.documentPurge).toEqual({
       method: 'DELETE',
       path: '/api/documents/:documentId/purge',
@@ -130,6 +134,10 @@ describe('API route contract', () => {
     expect(API_ROUTES.documentLinkDelete).toEqual({
       method: 'DELETE',
       path: '/api/documents/:documentId/links/:otherDocumentId',
+    });
+    expect(API_ROUTES.documentLinkApprove).toEqual({
+      method: 'POST',
+      path: '/api/document-links/:linkId/approve',
     });
     expect(API_ROUTES.savedSearches).toEqual({
       method: 'GET',

@@ -12,6 +12,7 @@ import type {
 } from '../ports.js';
 import {
   addDocumentComment,
+  approveDocumentComment,
   deleteDocumentComment,
   listDocumentComments,
   type DocumentCommentDeps,
@@ -87,6 +88,7 @@ const rawComment = (authorAccountId = 'user-owner'): DocumentComment => ({
   documentId: DOCUMENT_ID,
   authorAccountId,
   body: 'Treść komentarza',
+  draft: false,
   createdAt: '2026-08-16T10:00:00.000Z',
 });
 
@@ -99,6 +101,7 @@ const listItem = (authorAccountId = 'user-owner'): DocumentCommentListItem => ({
     name: authorAccountId === 'user-owner' ? 'Owner' : 'Other',
   },
   body: 'Treść komentarza',
+  draft: false,
   createdAt: '2026-08-16T10:00:00.000Z',
 });
 
@@ -115,8 +118,13 @@ const commentRepository = (
       name: input.authorAccountId === 'user-owner' ? 'Owner' : 'Other',
     },
     body: input.body,
+    draft: input.draft,
     createdAt: '2026-08-16T10:00:00.000Z',
   }),
+  approve: async (tenantId, commentId) =>
+    tenantId === 'tenant-1' && commentId === COMMENT_ID
+      ? { ...listItem(authorAccountId), draft: false }
+      : null,
   findById: async () => rawComment(authorAccountId),
   delete: async () => true,
 });
@@ -138,6 +146,7 @@ describe('document comment use-cases', () => {
     const create = vi.spyOn(deps.documentComments, 'create');
     const find = vi.spyOn(deps.documentComments, 'findById');
     const remove = vi.spyOn(deps.documentComments, 'delete');
+    const approve = vi.spyOn(deps.documentComments, 'approve');
     const denied = { identity: identity('visitor', null, null) };
 
     await expect(listDocumentComments(denied, DOCUMENT_ID, {}, deps)).resolves.toMatchObject({
@@ -150,6 +159,9 @@ describe('document comment use-cases', () => {
     await expect(
       deleteDocumentComment(denied, DOCUMENT_ID, COMMENT_ID, deps),
     ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    await expect(
+      approveDocumentComment(denied, COMMENT_ID, deps),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
 
     expect(documentRead).not.toHaveBeenCalled();
     expect(documentWrite).not.toHaveBeenCalled();
@@ -157,6 +169,7 @@ describe('document comment use-cases', () => {
     expect(create).not.toHaveBeenCalled();
     expect(find).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
+    expect(approve).not.toHaveBeenCalled();
   });
 
   it('validates, trims, and bounds comment bodies before repository writes', async () => {
@@ -246,6 +259,9 @@ describe('document comment use-cases', () => {
       deleteDocumentComment({ identity: identity() }, DOCUMENT_ID, 'invalid', deps),
     ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
     await expect(
+      approveDocumentComment({ identity: identity() }, 'invalid', deps),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    await expect(
       listDocumentComments({ identity: identity() }, 'invalid', {}, deps),
     ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
     await expect(
@@ -286,25 +302,42 @@ describe('document comment use-cases', () => {
         missingCommentDeps,
       ),
     ).resolves.toMatchObject({ ok: false, error: { code: 'not_found' } });
+    await expect(
+      approveDocumentComment({ identity: identity() }, COMMENT_ID, {
+        documentComments: { ...commentRepository(), approve: async () => null },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
-  it('enforces API token write boundaries and reports a concurrent delete miss', async () => {
+  it('marks draft-token comments as drafts and session or full-token comments as approved', async () => {
     const draftToken = {
       ...identity(),
       apiToken: { id: 'token-1', scopes: ['write:draft'] as const },
     };
     const writeToken = {
       ...identity(),
-      apiToken: { id: 'token-2', scopes: ['write'] as const },
+      apiToken: { id: 'token-2', scopes: ['write', 'write:draft'] as const },
     };
     const deps = dependencies();
 
     await expect(
       addDocumentComment({ identity: draftToken }, DOCUMENT_ID, { body: 'Komentarz' }, deps),
-    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    ).resolves.toMatchObject({ ok: true, value: { draft: true } });
     await expect(
       addDocumentComment({ identity: writeToken }, DOCUMENT_ID, { body: 'Komentarz' }, deps),
-    ).resolves.toMatchObject({ ok: true });
+    ).resolves.toMatchObject({ ok: true, value: { draft: false } });
+    await expect(
+      addDocumentComment({ identity: identity() }, DOCUMENT_ID, { body: 'Komentarz' }, deps),
+    ).resolves.toMatchObject({ ok: true, value: { draft: false } });
+  });
+
+  it('keeps token deletion forbidden and reports a concurrent delete miss', async () => {
+    const writeToken = {
+      ...identity(),
+      apiToken: { id: 'token-2', scopes: ['write'] as const },
+    };
+    const deps = dependencies();
+
     await expect(
       deleteDocumentComment({ identity: writeToken }, DOCUMENT_ID, COMMENT_ID, deps),
     ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
@@ -321,6 +354,17 @@ describe('document comment use-cases', () => {
         missedDeleteDeps,
       ),
     ).resolves.toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('approves comments idempotently with document approval capability', async () => {
+    const deps = dependencies();
+
+    await expect(
+      approveDocumentComment({ identity: identity() }, COMMENT_ID, deps),
+    ).resolves.toMatchObject({ ok: true, value: { id: COMMENT_ID, draft: false } });
+    await expect(
+      approveDocumentComment({ identity: identity() }, COMMENT_ID, deps),
+    ).resolves.toMatchObject({ ok: true, value: { id: COMMENT_ID, draft: false } });
   });
 
   it('returns an opaque cursor only when another comment page exists', async () => {

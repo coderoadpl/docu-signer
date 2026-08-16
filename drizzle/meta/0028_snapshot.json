@@ -1,6 +1,6 @@
 {
-  "id": "a1dfdcf7-aa29-41c2-bb4e-5ba4bd5603f7",
-  "prevId": "1503a326-dca3-4c6a-8416-9442a8944ff8",
+  "id": "28383acf-6790-45ce-ae3d-d2893806be61",
+  "prevId": "a1dfdcf7-aa29-41c2-bb4e-5ba4bd5603f7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1367,6 +1367,79 @@
       },
       "isRLSEnabled": false
     },
+    "public.document_types": {
+      "name": "document_types",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "document_types_tenant_id_tenants_id_fk": {
+          "name": "document_types_tenant_id_tenants_id_fk",
+          "tableFrom": "document_types",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "document_types_tenant_id_slug_pk": {
+          "name": "document_types_tenant_id_slug_pk",
+          "columns": [
+            "tenant_id",
+            "slug"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.documents": {
       "name": "documents",
       "schema": "",
@@ -1524,10 +1597,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "documents_doc_type_check": {
-          "name": "documents_doc_type_check",
-          "value": "\"documents\".\"doc_type\" IN ('umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny')"
-        },
         "documents_period_order_check": {
           "name": "documents_period_order_check",
           "value": "\"documents\".\"period_start\" IS NULL OR \"documents\".\"period_end\" IS NULL OR \"documents\".\"period_start\" <= \"documents\".\"period_end\""

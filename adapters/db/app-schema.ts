@@ -255,6 +255,7 @@ export const documentComments = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     body: text('body').notNull(),
+    draft: boolean('draft').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -286,6 +287,7 @@ export const documentLinks = pgTable(
     fromDocumentId: uuid('from_document_id').notNull(),
     toDocumentId: uuid('to_document_id').notNull(),
     label: text('label'),
+    draft: boolean('draft').notNull().default(false),
   },
   (table) => [
     foreignKey({

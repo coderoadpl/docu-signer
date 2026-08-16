@@ -12,6 +12,7 @@ import {
   invitationRevokeOutputSchema,
   documentApproveOutputSchema,
   documentCommentCreateOutputSchema,
+  documentCommentApproveOutputSchema,
   documentCommentDeleteOutputSchema,
   documentCommentListOutputSchema,
   documentCreateOutputSchema,
@@ -26,6 +27,7 @@ import {
   documentGetOutputSchema,
   documentListOutputSchema,
   documentLinkCreateOutputSchema,
+  documentLinkApproveOutputSchema,
   documentLinkDeleteOutputSchema,
   documentLinkListOutputSchema,
   documentPurgeOutputSchema,
@@ -408,6 +410,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  approveDocumentComment: (commentId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentCommentApprove.method,
+      pathWith(API_ROUTES.documentCommentApprove.path, { commentId }),
+      documentCommentApproveOutputSchema,
+      {},
+      signal,
+    ),
   deleteDocumentComment: (
     documentId: string,
     commentId: string,
@@ -441,6 +452,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       pathWith(API_ROUTES.documentLinkCreate.path, { documentId }),
       documentLinkCreateOutputSchema,
       input,
+      signal,
+    ),
+  approveDocumentLink: (linkId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.documentLinkApprove.method,
+      pathWith(API_ROUTES.documentLinkApprove.path, { linkId }),
+      documentLinkApproveOutputSchema,
+      {},
       signal,
     ),
   unlinkDocuments: (

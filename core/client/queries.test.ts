@@ -8,6 +8,8 @@ import {
   activeSourceUpdateRequestQuery,
   cancelSourceUpdateRequestMutation,
   addDocumentCommentMutation,
+  approveDocumentCommentMutation,
+  approveDocumentLinkMutation,
   changePasswordMutation,
   createApiTokenMutation,
   createDocumentMutation,
@@ -141,9 +143,22 @@ describe('document query descriptors', () => {
     const link = {
       linkId: '66666666-6666-4666-8666-666666666666',
       label: null,
+      draft: true,
       document: { ...document, id: otherDocumentId },
     };
-    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).endsWith('/approve')) {
+        return response({
+          link: {
+            id: link.linkId,
+            tenantId: document.tenantId,
+            fromDocumentId: document.id,
+            toDocumentId: otherDocumentId,
+            label: null,
+            draft: false,
+          },
+        });
+      }
       if (init?.method === 'POST') return response({ link });
       if (init?.method === 'DELETE') return response({ deleted: true });
       return response({ links: [link] });
@@ -161,6 +176,9 @@ describe('document query descriptors', () => {
       }),
     ).resolves.toEqual({ link });
     await expect(
+      new MutationObserver(client, approveDocumentLinkMutation(api)).mutate(link.linkId),
+    ).resolves.toMatchObject({ link: { id: link.linkId, draft: false } });
+    await expect(
       new MutationObserver(client, unlinkDocumentsMutation(api)).mutate({
         documentId: document.id,
         otherDocumentId,
@@ -176,6 +194,7 @@ describe('document query descriptors', () => {
       documentId: document.id,
       author: { accountId: 'user-1', name: 'Owner' },
       body: 'Pierwszy',
+      draft: true,
       createdAt: '2026-08-16T10:00:00.000Z',
     };
     const second = {
@@ -185,6 +204,9 @@ describe('document query descriptors', () => {
       createdAt: '2026-08-16T11:00:00.000Z',
     };
     const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      if (String(input).endsWith('/approve')) {
+        return response({ comment: { ...first, draft: false } });
+      }
       if (init?.method === 'POST') return response({ comment: first });
       if (init?.method === 'DELETE') return response({ deleted: true });
       return String(input).includes('cursor=next-page')
@@ -208,6 +230,9 @@ describe('document query descriptors', () => {
         input: { body: first.body },
       }),
     ).resolves.toEqual({ comment: first });
+    await expect(
+      new MutationObserver(client, approveDocumentCommentMutation(api)).mutate(first.id),
+    ).resolves.toEqual({ comment: { ...first, draft: false } });
     await expect(
       new MutationObserver(client, deleteDocumentCommentMutation(api)).mutate({
         documentId: document.id,

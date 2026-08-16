@@ -110,8 +110,10 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
       documentId: input.documentId,
       author: { accountId: input.authorAccountId, name: 'Owner' },
       body: input.body,
+      draft: input.draft,
       createdAt: '2026-08-16T10:00:00.000Z',
     }),
+    approve: async () => null,
     findById: async () => null,
     delete: async () => false,
   },
@@ -119,6 +121,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     create: async () => null,
     findBetween: async () => null,
     listForDocument: async () => [],
+    approve: async () => null,
     deleteBetween: async () => false,
   },
   padSessions: {

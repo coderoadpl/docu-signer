@@ -25,6 +25,7 @@ const toLinkedDocument = (row: {
   linkedDocumentSchema.parse({
     linkId: row.link.id,
     label: row.link.label,
+    draft: row.link.draft,
     document: documentSchema.parse({
       ...row.document,
       createdAt: row.document.createdAt.toISOString(),
@@ -100,6 +101,14 @@ export const createDocumentLinkRepository = (db: Db): DocumentLinkRepository => 
       )
       .orderBy(asc(linkedDocuments.title), asc(linkedDocuments.id));
     return rows.map(toLinkedDocument);
+  },
+  approve: async (tenantId, linkId) => {
+    const rows = await db
+      .update(documentLinks)
+      .set({ draft: false })
+      .where(and(eq(documentLinks.tenantId, tenantId), eq(documentLinks.id, linkId)))
+      .returning();
+    return rows[0] ? toDocumentLink(rows[0]) : null;
   },
   deleteBetween: async (tenantId, firstDocumentId, secondDocumentId) => {
     const rows = await db

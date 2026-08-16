@@ -114,4 +114,5 @@ each.
 - The user-preference resource consciously skips the CLI step of the 12-step chain: column preferences are a web-view concern with no CLI surface to configure.
 - API token `lastUsedAt` renders in Konto > Tokeny API despite the no-storage-timestamps rule: token hygiene is that security surface's purpose (agent decision 2026-08-02; owner may veto).
 - Document comment `createdAt` renders beside the comment because it records the user action of posting (owner request 2026-08-16); no other document storage timestamp is exposed.
+- Draft-scoped API tokens create draft document links and comments awaiting human approval; the draft state is visibility-only and supersedes the transiently shipped unrestricted annotation writes (owner decision 2026-08-16).
 - Remote pad access supports fragment-secret and identity joins. Private sessions stay same-account-only; shared sessions let any account in the same tenant join without consuming or superseding that participant's own per-user host-session slot, and queue server-attributed submissions for deliberate desktop placement (owner decisions 2026-08-04 and 2026-08-09).
