@@ -97,6 +97,7 @@ export default defineConfig({
             'apps/server/**/*.test.ts',
             'apps/server/**/*.test.tsx',
             'scripts/**/*.test.ts',
+            'scripts/**/*.test.mjs',
             'eslint-plugin-agentproofarch/**/*.test.js',
           ],
           exclude: [...configDefaults.exclude, '**/*.integration.test.ts'],

@@ -20,9 +20,12 @@ Status: accepted (2026-07-14); **release and storage topology superseded
 > per-preview branches ([FOUNDATION.md](../../FOUNDATION.md)). Build-time
 > migration/admin bootstrap (point 3), entry/routing (point 4), Frankfurt
 > co-location (point 5) and the single-tenant `*.vercel.app` constraint (point
-> 6) remain. Everything below records the original decision; where a point was
-> superseded (release mapping in point 1) or rewritten to fork reality
-> (storage in point 2), this note and FOUNDATION.md are authoritative.
+> 6) remain. Since 2026-08-16, previews build only for branches with an open PR
+> and only for commits touching the app, enforced by `ignoreCommand` through
+> `scripts/vercel-ignore-build.mjs`. Everything below records the original
+> decision; where a point was superseded (release mapping in point 1) or
+> rewritten to fork reality (storage in point 2), this note and FOUNDATION.md
+> are authoritative.
 
 ## Context
 
