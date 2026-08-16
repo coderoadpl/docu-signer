@@ -615,7 +615,10 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
           }}
           onPointerUp={finishPointer}
           onPointerCancel={finishPointer}
-          onLostPointerCapture={(event) => commitActiveStroke(event.timeStamp)}
+          onLostPointerCapture={(event) => {
+            if (event.pointerId !== activePointerRef.current) return;
+            commitActiveStroke(event.timeStamp);
+          }}
         />
       </Box>
       {drawingEnabled ? (
