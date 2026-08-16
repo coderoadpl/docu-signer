@@ -169,6 +169,30 @@ const document = {
   files: [sourceFile],
 };
 
+const installEmptySharedPadHandlers = () => {
+  server.use(
+    http.post('/api/pad-sessions/:sessionId/document', () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          document: { key: `${DOCUMENT_ID}:${SOURCE_ID}`, title: document.title },
+        },
+      }),
+    ),
+    http.post('/api/pad-sessions/:sessionId/consume', () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          submittedStrokes: null,
+          lastPolledAt: null,
+          participants: [],
+          submissions: [],
+        },
+      }),
+    ),
+  );
+};
+
 const renderPage = async (
   initialEntry = `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}`,
 ) => {
@@ -466,6 +490,7 @@ describe('DocumentSigningPage', () => {
 
   it('creates and closes a QR pad session from the signing toolbar', async () => {
     let closed = 0;
+    installEmptySharedPadHandlers();
     server.use(
       http.post('/api/pad-sessions', () =>
         HttpResponse.json({
@@ -476,6 +501,7 @@ describe('DocumentSigningPage', () => {
               id: '55555555-5555-4555-8555-555555555555',
               tenantId: 'tenant-1',
               createdBy: 'user-owner',
+              mode: 'shared',
               status: 'active',
               createdAt: '2026-08-04T10:00:00.000Z',
               expiresAt: '2026-08-04T14:00:00.000Z',
@@ -508,8 +534,78 @@ describe('DocumentSigningPage', () => {
     await waitFor(() => expect(closed).toBe(1));
   });
 
+  it('upgrades a private active session before showing its QR code', async () => {
+    let releaseShare = () => {};
+    const shareGate = new Promise<void>((resolve) => {
+      releaseShare = resolve;
+    });
+    let shareCalls = 0;
+    let sessionMode: 'private' | 'shared' = 'private';
+    installEmptySharedPadHandlers();
+    server.use(
+      http.get('/api/pad-sessions/active', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            session: {
+              id: SHARED_SESSION_ID,
+              tenantId: 'tenant-1',
+              createdBy: 'user-owner',
+              mode: sessionMode,
+              status: 'active',
+              createdAt: '2026-08-04T10:00:00.000Z',
+              expiresAt: '2099-08-04T14:00:00.000Z',
+              lastPolledAt: null,
+              currentRequest: null,
+              currentDocument: null,
+            },
+          },
+        }),
+      ),
+      http.post('/api/pad-sessions/:sessionId/share', async () => {
+        shareCalls += 1;
+        await shareGate;
+        sessionMode = 'shared';
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            session: {
+              id: SHARED_SESSION_ID,
+              tenantId: 'tenant-1',
+              createdBy: 'user-owner',
+              mode: 'shared',
+              status: 'active',
+              createdAt: '2026-08-04T10:00:00.000Z',
+              expiresAt: '2099-08-04T14:00:00.000Z',
+              lastPolledAt: null,
+              currentRequest: null,
+              currentDocument: null,
+            },
+          },
+        });
+      }),
+    );
+
+    await renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Pad QR' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
+    await waitFor(() => expect(shareCalls).toBe(1));
+    expect(screen.getByLabelText('Tworzenie sesji pada')).toBeVisible();
+    expect(screen.queryByRole('img', { name: 'Kod QR pada podpisu' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Zeskanuj kod/u)).not.toBeInTheDocument();
+
+    releaseShare();
+
+    expect(await screen.findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
+    expect(screen.getByText(/Zeskanuj kod/u)).toBeVisible();
+    expect(shareCalls).toBe(1);
+  });
+
   it('discovers a recently polling global pad session as connected', async () => {
     const lastPolledAt = new Date().toISOString();
+    let sessionMode: 'private' | 'shared' = 'private';
+    installEmptySharedPadHandlers();
     server.use(
       http.get('/api/pad-sessions/active', () =>
         HttpResponse.json({
@@ -519,6 +615,7 @@ describe('DocumentSigningPage', () => {
               id: '55555555-5555-4555-8555-555555555555',
               tenantId: 'tenant-1',
               createdBy: 'user-owner',
+              mode: sessionMode,
               status: 'active',
               createdAt: lastPolledAt,
               expiresAt: new Date(Date.now() + 14_400_000).toISOString(),
@@ -528,6 +625,26 @@ describe('DocumentSigningPage', () => {
           },
         }),
       ),
+      http.post('/api/pad-sessions/:sessionId/share', () => {
+        sessionMode = 'shared';
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            session: {
+              id: SHARED_SESSION_ID,
+              tenantId: 'tenant-1',
+              createdBy: 'user-owner',
+              mode: 'shared',
+              status: 'active',
+              createdAt: lastPolledAt,
+              expiresAt: new Date(Date.now() + 14_400_000).toISOString(),
+              lastPolledAt,
+              currentRequest: null,
+              currentDocument: null,
+            },
+          },
+        });
+      }),
     );
 
     await renderPage();
@@ -729,6 +846,7 @@ describe('DocumentSigningPage', () => {
 
   it('keeps the global QR pad session active when leaving the signing page', async () => {
     let closed = 0;
+    installEmptySharedPadHandlers();
     server.use(
       http.post('/api/pad-sessions', () =>
         HttpResponse.json({
@@ -739,6 +857,7 @@ describe('DocumentSigningPage', () => {
               id: '55555555-5555-4555-8555-555555555555',
               tenantId: 'tenant-1',
               createdBy: 'user-owner',
+              mode: 'shared',
               status: 'active',
               createdAt: '2026-08-04T10:00:00.000Z',
               expiresAt: '2026-08-04T14:00:00.000Z',
@@ -1772,6 +1891,7 @@ describe('DocumentSigningPage', () => {
 
   it('confirms before closing a mass-signing document with unsaved stamps', async () => {
     let closed = 0;
+    installEmptySharedPadHandlers();
     server.use(
       http.post('/api/pad-sessions', () =>
         HttpResponse.json({
@@ -1782,6 +1902,7 @@ describe('DocumentSigningPage', () => {
               id: '55555555-5555-4555-8555-555555555555',
               tenantId: 'tenant-1',
               createdBy: 'user-owner',
+              mode: 'shared',
               status: 'active',
               createdAt: '2026-08-04T10:00:00.000Z',
               expiresAt: '2026-08-04T14:00:00.000Z',

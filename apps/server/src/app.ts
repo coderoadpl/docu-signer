@@ -102,6 +102,7 @@ import {
   setPadCurrentDocument,
   serverUpload,
   setUserPreference,
+  sharePadSession,
   submitPadStrokes,
   updateTenantSettings,
   updateDocument,
@@ -523,6 +524,15 @@ export const buildApp = (deps: AppDeps) => {
 
   app.post(API_ROUTES.padSessionJoin.path, async (c) => {
     const result = await joinOwnPadSession(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ session: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.padSessionShare.path, async (c) => {
+    const result = await sharePadSession(
+      ctxOf(c.get('identity')),
+      c.req.param('sessionId'),
+      deps,
+    );
     return respond(result.ok ? ok({ session: result.value }) : result);
   });
 

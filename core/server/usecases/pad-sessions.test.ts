@@ -19,6 +19,7 @@ import {
   joinOwnPadSession,
   requestPadSignature,
   setPadCurrentDocument,
+  sharePadSession,
   submitPadStrokes,
 } from './pad-sessions.js';
 
@@ -125,7 +126,17 @@ const fake = (initial: PadSession[] = []) => {
           session.createdBy !== excludeUserId &&
           session.mode === 'shared' &&
           session.status === 'active',
-      ) ?? null,
+        ) ?? null,
+    setMode: async (tenantId, id, mode) => {
+      const index = sessions.findIndex(
+        (session) =>
+          session.tenantId === tenantId && session.id === id && session.status === 'active',
+      );
+      const session = sessions[index];
+      if (!session) return null;
+      sessions[index] = { ...session, mode };
+      return sessions[index] ?? null;
+    },
     renew: async (tenantId, id, expiresAt, lastPolledAt) => {
       const index = sessions.findIndex(
         (session) =>
@@ -318,6 +329,46 @@ describe('pad session use-cases', () => {
     });
   });
 
+  it('shares an active private session owned by the signed-in user', async () => {
+    const state = fake([activeSession()]);
+    await expect(sharePadSession(ctx(owner()), sessionId, state.deps)).resolves.toMatchObject({
+      ok: true,
+      value: { id: sessionId, mode: 'shared' },
+    });
+    expect(state.sessions[0]).toMatchObject({ mode: 'shared' });
+  });
+
+  it('returns an already shared session without updating it again', async () => {
+    const state = fake([activeSession({ mode: 'shared' })]);
+    const setMode = vi.spyOn(state.deps.padSessions, 'setMode');
+    await expect(sharePadSession(ctx(owner()), sessionId, state.deps)).resolves.toMatchObject({
+      ok: true,
+      value: { id: sessionId, mode: 'shared' },
+    });
+    expect(setMode).not.toHaveBeenCalled();
+  });
+
+  it('allows only the session owner to share it', async () => {
+    const state = fake([activeSession()]);
+    const setMode = vi.spyOn(state.deps.padSessions, 'setMode');
+    await expect(
+      sharePadSession(ctx(otherOwner), sessionId, state.deps),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'forbidden', message: 'Pad session belongs to another user' },
+    });
+    expect(setMode).not.toHaveBeenCalled();
+  });
+
+  it('refuses to share a closed session', async () => {
+    const state = fake([activeSession({ status: 'closed' })]);
+    await expect(sharePadSession(ctx(owner()), sessionId, state.deps)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'forbidden', message: 'Pad session is closed' },
+    });
+    expect(state.sessions[0]).toMatchObject({ mode: 'private' });
+  });
+
   it('denies before repository access when the signed-in user lacks archive capability', async () => {
     const state = fake();
     const spy = vi.spyOn(state.deps.padSessions, 'create');
@@ -340,6 +391,9 @@ describe('pad session use-cases', () => {
       ok: false,
       error: { code: 'forbidden' },
     });
+    await expect(
+      sharePadSession(ctx(visitor), sessionId, state.deps),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
     await expect(getPadState(ctx(visitor), sessionId, 'pad_secret', state.deps)).resolves.toMatchObject({
       ok: false,
       error: { code: 'forbidden' },

@@ -646,6 +646,32 @@ describe('PadPage', () => {
     expect(await screen.findByText('Nieprawidłowa sesja pada.')).toBeVisible();
   });
 
+  it('explains when identity join reaches another user private session', async () => {
+    server.use(
+      http.get('*/api/pad-sessions/:sessionId/state', () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            error: {
+              code: 'forbidden',
+              message: 'Pad session belongs to another user',
+            },
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    renderPad();
+
+    expect(
+      await screen.findByText(
+        'Ta sesja pada jest prywatna. Poproś właściciela o ponowne otwarcie Pad QR.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText('Pad session belongs to another user')).not.toBeInTheDocument();
+  });
+
   it('requires a signed-in account with archive access', async () => {
     server.use(
       http.get('*/api/me', () =>

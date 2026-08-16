@@ -46,6 +46,7 @@ import {
   padSessionDisconnectOutputSchema,
   padSessionJoinOutputSchema,
   padSessionRequestOutputSchema,
+  padSessionShareOutputSchema,
   padSessionStateOutputSchema,
   padSessionSubmissionConsumeOutputSchema,
   padSessionSubmitOutputSchema,
@@ -828,6 +829,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.padSessionJoin.method,
       API_ROUTES.padSessionJoin.path,
       padSessionJoinOutputSchema,
+      {},
+      signal,
+    ),
+  sharePadSession: (sessionId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.padSessionShare.method,
+      pathWith(API_ROUTES.padSessionShare.path, { sessionId }),
+      padSessionShareOutputSchema,
       {},
       signal,
     ),

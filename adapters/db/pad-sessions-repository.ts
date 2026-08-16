@@ -136,6 +136,20 @@ export const createPadSessionRepository = (db: Db): PadSessionRepository => ({
       .limit(1);
     return rows[0] ? toPadSession(rows[0]) : null;
   },
+  setMode: async (tenantId, sessionId, mode) => {
+    const rows = await db
+      .update(padSessions)
+      .set({ mode })
+      .where(
+        and(
+          eq(padSessions.tenantId, tenantId),
+          eq(padSessions.id, sessionId),
+          eq(padSessions.status, 'active'),
+        ),
+      )
+      .returning();
+    return rows[0] ? toPadSession(rows[0]) : null;
+  },
   renew: async (tenantId, sessionId, expiresAt, lastPolledAt) => {
     const rows = await db
       .update(padSessions)

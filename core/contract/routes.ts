@@ -348,6 +348,8 @@ export const padSessionActiveOutputSchema = domainPadSessionActiveOutputSchema;
 
 export const padSessionJoinOutputSchema = domainPadSessionJoinOutputSchema;
 
+export const padSessionShareOutputSchema = domainPadSessionJoinOutputSchema;
+
 export const padSessionStateOutputSchema = domainPadSessionStateOutputSchema;
 
 export const padSessionRequestInputSchema = domainPadSessionRequestInputSchema;
@@ -526,6 +528,7 @@ export const API_ROUTES = {
   padSessionsCreate: { method: 'POST', path: '/api/pad-sessions' },
   padSessionActive: { method: 'GET', path: '/api/pad-sessions/active' },
   padSessionJoin: { method: 'POST', path: '/api/pad-sessions/join' },
+  padSessionShare: { method: 'POST', path: '/api/pad-sessions/:sessionId/share' },
   padSessionState: { method: 'GET', path: '/api/pad-sessions/:sessionId/state' },
   padSessionRequest: { method: 'POST', path: '/api/pad-sessions/:sessionId/request' },
   padSessionDocument: { method: 'POST', path: '/api/pad-sessions/:sessionId/document' },
