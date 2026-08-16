@@ -408,6 +408,7 @@ export const DocumentDetailPage = ({
   const [documentLinkSearch, setDocumentLinkSearch] = useState('');
   const [documentLinkTargetId, setDocumentLinkTargetId] = useState('');
   const [documentLinkLabel, setDocumentLinkLabel] = useState('');
+  const [linkedDocumentsExpanded, setLinkedDocumentsExpanded] = useState(false);
   const [commentBody, setCommentBody] = useState('');
   const [sourceUpdatePending, setSourceUpdatePending] = useState(false);
   const [sourceUpdateError, setSourceUpdateError] = useState<string>();
@@ -576,6 +577,9 @@ export const DocumentDetailPage = ({
   const personOptions = uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]);
   const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
   const linkedDocuments = documentLinksQuery.data?.links ?? [];
+  const visibleLinkedDocuments = linkedDocumentsExpanded
+    ? linkedDocuments
+    : linkedDocuments.slice(0, 3);
   const comments = documentCommentsQuery.data?.items ?? [];
   const linkedDocumentIds = new Set(
     linkedDocuments.map((link) => link.document.id),
@@ -996,46 +1000,60 @@ export const DocumentDetailPage = ({
             Brak powiązanych dokumentów.
           </Typography>
         ) : (
-          <List disablePadding sx={{ mt: 1 }}>
-            {linkedDocuments.map((link) => (
-              <ListItem
-                key={link.linkId}
-                disablePadding
-                divider
-                secondaryAction={
-                  !isTrashed ? (
-                    <Button
-                      color="error"
-                      size="small"
-                      disabled={unlinkDocuments.isPending}
-                      onClick={() =>
-                        unlinkDocuments.mutate({
-                          documentId,
-                          otherDocumentId: link.document.id,
-                        })
-                      }
-                    >
-                      Usuń
-                    </Button>
-                  ) : null
-                }
-                sx={{ opacity: link.document.deletedAt ? 0.55 : 1 }}
-              >
-                <RouterListItemButton
-                  to="/app/documents/$id"
-                  params={{ id: link.document.id }}
+          <>
+            <List disablePadding sx={{ mt: 1 }}>
+              {visibleLinkedDocuments.map((link) => (
+                <ListItem
+                  key={link.linkId}
+                  disablePadding
+                  divider
+                  secondaryAction={
+                    !isTrashed ? (
+                      <Button
+                        color="error"
+                        size="small"
+                        disabled={unlinkDocuments.isPending}
+                        onClick={() =>
+                          unlinkDocuments.mutate({
+                            documentId,
+                            otherDocumentId: link.document.id,
+                          })
+                        }
+                      >
+                        Usuń
+                      </Button>
+                    ) : null
+                  }
+                  sx={{ opacity: link.document.deletedAt ? 0.55 : 1 }}
                 >
-                  <ListItemText primary={link.document.title} />
-                  <Stack direction="row" sx={{ gap: 1, mr: isTrashed ? 0 : 8 }}>
-                    {link.label ? <Chip size="small" label={link.label} /> : null}
-                    {link.document.deletedAt ? (
-                      <Chip size="small" variant="outlined" label="W koszu" />
-                    ) : null}
-                  </Stack>
-                </RouterListItemButton>
-              </ListItem>
-            ))}
-          </List>
+                  <RouterListItemButton
+                    to="/app/documents/$id"
+                    params={{ id: link.document.id }}
+                  >
+                    <ListItemText primary={link.document.title} />
+                    <Stack direction="row" sx={{ gap: 1, mr: isTrashed ? 0 : 8 }}>
+                      {link.label ? <Chip size="small" label={link.label} /> : null}
+                      {link.document.deletedAt ? (
+                        <Chip size="small" variant="outlined" label="W koszu" />
+                      ) : null}
+                    </Stack>
+                  </RouterListItemButton>
+                </ListItem>
+              ))}
+            </List>
+            {linkedDocuments.length > 3 ? (
+              <Button
+                size="small"
+                sx={{ mt: 1 }}
+                aria-expanded={linkedDocumentsExpanded}
+                onClick={() => setLinkedDocumentsExpanded((expanded) => !expanded)}
+              >
+                {linkedDocumentsExpanded
+                  ? 'Zwiń'
+                  : `Pokaż wszystkie (${linkedDocuments.length})`}
+              </Button>
+            ) : null}
+          </>
         )}
         {unlinkDocuments.isError ? (
           <Alert severity="error" sx={{ mt: 2 }}>
