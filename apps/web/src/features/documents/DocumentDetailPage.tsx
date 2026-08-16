@@ -1056,7 +1056,10 @@ export const DocumentDetailPage = ({
                     to="/app/documents/$id"
                     params={{ id: link.document.id }}
                   >
-                    <ListItemText primary={link.document.title} />
+                    <ListItemText
+                      primary={link.document.title}
+                      secondary={link.label ?? undefined}
+                    />
                     <Stack
                       direction="row"
                       sx={{
@@ -1065,7 +1068,6 @@ export const DocumentDetailPage = ({
                       }}
                     >
                       {link.draft ? <Chip size="small" label="Szkic" /> : null}
-                      {link.label ? <Chip size="small" label={link.label} /> : null}
                       {link.document.deletedAt ? (
                         <Chip size="small" variant="outlined" label="W koszu" />
                       ) : null}
