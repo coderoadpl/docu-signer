@@ -89,6 +89,7 @@ const documents = (): DocumentRepository => ({
   findById: async (tenantId, id) => tenantId === document.tenantId && id === document.id ? document : null,
   findDeletedById: async () => null,
   findAnyById: async () => document,
+  getPendingDraftCounts: async () => ({ comments: 0, links: 0, metadataProposals: 0 }),
   listFiles: async () => [file],
   listFilesIncludingDeleted: async () => [file],
   listAllFilesIncludingDeleted: async () => [file],

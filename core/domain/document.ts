@@ -31,6 +31,16 @@ export const documentSignatureStatusSchema = z.enum([
 
 export type DocumentSignatureStatus = z.infer<typeof documentSignatureStatusSchema>;
 
+export const pendingDraftCountsSchema = z.object({
+  comments: z.number().int().nonnegative(),
+  links: z.number().int().nonnegative(),
+  metadataProposals: z.number().int().nonnegative(),
+});
+
+export type PendingDraftCounts = z.infer<typeof pendingDraftCountsSchema>;
+
+const noPendingDrafts = { comments: 0, links: 0, metadataProposals: 0 };
+
 const periodIsOrdered = (value: {
   periodStart?: string | null | undefined;
   periodEnd?: string | null | undefined;
@@ -86,6 +96,7 @@ export type DocumentWithFiles = z.infer<typeof documentWithFilesSchema>;
 export const documentWithSignersSchema = documentFieldsSchema
   .extend({
     signers: z.array(tenantAccountSchema),
+    pendingDrafts: pendingDraftCountsSchema.default(noPendingDrafts),
   })
   .refine(periodIsOrdered, 'periodStart must not be after periodEnd');
 
@@ -95,10 +106,17 @@ export const documentListItemSchema = documentFieldsSchema
   .extend({
     files: z.array(documentFileSchema),
     signers: z.array(tenantAccountSchema),
+    pendingDrafts: pendingDraftCountsSchema.default(noPendingDrafts),
   })
   .refine(periodIsOrdered, 'periodStart must not be after periodEnd');
 
 export type DocumentListItem = z.infer<typeof documentListItemSchema>;
+
+export const documentDetailSchema = documentWithFilesSchema.extend({
+  pendingDrafts: pendingDraftCountsSchema.default(noPendingDrafts),
+});
+
+export type DocumentDetail = z.infer<typeof documentDetailSchema>;
 
 const createDocumentFieldsSchema = z.object({
   title: z.string().trim().min(1, 'Title must not be empty').max(300, 'Title too long'),
@@ -139,6 +157,7 @@ const documentListFilterSchemaOf = () =>
       signatureStatus: documentSignatureStatusSchema.optional(),
       signerAccountId: z.string().trim().min(1).optional(),
       draft: z.enum(['true', 'false', 'all']).optional(),
+      pendingDrafts: z.literal('true').optional(),
     })
     .refine(
       (value) => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo,
@@ -157,6 +176,7 @@ export interface DocumentListFilter {
   signatureStatus?: DocumentSignatureStatus | undefined;
   signerAccountId?: string | undefined;
   draft?: 'true' | 'false' | 'all' | undefined;
+  pendingDrafts?: 'true' | undefined;
 }
 
 export const savedSearchFilterSchema = documentListFilterSchemaOf();

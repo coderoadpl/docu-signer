@@ -7,6 +7,7 @@ export * from './document.js';
 export * from './document-type.js';
 export * from './document-comment.js';
 export * from './document-link.js';
+export * from './document-metadata-proposal.js';
 export * from './api-token.js';
 export * from './user-preference.js';
 export * from './document-date-logic.js';

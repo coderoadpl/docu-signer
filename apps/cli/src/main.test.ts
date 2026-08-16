@@ -96,9 +96,17 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('comment');
     expect(documentHelp.stdout).toContain('approve-link');
     expect(documentHelp.stdout).toContain('approve-comment');
+    expect(documentHelp.stdout).toContain('propose-update');
+    expect(documentHelp.stdout).toContain('proposal');
+    expect(documentHelp.stdout).toContain('approve-proposal');
+    expect(documentHelp.stdout).toContain('reject-proposal');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
     expect(listHelp.stdout).toContain('--signer <accountId>');
+    expect(listHelp.stdout).toContain('--pending-drafts');
+    const proposalHelp = run('document', 'proposal', '--help');
+    expect(proposalHelp.status).toBe(0);
+    expect(proposalHelp.stdout).toContain('list');
   }, CLI_TEST_TIMEOUT_MS);
 
   it('maps the signer option to the document list contract filter', () => {
@@ -106,6 +114,10 @@ describe('CLI command surface', () => {
       signerAccountId: 'account-1',
     });
     expect(documentListFilterFromOptions({})).toEqual({});
+    expect(documentListFilterFromOptions({ pendingDrafts: true })).toEqual({
+      draft: 'all',
+      pendingDrafts: 'true',
+    });
   });
 
   it('maps invalid related-document IDs to the validation exit code', () => {
@@ -134,7 +146,12 @@ describe('CLI command surface', () => {
   }, CLI_TEST_TIMEOUT_MS);
 
   it('maps invalid annotation approval IDs to the validation exit code', () => {
-    for (const command of ['approve-link', 'approve-comment']) {
+    for (const command of [
+      'approve-link',
+      'approve-comment',
+      'approve-proposal',
+      'reject-proposal',
+    ]) {
       const result = run('--json', 'document', command, 'bad-id');
       expect(result.status).toBe(2);
       expect(JSON.parse(result.stdout)).toMatchObject({
@@ -142,6 +159,20 @@ describe('CLI command surface', () => {
         error: { code: 'validation' },
       });
     }
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('requires at least one metadata change for a proposal', () => {
+    const result = run(
+      '--json',
+      'document',
+      'propose-update',
+      '11111111-1111-4111-8111-111111111111',
+    );
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
   }, CLI_TEST_TIMEOUT_MS);
 
   it('documents the minimal invitation commands', () => {

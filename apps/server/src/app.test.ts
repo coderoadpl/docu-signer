@@ -83,6 +83,7 @@ const baseDeps = (): AppDeps => ({
     findById: async () => null,
     findDeletedById: async () => null,
     findAnyById: async () => null,
+    getPendingDraftCounts: async () => ({ comments: 0, links: 0, metadataProposals: 0 }),
     listFiles: async () => [],
     listFilesIncludingDeleted: async () => [],
     listAllFilesIncludingDeleted: async () => [],
@@ -134,6 +135,13 @@ const baseDeps = (): AppDeps => ({
     listForDocument: async () => [],
     approve: async () => null,
     deleteBetween: async () => false,
+  },
+  documentMetadataProposals: {
+    listByDocument: async () => [],
+    create: async () => { throw new Error('not implemented'); },
+    findById: async () => null,
+    apply: async () => null,
+    reject: async () => false,
   },
   padSessions: {
     create: async (input) => ({
@@ -535,7 +543,11 @@ describe('buildApp', () => {
     deps.documents.listByTenant = async (tenantId, filter) => {
       seenTenant = tenantId;
       seenFilter = filter;
-      return [{ ...row, signers: [{ accountId: 'account-1', name: 'Maria Choma' }] }];
+      return [{
+        ...row,
+        pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
+        signers: [{ accountId: 'account-1', name: 'Maria Choma' }],
+      }];
     };
     const response = await buildApp(deps).request(
       `${API_PATHS.documents}?signatureStatus=needs-signature&signerAccountId=account-1`,

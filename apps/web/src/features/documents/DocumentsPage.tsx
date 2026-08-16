@@ -75,6 +75,7 @@ import {
   DocumentTitleText,
 } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
+import { PendingDraftsDot } from './PendingDraftsDot.js';
 import {
   FILE_ROLE_LABELS,
   FILE_ROLE_SHORT_LABELS,
@@ -769,12 +770,15 @@ export const DocumentsPage = () => {
                 const value = String(event.target.value);
                 updateFilter(
                   'draft',
-                  value === 'true' || value === 'all' ? value : 'false',
+                  value === 'true' || value === 'all' || value === 'pending'
+                    ? value
+                    : 'false',
                 );
               }}
             >
               <MenuItem value="false">Tylko zatwierdzone</MenuItem>
               <MenuItem value="true">Tylko szkice</MenuItem>
+              <MenuItem value="pending">Z niezatwierdzonymi zmianami</MenuItem>
               <MenuItem value="all">Wszystkie</MenuItem>
             </Select>
           </FormControl>
@@ -1174,7 +1178,10 @@ export const DocumentsPage = () => {
                               search={currentDocumentsSearch}
                             >
                               <CardContent>
-                                <Typography variant="h2">{document.title}</Typography>
+                                <Typography variant="h2">
+                                  {document.title}
+                                  <PendingDraftsDot counts={document.pendingDrafts} />
+                                </Typography>
                                 {document.draft ? (
                                   <Chip
                                     size="small"
@@ -1323,6 +1330,7 @@ export const DocumentsPage = () => {
                         >
                           <DocumentTitleText component="span">
                             {document.title}
+                            <PendingDraftsDot counts={document.pendingDrafts} />
                           </DocumentTitleText>
                         </Link>
                       </DocumentRecordTitleCell>

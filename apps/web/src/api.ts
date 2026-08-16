@@ -16,6 +16,7 @@ import {
   approveDocumentMutation,
   approveDocumentCommentMutation,
   approveDocumentLinkMutation,
+  approveDocumentMetadataProposalMutation,
   addDocumentCommentMutation,
   apiTokensInvalidates,
   apiTokensQuery,
@@ -42,6 +43,8 @@ import {
   documentFileSealQuery,
   documentLinksInvalidates,
   documentLinksQuery,
+  documentMetadataProposalsInvalidates,
+  documentMetadataProposalsQuery,
   documentCommentsInvalidates,
   documentCommentsQuery,
   documentQuery,
@@ -78,6 +81,7 @@ import {
   savedSearchesQuery,
   requestPasswordResetMutation,
   requireDocumentSignatureMutation,
+  rejectDocumentMetadataProposalMutation,
   resetPasswordMutation,
   restoreDocumentMutation,
   signInMutation,
@@ -139,6 +143,11 @@ export const actions = {
   documentCommentsInvalidates,
   documentLinks: (documentId: string) => documentLinksQuery(apiClient, documentId),
   documentLinksInvalidates,
+  documentMetadataProposals: (documentId: string) =>
+    documentMetadataProposalsQuery(apiClient, documentId),
+  approveDocumentMetadataProposal: approveDocumentMetadataProposalMutation(apiClient),
+  rejectDocumentMetadataProposal: rejectDocumentMetadataProposalMutation(apiClient),
+  documentMetadataProposalsInvalidates,
   documentFile: (documentId: string, fileId: string) =>
     documentFileQuery(apiClient, documentId, fileId),
   documentFileSeal: (documentId: string, fileId: string) =>

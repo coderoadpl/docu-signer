@@ -109,12 +109,17 @@ const record = (
 });
 
 const documentRepository = (files: DocumentFile[]): DocumentRepository => ({
-  listByTenant: async () => [{ ...document, signers: [] }],
+  listByTenant: async () => [{
+    ...document,
+    pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
+    signers: [],
+  }],
   listDeletedByTenant: async () => [],
   findById: async (tenantId, id) =>
     tenantId === document.tenantId && id === document.id ? document : null,
   findDeletedById: async () => null,
   findAnyById: async () => document,
+  getPendingDraftCounts: async () => ({ comments: 0, links: 0, metadataProposals: 0 }),
   listFiles: async () => files,
   listFilesIncludingDeleted: async () => files,
   listAllFilesIncludingDeleted: async () => files,

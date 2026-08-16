@@ -17,6 +17,7 @@ import {
 
 import type {
   PadCurrentDocument,
+  DocumentMetadataChanges,
   PadQueuedSubmission,
   PadSignatureRequest,
   PadSubmittedStrokes,
@@ -311,6 +312,39 @@ export const documentLinks = pgTable(
     check(
       'document_links_label_check',
       sql`${table.label} IS NULL OR (${table.label} = btrim(${table.label}) AND length(${table.label}) BETWEEN 1 AND 60)`,
+    ),
+  ],
+);
+
+export const documentMetadataProposals = pgTable(
+  'document_metadata_proposals',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id').notNull(),
+    changes: jsonb('proposed_changes').$type<DocumentMetadataChanges>().notNull(),
+    creatorAccountId: text('creator_account_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: 'document_metadata_proposals_document_fk',
+      columns: [table.tenantId, table.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }).onDelete('cascade'),
+    index('document_metadata_proposals_tenant_document_created_idx').on(
+      table.tenantId,
+      table.documentId,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      'document_metadata_proposals_changes_check',
+      sql`jsonb_typeof(${table.changes}) = 'object' AND ${table.changes} <> '{}'::jsonb`,
     ),
   ],
 );

@@ -25,6 +25,7 @@ import {
   type DecideSourceUpdateRequest,
   type DocumentListFilter,
   type DocumentCommentListItem,
+  type DocumentMetadataProposalListItem,
   type LinkDocumentsInput,
   type ExportDocuments,
   type FileUploadRequest,
@@ -147,6 +148,12 @@ const documentLinksScopes = {
 const documentCommentScopes = {
   all: () => ['document-comments'] as const,
   document: (documentId: string) => ['document-comments', documentId] as const,
+};
+
+const documentMetadataProposalScopes = {
+  all: () => ['document-metadata-proposals'] as const,
+  document: (documentId: string) =>
+    ['document-metadata-proposals', documentId] as const,
 };
 
 export const documentLinksInvalidates = () => ({ queryKey: documentLinksScopes.all() });
@@ -309,6 +316,54 @@ export const documentCommentsQuery = (api: ApiClient, documentId: string) =>
     queryKey: documentCommentScopes.document(documentId),
     call: ({ signal }) => listAllDocumentComments(api, documentId, signal),
   });
+
+const listAllDocumentMetadataProposals = async (
+  api: ApiClient,
+  documentId: string,
+  signal: AbortSignal,
+) => {
+  const items: DocumentMetadataProposalListItem[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await api.listDocumentMetadataProposals(
+      documentId,
+      {
+        limit: MAX_PAGE_LIMIT,
+        ...(cursor === undefined ? {} : { cursor }),
+      },
+      signal,
+    );
+    if (!page.ok) return page;
+    items.push(...page.value.items);
+    cursor = page.value.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return ok({ items, nextCursor: null });
+};
+
+export const documentMetadataProposalsQuery = (
+  api: ApiClient,
+  documentId: string,
+) =>
+  defineQuery({
+    queryKey: documentMetadataProposalScopes.document(documentId),
+    call: ({ signal }) => listAllDocumentMetadataProposals(api, documentId, signal),
+  });
+
+export const approveDocumentMetadataProposalMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentMetadataProposalScopes.all(), 'approve'],
+    call: (proposalId: string) => api.approveDocumentMetadataProposal(proposalId),
+  });
+
+export const rejectDocumentMetadataProposalMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentMetadataProposalScopes.all(), 'reject'],
+    call: (proposalId: string) => api.rejectDocumentMetadataProposal(proposalId),
+  });
+
+export const documentMetadataProposalsInvalidates = (documentId: string) => ({
+  queryKey: documentMetadataProposalScopes.document(documentId),
+});
 
 export const addDocumentCommentMutation = (api: ApiClient) =>
   defineMutation({

@@ -73,6 +73,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     findById: async () => null,
     findDeletedById: async () => null,
     findAnyById: async () => null,
+    getPendingDraftCounts: async () => ({ comments: 0, links: 0, metadataProposals: 0 }),
     listFiles: async () => [],
     listFilesIncludingDeleted: async () => [],
     listAllFilesIncludingDeleted: async () => [],
@@ -123,6 +124,13 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     listForDocument: async () => [],
     approve: async () => null,
     deleteBetween: async () => false,
+  },
+  documentMetadataProposals: {
+    listByDocument: async () => [],
+    create: async () => { throw new Error('not implemented'); },
+    findById: async () => null,
+    apply: async () => null,
+    reject: async () => false,
   },
   padSessions: {
     create: async (input) => ({
