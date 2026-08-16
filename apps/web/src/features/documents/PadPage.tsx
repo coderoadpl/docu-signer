@@ -65,9 +65,6 @@ const HandIcon = () => (
   </SvgIcon>
 );
 
-const modeSwitchContains = (target: EventTarget): boolean =>
-  target instanceof Element && target.closest('[data-pad-mode-switch]') !== null;
-
 const releasePointerCapture = (element: HTMLCanvasElement, pointerId: number) => {
   if (typeof element.releasePointerCapture !== 'function') return;
   if (
@@ -311,6 +308,22 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     setActiveStroke(undefined);
   };
 
+  const commitActiveStroke = (lostAt?: number) => {
+    if (
+      activePenPointerRef.current !== undefined &&
+      activePenPointerRef.current === activePointerRef.current
+    ) {
+      activePenPointerRef.current = undefined;
+      if (lostAt !== undefined) lastPenSeenAtRef.current = lostAt;
+    }
+    const stroke = currentStrokeRef.current;
+    if (stroke?.points.length) setStrokes((current) => [...current, stroke]);
+    currentStrokeRef.current = undefined;
+    activePointerRef.current = undefined;
+    activePointerTypeRef.current = undefined;
+    setActiveStroke(undefined);
+  };
+
   const finishPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (activePenPointerRef.current === event.pointerId) {
       activePenPointerRef.current = undefined;
@@ -318,12 +331,7 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     }
     if (activePointerRef.current !== event.pointerId) return;
     releasePointerCapture(event.currentTarget, event.pointerId);
-    const stroke = currentStrokeRef.current;
-    if (stroke?.points.length) setStrokes((current) => [...current, stroke]);
-    currentStrokeRef.current = undefined;
-    activePointerRef.current = undefined;
-    activePointerTypeRef.current = undefined;
-    setActiveStroke(undefined);
+    commitActiveStroke();
     event.preventDefault();
   };
 
@@ -335,12 +343,8 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
     activePointerTypeRef.current = undefined;
   };
 
-  const suppressTouchPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const suppressTouchPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (inputMode !== 'pen' || event.pointerType !== 'touch') {
-      suppressNextTouchClickRef.current = false;
-      return;
-    }
-    if (modeSwitchContains(event.target)) {
       suppressNextTouchClickRef.current = false;
       return;
     }
@@ -425,23 +429,6 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
 
   return (
     <Box
-      onPointerDownCapture={suppressTouchPointer}
-      onPointerUpCapture={suppressTouchPointer}
-      onClickCapture={(event) => {
-        const touchClick =
-          'pointerType' in event.nativeEvent &&
-          event.nativeEvent.pointerType === 'touch';
-        if (
-          inputMode !== 'pen' ||
-          modeSwitchContains(event.target) ||
-          (!touchClick && !suppressNextTouchClickRef.current)
-        ) {
-          return;
-        }
-        suppressNextTouchClickRef.current = false;
-        event.preventDefault();
-        event.stopPropagation();
-      }}
       sx={{
         ...(inputMode === 'pen' ? selectionLockSx : {}),
         position: 'fixed',
@@ -563,6 +550,22 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
             touchAction: 'none',
             cursor: 'crosshair',
           }}
+          onPointerDownCapture={suppressTouchPointer}
+          onPointerUpCapture={suppressTouchPointer}
+          onClickCapture={(event) => {
+            const touchClick =
+              'pointerType' in event.nativeEvent &&
+              event.nativeEvent.pointerType === 'touch';
+            if (
+              inputMode !== 'pen' ||
+              (!touchClick && !suppressNextTouchClickRef.current)
+            ) {
+              return;
+            }
+            suppressNextTouchClickRef.current = false;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           onPointerDown={(event) => {
             if (!drawingEnabled || submit.isPending) return;
             if (event.pointerType === 'pen') {
@@ -570,7 +573,16 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
               lastPenSeenAtRef.current = event.timeStamp;
               cancelActiveTouchStroke(event.currentTarget);
             }
-            if (activePointerRef.current !== undefined) return;
+            const activePointerId = activePointerRef.current;
+            if (activePointerId !== undefined) {
+              if (
+                typeof event.currentTarget.hasPointerCapture !== 'function' ||
+                event.currentTarget.hasPointerCapture(activePointerId)
+              ) {
+                return;
+              }
+              commitActiveStroke();
+            }
             if (!eventDrawsInk(event)) {
               if (event.pointerType === 'touch') event.preventDefault();
               return;
@@ -603,6 +615,10 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
           }}
           onPointerUp={finishPointer}
           onPointerCancel={finishPointer}
+          onLostPointerCapture={(event) => {
+            if (event.pointerId !== activePointerRef.current) return;
+            commitActiveStroke(event.timeStamp);
+          }}
         />
       </Box>
       {drawingEnabled ? (
