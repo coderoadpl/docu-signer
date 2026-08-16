@@ -15,6 +15,7 @@ import type {
   PadCurrentDocument,
   PadParticipant,
   PadQueuedSubmission,
+  PadSessionMode,
   PadSignatureRequest,
   PadSubmittedStrokes,
   PdfSealMetadata,
@@ -294,6 +295,11 @@ export interface PadSessionRepository {
   findById(tenantId: string, sessionId: string): Promise<PadSession | null>;
   findActiveByUser(tenantId: string, userId: string): Promise<PadSession | null>;
   findActiveShared(tenantId: string, excludeUserId: string): Promise<PadSession | null>;
+  setMode(
+    tenantId: string,
+    sessionId: string,
+    mode: PadSessionMode,
+  ): Promise<PadSession | null>;
   renew(
     tenantId: string,
     sessionId: string,

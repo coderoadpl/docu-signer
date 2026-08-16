@@ -385,6 +385,24 @@ describe('API client', () => {
         return json({ ok: true, data: { status: 'active', currentRequest: request } });
       }
       if (url.endsWith('/request')) return json({ ok: true, data: { request } });
+      if (url.endsWith('/share')) {
+        return json({
+          ok: true,
+          data: {
+            session: {
+              id: '11111111-1111-4111-8111-111111111111',
+              tenantId: 'tenant-default',
+              createdBy: 'user-owner',
+              mode: 'shared',
+              status: 'active',
+              createdAt: '2026-08-04T10:00:00.000Z',
+              expiresAt: '2026-08-04T14:00:00.000Z',
+              lastPolledAt: null,
+              currentRequest: null,
+            },
+          },
+        });
+      }
       if (url.endsWith('/submit')) return json({ ok: true, data: { submitted: true } });
       if (url.endsWith('/active')) return json({ ok: true, data: { session: null } });
       if (url.endsWith('/join')) {
@@ -423,6 +441,7 @@ describe('API client', () => {
     await api.createPadSession();
     await api.getActivePadSession();
     await api.joinOwnPadSession();
+    await api.sharePadSession('11111111-1111-4111-8111-111111111111');
     await api.getPadState('11111111-1111-4111-8111-111111111111', 'pad_secret');
     await api.requestPadSignature('11111111-1111-4111-8111-111111111111', { documentTitle: 'Umowa' });
     await api.submitPadStrokes('11111111-1111-4111-8111-111111111111', 'pad_secret', submittedStrokes);
@@ -438,28 +457,31 @@ describe('API client', () => {
       '/api/pad-sessions/join',
     );
     expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
+      '/api/pad-sessions/11111111-1111-4111-8111-111111111111/share',
+    );
+    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe(
       '/api/pad-sessions/11111111-1111-4111-8111-111111111111/state',
     );
-    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({
+    expect(fetchImpl.mock.calls[4]?.[1]).toMatchObject({
       headers: { 'x-pad-secret': 'pad_secret' },
     });
-    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe(
+    expect(String(fetchImpl.mock.calls[5]?.[0])).toBe(
       '/api/pad-sessions/11111111-1111-4111-8111-111111111111/request',
     );
-    expect(String(fetchImpl.mock.calls[5]?.[0])).toBe(
+    expect(String(fetchImpl.mock.calls[6]?.[0])).toBe(
       '/api/pad-sessions/11111111-1111-4111-8111-111111111111/submit',
     );
-    expect(fetchImpl.mock.calls[5]?.[1]).toMatchObject({
+    expect(fetchImpl.mock.calls[6]?.[1]).toMatchObject({
       headers: { 'x-pad-secret': 'pad_secret' },
       body: JSON.stringify(submittedStrokes),
     });
-    expect(String(fetchImpl.mock.calls[6]?.[0])).toBe(
+    expect(String(fetchImpl.mock.calls[7]?.[0])).toBe(
       '/api/pad-sessions/11111111-1111-4111-8111-111111111111/consume',
     );
-    expect(String(fetchImpl.mock.calls[7]?.[0])).toBe(
+    expect(String(fetchImpl.mock.calls[8]?.[0])).toBe(
       '/api/pad-sessions/11111111-1111-4111-8111-111111111111/close',
     );
-    expect(String(fetchImpl.mock.calls[8]?.[0])).toBe(
+    expect(String(fetchImpl.mock.calls[9]?.[0])).toBe(
       '/api/pad-sessions/11111111-1111-4111-8111-111111111111/disconnect',
     );
   });

@@ -66,6 +66,7 @@ import {
   requestMagicLinkMutation,
   requestPadSignatureMutation,
   setPadCurrentDocumentMutation,
+  sharePadSessionMutation,
   savedSearchesInvalidates,
   savedSearchesQuery,
   requestPasswordResetMutation,
@@ -156,6 +157,7 @@ export const actions = {
   activePadSession: activePadSessionQuery(apiClient),
   activePadSessionInvalidates,
   joinOwnPadSession: joinOwnPadSessionMutation(apiClient),
+  sharePadSession: sharePadSessionMutation(apiClient),
   padSessionState: (sessionId: string, secret: string) =>
     padSessionStateQuery(apiClient, sessionId, secret),
   requestPadSignature: requestPadSignatureMutation(apiClient),

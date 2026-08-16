@@ -158,6 +158,13 @@ const secretFromHash = (): string => {
 const authErrorCode = (error: Error | null): string | null =>
   error instanceof ApiError ? error.appError.code : null;
 
+const padStateErrorMessage = (error: Error): string =>
+  error instanceof ApiError &&
+  error.appError.code === 'forbidden' &&
+  error.appError.message === 'Pad session belongs to another user'
+    ? 'Ta sesja pada jest prywatna. Poproś właściciela o ponowne otwarcie Pad QR.'
+    : error.message;
+
 export const PadPage = ({ sessionId }: { sessionId: string }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -411,7 +418,7 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
   if (state.isError) {
     return (
       <PadFrame>
-        <StatusView state={{ kind: 'error', message: state.error.message }} />
+        <StatusView state={{ kind: 'error', message: padStateErrorMessage(state.error) }} />
       </PadFrame>
     );
   }

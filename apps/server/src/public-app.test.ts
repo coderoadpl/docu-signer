@@ -126,6 +126,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     findById: async () => null,
     findActiveByUser: async () => null,
     findActiveShared: async () => null,
+    setMode: async () => null,
     renew: async () => null,
     requestSignature: async () => null,
     setCurrentDocument: async () => null,
