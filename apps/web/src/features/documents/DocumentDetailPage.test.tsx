@@ -656,6 +656,60 @@ describe('DocumentDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeInTheDocument();
   });
 
+  it('waives the signature requirement from the primary action', async () => {
+    const waive = vi.fn();
+    let currentDocument = { ...document, signatureNotRequired: false };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document: currentDocument } }),
+      ),
+      http.post(`/api/documents/${DOCUMENT_ID}/waive-signature`, () => {
+        waive();
+        currentDocument = { ...document, signatureNotRequired: true };
+        return HttpResponse.json({ ok: true, data: { document: currentDocument } });
+      }),
+    );
+    await renderPage();
+
+    const action = await screen.findByRole('button', { name: 'Nie wymaga podpisu' });
+    expect(action).toHaveClass('MuiButton-contained');
+    expect(screen.queryByText('Nie wymaga')).not.toBeInTheDocument();
+    await userEvent.click(action);
+
+    await waitFor(() => expect(waive).toHaveBeenCalledOnce());
+    expect(await screen.findByText('Nie wymaga')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Nie wymaga podpisu' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Wymaga podpisu' })).toBeInTheDocument();
+  });
+
+  it('restores the signature requirement from the secondary action', async () => {
+    const requireSignature = vi.fn();
+    let currentDocument = { ...document, signatureNotRequired: true };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document: currentDocument } }),
+      ),
+      http.post(`/api/documents/${DOCUMENT_ID}/require-signature`, () => {
+        requireSignature();
+        currentDocument = { ...document, signatureNotRequired: false };
+        return HttpResponse.json({ ok: true, data: { document: currentDocument } });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByText('Nie wymaga')).toBeInTheDocument();
+    const action = screen.getByRole('button', { name: 'Wymaga podpisu' });
+    expect(action).toHaveClass('MuiButton-outlined');
+    await userEvent.click(action);
+
+    await waitFor(() => expect(requireSignature).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByText('Nie wymaga')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Wymaga podpisu' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Nie wymaga podpisu' })).toBeInTheDocument();
+  });
+
   it('renders a trashed document as read-only with restore and purge actions', async () => {
     const restore = vi.fn();
     const purge = vi.fn();

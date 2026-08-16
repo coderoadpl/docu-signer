@@ -420,6 +420,18 @@ export const DocumentDetailPage = ({
       await queryClient.invalidateQueries(actions.documentsInvalidates());
     },
   });
+  const waiveDocumentSignature = useMutation({
+    ...actions.waiveDocumentSignature,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+    },
+  });
+  const requireDocumentSignature = useMutation({
+    ...actions.requireDocumentSignature,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+    },
+  });
   const deleteDocument = useMutation({
     ...actions.deleteDocument,
     onSuccess: async () => {
@@ -678,6 +690,9 @@ export const DocumentDetailPage = ({
               label={DOCUMENT_TYPE_LABELS[document.docType]}
             />
             {isDraft ? <Chip color="warning" variant="outlined" label="Szkic" /> : null}
+            {document.signatureNotRequired ? (
+              <Chip size="small" variant="outlined" label="Nie wymaga" />
+            ) : null}
           </Stack>
           <Stack sx={{ mt: 1.5, gap: 0.5 }}>
             <Typography variant="body2" color="text.secondary">
@@ -739,6 +754,23 @@ export const DocumentDetailPage = ({
                   onClick={() => unapproveDocument.mutate(documentId)}
                 >
                   Cofnij do szkicu
+                </NoWrapButton>
+              )}
+              {document.signatureNotRequired ? (
+                <NoWrapButton
+                  variant="outlined"
+                  disabled={requireDocumentSignature.isPending}
+                  onClick={() => requireDocumentSignature.mutate(documentId)}
+                >
+                  Wymaga podpisu
+                </NoWrapButton>
+              ) : (
+                <NoWrapButton
+                  variant="contained"
+                  disabled={waiveDocumentSignature.isPending}
+                  onClick={() => waiveDocumentSignature.mutate(documentId)}
+                >
+                  Nie wymaga podpisu
                 </NoWrapButton>
               )}
               <NoWrapButton variant="contained" onClick={() => setEditOpen(true)}>
@@ -858,6 +890,16 @@ export const DocumentDetailPage = ({
       {unapproveDocument.isError ? (
         <Alert severity="error" sx={{ mt: 2 }}>
           {unapproveDocument.error.message}
+        </Alert>
+      ) : null}
+      {waiveDocumentSignature.isError ? (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {waiveDocumentSignature.error.message}
+        </Alert>
+      ) : null}
+      {requireDocumentSignature.isError ? (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {requireDocumentSignature.error.message}
         </Alert>
       ) : null}
       {restoreDocument.isError ? (
