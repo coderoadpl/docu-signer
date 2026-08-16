@@ -74,6 +74,9 @@ Full command set (<!--count:cli-command-groups-->13<!--/count--> top-level group
 `document list|trash-list|search|show|add|link|unlink|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
 `token create|list|revoke`, `public profile`.
 
+`document link <targetId> <id...> [--label <text>]` links every listed document
+to one target and reports an outcome for each pair in `--json` mode.
+
 Every command also accepts `--token <value>` (or the `APP_CLI_TOKEN` env var)
 to authenticate with a personal API token instead of the stored session;
 the flag wins over the env var, which wins over the profile session.
