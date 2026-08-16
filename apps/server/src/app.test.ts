@@ -134,6 +134,7 @@ const baseDeps = (): AppDeps => ({
     findById: async () => null,
     findActiveByUser: async () => null,
     findActiveShared: async () => null,
+    setMode: async () => null,
     renew: async () => null,
     requestSignature: async () => null,
     setCurrentDocument: async () => null,
@@ -943,6 +944,10 @@ describe('buildApp', () => {
       findById: async () => currentPadSession,
       findActiveByUser: async () => currentPadSession,
       findActiveShared: async () => null,
+      setMode: async (_tenantId, _sessionId, mode) => {
+        currentPadSession = { ...currentPadSession, mode };
+        return currentPadSession;
+      },
       renew: async (_tenantId, _sessionId, expiresAt, lastPolledAt) => {
         currentPadSession = { ...currentPadSession, expiresAt, lastPolledAt };
         return currentPadSession;
@@ -1015,6 +1020,15 @@ describe('buildApp', () => {
     await expect(joined.json()).resolves.toMatchObject({
       ok: true,
       data: { session: { createdBy: user.userId } },
+    });
+
+    const shared = await app.request(
+      API_ROUTES.padSessionShare.path.replace(':sessionId', padSession.id),
+      { method: API_ROUTES.padSessionShare.method, headers: tenantHeader },
+    );
+    await expect(shared.json()).resolves.toMatchObject({
+      ok: true,
+      data: { session: { createdBy: user.userId, mode: 'shared' } },
     });
 
     const state = await app.request(

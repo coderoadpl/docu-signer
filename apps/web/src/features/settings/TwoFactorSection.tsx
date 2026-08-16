@@ -6,8 +6,23 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 
+const localizedErrorText = (message: string): string => {
+  switch (message) {
+    case 'Invalid code':
+      return 'Nieprawidłowy kod. Spróbuj ponownie.';
+    case 'Invalid password':
+      return 'Nieprawidłowe hasło.';
+    default:
+      return message;
+  }
+};
+
 const errorText = (error: unknown): string =>
-  error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : 'Wystąpił nieoczekiwany błąd';
+  error instanceof ApiError
+    ? localizedErrorText(error.appError.message)
+    : error instanceof Error
+      ? localizedErrorText(error.message)
+      : 'Wystąpił nieoczekiwany błąd';
 
 /**
  * US-028a TOTP 2FA settings (web). Enable (re-auth with the password) → show the
@@ -67,7 +82,7 @@ export const TwoFactorSection = () => {
               {enable.isPending ? 'Włączanie…' : 'Włącz 2FA'}
             </Button>
           </Box>
-          {enable.isError ? <Alert>{errorText(enable.error)}</Alert> : null}
+          {enable.isError ? <Alert severity="error">{errorText(enable.error)}</Alert> : null}
         </Stack>
       ) : (
         <Stack useFlexGap spacing="0.8rem">
@@ -94,7 +109,7 @@ export const TwoFactorSection = () => {
             </Button>
           </Box>
           {verify.isSuccess ? <Alert severity="success">Uwierzytelnianie dwuskładnikowe jest włączone.</Alert> : null}
-          {verify.isError ? <Alert>{errorText(verify.error)}</Alert> : null}
+          {verify.isError ? <Alert severity="error">{errorText(verify.error)}</Alert> : null}
           <Box>
             <Button
               variant="text"
@@ -105,7 +120,7 @@ export const TwoFactorSection = () => {
               Wyłącz 2FA
             </Button>
           </Box>
-          {disable.isError ? <Alert>{errorText(disable.error)}</Alert> : null}
+          {disable.isError ? <Alert severity="error">{errorText(disable.error)}</Alert> : null}
         </Stack>
       )}
     </Paper>

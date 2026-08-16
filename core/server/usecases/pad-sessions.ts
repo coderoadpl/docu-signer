@@ -147,6 +147,29 @@ export const joinOwnPadSession = async (
   return ok(created.session);
 };
 
+export const sharePadSession = async (
+  ctx: Ctx,
+  sessionId: string,
+  deps: Pick<PadSessionDeps, 'padSessions'>,
+): Promise<Result<PublicPadSession, AppError>> => {
+  const scope = authorizeTenant(ctx, 'document:write');
+  if (!scope.ok) return scope;
+  const session = await findOwnDesktopSession(
+    scope.value,
+    ctx.identity.userId,
+    sessionId,
+    deps,
+  );
+  if (!session.ok) return session;
+  if (isExpired(session.value)) return err(unauthorized('Pad session expired'));
+  if (session.value.status !== 'active') return err(forbidden('Pad session is closed'));
+  if (session.value.mode === 'shared') return ok(publicSession(session.value));
+  const updated = await deps.padSessions.setMode(scope.value, sessionId, 'shared');
+  return updated
+    ? ok(publicSession(updated))
+    : err(notFound('Pad session not found'));
+};
+
 export const getPadState = async (
   ctx: Ctx,
   sessionId: string,

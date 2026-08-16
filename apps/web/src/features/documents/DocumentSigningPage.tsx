@@ -1010,6 +1010,7 @@ export const DocumentSigningPage = ({
   const serverUpload = useMutation(actions.uploadDocumentFile);
   const createSignatureRecord = useMutation(actions.createSignatureRecord);
   const createRemotePadSession = useMutation(actions.createPadSession);
+  const shareRemotePadSession = useMutation(actions.sharePadSession);
   const requestRemotePadSignature = useMutation(actions.requestPadSignature);
   const setRemotePadCurrentDocument = useMutation(actions.setPadCurrentDocument);
   const consumeRemotePadStrokes = useMutation(actions.consumePadStrokes);
@@ -1115,7 +1116,34 @@ export const DocumentSigningPage = ({
   const openRemotePadQr = () => {
     setRemotePadQrOpen(true);
     setRemotePadError(undefined);
-    if (remotePadSession || createRemotePadSession.isPending) return;
+    if (remotePadSession?.mode === 'shared') return;
+    if (shareRemotePadSession.isPending || createRemotePadSession.isPending) return;
+    if (remotePadSession) {
+      void shareRemotePadSession
+        .mutateAsync(remotePadSession.id)
+        .then(({ session }) => {
+          setRemotePadSession((current) =>
+            current?.id === session.id
+              ? {
+                  ...current,
+                  mode: session.mode,
+                  lastPolledAt: session.lastPolledAt,
+                  pendingRequestId:
+                    current.pendingRequestId ?? session.currentRequest?.requestId ?? null,
+                }
+              : current,
+          );
+          void queryClient.invalidateQueries(actions.activePadSessionInvalidates());
+        })
+        .catch((error: unknown) => {
+          setRemotePadError(
+            error instanceof Error
+              ? error.message
+              : 'Nie udało się udostępnić sesji pada.',
+          );
+        });
+      return;
+    }
     void createRemotePadSession
       .mutateAsync('shared')
       .then(({ session, secret }) => {
@@ -1138,7 +1166,7 @@ export const DocumentSigningPage = ({
   };
 
   useEffect(() => {
-    if (!remotePadSession?.url) {
+    if (remotePadSession?.mode !== 'shared' || !remotePadSession.url) {
       setRemotePadQrDataUrl(undefined);
       return;
     }
@@ -1157,7 +1185,7 @@ export const DocumentSigningPage = ({
     return () => {
       current = false;
     };
-  }, [remotePadSession?.url]);
+  }, [remotePadSession?.mode, remotePadSession?.url]);
 
   useEffect(() => {
     const sessionId = remotePadSession?.id;
@@ -2230,9 +2258,14 @@ export const DocumentSigningPage = ({
                   disabled={
                     committing ||
                     createRemotePadSession.isPending ||
+                    shareRemotePadSession.isPending ||
                     activeRemotePadSession.isPending
                   }
-                  startIcon={createRemotePadSession.isPending ? <BusyButtonProgress /> : undefined}
+                  startIcon={
+                    createRemotePadSession.isPending || shareRemotePadSession.isPending
+                      ? <BusyButtonProgress />
+                      : undefined
+                  }
                   sx={buttonTouchSx}
                 >
                   Pad QR
@@ -2502,9 +2535,14 @@ export const DocumentSigningPage = ({
                     disabled={
                       committing ||
                       createRemotePadSession.isPending ||
+                      shareRemotePadSession.isPending ||
                       activeRemotePadSession.isPending
                     }
-                    startIcon={createRemotePadSession.isPending ? <BusyButtonProgress /> : undefined}
+                    startIcon={
+                      createRemotePadSession.isPending || shareRemotePadSession.isPending
+                        ? <BusyButtonProgress />
+                        : undefined
+                    }
                     sx={buttonTouchSx}
                   >
                     Pad QR
@@ -2776,12 +2814,14 @@ export const DocumentSigningPage = ({
       </Box>
       <PadQrDialog
         open={remotePadQrOpen}
-        loading={createRemotePadSession.isPending}
+        loading={createRemotePadSession.isPending || shareRemotePadSession.isPending}
         onClose={() => setRemotePadQrOpen(false)}
         onCloseSession={() => void closeRemotePadSession()}
         {...(remotePadError === undefined ? {} : { error: remotePadError })}
         {...(remotePadQrDataUrl === undefined ? {} : { qrDataUrl: remotePadQrDataUrl })}
-        {...(remotePadSession?.url === undefined ? {} : { sessionUrl: remotePadSession.url })}
+        {...(remotePadSession?.mode !== 'shared' || remotePadSession.url === undefined
+          ? {}
+          : { sessionUrl: remotePadSession.url })}
       />
       <SignaturePadDialog
         open={signaturePadOpen}

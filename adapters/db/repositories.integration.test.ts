@@ -1032,6 +1032,11 @@ describe('PadSessionRepository', () => {
     await expect(repository.findActiveByUser('tenant-a', 'user-owner')).resolves.toMatchObject({
       id: session.id,
     });
+    await expect(repository.setMode('tenant-b', session.id, 'shared')).resolves.toBeNull();
+    await expect(repository.setMode('tenant-a', session.id, 'shared')).resolves.toMatchObject({
+      id: session.id,
+      mode: 'shared',
+    });
 
     await expect(
       repository.renew(

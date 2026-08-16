@@ -669,6 +669,12 @@ export const joinOwnPadSessionMutation = (api: ApiClient) =>
     call: () => api.joinOwnPadSession(),
   });
 
+export const sharePadSessionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...padSessionScopes.all(), 'share'],
+    call: (sessionId: string) => api.sharePadSession(sessionId),
+  });
+
 export const padSessionStateQuery = (
   api: ApiClient,
   sessionId: string,
