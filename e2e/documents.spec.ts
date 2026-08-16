@@ -8,7 +8,7 @@ import { clearMailpit, fetchMagicLink } from '../scripts/mailpit.js';
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
 const DEMO_PASSWORD = 'demo1234';
 const MAGIC_EMAIL = 'mag@example.com';
-const MAILPIT_API_URL = 'http://localhost:47980';
+const MAILPIT_API_URL = 'http://localhost:9980';
 const PRODUCT_PASS_SCREENSHOT_DIR = process.env['PRODUCT_PASS_SCREENSHOT_DIR'];
 const documentCreateResponseSchema = z.object({
   ok: z.literal(true),

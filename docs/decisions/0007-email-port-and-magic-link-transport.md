@@ -61,7 +61,7 @@ Two forces reshaped that sketch:
    and CI run the **real** `smtp` adapter pointed at a local **Mailpit**
    (docker-compose.dev.yml; the smoke/e2e CI jobs add it as a service). Mailpit
    captures every send instead of delivering and exposes an HTTP API on
-   `:47980`. The magic-link and password-reset smoke/e2e phases request a link,
+   `:9980`. The magic-link and password-reset smoke/e2e phases request a link,
    read the captured message back over that API (`/api/v1/messages`,
    `/api/v1/message/{id}`), extract the URL and follow it — the same round-trip a
    human makes from the Mailpit inbox. The CLI `login-link` requests a link and,

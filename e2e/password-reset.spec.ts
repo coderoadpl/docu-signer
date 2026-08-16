@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 
 import { fetchPasswordResetLink } from '../scripts/mailpit.js';
 
-const MAILPIT_API_URL = 'http://localhost:47980';
+const MAILPIT_API_URL = 'http://localhost:9980';
 const OLD_PASSWORD = 'stare-haslo-1';
 const NEW_PASSWORD = 'nowe-haslo-1';
 
