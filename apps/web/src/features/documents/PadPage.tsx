@@ -309,7 +309,10 @@ export const PadPage = ({ sessionId }: { sessionId: string }) => {
   };
 
   const commitActiveStroke = (lostAt?: number) => {
-    if (activePenPointerRef.current === activePointerRef.current) {
+    if (
+      activePenPointerRef.current !== undefined &&
+      activePenPointerRef.current === activePointerRef.current
+    ) {
       activePenPointerRef.current = undefined;
       if (lostAt !== undefined) lastPenSeenAtRef.current = lostAt;
     }

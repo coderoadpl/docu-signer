@@ -371,6 +371,22 @@ describe('PadPage', () => {
     expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
   });
 
+  it('keeps drawing touch strokes right after a touch stroke loses capture in Ręka mode', async () => {
+    useActiveRequest();
+    renderPad();
+
+    const canvas = await screen.findByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    tap(screen.getByRole('button', { name: 'Ręka' }), 'touch', 70);
+    drawStroke(canvas, 'touch', 71);
+    fireEvent.lostPointerCapture(canvas, { pointerId: 71, pointerType: 'touch' });
+    drawStroke(canvas, 'touch', 72);
+    fireEvent.click(screen.getByRole('button', { name: 'Cofnij' }));
+
+    expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
+  });
+
   it('rejects touch in Ręka mode while pen priority is active', async () => {
     useActiveRequest();
     renderPad();
