@@ -306,12 +306,12 @@ const DOC_TYPE_PRECEDENCE: Partial<Record<DocumentTypeSlug, number>> = {
 };
 
 const personGroupLabel = (person: string | null | undefined): string =>
-  person?.trim() || 'Bez osoby';
+  person?.trim() || 'Bez strony';
 
 const comparePersonLabels = (left: string, right: string): number => {
   if (left === right) return 0;
-  if (left === 'Bez osoby') return 1;
-  if (right === 'Bez osoby') return -1;
+  if (left === 'Bez strony') return 1;
+  if (right === 'Bez strony') return -1;
   return left.localeCompare(right, 'pl');
 };
 
@@ -392,7 +392,7 @@ export const documentFilterSummary = (
   const parts = [
     filter.text ? `Tytuł: ${filter.text}` : '',
     filter.docType ? `Typ: ${documentTypeLabel(documentTypes, filter.docType)}` : '',
-    filter.person ? `Osoba: ${filter.person}` : '',
+    filter.person ? `Strona: ${filter.person}` : '',
     filter.tag ? `Tag: ${filter.tag}` : '',
     filter.dateFrom ? `Od: ${formatPolishDate(filter.dateFrom)}` : '',
     filter.dateTo ? `Do: ${formatPolishDate(filter.dateTo)}` : '',
@@ -691,7 +691,7 @@ export const groupDocumentsForTimeline = (
 ): TimelineGroup[] => {
   const buckets = new Map<string, TimelineDocument[]>();
   for (const document of documents) {
-    const person = document.person?.trim() || 'Bez osoby';
+    const person = document.person?.trim() || 'Bez strony';
     const current = buckets.get(person) ?? [];
     current.push(timelineIntervalForDocument(document));
     buckets.set(person, current);

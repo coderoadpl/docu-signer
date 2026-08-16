@@ -207,7 +207,7 @@ export const DocumentFormDialog = ({
             value={values.person}
             onChange={(_event, value) => field('person', value ?? '')}
             onInputChange={(_event, value) => field('person', value)}
-            renderInput={(params) => <TextField {...params} label="Osoba" />}
+            renderInput={(params) => <TextField {...params} label="Strona" />}
           />
           <Autocomplete
             multiple

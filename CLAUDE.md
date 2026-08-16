@@ -106,6 +106,7 @@ before ai-review may accept them; the rulings are archived verbatim in
   them, and hand-sign any source PDF in a full-screen pen/touch/mouse flow. Each
   document type comes from the tenant dictionary managed in Ustawienia
   organizacji, so new types do not require a deploy.
+  The document counterparty field is presented as „Strona” (the wire field remains `person`).
   A full-screen mass-review queue shows each selected source or newest digital
   signature and supports lightweight metadata editing without signing controls.
   The mass-review reader falls back signed-digital → scan → source, so

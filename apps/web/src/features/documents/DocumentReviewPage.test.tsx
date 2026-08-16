@@ -290,11 +290,11 @@ describe('DocumentReviewPage', () => {
     expect(await screen.findByRole('button', { name: 'Źródło', pressed: true })).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Podpisany' }));
     expect(await screen.findByRole('button', { name: 'Podpisany', pressed: true })).toBeVisible();
-    expect(await screen.findByText('Strona 1 z 2')).toBeVisible();
+    expect(await screen.findByText('str. 1 z 2')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Następna strona' }));
-    expect(await screen.findByText('Strona 2 z 2')).toBeVisible();
+    expect(await screen.findByText('str. 2 z 2')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Poprzednia strona' }));
-    expect(await screen.findByText('Strona 1 z 2')).toBeVisible();
+    expect(await screen.findByText('str. 1 z 2')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Zamknij' }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/app/documents'));

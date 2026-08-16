@@ -888,7 +888,7 @@ export const DocumentDetailPage = ({
               </Typography>
             ) : null}
             <Typography variant="body2">
-              {document.person ?? 'Bez przypisanej osoby'}
+              {document.person ?? 'Bez przypisanej strony'}
             </Typography>
           </Stack>
             {document.tags.length ? (
