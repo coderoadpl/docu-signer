@@ -94,6 +94,12 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
   },
+  documentLinks: {
+    create: async () => null,
+    findBetween: async () => null,
+    listForDocument: async () => [],
+    deleteBetween: async () => false,
+  },
   padSessions: {
     create: async (input) => ({
       ...input,

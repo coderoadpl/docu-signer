@@ -5,6 +5,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDocumentRepository } from './documents-repository.js';
+import { createDocumentLinkRepository } from './document-links-repository.js';
 import { createPadSessionRepository } from './pad-sessions-repository.js';
 import { createApiTokenRepository } from './api-tokens-repository.js';
 import { createInvitationRepository } from './invitations-repository.js';
@@ -518,6 +519,96 @@ describe('DocumentRepository', () => {
     await expect(repository.purge('tenant-a', id)).resolves.toBe(false);
     await expect(repository.findAnyById('tenant-a', id)).resolves.toBeNull();
     await expect(repository.listFilesIncludingDeleted('tenant-a', id)).resolves.toEqual([]);
+  });
+});
+
+describe('DocumentLinkRepository', () => {
+  it('round-trips bidirectional display, preserves trash state, and enforces tenant pairs', async () => {
+    const documents = createDocumentRepository(db);
+    const links = createDocumentLinkRepository(db);
+    const first = await documents.create({
+      id: '70707070-7070-4070-8070-707070707070',
+      tenantId: 'tenant-a',
+      title: 'Umowa ramowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-16',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+    });
+    const second = await documents.create({
+      id: '71717171-7171-4171-8171-717171717171',
+      tenantId: 'tenant-a',
+      title: 'Uchwała pełnomocnika',
+      docType: 'uchwala',
+      documentDate: '2026-08-16',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+    });
+    const otherTenant = await documents.create({
+      id: '72727272-7272-4272-8272-727272727272',
+      tenantId: 'tenant-b',
+      title: 'Obcy dokument',
+      docType: 'inny',
+      documentDate: '2026-08-16',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+    });
+
+    await expect(
+      links.create('tenant-a', {
+        id: '73737373-7373-4373-8373-737373737373',
+        fromDocumentId: first.id,
+        toDocumentId: second.id,
+        label: 'podstawa',
+      }),
+    ).resolves.toMatchObject({ label: 'podstawa' });
+    await expect(links.listForDocument('tenant-a', first.id)).resolves.toMatchObject([
+      { label: 'podstawa', document: { id: second.id, deletedAt: null } },
+    ]);
+    await expect(links.listForDocument('tenant-a', second.id)).resolves.toMatchObject([
+      { label: 'podstawa', document: { id: first.id } },
+    ]);
+    await expect(links.findBetween('tenant-a', second.id, first.id)).resolves.toMatchObject({
+      id: '73737373-7373-4373-8373-737373737373',
+    });
+    await expect(
+      links.create('tenant-a', {
+        id: '74747474-7474-4474-8474-747474747474',
+        fromDocumentId: first.id,
+        toDocumentId: second.id,
+        label: null,
+      }),
+    ).resolves.toBeNull();
+    await expect(links.listForDocument('tenant-b', first.id)).resolves.toEqual([]);
+    await expect(
+      links.create('tenant-a', {
+        id: '75757575-7575-4575-8575-757575757575',
+        fromDocumentId: first.id,
+        toDocumentId: otherTenant.id,
+        label: null,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      links.create('tenant-a', {
+        id: '76767676-7676-4676-8676-767676767676',
+        fromDocumentId: first.id,
+        toDocumentId: first.id,
+        label: null,
+      }),
+    ).rejects.toThrow();
+
+    await documents.delete('tenant-a', second.id);
+    await expect(links.listForDocument('tenant-a', first.id)).resolves.toMatchObject([
+      { document: { id: second.id, deletedAt: expect.any(String) } },
+    ]);
+    await expect(links.deleteBetween('tenant-a', second.id, first.id)).resolves.toBe(true);
+    await expect(links.listForDocument('tenant-a', first.id)).resolves.toEqual([]);
   });
 });
 

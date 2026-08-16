@@ -3,10 +3,12 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createApiClient } from '#core/client/index.js';
 import { appError, err, ok } from '#core/domain/index.js';
 
 import {
   documentListFilterFromOptions,
+  linkDocumentsToTarget,
   loginCredentialSelectionIsValid,
   normalizeStdinPassword,
   runLoginAction,
@@ -87,6 +89,8 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('unapprove');
     expect(documentHelp.stdout).toContain('waive-signature');
     expect(documentHelp.stdout).toContain('require-signature');
+    expect(documentHelp.stdout).toContain('link');
+    expect(documentHelp.stdout).toContain('unlink');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
     expect(listHelp.stdout).toContain('--signer <accountId>');
@@ -98,6 +102,22 @@ describe('CLI command surface', () => {
     });
     expect(documentListFilterFromOptions({})).toEqual({});
   });
+
+  it('maps invalid related-document IDs to the validation exit code', () => {
+    const result = run(
+      '--json',
+      'document',
+      'link',
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      'bad-id',
+    );
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  }, CLI_TEST_TIMEOUT_MS);
 
   it('documents the minimal invitation commands', () => {
     const invitationHelp = run('invitation', '--help');
@@ -151,6 +171,87 @@ describe('CLI command surface', () => {
     });
   }, CLI_TEST_TIMEOUT_MS);
 
+});
+
+describe('document link batch', () => {
+  it('fans out the multi-id form and reports every pair through the API contract', async () => {
+    const targetId = '11111111-1111-4111-8111-111111111111';
+    const firstId = '22222222-2222-4222-8222-222222222222';
+    const secondId = '33333333-3333-4333-8333-333333333333';
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+      const documentId = String(input).split('/').at(-2);
+      if (documentId === secondId) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: { code: 'not_found', message: 'Document not found' },
+          }),
+          { status: 404, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            link: {
+              linkId: '44444444-4444-4444-8444-444444444444',
+              label: 'podstawa',
+              document: {
+                id: targetId,
+                tenantId: 'tenant-default',
+                title: 'Umowa ramowa',
+                docType: 'umowa-uod',
+                documentDate: '2026-08-16',
+                periodStart: null,
+                periodEnd: null,
+                person: null,
+                tags: [],
+                createdAt: '2026-08-16T10:00:00.000Z',
+                updatedAt: '2026-08-16T10:00:00.000Z',
+              },
+            },
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const api = createApiClient({ baseUrl: 'https://archive.example', fetchImpl });
+
+    const result = await linkDocumentsToTarget(
+      api,
+      targetId,
+      [firstId, secondId],
+      'podstawa',
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: 'not_found',
+        details: {
+          targetId,
+          outcomes: [
+            { documentId: firstId, status: 'linked', targetId },
+            {
+              documentId: secondId,
+              error: { code: 'not_found' },
+              status: 'failed',
+              targetId,
+            },
+          ],
+        },
+      },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls.map(([input]) => String(input))).toEqual([
+      `https://archive.example/api/documents/${firstId}/links`,
+      `https://archive.example/api/documents/${secondId}/links`,
+    ]);
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ otherDocumentId: targetId, label: 'podstawa' }),
+    });
+  });
 });
 
 describe('document verify-seal', () => {

@@ -17,10 +17,12 @@ import {
 import {
   apiTokenCreateInputSchema,
   documentCreateInputSchema,
+  documentLinkCreateInputSchema,
   invitationCreateInputSchema,
   tenantSettingsUpdateInputSchema,
 } from '#core/contract/index.js';
 import {
+  appError,
   canonicalSlugSchema,
   err,
   internal,
@@ -28,8 +30,11 @@ import {
   ok,
   unauthorized,
   validation,
+  type AppError,
   type DocumentListFilter,
   type DocumentListItem,
+  type LinkedDocument,
+  type Result,
 } from '#core/domain/index.js';
 
 import {
@@ -134,6 +139,68 @@ const tokenListFilterSchema = z.object({
 const documentListOptionsSchema = z.object({
   signer: z.string().trim().min(1).optional(),
 });
+const documentLinkBatchArgsSchema = z.object({
+  targetId: z.uuid(),
+  ids: z.array(z.uuid()).min(1),
+  label: documentLinkCreateInputSchema.shape.label,
+});
+const documentLinkPairArgsSchema = z.object({ id: z.uuid(), otherId: z.uuid() });
+
+interface LinkedDocumentOutcome {
+  documentId: string;
+  link: LinkedDocument;
+  status: 'linked';
+  targetId: string;
+}
+
+interface FailedDocumentLinkOutcome {
+  documentId: string;
+  error: AppError;
+  status: 'failed';
+  targetId: string;
+}
+
+export type DocumentLinkOutcome = FailedDocumentLinkOutcome | LinkedDocumentOutcome;
+
+export interface DocumentLinkBatchResult {
+  outcomes: DocumentLinkOutcome[];
+  targetId: string;
+}
+
+export const linkDocumentsToTarget = async (
+  api: Pick<ApiClient, 'linkDocuments'>,
+  targetId: string,
+  documentIds: string[],
+  label?: string | null,
+): Promise<Result<DocumentLinkBatchResult, AppError>> => {
+  const outcomes: DocumentLinkOutcome[] = [];
+  for (const documentId of documentIds) {
+    const result = await api.linkDocuments(documentId, {
+      otherDocumentId: targetId,
+      ...(label === undefined ? {} : { label }),
+    });
+    outcomes.push(
+      result.ok
+        ? { documentId, link: result.value.link, status: 'linked', targetId }
+        : { documentId, error: result.error, status: 'failed', targetId },
+    );
+  }
+  const failures = outcomes.filter(
+    (outcome): outcome is FailedDocumentLinkOutcome => outcome.status === 'failed',
+  );
+  const firstFailure = failures[0];
+  if (!firstFailure) return ok({ outcomes, targetId });
+  const failedPairs = failures
+    .map((outcome) => `${outcome.documentId} → ${targetId} (${outcome.error.message})`)
+    .join(', ');
+  return err(
+    appError(
+      firstFailure.error.code,
+      `Failed to link ${failures.length} of ${documentIds.length} documents: ${failedPairs}`,
+      { outcomes, targetId },
+    ),
+  );
+};
 export const documentListFilterFromOptions = (
   options: z.output<typeof documentListOptionsSchema>,
 ): DocumentListFilter =>
@@ -605,8 +672,14 @@ document
       return;
     }
     const recordsResult = await ctx.api.listSignatureRecords(id, { limit: 1 });
+    const linksResult = await ctx.api.listDocumentLinks(id);
+    if (!linksResult.ok) {
+      emit(linksResult, ctx.json, () => '');
+      return;
+    }
     const data = {
       document: documentResult.value.document,
+      linkedDocuments: linksResult.value.links,
       signatureRecordsExist: signatureRecordsProbeResult(recordsResult),
     };
     emit(ok(data), ctx.json, (value) => {
@@ -617,8 +690,56 @@ document
         value.signatureRecordsExist === null
           ? ''
           : `signature-records=${String(value.signatureRecordsExist)}\n`;
-      return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\n${records}${files || '  no files'}`;
+      const links = value.linkedDocuments.length === 0
+        ? '  no linked documents'
+        : value.linkedDocuments
+            .map((link) => `  - ${link.document.title}\t${link.label ?? 'bez etykiety'}\t(${link.document.id})`)
+            .join('\n');
+      return `${value.document.documentDate}\t${value.document.draft ? 'DRAFT\t' : ''}${value.document.title}\n${records}${files || '  no files'}\nlinked documents:\n${links}`;
     });
+  });
+
+document
+  .command('link <targetId> <ids...>')
+  .description('Link one or more documents to a target document')
+  .option('--label <text>', 'short relationship label')
+  .action(async (targetId: string, ids: string[], options: { label?: string }) => {
+    const ctx = cliCtx();
+    const input = parseArgs(
+      documentLinkBatchArgsSchema,
+      {
+        targetId,
+        ids,
+        ...(options.label === undefined ? {} : { label: options.label }),
+      },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(
+      await linkDocumentsToTarget(ctx.api, input.targetId, input.ids, input.label),
+      ctx.json,
+      (data) =>
+        data.outcomes
+          .map(
+            (outcome) =>
+              outcome.status === 'linked'
+                ? `linked: ${outcome.documentId} → ${outcome.targetId}${outcome.link.label ? ` [${outcome.link.label}]` : ''}`
+                : `failed: ${outcome.documentId} → ${outcome.targetId} (${outcome.error.message})`,
+          )
+          .join('\n'),
+    );
+  });
+
+document
+  .command('unlink <id> <otherId>')
+  .description('Remove a related-document link')
+  .action(async (id: string, otherId: string) => {
+    const ctx = cliCtx();
+    const pair = parseArgs(documentLinkPairArgsSchema, { id, otherId }, ctx.json);
+    if (pair === undefined) return;
+    emit(await ctx.api.unlinkDocuments(pair.id, pair.otherId), ctx.json, () =>
+      `unlinked: ${pair.id} ↔ ${pair.otherId}`,
+    );
   });
 
 document

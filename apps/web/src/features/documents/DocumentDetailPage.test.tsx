@@ -19,6 +19,7 @@ const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const SOURCE_ID = '22222222-2222-4222-8222-222222222222';
 const SCAN_ID = '33333333-3333-4333-8333-333333333333';
 const SIGNED_ID = '44444444-4444-4444-8444-444444444444';
+const RELATED_ID = '55555555-5555-4555-8555-555555555555';
 
 const files = [
   {
@@ -102,6 +103,51 @@ const renderPage = async (
 };
 
 describe('DocumentDetailPage', () => {
+  it('renders related documents with labels and removes a link', async () => {
+    const remove = vi.fn();
+    let links = [
+      {
+        linkId: '66666666-6666-4666-8666-666666666666',
+        label: 'podstawa',
+        document: {
+          ...document,
+          id: RELATED_ID,
+          title: 'Umowa ramowa',
+          files: undefined,
+          signers: undefined,
+          deletedAt: '2026-08-16T12:00:00.000Z',
+        },
+      },
+    ];
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/links`, () =>
+        HttpResponse.json({ ok: true, data: { links } }),
+      ),
+      http.delete(`/api/documents/${DOCUMENT_ID}/links/${RELATED_ID}`, () => {
+        remove();
+        links = [];
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+    await renderPage();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Powiązane dokumenty' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Umowa ramowa')).toBeInTheDocument();
+    expect(screen.getByText('podstawa')).toBeInTheDocument();
+    expect(screen.getByText('W koszu')).toBeInTheDocument();
+    const linkedRow = screen.getByText('Umowa ramowa').closest('li');
+    expect(linkedRow).not.toBeNull();
+    if (!linkedRow) throw new Error('Related-document row was not rendered');
+    await userEvent.click(within(linkedRow).getByRole('button', { name: 'Usuń' }));
+    await waitFor(() => expect(remove).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByText('Umowa ramowa')).not.toBeInTheDocument());
+  });
+
   it('enables source updates with signature records and shows both dialog choices', async () => {
     server.use(
       http.get(`/api/documents/${DOCUMENT_ID}`, () =>
@@ -654,6 +700,60 @@ describe('DocumentDetailPage', () => {
     expect(await screen.findByText(/czeka na zatwierdzenie/u)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cofnij do szkicu' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Zatwierdź' })).toBeInTheDocument();
+  });
+
+  it('waives the signature requirement from the primary action', async () => {
+    const waive = vi.fn();
+    let currentDocument = { ...document, signatureNotRequired: false };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document: currentDocument } }),
+      ),
+      http.post(`/api/documents/${DOCUMENT_ID}/waive-signature`, () => {
+        waive();
+        currentDocument = { ...document, signatureNotRequired: true };
+        return HttpResponse.json({ ok: true, data: { document: currentDocument } });
+      }),
+    );
+    await renderPage();
+
+    const action = await screen.findByRole('button', { name: 'Nie wymaga podpisu' });
+    expect(action).toHaveClass('MuiButton-contained');
+    expect(screen.queryByText('Nie wymaga')).not.toBeInTheDocument();
+    await userEvent.click(action);
+
+    await waitFor(() => expect(waive).toHaveBeenCalledOnce());
+    expect(await screen.findByText('Nie wymaga')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Nie wymaga podpisu' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Wymaga podpisu' })).toBeInTheDocument();
+  });
+
+  it('restores the signature requirement from the secondary action', async () => {
+    const requireSignature = vi.fn();
+    let currentDocument = { ...document, signatureNotRequired: true };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document: currentDocument } }),
+      ),
+      http.post(`/api/documents/${DOCUMENT_ID}/require-signature`, () => {
+        requireSignature();
+        currentDocument = { ...document, signatureNotRequired: false };
+        return HttpResponse.json({ ok: true, data: { document: currentDocument } });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByText('Nie wymaga')).toBeInTheDocument();
+    const action = screen.getByRole('button', { name: 'Wymaga podpisu' });
+    expect(action).toHaveClass('MuiButton-outlined');
+    await userEvent.click(action);
+
+    await waitFor(() => expect(requireSignature).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByText('Nie wymaga')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Wymaga podpisu' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Nie wymaga podpisu' })).toBeInTheDocument();
   });
 
   it('renders a trashed document as read-only with restore and purge actions', async () => {

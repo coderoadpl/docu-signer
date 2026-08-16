@@ -203,7 +203,7 @@ const walkTestFiles = (dir: string): string[] => {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       found.push(...walkTestFiles(full));
-    } else if (/\.test\.(ts|tsx|js)$/.test(entry.name)) {
+    } else if (/\.test\.(ts|tsx|js|mjs)$/.test(entry.name)) {
       found.push(full);
     }
   }

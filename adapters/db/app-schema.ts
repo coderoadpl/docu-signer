@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -221,6 +222,7 @@ export const documents = pgTable(
   },
   (table) => [
     index('documents_tenant_date_idx').on(table.tenantId, table.documentDate),
+    uniqueIndex('documents_tenant_id_uidx').on(table.tenantId, table.id),
     check(
       'documents_doc_type_check',
       sql`${table.docType} IN ('umowa-uod', 'uchwala', 'protokol', 'rachunek', 'inny')`,
@@ -228,6 +230,43 @@ export const documents = pgTable(
     check(
       'documents_period_order_check',
       sql`${table.periodStart} IS NULL OR ${table.periodEnd} IS NULL OR ${table.periodStart} <= ${table.periodEnd}`,
+    ),
+  ],
+);
+
+export const documentLinks = pgTable(
+  'document_links',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    fromDocumentId: uuid('from_document_id').notNull(),
+    toDocumentId: uuid('to_document_id').notNull(),
+    label: text('label'),
+  },
+  (table) => [
+    foreignKey({
+      name: 'document_links_from_document_fk',
+      columns: [table.tenantId, table.fromDocumentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'document_links_to_document_fk',
+      columns: [table.tenantId, table.toDocumentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }).onDelete('cascade'),
+    uniqueIndex('document_links_tenant_pair_uidx').on(
+      table.tenantId,
+      table.fromDocumentId,
+      table.toDocumentId,
+    ),
+    index('document_links_tenant_from_idx').on(table.tenantId, table.fromDocumentId),
+    index('document_links_tenant_to_idx').on(table.tenantId, table.toDocumentId),
+    check('document_links_distinct_documents_check', sql`${table.fromDocumentId} <> ${table.toDocumentId}`),
+    check(
+      'document_links_label_check',
+      sql`${table.label} IS NULL OR (${table.label} = btrim(${table.label}) AND length(${table.label}) BETWEEN 1 AND 60)`,
     ),
   ],
 );

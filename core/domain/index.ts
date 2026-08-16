@@ -4,6 +4,7 @@ export * from './identity.js';
 export * from './authorization.js';
 export * from './slug.js';
 export * from './document.js';
+export * from './document-link.js';
 export * from './api-token.js';
 export * from './user-preference.js';
 export * from './document-date-logic.js';

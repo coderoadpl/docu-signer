@@ -57,6 +57,9 @@ each.
   `staging → main` promotion PR, where the owner-approval wall applies).
   `staging` deployments are Vercel Previews; production still releases only
   from `main`.
+- Since 2026-08-16, Vercel previews build only for branches with an open PR and
+  commits touching the app, enforced by `ignoreCommand` through
+  `scripts/vercel-ignore-build.mjs`; production and `staging` always build.
 - Production deploys from `main` (Vercel tracks `main`); the upstream
   `main → production` promotion stage is collapsed into the owner-review wall
   on `main` itself — there is no `production` branch in this fork.

@@ -10,6 +10,8 @@ import {
   documentGetOutputSchema,
   documentListInputSchema,
   documentListOutputSchema,
+  documentLinkCreateInputSchema,
+  documentLinkListOutputSchema,
   documentRestoreOutputSchema,
   documentTrashListOutputSchema,
   exportDocumentsInputSchema,
@@ -92,6 +94,18 @@ describe('API route contract', () => {
     expect(API_ROUTES.documentRequireSignature).toEqual({
       method: 'POST',
       path: '/api/documents/:documentId/require-signature',
+    });
+    expect(API_ROUTES.documentLinks).toEqual({
+      method: 'GET',
+      path: '/api/documents/:documentId/links',
+    });
+    expect(API_ROUTES.documentLinkCreate).toEqual({
+      method: 'POST',
+      path: '/api/documents/:documentId/links',
+    });
+    expect(API_ROUTES.documentLinkDelete).toEqual({
+      method: 'DELETE',
+      path: '/api/documents/:documentId/links/:otherDocumentId',
     });
     expect(API_ROUTES.savedSearches).toEqual({
       method: 'GET',
@@ -615,6 +629,47 @@ describe('API route contract', () => {
         filter: { dateFrom: '2026-08-02', dateTo: '2026-08-01' },
       }).success,
     ).toBe(false);
+  });
+
+  it('validates related-document inputs and list responses', () => {
+    expect(
+      documentLinkCreateInputSchema.parse({
+        otherDocumentId: '11111111-1111-4111-8111-111111111111',
+        label: ' podstawa ',
+      }),
+    ).toEqual({
+      otherDocumentId: '11111111-1111-4111-8111-111111111111',
+      label: 'podstawa',
+    });
+    expect(
+      documentLinkCreateInputSchema.safeParse({
+        otherDocumentId: '11111111-1111-4111-8111-111111111111',
+        label: 'x'.repeat(61),
+      }).success,
+    ).toBe(false);
+    expect(
+      documentLinkListOutputSchema.safeParse({
+        links: [
+          {
+            linkId: '22222222-2222-4222-8222-222222222222',
+            label: 'podstawa',
+            document: {
+              id: '11111111-1111-4111-8111-111111111111',
+              tenantId: 'tenant-default',
+              title: 'Umowa ramowa',
+              docType: 'umowa-uod',
+              documentDate: '2026-08-16',
+              periodStart: null,
+              periodEnd: null,
+              person: null,
+              tags: [],
+              createdAt: '2026-08-16T10:00:00.000Z',
+              updatedAt: '2026-08-16T10:00:00.000Z',
+            },
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   it('rejects invalid attachment and export inputs', () => {

@@ -12,6 +12,8 @@ import {
   documentFileSchema,
   documentListItemSchema,
   documentListFilterSchema,
+  linkedDocumentSchema,
+  linkDocumentsInputSchema,
   documentSchema,
   documentWithFilesSchema,
   exportDocumentsSchema,
@@ -133,6 +135,20 @@ export const documentWaiveSignatureOutputSchema = z.object({
 
 export const documentRequireSignatureOutputSchema = z.object({
   document: documentSchema,
+});
+
+export const documentLinkCreateInputSchema = linkDocumentsInputSchema;
+
+export const documentLinkCreateOutputSchema = z.object({
+  link: linkedDocumentSchema,
+});
+
+export const documentLinkListOutputSchema = z.object({
+  links: z.array(linkedDocumentSchema),
+});
+
+export const documentLinkDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
 });
 
 export const documentDeleteOutputSchema = z.object({
@@ -398,6 +414,12 @@ export const API_ROUTES = {
   documentRequireSignature: {
     method: 'POST',
     path: '/api/documents/:documentId/require-signature',
+  },
+  documentLinks: { method: 'GET', path: '/api/documents/:documentId/links' },
+  documentLinkCreate: { method: 'POST', path: '/api/documents/:documentId/links' },
+  documentLinkDelete: {
+    method: 'DELETE',
+    path: '/api/documents/:documentId/links/:otherDocumentId',
   },
   documentDelete: { method: 'DELETE', path: '/api/documents/:documentId' },
   documentRestore: { method: 'POST', path: '/api/documents/:documentId/restore' },

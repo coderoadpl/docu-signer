@@ -16,6 +16,7 @@ import {
   List,
   Menu,
   ListItem,
+  ListItemButton,
   ListItemText,
   MenuItem,
   Paper,
@@ -376,7 +377,8 @@ export const DocumentDetailPage = ({
   const search = useSearch({ from: '/app/documents/$id' });
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
-  const folderDocuments = useQuery(actions.documents({}));
+  const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
+  const documentLinksQuery = useQuery(actions.documentLinks(documentId));
   const identityQuery = useQuery(actions.me);
   const signatureRecordsQuery = useQuery(actions.signatureRecords(documentId));
   const sourceUpdateRequestQuery = useQuery(
@@ -392,6 +394,10 @@ export const DocumentDetailPage = ({
   const [moveDocType, setMoveDocType] = useState<DocumentType>('umowa-uod');
   const [uploadingRole, setUploadingRole] = useState<DocumentFileRole>();
   const [sourceUpdateOpen, setSourceUpdateOpen] = useState(false);
+  const [documentLinkOpen, setDocumentLinkOpen] = useState(false);
+  const [documentLinkSearch, setDocumentLinkSearch] = useState('');
+  const [documentLinkTargetId, setDocumentLinkTargetId] = useState('');
+  const [documentLinkLabel, setDocumentLinkLabel] = useState('');
   const [sourceUpdatePending, setSourceUpdatePending] = useState(false);
   const [sourceUpdateError, setSourceUpdateError] = useState<string>();
   const [uploadErrors, setUploadErrors] = useState<
@@ -416,6 +422,18 @@ export const DocumentDetailPage = ({
   });
   const unapproveDocument = useMutation({
     ...actions.unapproveDocument,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+    },
+  });
+  const waiveDocumentSignature = useMutation({
+    ...actions.waiveDocumentSignature,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentsInvalidates());
+    },
+  });
+  const requireDocumentSignature = useMutation({
+    ...actions.requireDocumentSignature,
     onSuccess: async () => {
       await queryClient.invalidateQueries(actions.documentsInvalidates());
     },
@@ -468,6 +486,22 @@ export const DocumentDetailPage = ({
   const decideSourceUpdate = useMutation(actions.decideSourceUpdateRequest);
   const cancelSourceUpdate = useMutation(actions.cancelSourceUpdateRequest);
   const completeSourceUpdate = useMutation(actions.completeSourceUpdateRequest);
+  const linkDocuments = useMutation({
+    ...actions.linkDocuments,
+    onSuccess: async () => {
+      setDocumentLinkOpen(false);
+      setDocumentLinkSearch('');
+      setDocumentLinkTargetId('');
+      setDocumentLinkLabel('');
+      await queryClient.invalidateQueries(actions.documentLinksInvalidates());
+    },
+  });
+  const unlinkDocuments = useMutation({
+    ...actions.unlinkDocuments,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.documentLinksInvalidates());
+    },
+  });
 
   if (documentQuery.isPending) {
     return (
@@ -517,6 +551,17 @@ export const DocumentDetailPage = ({
   const grouped = filesByRole(document.files);
   const personOptions = uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]);
   const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
+  const linkedDocuments = documentLinksQuery.data?.links ?? [];
+  const linkedDocumentIds = new Set(
+    linkedDocuments.map((link) => link.document.id),
+  );
+  const normalizedDocumentLinkSearch = documentLinkSearch.trim().toLocaleLowerCase('pl');
+  const documentLinkCandidates = (folderDocuments.data?.documents ?? []).filter(
+    (candidate) =>
+      candidate.id !== documentId &&
+      !linkedDocumentIds.has(candidate.id) &&
+      candidate.title.toLocaleLowerCase('pl').includes(normalizedDocumentLinkSearch),
+  );
   const period =
     document.periodStart || document.periodEnd
       ? [
@@ -678,6 +723,9 @@ export const DocumentDetailPage = ({
               label={DOCUMENT_TYPE_LABELS[document.docType]}
             />
             {isDraft ? <Chip color="warning" variant="outlined" label="Szkic" /> : null}
+            {document.signatureNotRequired ? (
+              <Chip size="small" variant="outlined" label="Nie wymaga" />
+            ) : null}
           </Stack>
           <Stack sx={{ mt: 1.5, gap: 0.5 }}>
             <Typography variant="body2" color="text.secondary">
@@ -739,6 +787,23 @@ export const DocumentDetailPage = ({
                   onClick={() => unapproveDocument.mutate(documentId)}
                 >
                   Cofnij do szkicu
+                </NoWrapButton>
+              )}
+              {document.signatureNotRequired ? (
+                <NoWrapButton
+                  variant="outlined"
+                  disabled={requireDocumentSignature.isPending}
+                  onClick={() => requireDocumentSignature.mutate(documentId)}
+                >
+                  Wymaga podpisu
+                </NoWrapButton>
+              ) : (
+                <NoWrapButton
+                  variant="contained"
+                  disabled={waiveDocumentSignature.isPending}
+                  onClick={() => waiveDocumentSignature.mutate(documentId)}
+                >
+                  Nie wymaga podpisu
                 </NoWrapButton>
               )}
               <NoWrapButton variant="contained" onClick={() => setEditOpen(true)}>
@@ -860,6 +925,16 @@ export const DocumentDetailPage = ({
           {unapproveDocument.error.message}
         </Alert>
       ) : null}
+      {waiveDocumentSignature.isError ? (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {waiveDocumentSignature.error.message}
+        </Alert>
+      ) : null}
+      {requireDocumentSignature.isError ? (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {requireDocumentSignature.error.message}
+        </Alert>
+      ) : null}
       {restoreDocument.isError ? (
         <Alert severity="error" sx={{ mt: 2 }}>
           {restoreDocument.error.message}
@@ -870,6 +945,82 @@ export const DocumentDetailPage = ({
           {purgeDocument.error.message}
         </Alert>
       ) : null}
+      <Paper variant="outlined" sx={{ mt: 4, p: 3 }}>
+        <Stack
+          direction="row"
+          sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
+        >
+          <Typography variant="h2" component="h2">
+            Powiązane dokumenty
+          </Typography>
+          {!isTrashed ? (
+            <Button variant="outlined" onClick={() => setDocumentLinkOpen(true)}>
+              Dodaj powiązanie
+            </Button>
+          ) : null}
+        </Stack>
+        {documentLinksQuery.isPending ? (
+          <LinearProgress sx={{ mt: 2 }} />
+        ) : documentLinksQuery.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {documentLinksQuery.error.message}
+          </Alert>
+        ) : linkedDocuments.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Brak powiązanych dokumentów.
+          </Typography>
+        ) : (
+          <List disablePadding sx={{ mt: 1 }}>
+            {linkedDocuments.map((link) => (
+              <ListItem
+                key={link.linkId}
+                disablePadding
+                divider
+                secondaryAction={
+                  !isTrashed ? (
+                    <Button
+                      color="error"
+                      size="small"
+                      disabled={unlinkDocuments.isPending}
+                      onClick={() =>
+                        unlinkDocuments.mutate({
+                          documentId,
+                          otherDocumentId: link.document.id,
+                        })
+                      }
+                    >
+                      Usuń
+                    </Button>
+                  ) : null
+                }
+                sx={{ opacity: link.document.deletedAt ? 0.55 : 1 }}
+              >
+                <ListItemButton
+                  onClick={() =>
+                    void navigate({
+                      to: '/app/documents/$id',
+                      params: { id: link.document.id },
+                    })
+                  }
+                >
+                  <ListItemText primary={link.document.title} />
+                  <Stack direction="row" sx={{ gap: 1, mr: isTrashed ? 0 : 8 }}>
+                    {link.label ? <Chip size="small" label={link.label} /> : null}
+                    {link.document.deletedAt ? (
+                      <Chip size="small" variant="outlined" label="W koszu" />
+                    ) : null}
+                  </Stack>
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        )}
+        {unlinkDocuments.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {unlinkDocuments.error.message}
+          </Alert>
+        ) : null}
+      </Paper>
       <Divider sx={{ my: 4 }} />
       <Typography variant="h2" component="h2" sx={{ mb: 3 }}>
         Pliki
@@ -931,6 +1082,73 @@ export const DocumentDetailPage = ({
         onClose={() => setSourceUpdateOpen(false)}
         onSubmit={(file, mode) => void submitSourceUpdate(file, mode)}
       />
+      <Dialog
+        open={documentLinkOpen}
+        onClose={linkDocuments.isPending ? undefined : () => setDocumentLinkOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Dodaj powiązany dokument</DialogTitle>
+        <DialogContent>
+          <Stack sx={{ gap: 2, pt: 1 }}>
+            <TextField
+              label="Szukaj po tytule"
+              value={documentLinkSearch}
+              onChange={(event) => setDocumentLinkSearch(event.target.value)}
+            />
+            <List sx={{ maxHeight: 240, overflow: 'auto' }}>
+              {documentLinkCandidates.map((candidate) => (
+                <ListItemButton
+                  key={candidate.id}
+                  selected={documentLinkTargetId === candidate.id}
+                  onClick={() => setDocumentLinkTargetId(candidate.id)}
+                >
+                  <ListItemText primary={candidate.title} />
+                </ListItemButton>
+              ))}
+              {documentLinkCandidates.length === 0 ? (
+                <ListItem>
+                  <ListItemText primary="Brak dokumentów do powiązania." />
+                </ListItem>
+              ) : null}
+            </List>
+            <TextField
+              label="Etykieta (opcjonalnie)"
+              value={documentLinkLabel}
+              slotProps={{ htmlInput: { maxLength: 60 } }}
+              onChange={(event) => setDocumentLinkLabel(event.target.value)}
+            />
+            {linkDocuments.isError ? (
+              <Alert severity="error">{linkDocuments.error.message}</Alert>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setDocumentLinkOpen(false)}
+            disabled={linkDocuments.isPending}
+          >
+            Anuluj
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!documentLinkTargetId || linkDocuments.isPending}
+            onClick={() =>
+              linkDocuments.mutate({
+                documentId,
+                input: {
+                  otherDocumentId: documentLinkTargetId,
+                  ...(documentLinkLabel.trim()
+                    ? { label: documentLinkLabel.trim() }
+                    : {}),
+                },
+              })
+            }
+          >
+            Dodaj
+          </Button>
+        </DialogActions>
+      </Dialog>
       <ConfirmDialog
         open={deleteDocumentOpen}
         title="Przenieść dokument do kosza?"

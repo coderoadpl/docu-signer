@@ -22,6 +22,7 @@ import {
   type CreateSourceUpdateRequest,
   type DecideSourceUpdateRequest,
   type DocumentListFilter,
+  type LinkDocumentsInput,
   type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
@@ -127,6 +128,13 @@ const documentsScopes = {
     ['documents', 'detail', documentId, 'file', fileId] as const,
 };
 
+const documentLinksScopes = {
+  all: () => ['document-links'] as const,
+  document: (documentId: string) => ['document-links', documentId] as const,
+};
+
+export const documentLinksInvalidates = () => ({ queryKey: documentLinksScopes.all() });
+
 const savedSearchScopes = {
   all: () => ['saved-searches'] as const,
   lists: () => ['saved-searches', 'list'] as const,
@@ -220,6 +228,12 @@ export const documentQuery = (api: ApiClient, documentId: string) =>
     call: ({ signal }) => api.getDocument(documentId, signal),
   });
 
+export const documentLinksQuery = (api: ApiClient, documentId: string) =>
+  defineQuery({
+    queryKey: documentLinksScopes.document(documentId),
+    call: ({ signal }) => api.listDocumentLinks(documentId, signal),
+  });
+
 export const documentFileQuery = (
   api: ApiClient,
   documentId: string,
@@ -241,6 +255,25 @@ export const updateDocumentMutation = (api: ApiClient) =>
     mutationKey: [...documentsScopes.all(), 'update'],
     call: ({ documentId, input }: { documentId: string; input: UpdateDocument }) =>
       api.updateDocument(documentId, input),
+  });
+
+export const linkDocumentsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentLinksScopes.all(), 'create'],
+    call: ({
+      documentId,
+      input,
+    }: {
+      documentId: string;
+      input: LinkDocumentsInput;
+    }) => api.linkDocuments(documentId, input),
+  });
+
+export const unlinkDocumentsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentLinksScopes.all(), 'delete'],
+    call: ({ documentId, otherDocumentId }: { documentId: string; otherDocumentId: string }) =>
+      api.unlinkDocuments(documentId, otherDocumentId),
   });
 
 export const approveDocumentMutation = (api: ApiClient) =>
