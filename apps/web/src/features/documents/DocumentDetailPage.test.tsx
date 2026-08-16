@@ -127,6 +127,7 @@ describe('DocumentDetailPage', () => {
                     inkSize: 2,
                   },
                 ],
+                signerBoxEntries: null,
                 createdAt: '2026-08-08T10:00:00.000Z',
               },
             ],

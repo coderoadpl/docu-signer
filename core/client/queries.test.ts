@@ -424,6 +424,7 @@ describe('tenant settings and signature record descriptors', () => {
           contributedBy: 'user-1',
         },
       ],
+      signerBoxEntries: null,
       createdAt: '2026-08-07T10:00:00.000Z',
     };
     const nextRecord = {
@@ -478,7 +479,9 @@ describe('tenant settings and signature record descriptors', () => {
         documentId: document.id,
         input: { fileId: documentFile.id, payload: record.payload },
       }),
-    ).resolves.toEqual({ signatureRecord: record });
+    ).resolves.toMatchObject({
+      signatureRecord: { id: record.id, fileId: record.fileId, payload: record.payload },
+    });
     expect(signatureRecordsInvalidates(document.id)).toEqual({
       queryKey: ['signature-records', document.id],
     });

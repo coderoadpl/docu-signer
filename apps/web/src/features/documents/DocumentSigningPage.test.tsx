@@ -1484,7 +1484,102 @@ describe('DocumentSigningPage', () => {
     });
   });
 
-  it('does not pass a new signers box when signing an already-signed file', async () => {
+  it('passes a cumulative signers box when the signed target has complete records', async () => {
+    const priorDeclaredAt = new Date(2026, 6, 31, 18, 45).toISOString();
+    const signedSource = {
+      ...sourceFile,
+      role: 'signed-digital' as const,
+      fileName: 'oryginal-podpisany.pdf',
+    };
+    installUploadHandlers();
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { document: { ...document, files: [signedSource] } },
+        }),
+      ),
+      http.get('*/api/tenant-settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              tenantId: 'tenant-default',
+              storeSignatureRecords: true,
+              pdfSealEnabled: true,
+              signatureBoxEnabled: true,
+              dateMode: 'declared',
+              sealCertificateSubject: 'Amazing Company Sp. z o.o.',
+            },
+          },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/signature-records`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            items: [
+              {
+                id: '99999999-9999-4999-8999-999999999999',
+                tenantId: 'tenant-default',
+                documentId: DOCUMENT_ID,
+                fileId: SOURCE_ID,
+                signedBy: 'user-weronika',
+                payload: [
+                  {
+                    strokes: [
+                      {
+                        points: [{ x: 0.1, y: 0.2, pressure: 0.5 }],
+                      },
+                    ],
+                    pageIndex: 0,
+                    placement: { offsetX: 0, offsetY: 0, scale: 1 },
+                    inkColor: 'black',
+                    inkSize: 2,
+                    contributedBy: 'user-weronika',
+                  },
+                ],
+                seal: {
+                  subject: 'CN=Archive',
+                  declaredAt: priorDeclaredAt,
+                  appliedAt: '2026-07-31T18:45:01.000Z',
+                },
+                createdAt: '2026-07-31T18:45:01.000Z',
+                signerBoxEntries: [
+                  {
+                    accountId: 'user-weronika',
+                    name: 'Weronika',
+                    declaredAt: priorDeclaredAt,
+                  },
+                ],
+              },
+            ],
+            nextCursor: null,
+          },
+        }),
+      ),
+    );
+    await renderPage();
+    await drawStroke();
+
+    fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+
+    await waitFor(() => expect(pdfMocks.flatten).toHaveBeenCalled());
+    expect(pdfMocks.flatten.mock.calls[0]?.[2]?.entries).toEqual([
+      {
+        accountId: 'user-weronika',
+        name: 'Weronika',
+        signedAt: '31.07.2026 18:45',
+      },
+      {
+        accountId: 'user-owner',
+        name: 'Owner',
+        signedAt: expect.stringMatching(/^01\.08\.2026 \d{2}:\d{2}$/u),
+      },
+    ]);
+  });
+
+  it('does not pass a new signers box when the signed target lacks records', async () => {
     const signedSource = {
       ...sourceFile,
       role: 'signed-digital' as const,

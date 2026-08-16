@@ -129,6 +129,13 @@ const records = (): SignatureRecordRepository => {
   };
 };
 
+const tenantAccounts = {
+  listByTenant: async () => [
+    { accountId: 'user-1', name: 'Owner' },
+    { accountId: 'user-2', name: 'Co-signer' },
+  ],
+};
+
 describe('signature record use-cases', () => {
   it('parses legacy stamps without contributors and contributor-aware stamps', () => {
     expect(signatureRecordPayloadSchema.parse(legacyPayload)).toEqual(legacyPayload);
@@ -139,6 +146,7 @@ describe('signature record use-cases', () => {
     const deps = {
       documents: documents(),
       signatureRecords: records(),
+      tenantAccounts,
       ids: { nextId: () => recordId },
     };
     const ctx = { identity: identity() };
@@ -171,6 +179,7 @@ describe('signature record use-cases', () => {
     const deps = {
       documents: documents(),
       signatureRecords: records(),
+      tenantAccounts,
       ids: { nextId: () => recordId },
     };
     const ctx = { identity: identity() };
@@ -204,6 +213,7 @@ describe('signature record use-cases', () => {
     const deps = {
       documents: documentRepository,
       signatureRecords: records(),
+      tenantAccounts,
       ids: { nextId: () => recordId },
     };
 
@@ -221,6 +231,11 @@ describe('signature record use-cases', () => {
         fileId,
         signedBy: 'user-1',
         payload,
+        seal: {
+          subject: 'CN=Archive',
+          declaredAt: '2026-08-07T11:00:00.000Z',
+          appliedAt: '2026-08-07T11:00:01.000Z',
+        },
         createdAt: '2026-08-07T11:00:00.000Z',
       },
       {
@@ -230,12 +245,18 @@ describe('signature record use-cases', () => {
         fileId: otherFileId,
         signedBy: 'user-1',
         payload,
+        seal: {
+          subject: 'CN=Archive',
+          declaredAt: '2026-08-07T10:00:00.000Z',
+          appliedAt: '2026-08-07T10:00:01.000Z',
+        },
         createdAt: '2026-08-07T10:00:00.000Z',
       },
     ];
     const seen: (SignatureRecordCursor | null)[] = [];
     const deps = {
       documents: documents(),
+      tenantAccounts,
       signatureRecords: {
         listByDocument: async (_tenantId, _id, cursor, limit) => {
           seen.push(cursor);
@@ -250,6 +271,22 @@ describe('signature record use-cases', () => {
 
     const firstPage = await listSignatureRecords(ctx, documentId, { limit: 1 }, deps);
     expect(firstPage).toMatchObject({ ok: true, value: { items: [{ id: recordId }] } });
+    expect(firstPage).toMatchObject({
+      ok: true,
+      value: {
+        items: [
+          {
+            signerBoxEntries: [
+              {
+                accountId: 'user-1',
+                name: 'Owner',
+                declaredAt: '2026-08-07T11:00:00.000Z',
+              },
+            ],
+          },
+        ],
+      },
+    });
     const nextCursor = firstPage.ok ? firstPage.value.nextCursor : null;
     expect(nextCursor).toEqual(expect.any(String));
 
@@ -273,6 +310,7 @@ describe('signature record use-cases', () => {
       const deps = {
         documents: documentRepository,
         signatureRecords,
+        tenantAccounts,
         ids: { nextId: () => recordId },
       };
       const ctx = { identity: identity(scopes) };

@@ -427,6 +427,7 @@ describe('API client', () => {
           contributedBy: 'user-1',
         },
       ],
+      signerBoxEntries: null,
       createdAt: '2026-08-07T10:00:00.000Z',
     };
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
