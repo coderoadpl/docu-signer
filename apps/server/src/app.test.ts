@@ -11,11 +11,13 @@ import {
 } from '#core/contract/index.js';
 import {
   MAX_PAD_STROKES_BYTES,
+  DEFAULT_DOCUMENT_TYPES,
   PAD_STROKES_TOO_LARGE_MESSAGE,
   ok,
   type Document,
   type DocumentComment,
   type DocumentListFilter,
+  type DocumentType,
   type PadSession,
   type PadQueuedSubmission,
   type SourceUpdateRequest,
@@ -101,6 +103,15 @@ const baseDeps = (): AppDeps => ({
     findFile: async () => null,
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
+  },
+  documentTypes: {
+    listByTenant: async () => [...DEFAULT_DOCUMENT_TYPES],
+    findBySlug: async (_tenantId, slug) =>
+      DEFAULT_DOCUMENT_TYPES.find((documentType) => documentType.slug === slug) ?? null,
+    create: async () => null,
+    rename: async () => null,
+    delete: async () => false,
+    isUsedByAnyDocument: async () => false,
   },
   documentComments: {
     listByDocument: async () => [],
@@ -1387,6 +1398,77 @@ describe('buildApp', () => {
     );
     expect(deleted.status).toBe(200);
     expect(await deleted.json()).toMatchObject({ ok: true, data: { deleted: true } });
+  });
+
+  it('lists, creates, renames and deletes document types', async () => {
+    const deps = authorizedDeps();
+    let rows: DocumentType[] = DEFAULT_DOCUMENT_TYPES.map((documentType) => ({
+      ...documentType,
+    }));
+    deps.documentTypes = {
+      listByTenant: async () => rows,
+      findBySlug: async (_tenantId, slug) =>
+        rows.find((documentType) => documentType.slug === slug) ?? null,
+      create: async (input) => {
+        const created = {
+          slug: input.slug,
+          label: input.label,
+          position: input.position,
+        };
+        rows = [...rows, created];
+        return created;
+      },
+      rename: async (_tenantId, slug, label) => {
+        const found = rows.find((documentType) => documentType.slug === slug);
+        if (!found) return null;
+        found.label = label;
+        return found;
+      },
+      delete: async (_tenantId, slug) => {
+        const before = rows.length;
+        rows = rows.filter((documentType) => documentType.slug !== slug);
+        return rows.length < before;
+      },
+      isUsedByAnyDocument: async () => false,
+    };
+    const app = buildApp(deps);
+    const headers = { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' };
+
+    const list = await app.request(API_ROUTES.documentTypes.path, { headers });
+    expect(await list.json()).toEqual({
+      ok: true,
+      data: { documentTypes: DEFAULT_DOCUMENT_TYPES },
+    });
+
+    const created = await app.request(API_ROUTES.documentTypesCreate.path, {
+      method: API_ROUTES.documentTypesCreate.method,
+      headers,
+      body: JSON.stringify({ label: 'Umowa z klientem' }),
+    });
+    expect(created.status).toBe(200);
+    expect(await created.json()).toMatchObject({
+      ok: true,
+      data: { documentType: { slug: 'umowa-z-klientem', position: 60 } },
+    });
+
+    const renamed = await app.request(
+      API_ROUTES.documentTypeRename.path.replace(':slug', 'umowa-z-klientem'),
+      {
+        method: API_ROUTES.documentTypeRename.method,
+        headers,
+        body: JSON.stringify({ label: 'Kontrakt z klientem' }),
+      },
+    );
+    expect(await renamed.json()).toMatchObject({
+      ok: true,
+      data: { documentType: { slug: 'umowa-z-klientem', label: 'Kontrakt z klientem' } },
+    });
+
+    const deleted = await app.request(
+      API_ROUTES.documentTypeDelete.path.replace(':slug', 'umowa-z-klientem'),
+      { method: API_ROUTES.documentTypeDelete.method, headers },
+    );
+    expect(await deleted.json()).toEqual({ ok: true, data: { deleted: true } });
   });
 
   it('rejects anonymous saved search access with the unauthorized taxonomy', async () => {

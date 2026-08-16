@@ -3,6 +3,7 @@ export * from './ports.js';
 export * from './authorize.js';
 export * from './usecases/resolve-identity.js';
 export * from './usecases/documents.js';
+export * from './usecases/document-types.js';
 export * from './usecases/document-comments.js';
 export * from './usecases/document-links.js';
 export * from './usecases/api-tokens.js';

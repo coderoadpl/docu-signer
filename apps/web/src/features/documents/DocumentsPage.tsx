@@ -49,7 +49,7 @@ import {
   documentSignatureStatusSchema,
   documentTypeSchema,
   type DocumentListItem,
-  type DocumentType,
+  type DocumentTypeSlug,
   type DocumentWithFiles,
   type UpdateDocument,
   type UserPreferenceValue,
@@ -76,12 +76,12 @@ import {
 } from '../../theme.js';
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import {
-  DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   FILE_ROLE_SHORT_LABELS,
   SIGNATURE_STATUS_LABELS,
   documentFiltersFromSearch,
   documentFilterSummary,
+  documentTypeLabel,
   documentsSearchFromState,
   documentsViewFromSearch,
   emptyDocumentFilters,
@@ -304,7 +304,7 @@ export const DocumentsPage = () => {
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkRemoveTag, setBulkRemoveTag] = useState('');
   const [bulkPerson, setBulkPerson] = useState('');
-  const [bulkDocType, setBulkDocType] = useState<DocumentType>('umowa-uod');
+  const [bulkDocType, setBulkDocType] = useState<DocumentTypeSlug>('');
   const [bulkLinkSearch, setBulkLinkSearch] = useState('');
   const [bulkLinkTargetId, setBulkLinkTargetId] = useState('');
   const [bulkLinkLabel, setBulkLinkLabel] = useState('');
@@ -321,6 +321,7 @@ export const DocumentsPage = () => {
   const [textFilter, setTextFilter] = useState(filters.text);
   const documentFilter = toDocumentFilter(filters);
   const documents = useQuery(actions.documents(documentFilter));
+  const documentTypes = useQuery(actions.documentTypes);
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const tenantAccounts = useQuery(actions.tenantAccounts);
   const columnPreference = useQuery(preferenceActions.userPreference(DOCUMENT_COLUMNS_KEY));
@@ -390,6 +391,7 @@ export const DocumentsPage = () => {
   };
   const filtersActive = hasDocumentFilter(documentFilter);
   const visibleDocuments = documents.data?.documents ?? EMPTY_DOCUMENT_LIST;
+  const typeOptions = documentTypes.data?.documentTypes ?? [];
   const groupedVisibleDocuments = useMemo(
     () => groupDocumentsCanonically(visibleDocuments),
     [visibleDocuments],
@@ -514,7 +516,9 @@ export const DocumentsPage = () => {
     if (dialog === 'add-tags') setBulkTags([]);
     if (dialog === 'remove-tag') setBulkRemoveTag(selectedTagOptions[0] ?? '');
     if (dialog === 'person') setBulkPerson('');
-    if (dialog === 'type') setBulkDocType(selectedDocuments[0]?.docType ?? 'umowa-uod');
+    if (dialog === 'type') {
+      setBulkDocType(selectedDocuments[0]?.docType ?? typeOptions[0]?.slug ?? '');
+    }
     if (dialog === 'link') {
       setBulkLinkSearch('');
       setBulkLinkTargetId('');
@@ -589,7 +593,7 @@ export const DocumentsPage = () => {
         <Chip
           size="small"
           variant="outlined"
-          label={DOCUMENT_TYPE_LABELS[document.docType]}
+          label={documentTypeLabel(typeOptions, document.docType)}
         />
       );
     }
@@ -696,9 +700,9 @@ export const DocumentsPage = () => {
               }}
             >
               <MenuItem value="">Wszystkie</MenuItem>
-              {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
-                <MenuItem key={value} value={value}>
-                  {label}
+              {typeOptions.map((documentType) => (
+                <MenuItem key={documentType.slug} value={documentType.slug}>
+                  {documentType.label}
                 </MenuItem>
               ))}
             </Select>
@@ -1369,6 +1373,7 @@ export const DocumentsPage = () => {
         <Suspense fallback={<LinearProgress aria-label="Ładowanie osi czasu" sx={{ mt: 3 }} />}>
           <LazyDocumentTimelineView
             documents={visibleDocuments}
+            documentTypes={typeOptions}
             onOpenDocument={(id) =>
               void navigate({
                 to: '/app/documents/$id',
@@ -1483,9 +1488,9 @@ export const DocumentsPage = () => {
                       setBulkDocType(documentTypeSchema.parse(event.target.value))
                     }
                   >
-                    {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
+                    {typeOptions.map((documentType) => (
+                      <MenuItem key={documentType.slug} value={documentType.slug}>
+                        {documentType.label}
                       </MenuItem>
                     ))}
                   </Select>
@@ -1618,6 +1623,7 @@ export const DocumentsPage = () => {
         title="Dodaj dokument"
         submitLabel="Dodaj dokument"
         pending={createDocument.isPending}
+        documentTypes={typeOptions}
         error={createDocument.error?.message}
         personOptions={personOptions}
         tagOptions={tagOptions}
@@ -1641,7 +1647,7 @@ export const DocumentsPage = () => {
             slotProps={{ htmlInput: { maxLength: 120 } }}
           />
           <Typography variant="body2" sx={{ mt: 2 }}>
-            {documentFilterSummary(documentFilter)}
+            {documentFilterSummary(documentFilter, typeOptions)}
           </Typography>
           {createSavedSearch.isError ? (
             <Alert severity="error" sx={{ mt: 2 }}>{createSavedSearch.error.message}</Alert>

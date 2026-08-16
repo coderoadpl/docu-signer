@@ -32,6 +32,20 @@ export const server = setupServer(
   http.get('*/api/saved-searches', () =>
     HttpResponse.json({ ok: true, data: { savedSearches: [] } }),
   ),
+  http.get('*/api/document-types', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        documentTypes: [
+          { slug: 'umowa-uod', label: 'Umowa UoD', position: 10 },
+          { slug: 'uchwala', label: 'Uchwała', position: 20 },
+          { slug: 'protokol', label: 'Protokół', position: 30 },
+          { slug: 'rachunek', label: 'Rachunek', position: 40 },
+          { slug: 'inny', label: 'Inny', position: 50 },
+        ],
+      },
+    }),
+  ),
   http.get('*/api/documents/trash', () =>
     HttpResponse.json({ ok: true, data: { documents: [] } }),
   ),

@@ -8,6 +8,7 @@ import type { Db } from './client.js';
 import { configuredSeedAdmins, ensureDeploySeed, ensureSeedAdmins } from './seed-admins.js';
 import {
   account,
+  documentTypes,
   members,
   tenantAdmins,
   tenantDomains,
@@ -118,6 +119,7 @@ describe('deploy admin seed', () => {
 
     expect(await db.select().from(members)).toEqual([]);
     expect(await db.select().from(todos)).toEqual([]);
+    expect(await db.select().from(documentTypes)).toHaveLength(5);
 
     const domainRows = await db.select().from(tenantDomains);
     expect(domainRows).toHaveLength(1);

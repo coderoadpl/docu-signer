@@ -6,6 +6,7 @@ import {
   createInvitationSchema,
   createApiTokenSchema,
   createDocumentSchema,
+  createDocumentTypeSchema,
   createDocumentCommentSchema,
   createSavedSearchSchema,
   createSignatureRecordSchema,
@@ -14,6 +15,7 @@ import {
   documentCommentListItemSchema,
   documentListItemSchema,
   documentListFilterSchema,
+  documentTypeDefinitionSchema,
   linkedDocumentSchema,
   linkDocumentsInputSchema,
   documentSchema,
@@ -45,6 +47,7 @@ import {
   setUserPreferenceSchema,
   staffRoleSchema,
   updateDocumentSchema,
+  renameDocumentTypeSchema,
   updateTenantSettingsSchema,
   userPreferenceKeySchema,
   userPreferenceSchema,
@@ -111,6 +114,26 @@ export const documentCreateInputSchema = createDocumentSchema;
 
 export const documentCreateOutputSchema = z.object({
   document: documentSchema,
+});
+
+export const documentTypeListOutputSchema = z.object({
+  documentTypes: z.array(documentTypeDefinitionSchema),
+});
+
+export const documentTypeCreateInputSchema = createDocumentTypeSchema;
+
+export const documentTypeCreateOutputSchema = z.object({
+  documentType: documentTypeDefinitionSchema,
+});
+
+export const documentTypeRenameInputSchema = renameDocumentTypeSchema;
+
+export const documentTypeRenameOutputSchema = z.object({
+  documentType: documentTypeDefinitionSchema,
+});
+
+export const documentTypeDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
 });
 
 export const documentGetOutputSchema = z.object({
@@ -422,6 +445,10 @@ export const API_ROUTES = {
   me: { method: 'GET', path: '/api/me' },
   documents: { method: 'GET', path: '/api/documents' },
   documentsCreate: { method: 'POST', path: '/api/documents' },
+  documentTypes: { method: 'GET', path: '/api/document-types' },
+  documentTypesCreate: { method: 'POST', path: '/api/document-types' },
+  documentTypeRename: { method: 'PATCH', path: '/api/document-types/:slug' },
+  documentTypeDelete: { method: 'DELETE', path: '/api/document-types/:slug' },
   documentsTrash: { method: 'GET', path: '/api/documents/trash' },
   document: { method: 'GET', path: '/api/documents/:documentId' },
   documentComments: { method: 'GET', path: '/api/documents/:documentId/comments' },

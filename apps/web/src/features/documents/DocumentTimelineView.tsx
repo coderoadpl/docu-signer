@@ -10,7 +10,7 @@ import {
 } from 'vis-timeline/standalone';
 import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
 
-import { type DocumentWithFiles } from '#core/domain/index.js';
+import { type DocumentType, type DocumentWithFiles } from '#core/domain/index.js';
 
 import {
   DOCUMENT_TYPE_COLORS,
@@ -43,7 +43,7 @@ const options: TimelineOptions = {
 
 const docTypePalette = Object.fromEntries(
   Object.entries(DOCUMENT_TYPE_COLORS).map(([docType, color]) => [
-    `& .doc--${docType}`,
+    `& .vis-item.doc.doc--${docType}`,
     { '--doc-color': color, '--doc-tint': `${color}14` },
   ]),
 );
@@ -69,7 +69,13 @@ const timelineSx = {
   '& .vis-time-axis .vis-grid.vis-minor, & .vis-grid.vis-vertical': { borderColor: 'divider' },
   '& .vis-panel': { backgroundColor: 'background.paper', borderColor: 'divider' },
   ...docTypePalette,
-  '& .vis-item.doc': { color: 'var(--doc-color)', fontSize: 13, fontWeight: 600 },
+  '& .vis-item.doc': {
+    '--doc-color': DOCUMENT_TYPE_COLORS.inny,
+    '--doc-tint': `${DOCUMENT_TYPE_COLORS.inny}14`,
+    color: 'var(--doc-color)',
+    fontSize: 13,
+    fontWeight: 600,
+  },
   // Chips keep their full width whatever the period measures, so a title is
   // never sliced by the bar it belongs to.
   '& .vis-item.doc .vis-item-overflow': { overflow: 'visible' },
@@ -102,9 +108,11 @@ const timelineSx = {
 
 export const DocumentTimelineView = ({
   documents,
+  documentTypes,
   onOpenDocument,
 }: {
   documents: DocumentWithFiles[];
+  documentTypes: DocumentType[];
   onOpenDocument: (documentId: string) => void;
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -113,8 +121,8 @@ export const DocumentTimelineView = ({
   const groupsRef = useRef<DataSet<DataGroup> | null>(null);
   const onOpenDocumentRef = useRef(onOpenDocument);
   const data = useMemo(
-    () => toVisTimelineData(groupDocumentsForTimeline(documents)),
-    [documents],
+    () => toVisTimelineData(groupDocumentsForTimeline(documents), documentTypes),
+    [documents, documentTypes],
   );
 
   useEffect(() => {

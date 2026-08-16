@@ -190,6 +190,13 @@
       "when": 1786891659467,
       "tag": "0026_low_dexter_bennett",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1786902398574,
+      "tag": "0027_material_firestar",
+      "breakpoints": true
     }
   ]
 }

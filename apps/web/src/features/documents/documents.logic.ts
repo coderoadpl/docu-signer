@@ -8,6 +8,7 @@ import {
   type DocumentSignatureStatus,
   type SavedSearchFilter,
   type DocumentType,
+  type DocumentTypeSlug,
   type DocumentWithFiles,
   type UpdateDocument,
   documentSignatureStatusSchema,
@@ -15,21 +16,18 @@ import {
 } from '#core/domain/index.js';
 import { formatPolishDate } from '../../lib/format-date.js';
 
-export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  'umowa-uod': 'Umowa UoD',
-  uchwala: 'Uchwała',
-  protokol: 'Protokół',
-  rachunek: 'Rachunek',
-  inny: 'Inny',
-};
-
-export const DOCUMENT_TYPE_COLORS: Record<DocumentType, string> = {
+export const DOCUMENT_TYPE_COLORS = {
   'umowa-uod': '#385171',
   uchwala: '#7a5c8f',
   protokol: '#2f855a',
   rachunek: '#b36b1f',
   inny: '#5a6572',
-};
+} as const;
+
+export const documentTypeLabel = (
+  documentTypes: readonly DocumentType[],
+  slug: string,
+): string => documentTypes.find((documentType) => documentType.slug === slug)?.label ?? slug;
 
 export const FILE_ROLE_LABELS: Record<DocumentFileRole, string> = {
   source: 'Źródło',
@@ -53,7 +51,7 @@ export const SIGNATURE_STATUS_LABELS: Record<DocumentSignatureStatus, string> = 
 
 export interface DocumentFormValues {
   title: string;
-  docType: DocumentType;
+  docType: DocumentTypeSlug;
   documentDate: string;
   periodStart: string;
   periodEnd: string;
@@ -63,7 +61,7 @@ export interface DocumentFormValues {
 
 export interface DocumentFilterValues {
   text: string;
-  docType: DocumentType | '';
+  docType: DocumentTypeSlug | '';
   person: string;
   tag: string;
   dateFrom: string;
@@ -196,9 +194,9 @@ export const documentsSearchFromState = (
   ...(values.dateTo ? { do: values.dateTo } : {}),
 });
 
-export const emptyDocumentForm = (): DocumentFormValues => ({
+export const emptyDocumentForm = (docType: DocumentTypeSlug = 'umowa-uod'): DocumentFormValues => ({
   title: '',
-  docType: 'umowa-uod',
+  docType,
   documentDate: '',
   periodStart: '',
   periodEnd: '',
@@ -236,7 +234,7 @@ export const suggestDocumentDate = (
 
 export const toDocumentFilter = (values: {
   text: string;
-  docType: DocumentType | '';
+  docType: DocumentTypeSlug | '';
   person: string;
   tag: string;
   dateFrom: string;
@@ -301,7 +299,7 @@ export type CanonicalGroupedDocumentInput = Pick<
   'docType' | 'documentDate' | 'periodStart' | 'periodEnd' | 'person'
 >;
 
-const DOC_TYPE_PRECEDENCE: Partial<Record<DocumentType, number>> = {
+const DOC_TYPE_PRECEDENCE: Partial<Record<DocumentTypeSlug, number>> = {
   'umowa-uod': 0,
   protokol: 1,
   rachunek: 2,
@@ -387,10 +385,13 @@ export const groupDocumentsCanonically = <
     });
 };
 
-export const documentFilterSummary = (filter: SavedSearchFilter): string => {
+export const documentFilterSummary = (
+  filter: SavedSearchFilter,
+  documentTypes: readonly DocumentType[],
+): string => {
   const parts = [
     filter.text ? `Tytuł: ${filter.text}` : '',
-    filter.docType ? `Typ: ${DOCUMENT_TYPE_LABELS[filter.docType]}` : '',
+    filter.docType ? `Typ: ${documentTypeLabel(documentTypes, filter.docType)}` : '',
     filter.person ? `Osoba: ${filter.person}` : '',
     filter.tag ? `Tag: ${filter.tag}` : '',
     filter.dateFrom ? `Od: ${formatPolishDate(filter.dateFrom)}` : '',
@@ -607,7 +608,7 @@ export interface TimelineInterval {
 export interface TimelineDocument extends TimelineInterval {
   id: string;
   title: string;
-  docType: DocumentType;
+  docType: DocumentTypeSlug;
   instant: boolean;
   signed: boolean;
 }
@@ -719,17 +720,21 @@ const escapeHtml = (value: string): string =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
-const timelineDocumentTooltip = (document: TimelineDocument): string => {
+const timelineDocumentTooltip = (
+  document: TimelineDocument,
+  documentTypes: readonly DocumentType[],
+): string => {
   const dates = document.instant
     ? formatPolishDate(document.start)
     : `${formatPolishDate(document.start)} - ${formatPolishDate(document.end)}`;
-  return `${escapeHtml(document.title)}\n${DOCUMENT_TYPE_LABELS[document.docType]}\n${dates}\n${
+  return `${escapeHtml(document.title)}\n${escapeHtml(documentTypeLabel(documentTypes, document.docType))}\n${dates}\n${
     SIGNATURE_STATUS_LABELS[document.signed ? 'signed' : 'needs-signature']
   }`;
 };
 
 export const toVisTimelineData = (
   timelineGroups: TimelineGroup[],
+  documentTypes: readonly DocumentType[],
 ): { items: VisTimelineItem[]; groups: VisTimelineGroup[] } => {
   const groups = [...timelineGroups].sort((left, right) =>
     left.person.localeCompare(right.person, 'pl'),
@@ -751,7 +756,7 @@ export const toVisTimelineData = (
         className: `doc doc--${document.docType} ${
           document.signed ? 'is-signed' : 'is-unsigned'
         }`,
-        title: timelineDocumentTooltip(document),
+        title: timelineDocumentTooltip(document, documentTypes),
       })),
     ),
   };

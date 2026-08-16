@@ -7,15 +7,12 @@ const MAX_DOCUMENT_EXPORT_DOCUMENTS = 100;
 export const MAX_DOCUMENT_EXPORT_FILES = 100;
 export const MAX_DOCUMENT_EXPORT_BYTES = 256 * 1024 * 1024;
 
-export const documentTypeSchema = z.enum([
-  'umowa-uod',
-  'uchwala',
-  'protokol',
-  'rachunek',
-  'inny',
-]);
+export const documentTypeSchema = z
+  .string()
+  .max(64)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
 
-export type DocumentType = z.infer<typeof documentTypeSchema>;
+export type DocumentTypeSlug = z.infer<typeof documentTypeSchema>;
 
 const documentFileRoleSchema = z.enum([
   'source',
@@ -151,7 +148,7 @@ const documentListFilterSchemaOf = () =>
 export const documentListFilterSchema = documentListFilterSchemaOf();
 
 export interface DocumentListFilter {
-  docType?: DocumentType | undefined;
+  docType?: DocumentTypeSlug | undefined;
   person?: string | undefined;
   tag?: string | undefined;
   text?: string | undefined;

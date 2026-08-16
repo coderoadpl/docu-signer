@@ -36,7 +36,7 @@ import {
   type DocumentFile,
   type DocumentFileRole,
   type SourceUpdateRequest,
-  type DocumentType,
+  type DocumentTypeSlug,
 } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
@@ -47,10 +47,10 @@ import { DocumentCommentBody, FileDropZone, NoWrapButton } from '../../theme.js'
 import { DocumentFormDialog } from './DocumentFormDialog.js';
 import { SourceUpdateDialog } from './SourceUpdateDialog.js';
 import {
-  DOCUMENT_TYPE_LABELS,
   FILE_ROLE_LABELS,
   canSignPdfFile,
   documentFiltersFromSearch,
+  documentTypeLabel,
   documentsSearchFromState,
   documentsViewFromSearch,
   fileNameStem,
@@ -386,6 +386,7 @@ export const DocumentDetailPage = ({
   const search = useSearch({ from: '/app/documents/$id' });
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
+  const documentTypesQuery = useQuery(actions.documentTypes);
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const documentLinksQuery = useQuery(actions.documentLinks(documentId));
   const documentCommentsQuery = useQuery(actions.documentComments(documentId));
@@ -401,7 +402,7 @@ export const DocumentDetailPage = ({
   const [fileToDelete, setFileToDelete] = useState<DocumentFile>();
   const [fileToMove, setFileToMove] = useState<DocumentFile>();
   const [moveTitle, setMoveTitle] = useState('');
-  const [moveDocType, setMoveDocType] = useState<DocumentType>('umowa-uod');
+  const [moveDocType, setMoveDocType] = useState<DocumentTypeSlug>('');
   const [uploadingRole, setUploadingRole] = useState<DocumentFileRole>();
   const [sourceUpdateOpen, setSourceUpdateOpen] = useState(false);
   const [documentLinkOpen, setDocumentLinkOpen] = useState(false);
@@ -553,6 +554,7 @@ export const DocumentDetailPage = ({
   }
 
   const document = documentQuery.data.document;
+  const typeOptions = documentTypesQuery.data?.documentTypes ?? [];
   const isTrashed = document.deletedAt !== null;
   const isDraft = document.draft;
   const activeSourceUpdate = sourceUpdateRequestQuery.data?.request ?? null;
@@ -750,7 +752,7 @@ export const DocumentDetailPage = ({
             <Typography variant="h1">{document.title}</Typography>
             <Chip
               variant="outlined"
-              label={DOCUMENT_TYPE_LABELS[document.docType]}
+              label={documentTypeLabel(typeOptions, document.docType)}
             />
             {isDraft ? <Chip color="warning" variant="outlined" label="Szkic" /> : null}
             {document.signatureNotRequired ? (
@@ -1199,6 +1201,7 @@ export const DocumentDetailPage = ({
           person: document.person ?? '',
           tags: document.tags,
         }}
+        documentTypes={typeOptions}
         pending={updateDocument.isPending}
         error={updateDocument.error?.message}
         personOptions={personOptions}
@@ -1339,9 +1342,9 @@ export const DocumentDetailPage = ({
                   setMoveDocType(documentTypeSchema.parse(event.target.value))
                 }
               >
-                {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
-                  <MenuItem key={value} value={value}>
-                    {label}
+                {typeOptions.map((documentType) => (
+                  <MenuItem key={documentType.slug} value={documentType.slug}>
+                    {documentType.label}
                   </MenuItem>
                 ))}
               </Select>

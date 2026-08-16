@@ -248,6 +248,43 @@ describe('API client', () => {
     expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
+  it('calls document type dictionary routes through the contract', async () => {
+    const documentType = { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 60 };
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
+      if (init?.method === 'PATCH') {
+        return json({ ok: true, data: { documentType: { ...documentType, label: 'Kontrakt' } } });
+      }
+      if (init?.method === 'POST') return json({ ok: true, data: { documentType } });
+      return json({ ok: true, data: { documentTypes: [documentType] } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(api.listDocumentTypes()).resolves.toMatchObject({
+      ok: true,
+      value: { documentTypes: [documentType] },
+    });
+    await api.createDocumentType({ label: 'Umowa z klientem' });
+    await api.renameDocumentType(documentType.slug, { label: 'Kontrakt' });
+    await api.deleteDocumentType(documentType.slug);
+
+    expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toEqual([
+      '/api/document-types',
+      '/api/document-types',
+      '/api/document-types/umowa-z-klientem',
+      '/api/document-types/umowa-z-klientem',
+    ]);
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ label: 'Umowa z klientem' }),
+    });
+    expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ label: 'Kontrakt' }),
+    });
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'DELETE' });
+  });
+
   it('calls document approval, API token and preference routes through the contract', async () => {
     const token = {
       id: '22222222-2222-4222-8222-222222222222',

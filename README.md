@@ -60,6 +60,7 @@ pnpm --silent run cli document upload <id> agreement.pdf --role source
 pnpm --silent run cli document verify-seal <id>
 pnpm --silent run cli document export <id> --output agreement.zip
 pnpm --silent run cli tenant-settings set --pdf-seal-enabled true --date-mode declared
+pnpm --silent run cli document-type add "Umowa z klientem"
 pnpm --silent run cli --json whoami                    # single JSON document on stdout
 pnpm --silent run cli logout                           # drops the stored token
 ```
@@ -68,12 +69,13 @@ Inside this repository the CLI defaults to
 `http://default.localhost:47100`, matching the tenant host created by the dev
 seed. Use `--api-url` or `APP_CLI_API_URL` to target another origin.
 
-Full command set (<!--count:cli-command-groups-->13<!--/count--> top-level groups):
+Full command set (<!--count:cli-command-groups-->14<!--/count--> top-level groups):
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
 `origin list|use`, `account change-password|request-password-reset`,
 `tenant-settings show|set`,
+`document-type list|add|rename|remove`,
 `document list|trash-list|search|show|comment|add|link|unlink|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
-`token create|list|revoke`, `public profile`.
+`token create|list|revoke`, `invitation create|list|revoke`, `public profile`.
 
 `document link <targetId> <id...> [--label <text>]` links every listed document
 to one target and reports an outcome for each pair in `--json` mode.
@@ -126,7 +128,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`,
   server ↔ Vercel CSP sync, dead links), and vitest with coverage across
-  **<!--count:test-files-->111<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->114<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → document archive →
@@ -138,7 +140,7 @@ Dependency lifecycle scripts are blocked unless explicitly named in
 configuration applies a three-day (`4320` minute) minimum-release-age cooldown.
 
 Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
-<!--count:integration-tests-->28<!--/count--> integration tests against a real
+<!--count:integration-tests-->30<!--/count--> integration tests against a real
 Postgres and <!--count:e2e-tests-->32<!--/count--> Playwright test executions
 across <!--count:e2e-specs-->6<!--/count--> spec files: Chromium covers all
 six, and WebKit reruns `documents.spec.ts` to pin the Safari/pdf.js legacy

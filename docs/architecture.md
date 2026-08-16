@@ -1119,6 +1119,7 @@ code.
   captured links over its HTTP API. The auth mail senders in `create-auth.ts`
   are consumers of `sendMail`, not the port's shape.
 - `DocumentRepository`: tenant-scoped archive metadata and file records.
+- `DocumentTypeRepository`: tenant-scoped document-type dictionary and usage lookup.
 - `DocumentLinkRepository`: tenant-scoped, bidirectional related-document pairs.
 - `TenantSettingsRepository`: tenant-scoped signature-record retention, PDF-seal
   enablement and declared/actual date policy.

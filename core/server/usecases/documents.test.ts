@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   err,
+  DEFAULT_DOCUMENT_TYPES,
   internal,
   MAX_DOCUMENT_EXPORT_BYTES,
   MAX_DOCUMENT_FILE_BYTES,
@@ -371,6 +372,15 @@ const fake = (
   const ids = [...idSequence];
   const deps: DocumentDeps = {
     documents: repo,
+    documentTypes: {
+      listByTenant: async () => [...DEFAULT_DOCUMENT_TYPES],
+      findBySlug: async (_tenantId, slug) =>
+        DEFAULT_DOCUMENT_TYPES.find((documentType) => documentType.slug === slug) ?? null,
+      create: async () => null,
+      rename: async () => null,
+      delete: async () => false,
+      isUsedByAnyDocument: async () => false,
+    },
     storage,
     ids: { nextId: () => ids.shift() ?? fileId },
   };
@@ -508,6 +518,7 @@ describe('documents use-cases', () => {
         vi.spyOn(state.deps.documents, 'findFile'),
         vi.spyOn(state.deps.documents, 'moveFileToDocument'),
         vi.spyOn(state.deps.documents, 'deleteFile'),
+        vi.spyOn(state.deps.documentTypes, 'findBySlug'),
       ];
       const result = await testCase.run(state.deps);
       expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
@@ -592,6 +603,20 @@ describe('documents use-cases', () => {
       value: undefined,
     });
     expect(state.documents[1]?.deletedAt).toBe('2026-07-03T10:00:00.000Z');
+  });
+
+  it('rejects document creation when the type is not in the tenant dictionary', async () => {
+    const state = fake();
+    state.deps.documentTypes.findBySlug = async () => null;
+
+    await expect(
+      createDocument(
+        ctx(staff('tenant-acme')),
+        { ...createInput, docType: 'umowa-z-klientem' },
+        state.deps,
+      ),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(state.documents).toHaveLength(0);
   });
 
   it('returns the seal flag loaded with document detail files', async () => {

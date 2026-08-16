@@ -16,6 +16,7 @@ import {
   type AcceptInvitation,
   type CreateApiToken,
   type CreateDocument,
+  type CreateDocumentType,
   type CreateDocumentComment,
   type CreateInvitation,
   type CreateSavedSearch,
@@ -29,6 +30,7 @@ import {
   type FileUploadRequest,
   type FinalizeFileUpload,
   type MoveDocumentFile,
+  type RenameDocumentType,
   type PadCurrentDocument,
   type PadSessionMode,
   type PadStrokeSubmission,
@@ -130,6 +132,11 @@ const documentsScopes = {
     ['documents', 'detail', documentId, 'file', fileId] as const,
 };
 
+const documentTypeScopes = {
+  all: () => ['document-types'] as const,
+  lists: () => ['document-types', 'list'] as const,
+};
+
 const documentLinksScopes = {
   all: () => ['document-links'] as const,
   document: (documentId: string) => ['document-links', documentId] as const,
@@ -222,6 +229,37 @@ export const documentsQuery = (api: ApiClient, filter: DocumentListFilter = {}) 
     queryKey: documentsScopes.list(filter),
     call: ({ signal }) => api.listDocuments(filter, signal),
   });
+
+export const documentTypesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: documentTypeScopes.lists(),
+    call: ({ signal }) => api.listDocumentTypes(signal),
+  });
+
+export const createDocumentTypeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentTypeScopes.all(), 'create'],
+    call: (input: CreateDocumentType) => api.createDocumentType(input),
+  });
+
+export const renameDocumentTypeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentTypeScopes.all(), 'rename'],
+    call: ({ slug, input }: { slug: string; input: RenameDocumentType }) =>
+      api.renameDocumentType(slug, input),
+  });
+
+export const deleteDocumentTypeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentTypeScopes.all(), 'delete'],
+    call: (slug: string) => api.deleteDocumentType(slug),
+  });
+
+export const documentTypesInvalidates = (): Array<{ queryKey: readonly unknown[] }> => [
+  { queryKey: documentTypeScopes.all() },
+  { queryKey: documentsScopes.all() },
+  { queryKey: savedSearchScopes.all() },
+];
 
 export const trashedDocumentsQuery = (api: ApiClient) =>
   defineQuery({

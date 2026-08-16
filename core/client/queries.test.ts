@@ -11,6 +11,7 @@ import {
   changePasswordMutation,
   createApiTokenMutation,
   createDocumentMutation,
+  createDocumentTypeMutation,
   createSavedSearchMutation,
   createSignatureRecordMutation,
   createSourceUpdateRequestMutation,
@@ -18,10 +19,13 @@ import {
   decideSourceUpdateRequestMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
+  deleteDocumentTypeMutation,
   deleteDocumentCommentMutation,
   deleteSavedSearchMutation,
   directFileUploadMutation,
   documentQuery,
+  documentTypesInvalidates,
+  documentTypesQuery,
   documentCommentsInvalidates,
   documentCommentsQuery,
   documentLinksInvalidates,
@@ -40,6 +44,7 @@ import {
   resetPasswordMutation,
   requestFileUploadMutation,
   restoreDocumentMutation,
+  renameDocumentTypeMutation,
   revokeApiTokenMutation,
   savedSearchesInvalidates,
   savedSearchesQuery,
@@ -429,6 +434,43 @@ describe('saved search query descriptors', () => {
     await expect(
       observe(deleteSavedSearchMutation(api)).mutate(savedSearch.id),
     ).resolves.toEqual({ deleted: true });
+  });
+});
+
+describe('document type query descriptors', () => {
+  it('executes list/create/rename/delete and invalidates label consumers', async () => {
+    const documentType = { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 60 };
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'GET') return response({ documentTypes: [documentType] });
+      if (init?.method === 'DELETE') return response({ deleted: true });
+      return response({ documentType });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const client = newClient();
+    const observe = <TData, TVariables>(
+      descriptor: ConstructorParameters<typeof MutationObserver<TData, Error, TVariables>>[1],
+    ) => new MutationObserver(client, descriptor);
+
+    await expect(client.fetchQuery(documentTypesQuery(api))).resolves.toEqual({
+      documentTypes: [documentType],
+    });
+    await expect(
+      observe(createDocumentTypeMutation(api)).mutate({ label: documentType.label }),
+    ).resolves.toEqual({ documentType });
+    await expect(
+      observe(renameDocumentTypeMutation(api)).mutate({
+        slug: documentType.slug,
+        input: { label: 'Kontrakt' },
+      }),
+    ).resolves.toEqual({ documentType });
+    await expect(
+      observe(deleteDocumentTypeMutation(api)).mutate(documentType.slug),
+    ).resolves.toEqual({ deleted: true });
+    expect(documentTypesInvalidates()).toEqual([
+      { queryKey: ['document-types'] },
+      { queryKey: ['documents'] },
+      { queryKey: ['saved-searches'] },
+    ]);
   });
 });
 
