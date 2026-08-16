@@ -2,6 +2,9 @@ import type {
   AppError,
   ApiToken,
   Document,
+  DocumentComment,
+  DocumentCommentCursor,
+  DocumentCommentListItem,
   DocumentFile,
   DocumentLink,
   DocumentListFilter,
@@ -89,6 +92,22 @@ export interface DocumentRepository {
     targetDocumentId: string,
   ): Promise<DocumentFile | null>;
   deleteFile(tenantId: string, documentId: string, fileId: string): Promise<boolean>;
+}
+
+export interface DocumentCommentRepository {
+  listByDocument(
+    tenantId: string,
+    documentId: string,
+    cursor: DocumentCommentCursor | null,
+    limit: number,
+  ): Promise<DocumentCommentListItem[]>;
+  create(input: Omit<DocumentComment, 'createdAt'>): Promise<DocumentCommentListItem>;
+  findById(
+    tenantId: string,
+    documentId: string,
+    commentId: string,
+  ): Promise<DocumentComment | null>;
+  delete(tenantId: string, documentId: string, commentId: string): Promise<boolean>;
 }
 
 export interface DocumentLinkRepository {

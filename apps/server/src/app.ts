@@ -10,6 +10,8 @@ import {
   invitationCreateInputSchema,
   TENANT_HEADER,
   documentCreateInputSchema,
+  documentCommentCreateInputSchema,
+  documentCommentListInputSchema,
   documentLinkCreateInputSchema,
   documentFileMoveInputSchema,
   documentListInputSchema,
@@ -46,6 +48,7 @@ import {
 } from '#core/domain/index.js';
 import {
   approveDocument,
+  addDocumentComment,
   createApiToken,
   createInvitation,
   createDocument,
@@ -61,6 +64,7 @@ import {
   cancelSourceUpdateRequest,
   completeSourceUpdateRequest,
   deleteDocument,
+  deleteDocumentComment,
   deleteSavedSearch,
   exportDocuments,
   finalizeFileUpload,
@@ -75,6 +79,7 @@ import {
   joinOwnPadSession,
   linkDocuments,
   listDocuments,
+  listDocumentComments,
   listDocumentLinks,
   listApiTokens,
   listInvitations,
@@ -662,6 +667,48 @@ export const buildApp = (deps: AppDeps) => {
   app.get(API_ROUTES.document.path, async (c) => {
     const result = await getDocument(ctxOf(c.get('identity')), c.req.param('documentId'), deps);
     return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.documentComments.path, async (c) => {
+    const parsed = documentCommentListInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document comment pagination', parsed.error.flatten())));
+    }
+    const result = await listDocumentComments(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result);
+  });
+
+  app.post(API_ROUTES.documentCommentCreate.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentCommentCreateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document comment', parsed.error.flatten())));
+    }
+    const result = await addDocumentComment(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ comment: result.value }) : result);
+  });
+
+  app.delete(API_ROUTES.documentCommentDelete.path, async (c) => {
+    const result = await deleteDocumentComment(
+      ctxOf(c.get('identity')),
+      c.req.param('documentId'),
+      c.req.param('commentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ deleted: true as const }) : result);
   });
 
   app.patch(API_ROUTES.documentUpdate.path, async (c) => {

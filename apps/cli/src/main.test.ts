@@ -9,6 +9,7 @@ import { appError, err, ok } from '#core/domain/index.js';
 import {
   documentListFilterFromOptions,
   linkDocumentsToTarget,
+  listAllDocumentComments,
   loginCredentialSelectionIsValid,
   normalizeStdinPassword,
   runLoginAction,
@@ -91,6 +92,7 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('require-signature');
     expect(documentHelp.stdout).toContain('link');
     expect(documentHelp.stdout).toContain('unlink');
+    expect(documentHelp.stdout).toContain('comment');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
     expect(listHelp.stdout).toContain('--signer <accountId>');
@@ -112,6 +114,15 @@ describe('CLI command surface', () => {
       '22222222-2222-4222-8222-222222222222',
       'bad-id',
     );
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('maps an invalid comment document ID to the validation exit code', () => {
+    const result = run('--json', 'document', 'comment', 'bad-id', 'Treść');
     expect(result.status).toBe(2);
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
@@ -271,6 +282,45 @@ describe('document show signature-records probe', () => {
 
   it('degrades to null when the probe is denied, so token callers still get the document', () => {
     expect(signatureRecordsProbeResult(err(appError('forbidden', 'denied')))).toBeNull();
+  });
+});
+
+describe('document show comments', () => {
+  it('collects every paginated comment for show output', async () => {
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const first = {
+      id: '22222222-2222-4222-8222-222222222222',
+      tenantId: 'tenant-default',
+      documentId,
+      author: { accountId: 'user-owner', name: 'Owner' },
+      body: 'Pierwszy',
+      createdAt: '2026-08-16T10:00:00.000Z',
+    };
+    const second = {
+      ...first,
+      id: '33333333-3333-4333-8333-333333333333',
+      body: 'Drugi',
+    };
+    const fetchImpl = vi.fn<typeof fetch>((input) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            data: String(input).includes('cursor=next')
+              ? { items: [second], nextCursor: null }
+              : { items: [first], nextCursor: 'next' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(listAllDocumentComments(api, documentId)).resolves.toEqual({
+      ok: true,
+      value: { items: [first, second], nextCursor: null },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -16,12 +16,14 @@ import {
   type AcceptInvitation,
   type CreateApiToken,
   type CreateDocument,
+  type CreateDocumentComment,
   type CreateInvitation,
   type CreateSavedSearch,
   type CreateSignatureRecord,
   type CreateSourceUpdateRequest,
   type DecideSourceUpdateRequest,
   type DocumentListFilter,
+  type DocumentCommentListItem,
   type LinkDocumentsInput,
   type ExportDocuments,
   type FileUploadRequest,
@@ -133,6 +135,11 @@ const documentLinksScopes = {
   document: (documentId: string) => ['document-links', documentId] as const,
 };
 
+const documentCommentScopes = {
+  all: () => ['document-comments'] as const,
+  document: (documentId: string) => ['document-comments', documentId] as const,
+};
+
 export const documentLinksInvalidates = () => ({ queryKey: documentLinksScopes.all() });
 
 const savedSearchScopes = {
@@ -233,6 +240,53 @@ export const documentLinksQuery = (api: ApiClient, documentId: string) =>
     queryKey: documentLinksScopes.document(documentId),
     call: ({ signal }) => api.listDocumentLinks(documentId, signal),
   });
+
+const listAllDocumentComments = async (
+  api: ApiClient,
+  documentId: string,
+  signal: AbortSignal,
+) => {
+  const items: DocumentCommentListItem[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await api.listDocumentComments(
+      documentId,
+      {
+        limit: MAX_PAGE_LIMIT,
+        ...(cursor === undefined ? {} : { cursor }),
+      },
+      signal,
+    );
+    if (!page.ok) return page;
+    items.push(...page.value.items);
+    cursor = page.value.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return ok({ items, nextCursor: null });
+};
+
+export const documentCommentsQuery = (api: ApiClient, documentId: string) =>
+  defineQuery({
+    queryKey: documentCommentScopes.document(documentId),
+    call: ({ signal }) => listAllDocumentComments(api, documentId, signal),
+  });
+
+export const addDocumentCommentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentCommentScopes.all(), 'create'],
+    call: ({ documentId, input }: { documentId: string; input: CreateDocumentComment }) =>
+      api.addDocumentComment(documentId, input),
+  });
+
+export const deleteDocumentCommentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentCommentScopes.all(), 'delete'],
+    call: ({ documentId, commentId }: { documentId: string; commentId: string }) =>
+      api.deleteDocumentComment(documentId, commentId),
+  });
+
+export const documentCommentsInvalidates = (documentId: string) => ({
+  queryKey: documentCommentScopes.document(documentId),
+});
 
 export const documentFileQuery = (
   api: ApiClient,

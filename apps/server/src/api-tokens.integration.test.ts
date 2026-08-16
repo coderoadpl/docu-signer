@@ -11,6 +11,7 @@ import {
 import { createDb } from '#adapters/db/client.js';
 import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
+import { createDocumentCommentRepository } from '#adapters/db/document-comments-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createUserPreferenceRepository } from '#adapters/db/user-preferences-repository.js';
 import { createTenantSettingsRepository } from '#adapters/db/tenant-settings-repository.js';
@@ -159,6 +160,7 @@ beforeAll(async () => {
     invitationRateLimitEnabled: false,
     emailConfigured: false,
     documents: createDocumentRepository(db),
+    documentComments: createDocumentCommentRepository(db),
     documentLinks: {
       create: async () => null,
       findBetween: async () => null,

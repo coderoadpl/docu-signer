@@ -14,6 +14,7 @@ import {
   PAD_STROKES_TOO_LARGE_MESSAGE,
   ok,
   type Document,
+  type DocumentComment,
   type DocumentListFilter,
   type PadSession,
   type PadQueuedSubmission,
@@ -100,6 +101,19 @@ const baseDeps = (): AppDeps => ({
     findFile: async () => null,
     moveFileToDocument: async () => null,
     deleteFile: async () => false,
+  },
+  documentComments: {
+    listByDocument: async () => [],
+    create: async (input) => ({
+      id: input.id,
+      tenantId: input.tenantId,
+      documentId: input.documentId,
+      author: { accountId: input.authorAccountId, name: 'Demo' },
+      body: input.body,
+      createdAt: '2026-08-16T10:00:00.000Z',
+    }),
+    findById: async () => null,
+    delete: async () => false,
   },
   documentLinks: {
     create: async () => null,
@@ -297,6 +311,88 @@ describe('buildApp', () => {
       method: 'POST',
       headers,
     })).status).toBe(200);
+  });
+
+  it('creates, lists, and deletes document comments through contract routes', async () => {
+    const deps = authorizedDeps();
+    const documentId = '22222222-2222-4222-8222-222222222222';
+    const commentId = '11111111-1111-4111-8111-111111111111';
+    const row: Document = {
+      id: documentId,
+      tenantId: tenant.id,
+      title: 'Umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-16',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      draft: false,
+      signatureNotRequired: false,
+      createdAt: '2026-08-16T10:00:00.000Z',
+      updatedAt: '2026-08-16T10:00:00.000Z',
+      deletedAt: null,
+    };
+    let comment: DocumentComment | null = null;
+    deps.documents.findById = async () => row;
+    deps.documents.findAnyById = async () => row;
+    deps.documentComments = {
+      listByDocument: async () =>
+        comment
+          ? [
+              {
+                id: comment.id,
+                tenantId: comment.tenantId,
+                documentId: comment.documentId,
+                author: { accountId: comment.authorAccountId, name: 'Demo' },
+                body: comment.body,
+                createdAt: comment.createdAt,
+              },
+            ]
+          : [],
+      create: async (input) => {
+        comment = { ...input, createdAt: '2026-08-16T12:00:00.000Z' };
+        return {
+          id: input.id,
+          tenantId: input.tenantId,
+          documentId: input.documentId,
+          author: { accountId: input.authorAccountId, name: 'Demo' },
+          body: input.body,
+          createdAt: '2026-08-16T12:00:00.000Z',
+        };
+      },
+      findById: async () => comment,
+      delete: async () => {
+        comment = null;
+        return true;
+      },
+    };
+    const path = API_ROUTES.documentComments.path.replace(':documentId', documentId);
+    const headers = { [TENANT_HEADER]: tenant.slug };
+    const created = await buildApp(deps).request(path, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ body: '  Do sprawdzenia  ' }),
+    });
+    expect(created.status).toBe(200);
+    expect(await created.json()).toMatchObject({
+      ok: true,
+      data: { comment: { id: commentId, body: 'Do sprawdzenia' } },
+    });
+
+    const listed = await buildApp(deps).request(path, { headers });
+    expect(await listed.json()).toMatchObject({
+      ok: true,
+      data: { items: [{ author: { name: 'Demo' } }] },
+    });
+
+    const deleted = await buildApp(deps).request(
+      API_ROUTES.documentCommentDelete.path
+        .replace(':documentId', documentId)
+        .replace(':commentId', commentId),
+      { method: 'DELETE', headers },
+    );
+    expect(await deleted.json()).toEqual({ ok: true, data: { deleted: true } });
   });
 
   it('rate-limits public invitation acceptance before account provisioning', async () => {

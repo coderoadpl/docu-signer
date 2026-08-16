@@ -7,6 +7,7 @@ import {
   apiTokensQuery,
   activeSourceUpdateRequestQuery,
   cancelSourceUpdateRequestMutation,
+  addDocumentCommentMutation,
   changePasswordMutation,
   createApiTokenMutation,
   createDocumentMutation,
@@ -17,9 +18,12 @@ import {
   decideSourceUpdateRequestMutation,
   deleteDocumentFileMutation,
   deleteDocumentMutation,
+  deleteDocumentCommentMutation,
   deleteSavedSearchMutation,
   directFileUploadMutation,
   documentQuery,
+  documentCommentsInvalidates,
+  documentCommentsQuery,
   documentLinksInvalidates,
   documentLinksQuery,
   documentsInvalidates,
@@ -158,6 +162,56 @@ describe('document query descriptors', () => {
       }),
     ).resolves.toEqual({ deleted: true });
     expect(documentLinksInvalidates()).toEqual({ queryKey: ['document-links'] });
+  });
+
+  it('binds paginated document comment queries and mutations', async () => {
+    const first = {
+      id: '55555555-5555-4555-8555-555555555555',
+      tenantId: 'tenant-default',
+      documentId: document.id,
+      author: { accountId: 'user-1', name: 'Owner' },
+      body: 'Pierwszy',
+      createdAt: '2026-08-16T10:00:00.000Z',
+    };
+    const second = {
+      ...first,
+      id: '66666666-6666-4666-8666-666666666666',
+      body: 'Drugi',
+      createdAt: '2026-08-16T11:00:00.000Z',
+    };
+    const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      if (init?.method === 'POST') return response({ comment: first });
+      if (init?.method === 'DELETE') return response({ deleted: true });
+      return String(input).includes('cursor=next-page')
+        ? response({ items: [second], nextCursor: null })
+        : response({ items: [first], nextCursor: 'next-page' });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const client = newClient();
+
+    expect(documentCommentsQuery(api, document.id).queryKey).toEqual([
+      'document-comments',
+      document.id,
+    ]);
+    await expect(client.fetchQuery(documentCommentsQuery(api, document.id))).resolves.toEqual({
+      items: [first, second],
+      nextCursor: null,
+    });
+    await expect(
+      new MutationObserver(client, addDocumentCommentMutation(api)).mutate({
+        documentId: document.id,
+        input: { body: first.body },
+      }),
+    ).resolves.toEqual({ comment: first });
+    await expect(
+      new MutationObserver(client, deleteDocumentCommentMutation(api)).mutate({
+        documentId: document.id,
+        commentId: first.id,
+      }),
+    ).resolves.toEqual({ deleted: true });
+    expect(documentCommentsInvalidates(document.id)).toEqual({
+      queryKey: ['document-comments', document.id],
+    });
   });
 
   it('executes the detail queryFn and builds identity scope', async () => {

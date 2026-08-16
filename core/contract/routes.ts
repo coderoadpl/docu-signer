@@ -6,10 +6,12 @@ import {
   createInvitationSchema,
   createApiTokenSchema,
   createDocumentSchema,
+  createDocumentCommentSchema,
   createSavedSearchSchema,
   createSignatureRecordSchema,
   createSourceUpdateRequestSchema,
   documentFileSchema,
+  documentCommentListItemSchema,
   documentListItemSchema,
   documentListFilterSchema,
   linkedDocumentSchema,
@@ -113,6 +115,22 @@ export const documentCreateOutputSchema = z.object({
 
 export const documentGetOutputSchema = z.object({
   document: documentWithFilesSchema,
+});
+
+export const documentCommentListInputSchema = paginationQuerySchema;
+
+export const documentCommentListOutputSchema = paginatedOutputSchema(
+  documentCommentListItemSchema,
+);
+
+export const documentCommentCreateInputSchema = createDocumentCommentSchema;
+
+export const documentCommentCreateOutputSchema = z.object({
+  comment: documentCommentListItemSchema,
+});
+
+export const documentCommentDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
 });
 
 export const documentUpdateInputSchema = updateDocumentSchema;
@@ -404,6 +422,12 @@ export const API_ROUTES = {
   documentsCreate: { method: 'POST', path: '/api/documents' },
   documentsTrash: { method: 'GET', path: '/api/documents/trash' },
   document: { method: 'GET', path: '/api/documents/:documentId' },
+  documentComments: { method: 'GET', path: '/api/documents/:documentId/comments' },
+  documentCommentCreate: { method: 'POST', path: '/api/documents/:documentId/comments' },
+  documentCommentDelete: {
+    method: 'DELETE',
+    path: '/api/documents/:documentId/comments/:commentId',
+  },
   documentUpdate: { method: 'PATCH', path: '/api/documents/:documentId' },
   documentApprove: { method: 'POST', path: '/api/documents/:documentId/approve' },
   documentUnapprove: { method: 'POST', path: '/api/documents/:documentId/unapprove' },
