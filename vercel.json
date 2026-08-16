@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm run vercel-build",
+  "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "outputDirectory": "dist/web",
   "regions": ["fra1"],
   "functions": {
