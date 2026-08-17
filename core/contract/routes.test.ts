@@ -160,9 +160,9 @@ describe('API route contract', () => {
       method: 'POST',
       path: '/api/document-metadata-proposals/:proposalId/approve',
     });
-    expect(API_ROUTES.bulkDocumentMetadataProposalApprove).toEqual({
+    expect(API_ROUTES.bulkPendingDraftApprove).toEqual({
       method: 'POST',
-      path: '/api/document-metadata-proposals/bulk-approve',
+      path: '/api/documents/bulk-approve-pending-drafts',
     });
     expect(API_ROUTES.documentMetadataProposalReject).toEqual({
       method: 'POST',

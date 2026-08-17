@@ -892,7 +892,7 @@ describe('DocumentsPage', () => {
     expect(screen.queryByText(/Zaznaczono:/u)).not.toBeInTheDocument();
   });
 
-  it('orders the more menu and confirms bulk proposal approval', async () => {
+  it('orders the more menu and confirms bulk pending-draft approval', async () => {
     const approve = vi.fn();
     const listRequests = vi.fn();
     const pendingDocument = {
@@ -904,6 +904,10 @@ describe('DocumentsPage', () => {
       pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
     };
     let approved = false;
+    let releaseApproval = () => {};
+    const approvalGate = new Promise<void>((resolve) => {
+      releaseApproval = resolve;
+    });
     server.use(
       http.get('/api/documents', () => {
         listRequests();
@@ -919,10 +923,14 @@ describe('DocumentsPage', () => {
           },
         });
       }),
-      http.post('/api/document-metadata-proposals/bulk-approve', async ({ request }) => {
+      http.post('/api/documents/bulk-approve-pending-drafts', async ({ request }) => {
         approve(await request.json());
         approved = true;
-        return HttpResponse.json({ ok: true, data: { approved: 1, skipped: 1 } });
+        await approvalGate;
+        return HttpResponse.json({
+          ok: true,
+          data: { approved: 1, skipped: 1, metadataProposals: 2, comments: 1, links: 1 },
+        });
       }),
     );
     await renderPage();
@@ -933,7 +941,7 @@ describe('DocumentsPage', () => {
     const menuItems = screen.getAllByRole('menuitem');
     const labels = menuItems.map((item) => item.textContent ?? '');
     const expectedOrder = [
-      'Zatwierdź propozycje (1)',
+      'Zatwierdź propozycje i adnotacje (1)',
       'Nie wymaga podpisu (2)',
       'Dodaj tagi',
       'Usuń tag',
@@ -958,25 +966,32 @@ describe('DocumentsPage', () => {
     );
 
     await userEvent.click(
-      screen.getByRole('menuitem', { name: 'Zatwierdź propozycje (1)' }),
+      screen.getByRole('menuitem', { name: 'Zatwierdź propozycje i adnotacje (1)' }),
     );
-    const dialog = await screen.findByRole('dialog', { name: 'Zatwierdź propozycje' });
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Zatwierdź propozycje i adnotacje',
+    });
     expect(
       within(dialog).getByText(
-        'Propozycje zmian zostaną zastosowane w 1 zaznaczonym dokumencie.',
+        'Propozycje zmian, komentarze-szkice i powiązania-szkice zostaną zatwierdzone ' +
+          'w 1 zaznaczonym dokumencie.',
       ),
     ).toBeInTheDocument();
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Zatwierdź propozycje' }),
-    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Zatwierdź' }));
 
     await waitFor(() =>
       expect(approve).toHaveBeenCalledWith({
         documentIds: [document.id, draftDocument.id],
       }),
     );
+    const progress = await screen.findByLabelText('Postęp operacji zbiorczej');
+    expect(progress).not.toHaveAttribute('aria-valuenow');
+    expect(screen.getByText('Zatwierdzanie zmian…')).toBeInTheDocument();
+    releaseApproval();
     expect(
-      await screen.findByText('Zatwierdzono propozycje w 1 dokumencie, pominięto 1.'),
+      await screen.findByText(
+        'Zatwierdzono propozycje i adnotacje w 1 dokumencie, pominięto 1.',
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Zaznaczono:/u)).not.toBeInTheDocument();
     await waitFor(() => expect(listRequests.mock.calls.length).toBeGreaterThan(2));

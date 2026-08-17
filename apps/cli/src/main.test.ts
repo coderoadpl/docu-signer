@@ -99,7 +99,7 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('propose-update');
     expect(documentHelp.stdout).toContain('proposal');
     expect(documentHelp.stdout).toContain('approve-proposal');
-    expect(documentHelp.stdout).toContain('approve-proposals');
+    expect(documentHelp.stdout).toContain('approve-pending-drafts');
     expect(documentHelp.stdout).toContain('reject-proposal');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
@@ -162,11 +162,11 @@ describe('CLI command surface', () => {
     }
   }, CLI_TEST_TIMEOUT_MS);
 
-  it('validates every document ID for bulk proposal approval', () => {
+  it('validates every document ID for bulk pending-draft approval', () => {
     const result = run(
       '--json',
       'document',
-      'approve-proposals',
+      'approve-pending-drafts',
       '11111111-1111-4111-8111-111111111111',
       'bad-id',
     );

@@ -1,5 +1,4 @@
 import {
-  bulkApproveDocumentMetadataProposalsSchema,
   decodeOpaqueCursor,
   documentMetadataProposalCursorSchema,
   documentMetadataProposalSchema,
@@ -11,7 +10,6 @@ import {
   updateDocumentSchema,
   validation,
   type AppError,
-  type BulkApproveDocumentMetadataProposals,
   type Document,
   type DocumentMetadataChanges,
   type DocumentMetadataProposalListItem,
@@ -32,9 +30,9 @@ export interface DocumentMetadataProposalDeps {
   documentTypes: DocumentTypeRepository;
 }
 
-export interface BulkApproveDocumentMetadataProposalsResult {
-  approved: number;
-  skipped: number;
+export interface AppliedMetadataProposals {
+  documentIds: string[];
+  applied: number;
 }
 
 const mergedMetadata = (
@@ -130,27 +128,21 @@ export const approveDocumentMetadataProposal = async (
   return updated ? ok(updated) : err(notFound('Document metadata proposal not found'));
 };
 
-export const bulkApproveDocumentMetadataProposals = async (
-  ctx: Ctx,
-  input: BulkApproveDocumentMetadataProposals,
+export const applyPendingMetadataProposals = async (
+  tenantId: string,
+  documentIds: readonly string[],
   deps: DocumentMetadataProposalDeps,
-): Promise<Result<BulkApproveDocumentMetadataProposalsResult, AppError>> => {
-  const scope = authorizeTenant(ctx, 'document:approve');
-  if (!scope.ok) return scope;
-  const parsedInput = bulkApproveDocumentMetadataProposalsSchema.safeParse(input);
-  if (!parsedInput.success) {
-    return err(validation('Invalid bulk metadata proposal approval', parsedInput.error.flatten()));
-  }
+): Promise<Result<AppliedMetadataProposals, AppError>> => {
   const proposals = await deps.documentMetadataProposals.listPendingByDocuments(
-    scope.value,
-    parsedInput.data.documentIds,
+    tenantId,
+    [...documentIds],
   );
   const plannedProposalIds: string[] = [];
-  let approved = 0;
-  for (const documentId of parsedInput.data.documentIds) {
+  const changedDocumentIds: string[] = [];
+  for (const documentId of documentIds) {
     const documentProposals = proposals.filter((proposal) => proposal.documentId === documentId);
     if (documentProposals.length === 0) continue;
-    const document = await deps.documents.findById(scope.value, documentId);
+    const document = await deps.documents.findById(tenantId, documentId);
     if (!document) return err(notFound('Document not found'));
     let current = document;
     for (const proposal of documentProposals) {
@@ -158,7 +150,7 @@ export const bulkApproveDocumentMetadataProposals = async (
       if (!parsed.success) {
         return err(validation('Invalid proposed document metadata', parsed.error.flatten()));
       }
-      if (!(await deps.documentTypes.findBySlug(scope.value, parsed.data.docType))) {
+      if (!(await deps.documentTypes.findBySlug(tenantId, parsed.data.docType))) {
         return err(validation('Unknown document type'));
       }
       current = {
@@ -173,16 +165,16 @@ export const bulkApproveDocumentMetadataProposals = async (
       };
       plannedProposalIds.push(proposal.id);
     }
-    approved += 1;
+    changedDocumentIds.push(documentId);
   }
   for (const proposalId of plannedProposalIds) {
     const proposal = proposals.find((item) => item.id === proposalId);
     if (!proposal) return err(notFound('Document metadata proposal not found'));
-    if (!(await deps.documentMetadataProposals.apply(scope.value, proposalId, proposal.changes))) {
+    if (!(await deps.documentMetadataProposals.apply(tenantId, proposalId, proposal.changes))) {
       return err(notFound('Document metadata proposal not found'));
     }
   }
-  return ok({ approved, skipped: parsedInput.data.documentIds.length - approved });
+  return ok({ documentIds: changedDocumentIds, applied: plannedProposalIds.length });
 };
 
 export const rejectDocumentMetadataProposal = async (

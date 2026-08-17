@@ -110,6 +110,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     unhide: async () => false,
   },
   documentComments: {
+    listPendingByDocuments: async () => [],
     listByDocument: async () => [],
     create: async (input) => ({
       id: input.id,
@@ -125,6 +126,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     delete: async () => false,
   },
   documentLinks: {
+    listPendingByDocuments: async () => [],
     create: async () => null,
     findBetween: async () => null,
     listForDocument: async () => [],

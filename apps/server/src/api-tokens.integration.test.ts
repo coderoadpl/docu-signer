@@ -173,6 +173,7 @@ beforeAll(async () => {
     documentComments: createDocumentCommentRepository(db),
     documentMetadataProposals: createDocumentMetadataProposalRepository(db),
     documentLinks: {
+      listPendingByDocuments: async () => [],
       create: async () => null,
       findBetween: async () => null,
       listForDocument: async () => [],
