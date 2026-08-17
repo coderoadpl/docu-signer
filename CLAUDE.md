@@ -106,11 +106,13 @@ before ai-review may accept them; the rulings are archived verbatim in
   them, and hand-sign any source PDF in a full-screen pen/touch/mouse flow. Each
   document type comes from the tenant dictionary managed in Ustawienia
   organizacji, so new types do not require a deploy. A type, a Strona or a Tag
-  can be hidden there: hiding is presentation-only, so the value disappears from
-  the list filter dropdowns and the document-form suggestions while the
-  documents that carry it keep rendering it everywhere (chips, detail, exports,
-  group headers), saved teczki keep filtering on it, and typing it by hand still
-  works.
+  can be hidden there: the value disappears from the list filter dropdowns and
+  the document-form suggestions while the documents that carry it keep
+  rendering it everywhere (chips, detail, exports, group headers) and saved
+  teczki keep filtering on it. For Strona and Tag hiding is presentation-only
+  and typing the value by hand still works; a hidden type is additionally
+  server-enforced — it cannot be assigned to a document that does not already
+  carry it, while documents that do keep saving with it.
   The document counterparty field is presented as „Strona” (the wire field remains `person`).
   The list keeps only view controls visible until documents are selected; selection opens a
   contextual toolbar with signing, review and approval primaries plus the remaining bulk

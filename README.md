@@ -80,8 +80,10 @@ Full command set (<!--count:cli-command-groups-->15<!--/count--> top-level group
 
 `document-type hide|unhide <slug>` and `filter-value hide|unhide --kind
 person|tag <value>` control which types, parties and tags the web filter
-dropdowns and document-form suggestions offer; hiding never touches the
-documents themselves.
+dropdowns and document-form suggestions offer. Hiding never edits existing
+documents; a hidden type additionally cannot be assigned to a document that
+does not already carry it, while hidden parties and tags stay assignable by
+typing them out.
 
 `document link <targetId> <id...> [--label <text>]` links every listed document
 to one target and reports an outcome for each pair in `--json` mode. `document
