@@ -100,8 +100,14 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     findBySlug: async () => null,
     create: async () => null,
     rename: async () => null,
+    setHidden: async () => null,
     delete: async () => false,
     isUsedByAnyDocument: async () => false,
+  },
+  hiddenFilterValues: {
+    listByTenant: async () => [],
+    hide: async (input) => input,
+    unhide: async () => false,
   },
   documentComments: {
     listByDocument: async () => [],

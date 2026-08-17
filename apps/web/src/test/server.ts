@@ -37,14 +37,17 @@ export const server = setupServer(
       ok: true,
       data: {
         documentTypes: [
-          { slug: 'umowa-uod', label: 'Umowa UoD', position: 10 },
-          { slug: 'uchwala', label: 'Uchwała', position: 20 },
-          { slug: 'protokol', label: 'Protokół', position: 30 },
-          { slug: 'rachunek', label: 'Rachunek', position: 40 },
-          { slug: 'inny', label: 'Inny', position: 50 },
+          { slug: 'umowa-uod', label: 'Umowa UoD', position: 10, hidden: false },
+          { slug: 'uchwala', label: 'Uchwała', position: 20, hidden: false },
+          { slug: 'protokol', label: 'Protokół', position: 30, hidden: false },
+          { slug: 'rachunek', label: 'Rachunek', position: 40, hidden: false },
+          { slug: 'inny', label: 'Inny', position: 50, hidden: false },
         ],
       },
     }),
+  ),
+  http.get('*/api/hidden-filter-values', () =>
+    HttpResponse.json({ ok: true, data: { hiddenFilterValues: [] } }),
   ),
   http.get('*/api/documents/trash', () =>
     HttpResponse.json({ ok: true, data: { documents: [] } }),

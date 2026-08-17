@@ -33,6 +33,9 @@ import { createLink, useNavigate, useSearch } from '@tanstack/react-router';
 import { replaySignatureRecordsPdf } from '#core/client/index.js';
 import {
   documentTypeSchema,
+  uniqueDocumentPersons,
+  uniqueDocumentTags,
+  visibleFilterValues,
   type DocumentFile,
   type DocumentFileRole,
   type PdfSealVerification,
@@ -60,8 +63,6 @@ import {
   filesByRole,
   formatFileSize,
   toDocumentInput,
-  uniqueDocumentPersons,
-  uniqueDocumentTags,
   uploadErrorMessage,
 } from './documents.logic.js';
 import { uploadDocumentFile } from './upload.logic.js';
@@ -495,6 +496,7 @@ export const DocumentDetailPage = ({
   const queryClient = useQueryClient();
   const documentQuery = useQuery(actions.document(documentId));
   const documentTypesQuery = useQuery(actions.documentTypes);
+  const hiddenFilterValuesQuery = useQuery(actions.hiddenFilterValues);
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const documentLinksQuery = useQuery(actions.documentLinks(documentId));
   const documentCommentsQuery = useQuery(actions.documentComments(documentId));
@@ -728,8 +730,17 @@ export const DocumentDetailPage = ({
     (approval) => approval.approverId === currentUserId,
   );
   const grouped = filesByRole(document.files);
-  const personOptions = uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]);
-  const tagOptions = uniqueDocumentTags(folderDocuments.data?.documents ?? [document]);
+  const hiddenValues = hiddenFilterValuesQuery.data?.hiddenFilterValues ?? [];
+  const personOptions = visibleFilterValues(
+    uniqueDocumentPersons(folderDocuments.data?.documents ?? [document]),
+    hiddenValues,
+    'person',
+  );
+  const tagOptions = visibleFilterValues(
+    uniqueDocumentTags(folderDocuments.data?.documents ?? [document]),
+    hiddenValues,
+    'tag',
+  );
   const linkedDocuments = documentLinksQuery.data?.links ?? [];
   const visibleLinkedDocuments = linkedDocumentsExpanded
     ? linkedDocuments

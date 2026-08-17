@@ -50,6 +50,10 @@ import { ApiError } from '#core/client/index.js';
 import {
   documentSignatureStatusSchema,
   documentTypeSchema,
+  selectableDocumentTypes,
+  uniqueDocumentPersons,
+  uniqueDocumentTags,
+  visibleFilterValues,
   type DocumentListItem,
   type DocumentTypeSlug,
   type DocumentWithFiles,
@@ -98,8 +102,6 @@ import {
   massSigningQueueTargets,
   toDocumentFilter,
   toDocumentInput,
-  uniqueDocumentPersons,
-  uniqueDocumentTags,
   type DocumentsView,
   type DocumentFilterValues,
 } from './documents.logic.js';
@@ -363,6 +365,7 @@ export const DocumentsPage = () => {
   const documentFilter = toDocumentFilter(filters);
   const documents = useQuery(actions.documents(documentFilter));
   const documentTypes = useQuery(actions.documentTypes);
+  const hiddenFilterValues = useQuery(actions.hiddenFilterValues);
   const folderDocuments = useQuery(actions.documents({ draft: 'all' }));
   const tenantAccounts = useQuery(actions.tenantAccounts);
   const columnPreference = useQuery(preferenceActions.userPreference(DOCUMENT_COLUMNS_KEY));
@@ -434,14 +437,20 @@ export const DocumentsPage = () => {
   const filtersActive = hasDocumentFilter(documentFilter);
   const visibleDocuments = documents.data?.documents ?? EMPTY_DOCUMENT_LIST;
   const typeOptions = documentTypes.data?.documentTypes ?? [];
+  const filterTypeOptions = selectableDocumentTypes(typeOptions, filters.docType);
   const groupedVisibleDocuments = useMemo(
     () => groupDocumentsCanonically(visibleDocuments),
     [visibleDocuments],
   );
   const allDocuments = folderDocuments.data?.documents ?? visibleDocuments;
   const hasDocuments = allDocuments.length > 0;
-  const personOptions = uniqueDocumentPersons(allDocuments);
-  const tagOptions = uniqueDocumentTags(allDocuments);
+  const hiddenValues = hiddenFilterValues.data?.hiddenFilterValues ?? [];
+  const personOptions = visibleFilterValues(
+    uniqueDocumentPersons(allDocuments),
+    hiddenValues,
+    'person',
+  );
+  const tagOptions = visibleFilterValues(uniqueDocumentTags(allDocuments), hiddenValues, 'tag');
   const signerOptions = tenantAccounts.data?.accounts ?? [];
   const selectedDocuments = visibleDocuments.filter((document) =>
     selectedIds.includes(document.id),
@@ -773,7 +782,7 @@ export const DocumentsPage = () => {
               }}
             >
               <MenuItem value="">Wszystkie</MenuItem>
-              {typeOptions.map((documentType) => (
+              {filterTypeOptions.map((documentType) => (
                 <MenuItem key={documentType.slug} value={documentType.slug}>
                   {documentType.label}
                 </MenuItem>

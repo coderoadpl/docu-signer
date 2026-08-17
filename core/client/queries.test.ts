@@ -29,6 +29,11 @@ import {
   documentQuery,
   documentTypesInvalidates,
   documentTypesQuery,
+  hideFilterValueMutation,
+  hiddenFilterValuesInvalidates,
+  hiddenFilterValuesQuery,
+  setDocumentTypeHiddenMutation,
+  unhideFilterValueMutation,
   documentCommentsInvalidates,
   documentCommentsQuery,
   documentLinksInvalidates,
@@ -541,7 +546,12 @@ describe('saved search query descriptors', () => {
 
 describe('document type query descriptors', () => {
   it('executes list/create/rename/delete and invalidates label consumers', async () => {
-    const documentType = { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 60 };
+    const documentType = {
+      slug: 'umowa-z-klientem',
+      label: 'Umowa z klientem',
+      position: 60,
+      hidden: false,
+    };
     const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
       if (init?.method === 'GET') return response({ documentTypes: [documentType] });
       if (init?.method === 'DELETE') return response({ deleted: true });
@@ -568,10 +578,54 @@ describe('document type query descriptors', () => {
     await expect(
       observe(deleteDocumentTypeMutation(api)).mutate(documentType.slug),
     ).resolves.toEqual({ deleted: true });
+    await expect(
+      observe(setDocumentTypeHiddenMutation(api)).mutate({
+        slug: documentType.slug,
+        input: { hidden: true },
+      }),
+    ).resolves.toEqual({ documentType });
     expect(documentTypesInvalidates()).toEqual([
       { queryKey: ['document-types'] },
       { queryKey: ['documents'] },
       { queryKey: ['saved-searches'] },
+    ]);
+  });
+});
+
+describe('hidden filter value query descriptors', () => {
+  it('executes list/hide/unhide and invalidates the suggestion sources', async () => {
+    const hiddenFilterValue = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-default',
+      kind: 'person' as const,
+      value: 'Jan Kowalski',
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (init?.method === 'GET') return response({ hiddenFilterValues: [hiddenFilterValue] });
+      return String(input).endsWith('/unhide')
+        ? response({ unhidden: true })
+        : response({ hiddenFilterValue });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const client = newClient();
+    const observe = <TData, TVariables>(
+      descriptor: ConstructorParameters<typeof MutationObserver<TData, Error, TVariables>>[1],
+    ) => new MutationObserver(client, descriptor);
+
+    const list = hiddenFilterValuesQuery(api);
+    expect(list.queryKey).toEqual(['hidden-filter-values', 'list']);
+    await expect(client.fetchQuery(list)).resolves.toEqual({
+      hiddenFilterValues: [hiddenFilterValue],
+    });
+    await expect(
+      observe(hideFilterValueMutation(api)).mutate({ kind: 'person', value: 'Jan Kowalski' }),
+    ).resolves.toEqual({ hiddenFilterValue });
+    await expect(
+      observe(unhideFilterValueMutation(api)).mutate({ kind: 'person', value: 'Jan Kowalski' }),
+    ).resolves.toEqual({ unhidden: true });
+    expect(hiddenFilterValuesInvalidates()).toEqual([
+      { queryKey: ['hidden-filter-values'] },
+      { queryKey: ['documents'] },
     ]);
   });
 });

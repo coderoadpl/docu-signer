@@ -105,7 +105,14 @@ before ai-review may accept them; the rulings are archived verbatim in
 - Dokumenty: archive metadata and PDF/image files by role, preview and export
   them, and hand-sign any source PDF in a full-screen pen/touch/mouse flow. Each
   document type comes from the tenant dictionary managed in Ustawienia
-  organizacji, so new types do not require a deploy.
+  organizacji, so new types do not require a deploy. A type, a Strona or a Tag
+  can be hidden there: the value disappears from the list filter dropdowns and
+  the document-form suggestions while the documents that carry it keep
+  rendering it everywhere (chips, detail, exports, group headers) and saved
+  teczki keep filtering on it. For Strona and Tag hiding is presentation-only
+  and typing the value by hand still works; a hidden type is additionally
+  server-enforced — it cannot be assigned to a document that does not already
+  carry it, while documents that do keep saving with it.
   The document counterparty field is presented as „Strona” (the wire field remains `person`).
   The list keeps only view controls visible until documents are selected; selection opens a
   contextual toolbar with signing, review and approval primaries plus the remaining bulk
@@ -164,8 +171,8 @@ before ai-review may accept them; the rulings are archived verbatim in
 - Konto: display-name editing (Profil — the name the app bar and signer
   attribution render), personal passkeys, API tokens, two-factor
   authentication and the tenant-wide signature-ink storage, PDF-seal,
-  signature-box annotation, Tryb dat controls and document-type dictionary
-  (Ustawienia organizacji).
+  signature-box annotation, Tryb dat controls, the document-type dictionary and
+  the hidden filter values for Strona and Tag (Ustawienia organizacji).
   Removed upstream verticals stay removed.
 
 ## Layer rules (enforced, but know them anyway)

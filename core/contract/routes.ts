@@ -27,6 +27,8 @@ import {
   documentWithFilesSchema,
   exportDocumentsSchema,
   fileUploadRequestSchema,
+  hiddenFilterValueRefSchema,
+  hiddenFilterValueSchema,
   invitationSchema,
   finalizeFileUploadSchema,
   padSessionActiveOutputSchema as domainPadSessionActiveOutputSchema,
@@ -50,6 +52,7 @@ import {
   sourceUpdateRequestSchema,
   decideSourceUpdateRequestSchema,
   completeSourceUpdateRequestSchema,
+  setDocumentTypeHiddenSchema,
   setUserPreferenceSchema,
   staffRoleSchema,
   updateDocumentSchema,
@@ -138,8 +141,30 @@ export const documentTypeRenameOutputSchema = z.object({
   documentType: documentTypeDefinitionSchema,
 });
 
+export const documentTypeSetHiddenInputSchema = setDocumentTypeHiddenSchema;
+
+export const documentTypeSetHiddenOutputSchema = z.object({
+  documentType: documentTypeDefinitionSchema,
+});
+
 export const documentTypeDeleteOutputSchema = z.object({
   deleted: z.literal(true),
+});
+
+export const hiddenFilterValueListOutputSchema = z.object({
+  hiddenFilterValues: z.array(hiddenFilterValueSchema),
+});
+
+export const hiddenFilterValueHideInputSchema = hiddenFilterValueRefSchema;
+
+export const hiddenFilterValueHideOutputSchema = z.object({
+  hiddenFilterValue: hiddenFilterValueSchema,
+});
+
+export const hiddenFilterValueUnhideInputSchema = hiddenFilterValueRefSchema;
+
+export const hiddenFilterValueUnhideOutputSchema = z.object({
+  unhidden: z.literal(true),
 });
 
 export const documentGetOutputSchema = z.object({ document: documentDetailSchema });
@@ -498,7 +523,11 @@ export const API_ROUTES = {
   documentTypes: { method: 'GET', path: '/api/document-types' },
   documentTypesCreate: { method: 'POST', path: '/api/document-types' },
   documentTypeRename: { method: 'PATCH', path: '/api/document-types/:slug' },
+  documentTypeSetHidden: { method: 'PATCH', path: '/api/document-types/:slug/hidden' },
   documentTypeDelete: { method: 'DELETE', path: '/api/document-types/:slug' },
+  hiddenFilterValues: { method: 'GET', path: '/api/hidden-filter-values' },
+  hiddenFilterValueHide: { method: 'POST', path: '/api/hidden-filter-values' },
+  hiddenFilterValueUnhide: { method: 'POST', path: '/api/hidden-filter-values/unhide' },
   documentsTrash: { method: 'GET', path: '/api/documents/trash' },
   document: { method: 'GET', path: '/api/documents/:documentId' },
   documentComments: { method: 'GET', path: '/api/documents/:documentId/comments' },

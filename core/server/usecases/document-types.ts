@@ -6,12 +6,14 @@ import {
   notFound,
   ok,
   renameDocumentTypeSchema,
+  setDocumentTypeHiddenSchema,
   validation,
   type AppError,
   type CreateDocumentType,
   type DocumentType,
   type RenameDocumentType,
   type Result,
+  type SetDocumentTypeHidden,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
@@ -66,6 +68,7 @@ export const createDocumentType = async (
     slug: parsedSlug.data,
     label: parsed.data.label,
     position,
+    hidden: false,
   });
   return created
     ? ok(created)
@@ -90,6 +93,30 @@ export const renameDocumentType = async (
   }
   const renamed = await deps.documentTypes.rename(scope.value, parsedSlug.data, parsed.data.label);
   return renamed ? ok(renamed) : err(notFound('Document type not found'));
+};
+
+export const setDocumentTypeHidden = async (
+  ctx: Ctx,
+  slug: string,
+  input: SetDocumentTypeHidden,
+  deps: DocumentTypeDeps,
+): Promise<Result<DocumentType, AppError>> => {
+  const scope = authorizeTenant(ctx, 'tenant-settings:manage');
+  if (!scope.ok) return scope;
+  const parsedSlug = documentTypeSchema.safeParse(slug);
+  const parsed = setDocumentTypeHiddenSchema.safeParse(input);
+  if (!parsedSlug.success || !parsed.success) {
+    return err(validation('Invalid document type visibility', {
+      slug: parsedSlug.success ? undefined : parsedSlug.error.flatten(),
+      input: parsed.success ? undefined : parsed.error.flatten(),
+    }));
+  }
+  const updated = await deps.documentTypes.setHidden(
+    scope.value,
+    parsedSlug.data,
+    parsed.data.hidden,
+  );
+  return updated ? ok(updated) : err(notFound('Document type not found'));
 };
 
 export const deleteDocumentType = async (

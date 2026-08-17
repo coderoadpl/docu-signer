@@ -231,10 +231,34 @@ describe('CLI command surface', () => {
     expect(help.stdout).toContain('add');
     expect(help.stdout).toContain('rename');
     expect(help.stdout).toContain('remove');
+    expect(help.stdout).toContain('hide');
+    expect(help.stdout).toContain('unhide');
 
     const missingLabel = run('--json', 'document-type', 'add');
     expect(missingLabel.status).toBe(2);
     expect(JSON.parse(missingLabel.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('documents hidden filter value verbs and validates the kind', () => {
+    const help = run('filter-value', '--help');
+    expect(help.status).toBe(0);
+    expect(help.stdout).toContain('list');
+    expect(help.stdout).toContain('hide');
+    expect(help.stdout).toContain('unhide');
+
+    const badKind = run('--json', 'filter-value', 'hide', '--kind', 'company', 'Jan Kowalski');
+    expect(badKind.status).toBe(2);
+    expect(JSON.parse(badKind.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+
+    const missingKind = run('--json', 'filter-value', 'unhide', 'Jan Kowalski');
+    expect(missingKind.status).toBe(2);
+    expect(JSON.parse(missingKind.stdout)).toMatchObject({
       ok: false,
       error: { code: 'validation' },
     });

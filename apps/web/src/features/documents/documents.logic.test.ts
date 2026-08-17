@@ -39,8 +39,6 @@ import {
   toDocumentFilterValues,
   toDocumentInput,
   unionTimelineIntervals,
-  uniqueDocumentPersons,
-  uniqueDocumentTags,
   uploadErrorMessage,
   visTimelineFittedWindow,
 } from './documents.logic.js';
@@ -556,31 +554,7 @@ describe('document view logic', () => {
     ).toEqual(['Anna', 'Bez strony']);
   });
 
-  it('builds tag suggestions and saved-search summaries', () => {
-    const documents = [
-      {
-        tags: ['ważne', 'podpis'],
-        documentDate: '2026-07-18',
-        periodStart: '2025-12-01',
-        periodEnd: '2026-01-15',
-      },
-      {
-        tags: ['ważne'],
-        documentDate: '2027-03-01',
-        periodStart: null,
-        periodEnd: null,
-      },
-    ];
-
-    expect(uniqueDocumentTags(documents)).toEqual(['podpis', 'ważne']);
-    expect(
-      uniqueDocumentPersons([
-        { person: 'Anna Nowak' },
-        { person: ' Jan Kowalski ' },
-        { person: 'Anna Nowak' },
-        { person: null },
-      ]),
-    ).toEqual(['Anna Nowak', 'Jan Kowalski']);
+  it('builds saved-search summaries', () => {
     expect(
       documentFilterSummary(
         {

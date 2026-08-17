@@ -424,6 +424,7 @@ const fake = (
     documentMetadataProposals,
     documentTypes: {
       listByTenant: async () => [...DEFAULT_DOCUMENT_TYPES],
+      setHidden: async () => null,
       findBySlug: async (_tenantId, slug) =>
         DEFAULT_DOCUMENT_TYPES.find((documentType) => documentType.slug === slug) ?? null,
       create: async () => null,
@@ -788,6 +789,37 @@ describe('documents use-cases', () => {
       ),
     ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(state.documents).toHaveLength(0);
+  });
+
+  it('rejects a hidden document type only for documents that do not already carry it', async () => {
+    const state = fake([documentRow()]);
+    state.deps.documentTypes.findBySlug = async (_tenantId, slug) => {
+      const found = DEFAULT_DOCUMENT_TYPES.find((documentType) => documentType.slug === slug);
+      return found ? { ...found, hidden: true } : null;
+    };
+
+    await expect(
+      createDocument(ctx(staff('tenant-acme')), createInput, state.deps),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    await expect(
+      updateDocument(
+        ctx(staff('tenant-acme')),
+        documentId,
+        { ...createInput, title: 'Resaved' },
+        state.deps,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { outcome: 'updated', document: { title: 'Resaved' } },
+    });
+    await expect(
+      updateDocument(
+        ctx(staff('tenant-acme')),
+        documentId,
+        { ...createInput, docType: 'rachunek' },
+        state.deps,
+      ),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('returns the seal flag loaded with document detail files', async () => {

@@ -393,7 +393,12 @@ describe('API client', () => {
   });
 
   it('calls document type dictionary routes through the contract', async () => {
-    const documentType = { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 60 };
+    const documentType = {
+      slug: 'umowa-z-klientem',
+      label: 'Umowa z klientem',
+      position: 60,
+      hidden: false,
+    };
     const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
       if (init?.method === 'DELETE') return json({ ok: true, data: { deleted: true } });
       if (init?.method === 'PATCH') {
@@ -410,12 +415,14 @@ describe('API client', () => {
     });
     await api.createDocumentType({ label: 'Umowa z klientem' });
     await api.renameDocumentType(documentType.slug, { label: 'Kontrakt' });
+    await api.setDocumentTypeHidden(documentType.slug, { hidden: true });
     await api.deleteDocumentType(documentType.slug);
 
     expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toEqual([
       '/api/document-types',
       '/api/document-types',
       '/api/document-types/umowa-z-klientem',
+      '/api/document-types/umowa-z-klientem/hidden',
       '/api/document-types/umowa-z-klientem',
     ]);
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
@@ -426,7 +433,46 @@ describe('API client', () => {
       method: 'PATCH',
       body: JSON.stringify({ label: 'Kontrakt' }),
     });
-    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({ method: 'DELETE' });
+    expect(fetchImpl.mock.calls[3]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ hidden: true }),
+    });
+    expect(fetchImpl.mock.calls[4]?.[1]).toMatchObject({ method: 'DELETE' });
+  });
+
+  it('calls hidden filter value routes through the contract', async () => {
+    const hiddenFilterValue = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-default',
+      kind: 'person',
+      value: 'Jan Kowalski',
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (init?.method === 'GET') {
+        return json({ ok: true, data: { hiddenFilterValues: [hiddenFilterValue] } });
+      }
+      return String(input).endsWith('/unhide')
+        ? json({ ok: true, data: { unhidden: true } })
+        : json({ ok: true, data: { hiddenFilterValue } });
+    });
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(api.listHiddenFilterValues()).resolves.toMatchObject({
+      ok: true,
+      value: { hiddenFilterValues: [hiddenFilterValue] },
+    });
+    await api.hideFilterValue({ kind: 'person', value: 'Jan Kowalski' });
+    await api.unhideFilterValue({ kind: 'person', value: 'Jan Kowalski' });
+
+    expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toEqual([
+      '/api/hidden-filter-values',
+      '/api/hidden-filter-values',
+      '/api/hidden-filter-values/unhide',
+    ]);
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ kind: 'person', value: 'Jan Kowalski' }),
+    });
   });
 
   it('calls document approval, API token and preference routes through the contract', async () => {

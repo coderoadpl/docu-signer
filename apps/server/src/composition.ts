@@ -6,6 +6,7 @@ import { createDocumentCommentRepository } from '#adapters/db/document-comments-
 import { createDocumentLinkRepository } from '#adapters/db/document-links-repository.js';
 import { createDocumentMetadataProposalRepository } from '#adapters/db/document-metadata-proposals-repository.js';
 import { createDocumentTypeRepository } from '#adapters/db/document-types-repository.js';
+import { createHiddenFilterValueRepository } from '#adapters/db/hidden-filter-values-repository.js';
 import { createPadSessionRepository } from '#adapters/db/pad-sessions-repository.js';
 import { createSavedSearchRepository } from '#adapters/db/saved-searches-repository.js';
 import {
@@ -57,6 +58,7 @@ import type {
   DocumentTypeRepository,
   EmailPort,
   HealthPort,
+  HiddenFilterValueRepository,
   IdGenerator,
   InvitationAuthPort,
   InvitationRepository,
@@ -90,6 +92,7 @@ export interface AppDeps {
   documentLinks: DocumentLinkRepository;
   documentMetadataProposals: DocumentMetadataProposalRepository;
   documentTypes: DocumentTypeRepository;
+  hiddenFilterValues: HiddenFilterValueRepository;
   padSessions: PadSessionRepository;
   padSessionSecrets: PadSessionSecretPort;
   savedSearches: SavedSearchRepository;
@@ -288,6 +291,7 @@ export const createDeps = (env: Env): AppDeps => {
     documentLinks: createDocumentLinkRepository(db),
     documentMetadataProposals: createDocumentMetadataProposalRepository(db),
     documentTypes,
+    hiddenFilterValues: createHiddenFilterValueRepository(db),
     padSessions: createPadSessionRepository(db),
     padSessionSecrets: createPadSessionSecrets(),
     savedSearches: createSavedSearchRepository(db),

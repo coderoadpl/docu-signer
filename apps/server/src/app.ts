@@ -13,11 +13,14 @@ import {
   documentCreateInputSchema,
   documentTypeCreateInputSchema,
   documentTypeRenameInputSchema,
+  documentTypeSetHiddenInputSchema,
   documentCommentCreateInputSchema,
   documentCommentListInputSchema,
   documentMetadataProposalListInputSchema,
   documentLinkCreateInputSchema,
   documentFileMoveInputSchema,
+  hiddenFilterValueHideInputSchema,
+  hiddenFilterValueUnhideInputSchema,
   documentListInputSchema,
   documentUpdateInputSchema,
   exportDocumentsInputSchema,
@@ -87,6 +90,7 @@ import {
   getActivePadSession,
   getActiveSourceUpdateRequest,
   getPadState,
+  hideFilterValue,
   joinOwnPadSession,
   linkDocuments,
   listDocuments,
@@ -94,6 +98,7 @@ import {
   listDocumentComments,
   listDocumentLinks,
   listDocumentMetadataProposals,
+  listHiddenFilterValues,
   listApiTokens,
   listInvitations,
   listTrashedDocuments,
@@ -114,6 +119,7 @@ import {
   requestFileUpload,
   requestPadSignature,
   requireDocumentSignature,
+  setDocumentTypeHidden,
   setPadCurrentDocument,
   serverUpload,
   setUserPreference,
@@ -122,6 +128,7 @@ import {
   updateTenantSettings,
   updateDocument,
   unapproveDocument,
+  unhideFilterValue,
   unlinkDocuments,
   waiveDocumentSignature,
   type Ctx,
@@ -713,6 +720,46 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ documentType: result.value }) : result);
+  });
+
+  app.patch(API_ROUTES.documentTypeSetHidden.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = documentTypeSetHiddenInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid document type visibility', parsed.error.flatten())));
+    }
+    const result = await setDocumentTypeHidden(
+      ctxOf(c.get('identity')),
+      c.req.param('slug'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok ? ok({ documentType: result.value }) : result);
+  });
+
+  app.get(API_ROUTES.hiddenFilterValues.path, async (c) => {
+    const result = await listHiddenFilterValues(ctxOf(c.get('identity')), deps);
+    return respond(result.ok ? ok({ hiddenFilterValues: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.hiddenFilterValueHide.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = hiddenFilterValueHideInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid filter value', parsed.error.flatten())));
+    }
+    const result = await hideFilterValue(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result.ok ? ok({ hiddenFilterValue: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.hiddenFilterValueUnhide.path, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = hiddenFilterValueUnhideInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid filter value', parsed.error.flatten())));
+    }
+    const result = await unhideFilterValue(ctxOf(c.get('identity')), parsed.data, deps);
+    return respond(result.ok ? ok({ unhidden: true as const }) : result);
   });
 
   app.delete(API_ROUTES.documentTypeDelete.path, async (c) => {

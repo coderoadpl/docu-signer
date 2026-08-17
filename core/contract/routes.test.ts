@@ -13,6 +13,12 @@ import {
   documentTypeListOutputSchema,
   documentTypeRenameInputSchema,
   documentTypeRenameOutputSchema,
+  documentTypeSetHiddenInputSchema,
+  documentTypeSetHiddenOutputSchema,
+  hiddenFilterValueHideInputSchema,
+  hiddenFilterValueHideOutputSchema,
+  hiddenFilterValueListOutputSchema,
+  hiddenFilterValueUnhideOutputSchema,
   documentCommentCreateInputSchema,
   documentCommentListOutputSchema,
   documentGetOutputSchema,
@@ -457,7 +463,12 @@ describe('API route contract', () => {
   });
 
   it('validates document type dictionary envelopes', () => {
-    const documentType = { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 60 };
+    const documentType = {
+      slug: 'umowa-z-klientem',
+      label: 'Umowa z klientem',
+      position: 60,
+      hidden: false,
+    };
     expect(documentTypeCreateInputSchema.parse({ label: ' Umowa z klientem ' })).toEqual({
       label: 'Umowa z klientem',
     });
@@ -466,6 +477,46 @@ describe('API route contract', () => {
     expect(documentTypeCreateOutputSchema.safeParse({ documentType }).success).toBe(true);
     expect(documentTypeRenameOutputSchema.safeParse({ documentType }).success).toBe(true);
     expect(documentTypeDeleteOutputSchema.safeParse({ deleted: true }).success).toBe(true);
+    expect(documentTypeSetHiddenInputSchema.safeParse({ hidden: true }).success).toBe(true);
+    expect(documentTypeSetHiddenInputSchema.safeParse({ hidden: 'yes' }).success).toBe(false);
+    expect(
+      documentTypeSetHiddenOutputSchema.safeParse({
+        documentType: { ...documentType, hidden: true },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('validates hidden filter value envelopes', () => {
+    const hiddenFilterValue = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-default',
+      kind: 'person',
+      value: 'Jan Kowalski',
+    };
+    expect(
+      hiddenFilterValueHideInputSchema.parse({ kind: 'tag', value: '  ważne  ' }),
+    ).toEqual({ kind: 'tag', value: 'ważne' });
+    expect(hiddenFilterValueHideInputSchema.safeParse({ kind: 'other', value: 'x' }).success).toBe(
+      false,
+    );
+    expect(
+      hiddenFilterValueListOutputSchema.safeParse({ hiddenFilterValues: [hiddenFilterValue] })
+        .success,
+    ).toBe(true);
+    expect(hiddenFilterValueHideOutputSchema.safeParse({ hiddenFilterValue }).success).toBe(true);
+    expect(hiddenFilterValueUnhideOutputSchema.safeParse({ unhidden: true }).success).toBe(true);
+    expect(API_ROUTES.hiddenFilterValues).toEqual({
+      method: 'GET',
+      path: '/api/hidden-filter-values',
+    });
+    expect(API_ROUTES.hiddenFilterValueUnhide).toEqual({
+      method: 'POST',
+      path: '/api/hidden-filter-values/unhide',
+    });
+    expect(API_ROUTES.documentTypeSetHidden).toEqual({
+      method: 'PATCH',
+      path: '/api/document-types/:slug/hidden',
+    });
   });
 
   it('validates the PDF seal verification response', () => {
