@@ -12,6 +12,7 @@ import { createDb } from '#adapters/db/client.js';
 import { createApiTokenRepository } from '#adapters/db/api-tokens-repository.js';
 import { createDocumentRepository } from '#adapters/db/documents-repository.js';
 import { createDocumentTypeRepository } from '#adapters/db/document-types-repository.js';
+import { createHiddenFilterValueRepository } from '#adapters/db/hidden-filter-values-repository.js';
 import { seedDefaultDocumentTypes } from '#adapters/db/document-types-seed.js';
 import { createDocumentCommentRepository } from '#adapters/db/document-comments-repository.js';
 import { createDocumentMetadataProposalRepository } from '#adapters/db/document-metadata-proposals-repository.js';
@@ -168,6 +169,7 @@ beforeAll(async () => {
     emailConfigured: false,
     documents: createDocumentRepository(db),
     documentTypes: createDocumentTypeRepository(db),
+    hiddenFilterValues: createHiddenFilterValueRepository(db),
     documentComments: createDocumentCommentRepository(db),
     documentMetadataProposals: createDocumentMetadataProposalRepository(db),
     documentLinks: {

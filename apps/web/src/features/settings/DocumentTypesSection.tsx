@@ -56,8 +56,13 @@ export const DocumentTypesSection = () => {
     ...actions.deleteDocumentType,
     onSuccess: invalidate,
   });
-  const pending = create.isPending || rename.isPending || remove.isPending;
-  const error = create.error ?? rename.error ?? remove.error;
+  const setHidden = useMutation({
+    ...actions.setDocumentTypeHidden,
+    onSuccess: invalidate,
+  });
+  const pending =
+    create.isPending || rename.isPending || remove.isPending || setHidden.isPending;
+  const error = create.error ?? rename.error ?? remove.error ?? setHidden.error;
 
   return (
     <Paper variant="outlined" sx={{ p: '1.25rem', mt: '1.5rem' }}>
@@ -126,6 +131,18 @@ export const DocumentTypesSection = () => {
                       Zmień nazwę
                     </Button>
                   )}
+                  <Button
+                    size="small"
+                    disabled={pending}
+                    onClick={() =>
+                      setHidden.mutate({
+                        slug: documentType.slug,
+                        input: { hidden: !documentType.hidden },
+                      })
+                    }
+                  >
+                    {documentType.hidden ? 'Przywróć' : 'Ukryj'}
+                  </Button>
                   <IconButton
                     aria-label={`Usuń typ ${documentType.label}`}
                     disabled={pending}
@@ -135,7 +152,7 @@ export const DocumentTypesSection = () => {
                   </IconButton>
                 </Stack>
               }
-              sx={{ pr: 20 }}
+              sx={{ pr: 28, opacity: documentType.hidden ? 0.5 : 1 }}
             >
               {editingSlug === documentType.slug ? (
                 <TextField
@@ -147,7 +164,10 @@ export const DocumentTypesSection = () => {
                   fullWidth
                 />
               ) : (
-                <ListItemText primary={documentType.label} secondary={documentType.slug} />
+                <ListItemText
+                  primary={documentType.label}
+                  secondary={documentType.hidden ? `${documentType.slug} · ukryty` : documentType.slug}
+                />
               )}
             </ListItem>
           ))}

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createDocumentTypeSchema,
   documentTypeDefinitionSchema,
+  setDocumentTypeHiddenSchema,
   documentTypeSchema,
   renameDocumentTypeSchema,
 } from './index.js';
@@ -24,10 +25,14 @@ describe('document type schemas', () => {
       slug: 'umowa-z-klientem',
       label: '  Umowa z klientem ',
       position: 60,
+      hidden: true,
     })).toEqual({
       slug: 'umowa-z-klientem',
       label: 'Umowa z klientem',
       position: 60,
+      hidden: true,
     });
+    expect(setDocumentTypeHiddenSchema.safeParse({ hidden: true }).success).toBe(true);
+    expect(setDocumentTypeHiddenSchema.safeParse({}).success).toBe(false);
   });
 });

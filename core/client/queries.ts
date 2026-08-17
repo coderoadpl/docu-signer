@@ -27,12 +27,14 @@ import {
   type DocumentListFilter,
   type DocumentCommentListItem,
   type DocumentMetadataProposalListItem,
+  type HiddenFilterValueRef,
   type LinkDocumentsInput,
   type ExportDocuments,
   type FileUploadRequest,
   type FinalizeFileUpload,
   type MoveDocumentFile,
   type RenameDocumentType,
+  type SetDocumentTypeHidden,
   type PadCurrentDocument,
   type PadSessionMode,
   type PadStrokeSubmission,
@@ -139,6 +141,11 @@ const documentsScopes = {
 const documentTypeScopes = {
   all: () => ['document-types'] as const,
   lists: () => ['document-types', 'list'] as const,
+};
+
+const hiddenFilterValueScopes = {
+  all: () => ['hidden-filter-values'] as const,
+  lists: () => ['hidden-filter-values', 'list'] as const,
 };
 
 const documentLinksScopes = {
@@ -269,6 +276,40 @@ export const documentTypesInvalidates = (): Array<{ queryKey: readonly unknown[]
   { queryKey: documentTypeScopes.all() },
   { queryKey: documentsScopes.all() },
   { queryKey: savedSearchScopes.all() },
+];
+
+export const setDocumentTypeHiddenMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...documentTypeScopes.all(), 'set-hidden'],
+    call: ({ slug, input }: { slug: string; input: SetDocumentTypeHidden }) =>
+      api.setDocumentTypeHidden(slug, input),
+  });
+
+export const hiddenFilterValuesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: hiddenFilterValueScopes.lists(),
+    call: ({ signal }) => api.listHiddenFilterValues(signal),
+  });
+
+export const hideFilterValueMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...hiddenFilterValueScopes.all(), 'hide'],
+    call: (input: HiddenFilterValueRef) => api.hideFilterValue(input),
+  });
+
+export const unhideFilterValueMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...hiddenFilterValueScopes.all(), 'unhide'],
+    call: (input: HiddenFilterValueRef) => api.unhideFilterValue(input),
+  });
+
+/**
+ * Hiding is presentation-only, so the document scopes go too: every filter and
+ * form suggestion list is derived from the loaded documents.
+ */
+export const hiddenFilterValuesInvalidates = (): Array<{ queryKey: readonly unknown[] }> => [
+  { queryKey: hiddenFilterValueScopes.all() },
+  { queryKey: documentsScopes.all() },
 ];
 
 export const trashedDocumentsQuery = (api: ApiClient) =>

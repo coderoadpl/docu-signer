@@ -8,6 +8,7 @@ export const documentTypeDefinitionSchema = z.object({
   slug: documentTypeSchema,
   label: documentTypeLabelSchema,
   position: z.number().int(),
+  hidden: z.boolean(),
 });
 
 export type DocumentType = z.infer<typeof documentTypeDefinitionSchema>;
@@ -24,10 +25,16 @@ export const renameDocumentTypeSchema = z.object({
 
 export type RenameDocumentType = z.infer<typeof renameDocumentTypeSchema>;
 
+export const setDocumentTypeHiddenSchema = z.object({
+  hidden: z.boolean(),
+});
+
+export type SetDocumentTypeHidden = z.infer<typeof setDocumentTypeHiddenSchema>;
+
 export const DEFAULT_DOCUMENT_TYPES: readonly DocumentType[] = [
-  { slug: 'umowa-uod', label: 'Umowa UoD', position: 10 },
-  { slug: 'uchwala', label: 'Uchwała', position: 20 },
-  { slug: 'protokol', label: 'Protokół', position: 30 },
-  { slug: 'rachunek', label: 'Rachunek', position: 40 },
-  { slug: 'inny', label: 'Inny', position: 50 },
+  { slug: 'umowa-uod', label: 'Umowa UoD', position: 10, hidden: false },
+  { slug: 'uchwala', label: 'Uchwała', position: 20, hidden: false },
+  { slug: 'protokol', label: 'Protokół', position: 30, hidden: false },
+  { slug: 'rachunek', label: 'Rachunek', position: 40, hidden: false },
+  { slug: 'inny', label: 'Inny', position: 50, hidden: false },
 ];

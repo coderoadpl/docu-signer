@@ -167,6 +167,7 @@ const state = (
       documents,
       documentTypes: {
         listByTenant: async () => [...DEFAULT_DOCUMENT_TYPES],
+        setHidden: async () => null,
         findBySlug: async (_tenantId, slug) =>
           DEFAULT_DOCUMENT_TYPES.find((type) => type.slug === slug) ?? null,
         create: async () => null,

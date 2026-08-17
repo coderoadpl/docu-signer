@@ -68,10 +68,33 @@ export const documentTypes = pgTable(
     slug: text('slug').notNull(),
     label: text('label').notNull(),
     position: integer('position').notNull(),
+    hidden: boolean('hidden').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.tenantId, table.slug] })],
+);
+
+export const hiddenFilterValues = pgTable(
+  'hidden_filter_values',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['person', 'tag'] }).notNull(),
+    value: text('value').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('hidden_filter_values_tenant_kind_value_uidx').on(
+      table.tenantId,
+      table.kind,
+      table.value,
+    ),
+    check('hidden_filter_values_kind_check', sql`${table.kind} IN ('person', 'tag')`),
+    check('hidden_filter_values_value_length_check', sql`length(${table.value}) BETWEEN 1 AND 200`),
+  ],
 );
 
 export const invitations = pgTable(

@@ -18,6 +18,7 @@ import {
   type DocumentComment,
   type DocumentListFilter,
   type DocumentType,
+  type HiddenFilterValue,
   type PadSession,
   type PadQueuedSubmission,
   type SourceUpdateRequest,
@@ -111,8 +112,14 @@ const baseDeps = (): AppDeps => ({
       DEFAULT_DOCUMENT_TYPES.find((documentType) => documentType.slug === slug) ?? null,
     create: async () => null,
     rename: async () => null,
+    setHidden: async () => null,
     delete: async () => false,
     isUsedByAnyDocument: async () => false,
+  },
+  hiddenFilterValues: {
+    listByTenant: async () => [],
+    hide: async (input) => input,
+    unhide: async () => false,
   },
   documentComments: {
     listByDocument: async () => [],
@@ -1584,6 +1591,7 @@ describe('buildApp', () => {
           slug: input.slug,
           label: input.label,
           position: input.position,
+          hidden: input.hidden,
         };
         rows = [...rows, created];
         return created;
@@ -1592,6 +1600,12 @@ describe('buildApp', () => {
         const found = rows.find((documentType) => documentType.slug === slug);
         if (!found) return null;
         found.label = label;
+        return found;
+      },
+      setHidden: async (_tenantId, slug, hidden) => {
+        const found = rows.find((documentType) => documentType.slug === slug);
+        if (!found) return null;
+        found.hidden = hidden;
         return found;
       },
       delete: async (_tenantId, slug) => {
@@ -1634,11 +1648,73 @@ describe('buildApp', () => {
       data: { documentType: { slug: 'umowa-z-klientem', label: 'Kontrakt z klientem' } },
     });
 
+    const setHidden = await app.request(
+      API_ROUTES.documentTypeSetHidden.path.replace(':slug', 'umowa-z-klientem'),
+      {
+        method: API_ROUTES.documentTypeSetHidden.method,
+        headers,
+        body: JSON.stringify({ hidden: true }),
+      },
+    );
+    expect(await setHidden.json()).toMatchObject({
+      ok: true,
+      data: { documentType: { slug: 'umowa-z-klientem', hidden: true } },
+    });
+
     const deleted = await app.request(
       API_ROUTES.documentTypeDelete.path.replace(':slug', 'umowa-z-klientem'),
       { method: API_ROUTES.documentTypeDelete.method, headers },
     );
     expect(await deleted.json()).toEqual({ ok: true, data: { deleted: true } });
+  });
+
+  it('lists, hides and unhides filter values', async () => {
+    const deps = authorizedDeps();
+    let rows: HiddenFilterValue[] = [];
+    deps.hiddenFilterValues = {
+      listByTenant: async () => rows,
+      hide: async (input) => {
+        rows = [...rows, input];
+        return input;
+      },
+      unhide: async (_tenantId, kind, value) => {
+        const before = rows.length;
+        rows = rows.filter((row) => row.kind !== kind || row.value !== value);
+        return rows.length < before;
+      },
+    };
+    const app = buildApp(deps);
+    const headers = { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' };
+
+    const hidden = await app.request(API_ROUTES.hiddenFilterValueHide.path, {
+      method: API_ROUTES.hiddenFilterValueHide.method,
+      headers,
+      body: JSON.stringify({ kind: 'person', value: 'Jan Kowalski' }),
+    });
+    expect(await hidden.json()).toMatchObject({
+      ok: true,
+      data: { hiddenFilterValue: { kind: 'person', value: 'Jan Kowalski' } },
+    });
+
+    const list = await app.request(API_ROUTES.hiddenFilterValues.path, { headers });
+    expect(await list.json()).toMatchObject({
+      ok: true,
+      data: { hiddenFilterValues: [{ kind: 'person', value: 'Jan Kowalski' }] },
+    });
+
+    const unhidden = await app.request(API_ROUTES.hiddenFilterValueUnhide.path, {
+      method: API_ROUTES.hiddenFilterValueUnhide.method,
+      headers,
+      body: JSON.stringify({ kind: 'person', value: 'Jan Kowalski' }),
+    });
+    expect(await unhidden.json()).toEqual({ ok: true, data: { unhidden: true } });
+
+    const missing = await app.request(API_ROUTES.hiddenFilterValueUnhide.path, {
+      method: API_ROUTES.hiddenFilterValueUnhide.method,
+      headers,
+      body: JSON.stringify({ kind: 'person', value: 'Jan Kowalski' }),
+    });
+    expect(missing.status).toBe(404);
   });
 
   it('rejects anonymous saved search access with the unauthorized taxonomy', async () => {

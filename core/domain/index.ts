@@ -5,6 +5,8 @@ export * from './authorization.js';
 export * from './slug.js';
 export * from './document.js';
 export * from './document-type.js';
+export * from './hidden-filter-value.js';
+export * from './filter-values.js';
 export * from './document-comment.js';
 export * from './document-link.js';
 export * from './document-metadata-proposal.js';

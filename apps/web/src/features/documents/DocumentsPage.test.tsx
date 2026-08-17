@@ -401,6 +401,82 @@ describe('DocumentsPage', () => {
 
   });
 
+  it('drops hidden values from filter suggestions while rows keep them', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('/api/documents', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              document,
+              {
+                ...document,
+                id: '77777777-7777-4777-8777-777777777777',
+                title: 'Protokół odbioru',
+                docType: 'protokol',
+                person: 'Piotr Zieliński',
+                tags: ['odbiór'],
+              },
+            ],
+          },
+        }),
+      ),
+      http.get('*/api/document-types', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            documentTypes: [
+              { slug: 'umowa-uod', label: 'Umowa UoD', position: 10, hidden: true },
+              { slug: 'protokol', label: 'Protokół', position: 30, hidden: false },
+            ],
+          },
+        }),
+      ),
+      http.get('*/api/hidden-filter-values', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            hiddenFilterValues: [
+              {
+                id: '88888888-8888-4888-8888-888888888888',
+                tenantId: 'tenant-1',
+                kind: 'person',
+                value: 'Anna Nowak',
+              },
+              {
+                id: '99999999-9999-4999-8999-999999999999',
+                tenantId: 'tenant-1',
+                kind: 'tag',
+                value: 'ważne',
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Umowa z Anną');
+    expect(screen.getAllByText('Anna Nowak').length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Strona' }), {
+      target: { value: 'o' },
+    });
+    expect(await screen.findByRole('option', { name: 'Piotr Zieliński' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Anna Nowak' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Tag' }), {
+      target: { value: 'ó' },
+    });
+    expect(await screen.findByRole('option', { name: 'odbiór' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'ważne' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Typ'));
+    expect(await screen.findByRole('option', { name: 'Protokół' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Umowa UoD' })).not.toBeInTheDocument();
+  });
+
   it('filters by signature and draft status', async () => {
     const user = userEvent.setup();
     const seen = vi.fn();

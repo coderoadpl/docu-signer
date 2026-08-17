@@ -45,6 +45,14 @@ export const createDocumentTypeRepository = (db: Db): DocumentTypeRepository => 
       .returning();
     return rows[0] ? toDocumentType(rows[0]) : null;
   },
+  setHidden: async (tenantId, slug, hidden) => {
+    const rows = await db
+      .update(documentTypes)
+      .set({ hidden, updatedAt: new Date() })
+      .where(and(eq(documentTypes.tenantId, tenantId), eq(documentTypes.slug, slug)))
+      .returning();
+    return rows[0] ? toDocumentType(rows[0]) : null;
+  },
   delete: async (tenantId, slug) => {
     const rows = await db
       .delete(documentTypes)
