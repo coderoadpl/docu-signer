@@ -529,6 +529,14 @@ export const DocumentDetailPage = ({
     documentsViewFromSearch(search),
     documentFiltersFromSearch(search),
   );
+  const invalidatePendingDraftCounts = async (scope: {
+    queryKey: readonly unknown[];
+  }) => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.documentsInvalidates()),
+      queryClient.invalidateQueries(scope),
+    ]);
+  };
   const updateDocument = useMutation({
     ...actions.updateDocument,
     onSuccess: async () => {
@@ -615,60 +623,60 @@ export const DocumentDetailPage = ({
       setDocumentLinkSearch('');
       setDocumentLinkTargetId('');
       setDocumentLinkLabel('');
-      await queryClient.invalidateQueries(actions.documentLinksInvalidates());
+      await invalidatePendingDraftCounts(actions.documentLinksInvalidates());
     },
   });
   const unlinkDocuments = useMutation({
     ...actions.unlinkDocuments,
     onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.documentLinksInvalidates());
+      await invalidatePendingDraftCounts(actions.documentLinksInvalidates());
     },
   });
   const approveDocumentLink = useMutation({
     ...actions.approveDocumentLink,
     onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.documentLinksInvalidates());
+      await invalidatePendingDraftCounts(actions.documentLinksInvalidates());
     },
   });
   const addDocumentComment = useMutation({
     ...actions.addDocumentComment,
     onSuccess: async () => {
       setCommentBody('');
-      await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
+      await invalidatePendingDraftCounts(
+        actions.documentCommentsInvalidates(documentId),
+      );
     },
   });
   const deleteDocumentComment = useMutation({
     ...actions.deleteDocumentComment,
     onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
+      await invalidatePendingDraftCounts(
+        actions.documentCommentsInvalidates(documentId),
+      );
     },
   });
   const approveDocumentComment = useMutation({
     ...actions.approveDocumentComment,
     onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId));
+      await invalidatePendingDraftCounts(
+        actions.documentCommentsInvalidates(documentId),
+      );
     },
   });
   const approveMetadataProposal = useMutation({
     ...actions.approveDocumentMetadataProposal,
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries(actions.documentsInvalidates()),
-        queryClient.invalidateQueries(
-          actions.documentMetadataProposalsInvalidates(documentId),
-        ),
-      ]);
+      await invalidatePendingDraftCounts(
+        actions.documentMetadataProposalsInvalidates(documentId),
+      );
     },
   });
   const rejectMetadataProposal = useMutation({
     ...actions.rejectDocumentMetadataProposal,
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries(actions.documentsInvalidates()),
-        queryClient.invalidateQueries(
-          actions.documentMetadataProposalsInvalidates(documentId),
-        ),
-      ]);
+      await invalidatePendingDraftCounts(
+        actions.documentMetadataProposalsInvalidates(documentId),
+      );
     },
   });
 
@@ -893,9 +901,9 @@ export const DocumentDetailPage = ({
             direction="row"
             sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
           >
-            <Typography variant="h1">
-              {document.title}
+            <Typography variant="h1" sx={{ display: 'flex', alignItems: 'center' }}>
               <PendingDraftsDot counts={document.pendingDrafts} />
+              {document.title}
             </Typography>
             <Chip
               variant="outlined"
@@ -1128,7 +1136,6 @@ export const DocumentDetailPage = ({
         document={document}
         documentTypes={typeOptions}
         proposals={metadataProposalsQuery.data?.items ?? []}
-        loading={metadataProposalsQuery.isPending}
         {...(metadataProposalsQuery.error
           ? { error: metadataProposalsQuery.error.message }
           : {})}
@@ -1145,119 +1152,6 @@ export const DocumentDetailPage = ({
         onApprove={(proposalId) => approveMetadataProposal.mutate(proposalId)}
         onReject={(proposalId) => rejectMetadataProposal.mutate(proposalId)}
       />
-      <Paper variant="outlined" sx={{ mt: 4, p: 3 }}>
-        <Stack
-          direction="row"
-          sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
-        >
-          <Typography variant="h2" component="h2">
-            Powiązane dokumenty
-          </Typography>
-          {!isTrashed ? (
-            <Button variant="outlined" onClick={() => setDocumentLinkOpen(true)}>
-              Dodaj powiązanie
-            </Button>
-          ) : null}
-        </Stack>
-        {documentLinksQuery.isPending ? (
-          <LinearProgress sx={{ mt: 2 }} />
-        ) : documentLinksQuery.isError ? (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {documentLinksQuery.error.message}
-          </Alert>
-        ) : linkedDocuments.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Brak powiązanych dokumentów.
-          </Typography>
-        ) : (
-          <>
-            <List disablePadding sx={{ mt: 1 }}>
-              {visibleLinkedDocuments.map((link) => (
-                <ListItem
-                  key={link.linkId}
-                  disablePadding
-                  divider
-                  secondaryAction={
-                    (link.draft && canApprove) || !isTrashed ? (
-                      <Stack direction="row" sx={{ gap: 1 }}>
-                        {link.draft && canApprove ? (
-                          <Button
-                            size="small"
-                            disabled={approveDocumentLink.isPending}
-                            onClick={() => approveDocumentLink.mutate(link.linkId)}
-                          >
-                            Zatwierdź
-                          </Button>
-                        ) : null}
-                        {!isTrashed ? (
-                          <Button
-                            color="error"
-                            size="small"
-                            disabled={unlinkDocuments.isPending}
-                            onClick={() =>
-                              unlinkDocuments.mutate({
-                                documentId,
-                                otherDocumentId: link.document.id,
-                              })
-                            }
-                          >
-                            Usuń
-                          </Button>
-                        ) : null}
-                      </Stack>
-                    ) : null
-                  }
-                  sx={{ opacity: link.document.deletedAt ? 0.55 : 1 }}
-                >
-                  <RouterListItemButton
-                    to="/app/documents/$id"
-                    params={{ id: link.document.id }}
-                  >
-                    <ListItemText
-                      primary={link.document.title}
-                      secondary={link.label ?? undefined}
-                    />
-                    <Stack
-                      direction="row"
-                      sx={{
-                        gap: 1,
-                        mr: (link.draft && canApprove) || !isTrashed ? 16 : 0,
-                      }}
-                    >
-                      {link.draft ? <Chip size="small" label="Szkic" /> : null}
-                      {link.document.deletedAt ? (
-                        <Chip size="small" variant="outlined" label="W koszu" />
-                      ) : null}
-                    </Stack>
-                  </RouterListItemButton>
-                </ListItem>
-              ))}
-            </List>
-            {linkedDocuments.length > 3 ? (
-              <Button
-                size="small"
-                sx={{ mt: 1 }}
-                aria-expanded={linkedDocumentsExpanded}
-                onClick={() => setLinkedDocumentsExpanded((expanded) => !expanded)}
-              >
-                {linkedDocumentsExpanded
-                  ? 'Zwiń'
-                  : `Pokaż wszystkie (${linkedDocuments.length})`}
-              </Button>
-            ) : null}
-          </>
-        )}
-        {unlinkDocuments.isError ? (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {unlinkDocuments.error.message}
-          </Alert>
-        ) : null}
-        {approveDocumentLink.isError ? (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {approveDocumentLink.error.message}
-          </Alert>
-        ) : null}
-      </Paper>
       <Paper component="section" variant="outlined" sx={{ mt: 3, p: 3 }}>
         <Typography variant="h2" component="h2">
           Komentarze
@@ -1411,6 +1305,119 @@ export const DocumentDetailPage = ({
           />
         ))}
       </Stack>
+      <Paper variant="outlined" sx={{ mt: 4, p: 3 }}>
+        <Stack
+          direction="row"
+          sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
+        >
+          <Typography variant="h2" component="h2">
+            Powiązane dokumenty
+          </Typography>
+          {!isTrashed ? (
+            <Button variant="outlined" onClick={() => setDocumentLinkOpen(true)}>
+              Dodaj powiązanie
+            </Button>
+          ) : null}
+        </Stack>
+        {documentLinksQuery.isPending ? (
+          <LinearProgress sx={{ mt: 2 }} />
+        ) : documentLinksQuery.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {documentLinksQuery.error.message}
+          </Alert>
+        ) : linkedDocuments.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Brak powiązanych dokumentów.
+          </Typography>
+        ) : (
+          <>
+            <List disablePadding sx={{ mt: 1 }}>
+              {visibleLinkedDocuments.map((link) => (
+                <ListItem
+                  key={link.linkId}
+                  disablePadding
+                  divider
+                  secondaryAction={
+                    (link.draft && canApprove) || !isTrashed ? (
+                      <Stack direction="row" sx={{ gap: 1 }}>
+                        {link.draft && canApprove ? (
+                          <Button
+                            size="small"
+                            disabled={approveDocumentLink.isPending}
+                            onClick={() => approveDocumentLink.mutate(link.linkId)}
+                          >
+                            Zatwierdź
+                          </Button>
+                        ) : null}
+                        {!isTrashed ? (
+                          <Button
+                            color="error"
+                            size="small"
+                            disabled={unlinkDocuments.isPending}
+                            onClick={() =>
+                              unlinkDocuments.mutate({
+                                documentId,
+                                otherDocumentId: link.document.id,
+                              })
+                            }
+                          >
+                            Usuń
+                          </Button>
+                        ) : null}
+                      </Stack>
+                    ) : null
+                  }
+                  sx={{ opacity: link.document.deletedAt ? 0.55 : 1 }}
+                >
+                  <RouterListItemButton
+                    to="/app/documents/$id"
+                    params={{ id: link.document.id }}
+                  >
+                    <ListItemText
+                      primary={link.document.title}
+                      secondary={link.label ?? undefined}
+                    />
+                    <Stack
+                      direction="row"
+                      sx={{
+                        gap: 1,
+                        mr: (link.draft && canApprove) || !isTrashed ? 16 : 0,
+                      }}
+                    >
+                      {link.draft ? <Chip size="small" label="Szkic" /> : null}
+                      {link.document.deletedAt ? (
+                        <Chip size="small" variant="outlined" label="W koszu" />
+                      ) : null}
+                    </Stack>
+                  </RouterListItemButton>
+                </ListItem>
+              ))}
+            </List>
+            {linkedDocuments.length > 3 ? (
+              <Button
+                size="small"
+                sx={{ mt: 1 }}
+                aria-expanded={linkedDocumentsExpanded}
+                onClick={() => setLinkedDocumentsExpanded((expanded) => !expanded)}
+              >
+                {linkedDocumentsExpanded
+                  ? 'Zwiń'
+                  : `Pokaż wszystkie (${linkedDocuments.length})`}
+              </Button>
+            ) : null}
+          </>
+        )}
+        {unlinkDocuments.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {unlinkDocuments.error.message}
+          </Alert>
+        ) : null}
+        {approveDocumentLink.isError ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {approveDocumentLink.error.message}
+          </Alert>
+        ) : null}
+      </Paper>
 
       <DocumentFormDialog
         open={editOpen}

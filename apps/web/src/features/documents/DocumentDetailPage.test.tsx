@@ -172,7 +172,11 @@ describe('DocumentDetailPage', () => {
     if (!secondRow) throw new Error('Proposal row was not rendered');
     await userEvent.click(within(secondRow).getByRole('button', { name: 'Odrzuć' }));
     await waitFor(() => expect(reject).toHaveBeenCalledOnce());
-    expect(await screen.findByText('Brak proponowanych zmian.')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', { name: 'Proponowane zmiany' }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it('renders, adds, and restricts comment deletion to the current user', async () => {
@@ -407,6 +411,89 @@ describe('DocumentDetailPage', () => {
     await userEvent.click(within(commentRow).getByRole('button', { name: 'Zatwierdź' }));
     await waitFor(() => expect(approveComment).toHaveBeenCalledOnce());
     await waitFor(() => expect(within(commentRow).queryByText('Szkic')).not.toBeInTheDocument());
+  });
+
+  it('refreshes document lists when the last draft comment is approved', async () => {
+    const commentId = '67676767-6767-4767-8767-676767676767';
+    let commentDraft = true;
+    const comment = {
+      id: commentId,
+      tenantId: 'tenant-1',
+      documentId: DOCUMENT_ID,
+      author: { accountId: 'user-other', name: 'Anna Nowak' },
+      body: 'Komentarz do zatwierdzenia',
+      createdAt: '2026-08-16T12:00:00.000Z',
+    };
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            document: {
+              ...document,
+              pendingDrafts: {
+                comments: commentDraft ? 1 : 0,
+                links: 0,
+                metadataProposals: 0,
+              },
+            },
+          },
+        }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/comments`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { items: [{ ...comment, draft: commentDraft }], nextCursor: null },
+        }),
+      ),
+      http.post(`/api/document-comments/${commentId}/approve`, () => {
+        commentDraft = false;
+        return HttpResponse.json({
+          ok: true,
+          data: { comment: { ...comment, draft: false } },
+        });
+      }),
+    );
+    await renderPage();
+
+    expect(await screen.findByLabelText('1 komentarz-szkic')).toBeInTheDocument();
+    const listRequests = vi.fn();
+    server.use(
+      http.get('/api/documents', () => {
+        listRequests();
+        return HttpResponse.json({ ok: true, data: { documents: [] } });
+      }),
+    );
+
+    const commentRow = screen.getByText('Komentarz do zatwierdzenia').closest('li');
+    if (!commentRow) throw new Error('Draft comment row was not rendered');
+    await userEvent.click(within(commentRow).getByRole('button', { name: 'Zatwierdź' }));
+
+    await waitFor(() => expect(listRequests).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByLabelText('1 komentarz-szkic')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('renders the related-documents section after every other section', async () => {
+    server.use(
+      http.get(`/api/documents/${DOCUMENT_ID}`, () =>
+        HttpResponse.json({ ok: true, data: { document } }),
+      ),
+      http.get(`/api/documents/${DOCUMENT_ID}/metadata-proposals`, () =>
+        HttpResponse.json({ ok: true, data: { items: [], nextCursor: null } }),
+      ),
+    );
+    await renderPage();
+
+    await screen.findByRole('heading', { name: 'Powiązane dokumenty' });
+    const sections = screen
+      .getAllByRole('heading', { level: 2 })
+      .map((heading) => heading.textContent);
+    expect(sections).toEqual(['Komentarze', 'Pliki', 'Powiązane dokumenty']);
+    expect(
+      screen.queryByRole('heading', { name: 'Proponowane zmiany' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps draft chips visible without approval buttons when approval is unavailable', async () => {

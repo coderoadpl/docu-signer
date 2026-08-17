@@ -36,14 +36,7 @@ export const PendingDraftsDot = ({ counts }: { counts: PendingDraftCounts }) => 
   if (!label) return null;
   return (
     <Tooltip title={label} describeChild>
-      <PendingDraftStatusDot
-        aria-label={label}
-        sx={{
-          flex: '0 0 auto',
-          ml: 0.75,
-          verticalAlign: 'middle',
-        }}
-      />
+      <PendingDraftStatusDot aria-label={label} />
     </Tooltip>
   );
 };
