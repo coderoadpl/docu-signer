@@ -126,6 +126,7 @@ const depsWith = (findBySlug: AppDeps['tenants']['findBySlug']): AppDeps => ({
     deleteBetween: async () => false,
   },
   documentMetadataProposals: {
+    listPendingByDocuments: async () => [],
     listByDocument: async () => [],
     create: async () => { throw new Error('not implemented'); },
     findById: async () => null,

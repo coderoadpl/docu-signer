@@ -848,6 +848,14 @@ describe('DocumentMetadataProposalRepository', () => {
       changes: { title: 'Zatwierdzona propozycja', person: 'Anna Nowak' },
     });
     await expect(
+      proposals.listPendingByDocuments('tenant-b', [proposalDocument.id]),
+    ).resolves.toEqual([]);
+    await expect(
+      proposals.listPendingByDocuments('tenant-a', [commentDocument.id, proposalDocument.id]),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: created.id, documentId: proposalDocument.id }),
+    ]);
+    await expect(
       proposals.listByDocument('tenant-b', proposalDocument.id, null, 10),
     ).resolves.toEqual([]);
     await expect(

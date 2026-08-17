@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, or, sql } from 'drizzle-orm';
 
 import {
   documentMetadataProposalListItemSchema,
@@ -54,6 +54,24 @@ const findListItemById = async (
 export const createDocumentMetadataProposalRepository = (
   db: Db,
 ): DocumentMetadataProposalRepository => ({
+  listPendingByDocuments: async (tenantId, documentIds) => {
+    if (documentIds.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(documentMetadataProposals)
+      .where(
+        and(
+          eq(documentMetadataProposals.tenantId, tenantId),
+          inArray(documentMetadataProposals.documentId, documentIds),
+        ),
+      )
+      .orderBy(
+        asc(documentMetadataProposals.documentId),
+        asc(documentMetadataProposals.createdAt),
+        asc(documentMetadataProposals.id),
+      );
+    return rows.map(toProposal);
+  },
   listByDocument: async (tenantId, documentId, cursor, limit) => {
     const cursorCondition = cursor
       ? or(

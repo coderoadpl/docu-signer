@@ -104,6 +104,10 @@ export interface DocumentRepository {
 }
 
 export interface DocumentMetadataProposalRepository {
+  listPendingByDocuments(
+    tenantId: string,
+    documentIds: string[],
+  ): Promise<DocumentMetadataProposal[]>;
   listByDocument(
     tenantId: string,
     documentId: string,

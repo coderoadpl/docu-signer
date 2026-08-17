@@ -99,6 +99,7 @@ describe('CLI command surface', () => {
     expect(documentHelp.stdout).toContain('propose-update');
     expect(documentHelp.stdout).toContain('proposal');
     expect(documentHelp.stdout).toContain('approve-proposal');
+    expect(documentHelp.stdout).toContain('approve-proposals');
     expect(documentHelp.stdout).toContain('reject-proposal');
     const listHelp = run('document', 'list', '--help');
     expect(listHelp.status).toBe(0);
@@ -159,6 +160,21 @@ describe('CLI command surface', () => {
         error: { code: 'validation' },
       });
     }
+  }, CLI_TEST_TIMEOUT_MS);
+
+  it('validates every document ID for bulk proposal approval', () => {
+    const result = run(
+      '--json',
+      'document',
+      'approve-proposals',
+      '11111111-1111-4111-8111-111111111111',
+      'bad-id',
+    );
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
   }, CLI_TEST_TIMEOUT_MS);
 
   it('requires at least one metadata change for a proposal', () => {

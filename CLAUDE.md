@@ -107,6 +107,11 @@ before ai-review may accept them; the rulings are archived verbatim in
   document type comes from the tenant dictionary managed in Ustawienia
   organizacji, so new types do not require a deploy.
   The document counterparty field is presented as „Strona” (the wire field remains `person`).
+  The list keeps only view controls visible until documents are selected; selection opens a
+  contextual toolbar with signing, review and approval primaries plus the remaining bulk
+  actions under „Więcej”. „Zatwierdź propozycje” applies every pending metadata proposal for
+  the selected documents in chronological, field-wise order without changing draft links,
+  comments or the document's Szkic status.
   A full-screen mass-review queue shows each selected source or newest digital
   signature and supports lightweight metadata editing without signing controls.
   The mass-review reader falls back signed-digital → scan → source, so
