@@ -26,6 +26,7 @@ import {
 } from '#core/contract/index.js';
 import {
   appError,
+  bulkApproveDocumentMetadataProposalsSchema,
   canonicalSlugSchema,
   documentMetadataChangesSchema,
   documentTypeSchema,
@@ -870,6 +871,22 @@ document
     if (id === undefined) return;
     emit(await ctx.api.approveDocumentMetadataProposal(id), ctx.json, (data) =>
       `approved proposal: ${id} → ${data.document.title}`,
+    );
+  });
+
+document
+  .command('approve-proposals <ids...>')
+  .description('Approve all pending metadata proposals for selected documents')
+  .action(async (ids: string[]) => {
+    const ctx = cliCtx();
+    const input = parseArgs(
+      bulkApproveDocumentMetadataProposalsSchema,
+      { documentIds: ids },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(await ctx.api.bulkApproveDocumentMetadataProposals(input), ctx.json, (data) =>
+      `approved proposals: ${data.approved}, skipped: ${data.skipped}`,
     );
   });
 

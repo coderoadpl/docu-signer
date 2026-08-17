@@ -17,6 +17,7 @@ import {
   approveDocumentCommentMutation,
   approveDocumentLinkMutation,
   approveDocumentMetadataProposalMutation,
+  bulkApproveDocumentMetadataProposalsMutation,
   addDocumentCommentMutation,
   apiTokensInvalidates,
   apiTokensQuery,
@@ -146,6 +147,8 @@ export const actions = {
   documentMetadataProposals: (documentId: string) =>
     documentMetadataProposalsQuery(apiClient, documentId),
   approveDocumentMetadataProposal: approveDocumentMetadataProposalMutation(apiClient),
+  bulkApproveDocumentMetadataProposals:
+    bulkApproveDocumentMetadataProposalsMutation(apiClient),
   rejectDocumentMetadataProposal: rejectDocumentMetadataProposalMutation(apiClient),
   documentMetadataProposalsInvalidates,
   documentFile: (documentId: string, fileId: string) =>

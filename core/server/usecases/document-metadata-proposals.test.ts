@@ -13,6 +13,7 @@ import type {
 } from '../ports.js';
 import {
   approveDocumentMetadataProposal,
+  bulkApproveDocumentMetadataProposals,
   listDocumentMetadataProposals,
   rejectDocumentMetadataProposal,
   type DocumentMetadataProposalDeps,
@@ -93,11 +94,29 @@ const documentRepository = (current: Document): DocumentRepository => ({
 });
 
 const state = (
-  proposal: DocumentMetadataProposal | null = proposalRow(),
-): { deps: DocumentMetadataProposalDeps; proposals: DocumentMetadataProposal[] } => {
-  const current = documentRow();
-  const proposals = proposal ? [proposal] : [];
+  proposal: DocumentMetadataProposal | DocumentMetadataProposal[] | null = proposalRow(),
+): {
+  current: () => Document;
+  deps: DocumentMetadataProposalDeps;
+  proposals: DocumentMetadataProposal[];
+} => {
+  let current = documentRow();
+  const proposals = proposal ? (Array.isArray(proposal) ? proposal : [proposal]) : [];
+  const documents = documentRepository(current);
+  documents.findById = async (tenantId, documentId) =>
+    tenantId === current.tenantId && documentId === current.id ? current : null;
   const repository: DocumentMetadataProposalRepository = {
+    listPendingByDocuments: async (tenantId, documentIds) =>
+      proposals
+        .filter(
+          (item) => item.tenantId === tenantId && documentIds.includes(item.documentId),
+        )
+        .toSorted(
+          (left, right) =>
+            left.documentId.localeCompare(right.documentId) ||
+            left.createdAt.localeCompare(right.createdAt) ||
+            left.id.localeCompare(right.id),
+        ),
     listByDocument: async (tenantId, documentId) =>
       proposals
         .filter((item) => item.tenantId === tenantId && item.documentId === documentId)
@@ -118,7 +137,7 @@ const state = (
       );
       if (index < 0) return null;
       proposals.splice(index, 1);
-      return {
+      current = {
         ...current,
         title: changes.title ?? current.title,
         docType: changes.docType ?? current.docType,
@@ -130,6 +149,7 @@ const state = (
         tags: changes.tags ?? current.tags,
         updatedAt: '2026-08-16T11:00:00.000Z',
       };
+      return current;
     },
     reject: async (tenantId, proposalId) => {
       const index = proposals.findIndex(
@@ -141,9 +161,10 @@ const state = (
     },
   };
   return {
+    current: () => current,
     deps: {
       documentMetadataProposals: repository,
-      documents: documentRepository(current),
+      documents,
       documentTypes: {
         listByTenant: async () => [...DEFAULT_DOCUMENT_TYPES],
         findBySlug: async (_tenantId, slug) =>
@@ -262,6 +283,81 @@ describe('document metadata proposal use-cases', () => {
     expect(currentState.proposals).toEqual([]);
   });
 
+  it('bulk-approves proposals chronologically with field-wise newest-wins merging', async () => {
+    const firstId = '33333333-3333-4333-8333-333333333333';
+    const secondId = '44444444-4444-4444-8444-444444444444';
+    const currentState = state([
+      {
+        ...proposalRow({ person: 'First person', tags: ['first'] }),
+        id: firstId,
+        createdAt: '2026-08-16T09:00:00.000Z',
+      },
+      {
+        ...proposalRow({ person: 'Newest person', title: 'Newest title' }),
+        id: secondId,
+        createdAt: '2026-08-16T10:00:00.000Z',
+      },
+    ]);
+    const apply = vi.spyOn(currentState.deps.documentMetadataProposals, 'apply');
+
+    await expect(
+      bulkApproveDocumentMetadataProposals(
+        ctx(identity('tenant-default')),
+        { documentIds: [DOCUMENT_ID] },
+        currentState.deps,
+      ),
+    ).resolves.toEqual({ ok: true, value: { approved: 1, skipped: 0 } });
+    expect(apply.mock.calls.map((call) => call[1])).toEqual([firstId, secondId]);
+    expect(currentState.current()).toMatchObject({
+      person: 'Newest person',
+      tags: ['first'],
+      title: 'Newest title',
+    });
+    expect(currentState.proposals).toEqual([]);
+  });
+
+  it('bulk approval validates document types before applying proposals', async () => {
+    const currentState = state([
+      proposalRow({ title: 'Valid first change' }),
+      {
+        ...proposalRow({ docType: 'removed-type' }),
+        id: '33333333-3333-4333-8333-333333333333',
+        createdAt: '2026-08-16T11:00:00.000Z',
+      },
+    ]);
+    const apply = vi.spyOn(currentState.deps.documentMetadataProposals, 'apply');
+
+    await expect(
+      bulkApproveDocumentMetadataProposals(
+        ctx(identity('tenant-default')),
+        { documentIds: [DOCUMENT_ID] },
+        currentState.deps,
+      ),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(apply).not.toHaveBeenCalled();
+    expect(currentState.proposals).toHaveLength(2);
+  });
+
+  it('bulk approval skips empty documents and is idempotent', async () => {
+    const emptyDocumentId = '55555555-5555-4555-8555-555555555555';
+    const currentState = state();
+
+    await expect(
+      bulkApproveDocumentMetadataProposals(
+        ctx(identity('tenant-default')),
+        { documentIds: [DOCUMENT_ID, emptyDocumentId] },
+        currentState.deps,
+      ),
+    ).resolves.toEqual({ ok: true, value: { approved: 1, skipped: 1 } });
+    await expect(
+      bulkApproveDocumentMetadataProposals(
+        ctx(identity('tenant-default')),
+        { documentIds: [DOCUMENT_ID, emptyDocumentId] },
+        currentState.deps,
+      ),
+    ).resolves.toEqual({ ok: true, value: { approved: 0, skipped: 2 } });
+  });
+
   it('validates the proposed document type against the current tenant dictionary', async () => {
     const currentState = state(proposalRow({ docType: 'removed-type' }));
     const apply = vi.spyOn(currentState.deps.documentMetadataProposals, 'apply');
@@ -356,6 +452,10 @@ describe('document metadata proposal use-cases', () => {
     const list = vi.spyOn(currentState.deps.documentMetadataProposals, 'listByDocument');
     const find = vi.spyOn(currentState.deps.documentMetadataProposals, 'findById');
     const reject = vi.spyOn(currentState.deps.documentMetadataProposals, 'reject');
+    const bulkList = vi.spyOn(
+      currentState.deps.documentMetadataProposals,
+      'listPendingByDocuments',
+    );
     const denied = ctx(identity(null));
 
     await expect(
@@ -367,8 +467,16 @@ describe('document metadata proposal use-cases', () => {
     await expect(
       rejectDocumentMetadataProposal(denied, PROPOSAL_ID, currentState.deps),
     ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    await expect(
+      bulkApproveDocumentMetadataProposals(
+        denied,
+        { documentIds: [DOCUMENT_ID] },
+        currentState.deps,
+      ),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(list).not.toHaveBeenCalled();
     expect(find).not.toHaveBeenCalled();
     expect(reject).not.toHaveBeenCalled();
+    expect(bulkList).not.toHaveBeenCalled();
   });
 });

@@ -226,6 +226,10 @@ const clearDateWithButton = async (field: HTMLElement) => {
   await waitFor(() => expect(field).toHaveTextContent('DD.MM.YYYY'));
 };
 
+const openBulkMenu = async () => {
+  await userEvent.click(screen.getByRole('button', { name: 'Więcej' }));
+};
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -320,6 +324,16 @@ describe('DocumentsPage', () => {
 
     const dots = await screen.findAllByLabelText(label);
     expect(dots).toHaveLength(2);
+    for (const rendered of dots) {
+      const title = rendered.parentElement;
+      if (!title) throw new Error('Pending-drafts dot was not rendered inside a title');
+      expect(title.firstChild).toBe(rendered);
+      expect(title).toHaveTextContent('Umowa z Anną');
+      expect(title).toHaveStyle({ alignItems: 'center' });
+      expect(rendered).toHaveStyle({
+        animation: 'pendingDraftPulse 2s ease-in-out infinite',
+      });
+    }
     const dot = dots[0];
     if (!dot) throw new Error('Pending-drafts dot was not rendered');
     await user.hover(dot);
@@ -745,7 +759,7 @@ describe('DocumentsPage', () => {
     expect(requests).toHaveBeenCalledTimes(3);
   });
 
-  it('enables bulk export as documents are selected', async () => {
+  it('shows only view controls at zero selection and opens the contextual selection bar', async () => {
     server.use(
       http.get('/api/documents', () =>
         HttpResponse.json({
@@ -766,10 +780,15 @@ describe('DocumentsPage', () => {
     await renderPage();
 
     await screen.findAllByText('Uchwała zarządu');
-    const emptyExport = await screen.findByRole('button', {
-      name: 'Eksportuj zaznaczone (0)',
-    });
-    expect(emptyExport).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Lista' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Oś czasu' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kolumny' })).toBeInTheDocument();
+    expect(screen.queryByText(/Zaznaczono:/u)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('toolbar', { name: 'Akcje zaznaczonych dokumentów' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Masowe podpisywanie/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Więcej' })).not.toBeInTheDocument();
     const annaCheckbox = screen
       .getAllByRole('checkbox', {
         name: 'Zaznacz dokument: Umowa z Anną',
@@ -778,16 +797,120 @@ describe('DocumentsPage', () => {
     if (!annaCheckbox) throw new Error('Missing document checkbox');
     await userEvent.click(annaCheckbox);
     expect(
-      screen.getByRole('button', { name: 'Eksportuj zaznaczone (1)' }),
-    ).toBeEnabled();
+      screen.getByRole('toolbar', { name: 'Akcje zaznaczonych dokumentów' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Zaznaczono: 1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Masowe podpisywanie (0)' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Masowe przeglądanie (1)' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Zatwierdź (0)' })).toBeDisabled();
+    await openBulkMenu();
+    expect(screen.getByRole('menuitem', { name: 'Eksportuj zaznaczone (1)' })).toBeEnabled();
+    await userEvent.keyboard('{Escape}');
     await userEvent.click(
       screen.getByRole('checkbox', {
         name: 'Zaznacz wszystkie dokumenty',
       }),
     );
+    expect(screen.getByText('Zaznaczono: 2')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Wyczyść zaznaczenie' }));
+    expect(screen.queryByText(/Zaznaczono:/u)).not.toBeInTheDocument();
+  });
+
+  it('orders the more menu and confirms bulk proposal approval', async () => {
+    const approve = vi.fn();
+    const listRequests = vi.fn();
+    const pendingDocument = {
+      ...document,
+      pendingDrafts: { comments: 1, links: 1, metadataProposals: 2 },
+    };
+    const emptyDocument = {
+      ...draftDocument,
+      pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
+    };
+    let approved = false;
+    server.use(
+      http.get('/api/documents', () => {
+        listRequests();
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            documents: [
+              approved
+                ? { ...pendingDocument, pendingDrafts: emptyDocument.pendingDrafts }
+                : pendingDocument,
+              emptyDocument,
+            ],
+          },
+        });
+      }),
+      http.post('/api/document-metadata-proposals/bulk-approve', async ({ request }) => {
+        approve(await request.json());
+        approved = true;
+        return HttpResponse.json({ ok: true, data: { approved: 1, skipped: 1 } });
+      }),
+    );
+    await renderPage();
+
+    await screen.findAllByText('Szkic importu');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
+    await openBulkMenu();
+    const menuItems = screen.getAllByRole('menuitem');
+    const labels = menuItems.map((item) => item.textContent ?? '');
+    const expectedOrder = [
+      'Zatwierdź propozycje (1)',
+      'Nie wymaga podpisu (2)',
+      'Dodaj tagi',
+      'Usuń tag',
+      'Ustaw stronę',
+      'Ustaw typ',
+      'Powiąż z dokumentem… (2)',
+      'Eksportuj zaznaczone (2)',
+      'Do kosza (2)',
+    ];
+    expect(labels).toEqual(expect.arrayContaining(expectedOrder));
+    for (const [index, label] of expectedOrder.entries()) {
+      const previous = expectedOrder[index - 1];
+      expect(labels.indexOf(label)).toBeGreaterThan(
+        previous === undefined ? -1 : labels.indexOf(previous),
+      );
+    }
+    const trashItem = menuItems.at(-1);
+    if (!trashItem) throw new Error('Missing trash menu item');
+    expect(trashItem).toHaveTextContent('Do kosza (2)');
+    expect(getComputedStyle(within(trashItem).getByText('Do kosza (2)')).color).toBe(
+      'rgb(211, 47, 47)',
+    );
+
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Zatwierdź propozycje (1)' }),
+    );
+    const dialog = await screen.findByRole('dialog', { name: 'Zatwierdź propozycje' });
     expect(
-      screen.getByRole('button', { name: 'Eksportuj zaznaczone (2)' }),
-    ).toBeEnabled();
+      within(dialog).getByText(
+        'Propozycje zmian zostaną zastosowane w 1 zaznaczonym dokumencie.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Zatwierdź propozycje' }),
+    );
+
+    await waitFor(() =>
+      expect(approve).toHaveBeenCalledWith({
+        documentIds: [document.id, draftDocument.id],
+      }),
+    );
+    expect(
+      await screen.findByText('Zatwierdzono propozycje w 1 dokumencie, pominięto 1.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Zaznaczono:/u)).not.toBeInTheDocument();
+    await waitFor(() => expect(listRequests.mock.calls.length).toBeGreaterThan(2));
+    await waitFor(() =>
+      expect(
+        screen.queryAllByLabelText(
+          '2 propozycje zmian, 1 komentarz-szkic, 1 powiązanie-szkic',
+        ),
+      ).toHaveLength(0),
+    );
   });
 
   it('bulk links selected documents to one target and skips the target in the selection', async () => {
@@ -820,9 +943,8 @@ describe('DocumentsPage', () => {
     await userEvent.click(
       screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }),
     );
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Powiąż z dokumentem… (3)' }),
-    );
+    await openBulkMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Powiąż z dokumentem… (3)' }));
     const dialog = await screen.findByRole('dialog', {
       name: 'Dodaj powiązany dokument',
     });
@@ -872,9 +994,8 @@ describe('DocumentsPage', () => {
     await userEvent.click(
       screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }),
     );
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Powiąż z dokumentem… (2)' }),
-    );
+    await openBulkMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Powiąż z dokumentem… (2)' }));
     const dialog = await screen.findByRole('dialog', {
       name: 'Dodaj powiązany dokument',
     });
@@ -894,7 +1015,8 @@ describe('DocumentsPage', () => {
     );
     await renderPage();
 
-    expect(await screen.findByRole('button', { name: 'Zatwierdź (0)' })).toBeDisabled();
+    await screen.findAllByText('Umowa z Anną');
+    expect(screen.queryByRole('button', { name: 'Zatwierdź (0)' })).not.toBeInTheDocument();
     await userEvent.click(
       screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Umowa z Anną' }).at(0) ??
         screen.getByLabelText('Zaznacz dokument: Umowa z Anną'),
@@ -935,8 +1057,6 @@ describe('DocumentsPage', () => {
 
     await screen.findAllByText('Drugi szkic');
     await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
-    const buttons = screen.getAllByRole('button').map((button) => button.textContent ?? '');
-    expect(buttons.indexOf('Zatwierdź (2)')).toBeLessThan(buttons.indexOf('Do kosza (3)'));
     await userEvent.click(screen.getByRole('button', { name: 'Zatwierdź (2)' }));
 
     await waitFor(() =>
@@ -976,11 +1096,8 @@ describe('DocumentsPage', () => {
     await screen.findAllByText('Drugi zatwierdzony');
     expect(screen.queryByRole('button', { name: /Cofnij do szkicu/u })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
-    const buttons = screen.getAllByRole('button').map((button) => button.textContent ?? '');
-    expect(buttons.indexOf('Zatwierdź (1)')).toBeLessThan(
-      buttons.indexOf('Cofnij do szkicu (2)'),
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Cofnij do szkicu (2)' }));
+    await openBulkMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Cofnij do szkicu (2)' }));
 
     await waitFor(() => expect(unapprove).toHaveBeenCalledWith(DOCUMENT_ID));
     expect(unapprove).toHaveBeenCalledWith('66666666-6666-4666-8666-666666666666');
@@ -1021,16 +1138,16 @@ describe('DocumentsPage', () => {
 
     await screen.findAllByText('Rachunek bez podpisu');
     await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
-    expect(
-      screen.getByRole('button', { name: 'Nie wymaga podpisu (1)' }),
-    ).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Wymaga podpisu (1)' })).toBeEnabled();
-    await userEvent.click(screen.getByRole('button', { name: 'Nie wymaga podpisu (1)' }));
+    await openBulkMenu();
+    expect(screen.getByRole('menuitem', { name: 'Nie wymaga podpisu (1)' })).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: 'Wymaga podpisu (1)' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Nie wymaga podpisu (1)' }));
     await waitFor(() => expect(waive).toHaveBeenCalledWith(document.id));
     expect(waive).not.toHaveBeenCalledWith(signatureWaivedDocument.id);
 
     await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Wymaga podpisu (1)' }));
+    await openBulkMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Wymaga podpisu (1)' }));
     await waitFor(() => expect(requireSignature).toHaveBeenCalledWith(signatureWaivedDocument.id));
     expect(requireSignature).not.toHaveBeenCalledWith(document.id);
   });
@@ -1116,13 +1233,13 @@ describe('DocumentsPage', () => {
     );
     const { router } = await renderPage('/app/documents?q=masowe');
 
-    const massSigningButton = await screen.findByRole('button', {
-      name: 'Masowe podpisywanie (0)',
-    });
-    expect(massSigningButton).toBeDisabled();
+    await screen.findByRole('rowheader', { name: 'Podpisana umowa' });
     expect(
-      screen.getByRole('button', { name: 'Masowe przeglądanie (0)' }),
-    ).toBeDisabled();
+      screen.queryByRole('button', { name: 'Masowe podpisywanie (0)' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Masowe przeglądanie (0)' }),
+    ).not.toBeInTheDocument();
     await userEvent.click(
       screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Podpisana umowa' })[0] ??
         screen.getByLabelText('Zaznacz dokument: Podpisana umowa'),
@@ -1315,7 +1432,8 @@ describe('DocumentsPage', () => {
       screen.getAllByRole('checkbox', { name: 'Zaznacz dokument: Uchwała zarządu' }).at(0) ??
         screen.getByLabelText('Zaznacz dokument: Uchwała zarządu'),
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Ustaw stronę' }));
+    await openBulkMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Ustaw stronę' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ustaw stronę' });
     expect(within(dialog).getByText('Nadpiszesz stronę w 2 dokumentach.')).toBeInTheDocument();
     await userEvent.type(within(dialog).getByRole('combobox', { name: 'Strona' }), 'Jan Kowalski');
@@ -1409,7 +1527,8 @@ describe('DocumentsPage', () => {
 
     await screen.findAllByText('Drugi zatwierdzony');
     await userEvent.click(screen.getByRole('checkbox', { name: 'Zaznacz wszystkie dokumenty' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Cofnij do szkicu (2)' }));
+    await openBulkMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Cofnij do szkicu (2)' }));
 
     expect(await screen.findByText('Cofnięto do szkicu 1, błędów 1.')).toBeInTheDocument();
     expect(unapprove).toHaveBeenCalledTimes(2);

@@ -239,10 +239,18 @@ export const PadStatusDot = styled('span')(({ theme }) => ({
 
 export const PendingDraftStatusDot = styled('span')(({ theme }) => ({
   display: 'inline-block',
-  width: 8,
-  height: 8,
+  flex: '0 0 auto',
+  width: 11,
+  height: 11,
+  marginRight: theme.spacing(0.75),
   borderRadius: '50%',
   backgroundColor: theme.palette.warning.main,
+  animation: 'pendingDraftPulse 2s ease-in-out infinite',
+  '@keyframes pendingDraftPulse': {
+    '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+    '50%': { opacity: 0.4, transform: 'scale(0.75)' },
+  },
+  [`@media ${reducedMotionMediaQuery}`]: { animation: 'none' },
 }));
 
 export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
@@ -317,7 +325,8 @@ export const DocumentPersonTitle = styled(Typography)({
 export const DocumentTitleText = styled(Typography)<AsElement>(({ theme }) => ({
   position: 'sticky',
   left: RECORD_TEXT_INDENT,
-  display: 'block',
+  display: 'flex',
+  alignItems: 'center',
   width: 'fit-content',
   maxWidth: '100%',
   overflow: 'hidden',

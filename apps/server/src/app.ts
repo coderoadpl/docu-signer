@@ -7,6 +7,7 @@ import {
   API_ROUTES,
   PAD_SECRET_HEADER,
   apiTokenCreateInputSchema,
+  bulkDocumentMetadataProposalApproveInputSchema,
   invitationCreateInputSchema,
   TENANT_HEADER,
   documentCreateInputSchema,
@@ -54,6 +55,7 @@ import {
   approveDocumentComment,
   approveDocumentLink,
   approveDocumentMetadataProposal,
+  bulkApproveDocumentMetadataProposals,
   addDocumentComment,
   createApiToken,
   createInvitation,
@@ -822,6 +824,22 @@ export const buildApp = (deps: AppDeps) => {
       deps,
     );
     return respond(result.ok ? ok({ document: result.value }) : result);
+  });
+
+  app.post(API_ROUTES.bulkDocumentMetadataProposalApprove.path, async (c) => {
+    const parsed = bulkDocumentMetadataProposalApproveInputSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return respond(
+        err(validation('Invalid bulk metadata proposal approval', parsed.error.flatten())),
+      );
+    }
+    return respond(
+      await bulkApproveDocumentMetadataProposals(
+        ctxOf(c.get('identity')),
+        parsed.data,
+        deps,
+      ),
+    );
   });
 
   app.post(API_ROUTES.documentMetadataProposalReject.path, async (c) => {
