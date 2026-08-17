@@ -14,6 +14,8 @@ import type {
   DocumentListFilter,
   DocumentType,
   DocumentWithSigners,
+  HiddenFilterKind,
+  HiddenFilterValue,
   Invitation,
   LinkedDocument,
   PadSession,
@@ -134,8 +136,15 @@ export interface DocumentTypeRepository {
   findBySlug(tenantId: string, slug: string): Promise<DocumentType | null>;
   create(input: DocumentType & { tenantId: string }): Promise<DocumentType | null>;
   rename(tenantId: string, slug: string, label: string): Promise<DocumentType | null>;
+  setHidden(tenantId: string, slug: string, hidden: boolean): Promise<DocumentType | null>;
   delete(tenantId: string, slug: string): Promise<boolean>;
   isUsedByAnyDocument(tenantId: string, slug: string): Promise<boolean>;
+}
+
+export interface HiddenFilterValueRepository {
+  listByTenant(tenantId: string): Promise<HiddenFilterValue[]>;
+  hide(input: HiddenFilterValue): Promise<HiddenFilterValue>;
+  unhide(tenantId: string, kind: HiddenFilterKind, value: string): Promise<boolean>;
 }
 
 export interface DocumentCommentRepository {

@@ -413,24 +413,6 @@ export const documentFilterSummary = (
   return parts.length ? parts.join(' · ') : 'Wszystkie dokumenty';
 };
 
-export const uniqueDocumentPersons = (
-  documents: Array<Pick<DocumentWithFiles, 'person'>>,
-): string[] =>
-  Array.from(
-    new Set(
-      documents
-        .map((document) => document.person?.trim())
-        .filter((person): person is string => Boolean(person)),
-    ),
-  ).sort((left, right) => left.localeCompare(right, 'pl'));
-
-export const uniqueDocumentTags = (
-  documents: Array<Pick<DocumentWithFiles, 'tags'>>,
-): string[] =>
-  Array.from(new Set(documents.flatMap((document) => document.tags))).sort((left, right) =>
-    left.localeCompare(right, 'pl'),
-  );
-
 export const fileNameStem = (fileName: string): string => {
   const trimmed = fileName.trim();
   const dot = trimmed.lastIndexOf('.');

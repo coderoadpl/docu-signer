@@ -13,6 +13,7 @@ import { createDocumentCommentRepository } from './document-comments-repository.
 import { createDocumentLinkRepository } from './document-links-repository.js';
 import { createDocumentMetadataProposalRepository } from './document-metadata-proposals-repository.js';
 import { createDocumentTypeRepository } from './document-types-repository.js';
+import { createHiddenFilterValueRepository } from './hidden-filter-values-repository.js';
 import { createPadSessionRepository } from './pad-sessions-repository.js';
 import { createApiTokenRepository } from './api-tokens-repository.js';
 import { createInvitationRepository } from './invitations-repository.js';
@@ -140,27 +141,31 @@ describe('DocumentTypeRepository', () => {
       slug: 'umowa-z-klientem',
       label: 'Umowa z klientem',
       position: 70,
+      hidden: false,
     })).resolves.toEqual({
       slug: 'umowa-z-klientem',
       label: 'Umowa z klientem',
       position: 70,
+      hidden: false,
     });
     await expect(repository.create({
       tenantId: 'tenant-a',
       slug: 'regulamin',
       label: 'Regulamin',
       position: 60,
+      hidden: false,
     })).resolves.toMatchObject({ slug: 'regulamin' });
     await expect(repository.create({
       tenantId: 'tenant-a',
       slug: 'regulamin',
       label: 'Duplikat',
       position: 80,
+      hidden: false,
     })).resolves.toBeNull();
     await expect(repository.listByTenant('tenant-a')).resolves.toEqual([
       ...DEFAULT_DOCUMENT_TYPES,
-      { slug: 'regulamin', label: 'Regulamin', position: 60 },
-      { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 70 },
+      { slug: 'regulamin', label: 'Regulamin', position: 60, hidden: false },
+      { slug: 'umowa-z-klientem', label: 'Umowa z klientem', position: 70, hidden: false },
     ]);
     await expect(repository.listByTenant('tenant-b')).resolves.toEqual(DEFAULT_DOCUMENT_TYPES);
     await expect(
@@ -169,7 +174,18 @@ describe('DocumentTypeRepository', () => {
       slug: 'regulamin',
       label: 'Regulamin wewnętrzny',
       position: 60,
+      hidden: false,
     });
+    await expect(
+      repository.setHidden('tenant-a', 'regulamin', true),
+    ).resolves.toMatchObject({ slug: 'regulamin', hidden: true });
+    await expect(
+      repository.findBySlug('tenant-a', 'regulamin'),
+    ).resolves.toMatchObject({ hidden: true });
+    await expect(
+      repository.setHidden('tenant-a', 'regulamin', false),
+    ).resolves.toMatchObject({ slug: 'regulamin', hidden: false });
+    await expect(repository.setHidden('tenant-b', 'regulamin', true)).resolves.toBeNull();
     await expect(repository.findBySlug('tenant-b', 'regulamin')).resolves.toBeNull();
 
     const documents = createDocumentRepository(db);
@@ -190,6 +206,54 @@ describe('DocumentTypeRepository', () => {
     ).resolves.toBe(true);
     await expect(repository.delete('tenant-a', 'regulamin')).resolves.toBe(true);
     await expect(repository.delete('tenant-a', 'regulamin')).resolves.toBe(false);
+  });
+});
+
+describe('HiddenFilterValueRepository', () => {
+  it('hides idempotently per tenant, kind and value, and unhides once', async () => {
+    const repository = createHiddenFilterValueRepository(db);
+    const hidden = await repository.hide({
+      id: '31313131-3131-4131-8131-313131313131',
+      tenantId: 'tenant-a',
+      kind: 'person',
+      value: 'Jan Kowalski',
+    });
+    expect(hidden).toMatchObject({ kind: 'person', value: 'Jan Kowalski' });
+    await expect(
+      repository.hide({
+        id: '32323232-3232-4232-8232-323232323232',
+        tenantId: 'tenant-a',
+        kind: 'person',
+        value: 'Jan Kowalski',
+      }),
+    ).resolves.toEqual(hidden);
+    await repository.hide({
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-a',
+      kind: 'tag',
+      value: 'archiwum',
+    });
+    await repository.hide({
+      id: '34343434-3434-4434-8434-343434343434',
+      tenantId: 'tenant-b',
+      kind: 'person',
+      value: 'Jan Kowalski',
+    });
+
+    await expect(repository.listByTenant('tenant-a')).resolves.toEqual([
+      hidden,
+      {
+        id: '33333333-3333-4333-8333-333333333333',
+        tenantId: 'tenant-a',
+        kind: 'tag',
+        value: 'archiwum',
+      },
+    ]);
+    await expect(repository.unhide('tenant-a', 'person', 'Jan Kowalski')).resolves.toBe(true);
+    await expect(repository.unhide('tenant-a', 'person', 'Jan Kowalski')).resolves.toBe(false);
+    await expect(repository.listByTenant('tenant-b')).resolves.toMatchObject([
+      { kind: 'person', value: 'Jan Kowalski' },
+    ]);
   });
 });
 

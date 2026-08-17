@@ -103,10 +103,23 @@ const validateDocumentType = async (
   tenantId: string,
   slug: string,
   deps: DocumentDeps,
-): Promise<Result<void, AppError>> =>
-  (await deps.documentTypes.findBySlug(tenantId, slug))
+  resolveCurrentDocType?: () => Promise<string | null>,
+): Promise<Result<void, AppError>> => {
+  const documentType = await deps.documentTypes.findBySlug(tenantId, slug);
+  if (!documentType) return err(validation('Unknown document type'));
+  if (!documentType.hidden) return ok(undefined);
+  const current = resolveCurrentDocType ? await resolveCurrentDocType() : null;
+  return current === slug
     ? ok(undefined)
-    : err(validation('Unknown document type'));
+    : err(validation('Hidden document type cannot be assigned'));
+};
+
+const currentDocType = async (
+  tenantId: string,
+  documentId: string,
+  deps: DocumentDeps,
+): Promise<string | null> =>
+  (await deps.documents.findById(tenantId, documentId))?.docType ?? null;
 
 const tokenHasWrite = (ctx: Ctx): boolean =>
   ctx.identity.apiToken?.scopes.includes('write') ?? false;
@@ -242,7 +255,12 @@ export const updateDocument = async (
     }
     const validDocumentType = parsedChanges.data.docType === undefined
       ? ok(undefined)
-      : await validateDocumentType(scope.value, parsedChanges.data.docType, deps);
+      : await validateDocumentType(
+          scope.value,
+          parsedChanges.data.docType,
+          deps,
+          () => currentDocType(scope.value, documentId, deps),
+        );
     if (!validDocumentType.ok) return validDocumentType;
     const document = await findDocument(scope.value, documentId, deps);
     if (!document.ok) return document;
@@ -288,7 +306,12 @@ export const updateDocument = async (
   }
   const parsed = updateDocumentSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid document', parsed.error.flatten()));
-  const validDocumentType = await validateDocumentType(scope.value, parsed.data.docType, deps);
+  const validDocumentType = await validateDocumentType(
+    scope.value,
+    parsed.data.docType,
+    deps,
+    () => currentDocType(scope.value, documentId, deps),
+  );
   if (!validDocumentType.ok) return validDocumentType;
   const normalized = {
     ...parsed.data,

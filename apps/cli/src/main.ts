@@ -31,6 +31,7 @@ import {
   documentMetadataChangesSchema,
   documentTypeSchema,
   err,
+  hiddenFilterValueRefSchema,
   internal,
   notFound,
   ok,
@@ -677,6 +678,30 @@ documentType
   });
 
 documentType
+  .command('hide <slug>')
+  .description('Hide a document type from filters and document forms')
+  .action(async (slug: string) => {
+    const ctx = cliCtx();
+    const input = parseArgs(documentTypeSlugArgsSchema, { slug }, ctx.json);
+    if (input === undefined) return;
+    emit(await ctx.api.setDocumentTypeHidden(input.slug, { hidden: true }), ctx.json, (data) =>
+      `hidden: ${data.documentType.label} (${data.documentType.slug})`,
+    );
+  });
+
+documentType
+  .command('unhide <slug>')
+  .description('Show a hidden document type again')
+  .action(async (slug: string) => {
+    const ctx = cliCtx();
+    const input = parseArgs(documentTypeSlugArgsSchema, { slug }, ctx.json);
+    if (input === undefined) return;
+    emit(await ctx.api.setDocumentTypeHidden(input.slug, { hidden: false }), ctx.json, (data) =>
+      `visible: ${data.documentType.label} (${data.documentType.slug})`,
+    );
+  });
+
+documentType
   .command('remove <slug>')
   .description('Remove a document type')
   .action(async (slug: string) => {
@@ -685,6 +710,56 @@ documentType
     if (input === undefined) return;
     emit(await ctx.api.deleteDocumentType(input.slug), ctx.json, () =>
       `removed: ${input.slug}`,
+    );
+  });
+
+const filterValue = program
+  .command('filter-value')
+  .description('Manage filter values hidden from dropdowns and suggestions');
+
+filterValue
+  .command('list')
+  .description('List hidden filter values')
+  .action(async () => {
+    const ctx = cliCtx();
+    emit(await ctx.api.listHiddenFilterValues(), ctx.json, (data) =>
+      data.hiddenFilterValues.length === 0
+        ? 'no hidden filter values'
+        : data.hiddenFilterValues.map((item) => `${item.kind}\t${item.value}`).join('\n'),
+    );
+  });
+
+filterValue
+  .command('hide <value...>')
+  .description('Hide a party or tag from filters and suggestions')
+  .requiredOption('--kind <kind>', 'person or tag')
+  .action(async (value: string[], options: { kind: string }) => {
+    const ctx = cliCtx();
+    const input = parseArgs(
+      hiddenFilterValueRefSchema,
+      { kind: options.kind, value: value.join(' ') },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(await ctx.api.hideFilterValue(input), ctx.json, (data) =>
+      `hidden: ${data.hiddenFilterValue.kind} ${data.hiddenFilterValue.value}`,
+    );
+  });
+
+filterValue
+  .command('unhide <value...>')
+  .description('Show a hidden party or tag again')
+  .requiredOption('--kind <kind>', 'person or tag')
+  .action(async (value: string[], options: { kind: string }) => {
+    const ctx = cliCtx();
+    const input = parseArgs(
+      hiddenFilterValueRefSchema,
+      { kind: options.kind, value: value.join(' ') },
+      ctx.json,
+    );
+    if (input === undefined) return;
+    emit(await ctx.api.unhideFilterValue(input), ctx.json, () =>
+      `visible: ${input.kind} ${input.value}`,
     );
   });
 

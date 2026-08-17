@@ -25,6 +25,10 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 
 import {
   documentTypeSchema,
+  selectableDocumentTypes,
+  uniqueDocumentPersons,
+  uniqueDocumentTags,
+  visibleFilterValues,
   type DocumentType,
   type DocumentWithFiles,
 } from '#core/domain/index.js';
@@ -42,8 +46,6 @@ import {
   reviewQueueFromSearch,
   suggestDocumentDate,
   toDocumentInput,
-  uniqueDocumentPersons,
-  uniqueDocumentTags,
   type DocumentFormValues,
   type DocumentReviewMode,
 } from './documents.logic.js';
@@ -301,9 +303,11 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
   const requestedMode = reviewModeFromSearch(search);
   const documentQuery = useQuery(actions.document(documentId));
   const documentTypesQuery = useQuery(actions.documentTypes);
+  const hiddenFilterValuesQuery = useQuery(actions.hiddenFilterValues);
   const documentsQuery = useQuery(actions.documents({ draft: 'all' }));
   const document = documentQuery.data?.document;
   const documentTypes = documentTypesQuery.data?.documentTypes ?? [];
+  const hiddenValues = hiddenFilterValuesQuery.data?.hiddenFilterValues ?? [];
   const sourceFile = document ? newestDocumentFileByRole(document, 'source') : undefined;
   const scanFile = document
     ? newestDocumentFileByRole(document, 'signed-scan')
@@ -687,9 +691,13 @@ export const DocumentReviewPage = ({ documentId }: { documentId: string }) => {
         <EditForm
           values={values}
           tagInput={tagInput}
-          personOptions={uniqueDocumentPersons(allDocuments)}
-          tagOptions={uniqueDocumentTags(allDocuments)}
-          documentTypes={documentTypes}
+          personOptions={visibleFilterValues(
+            uniqueDocumentPersons(allDocuments),
+            hiddenValues,
+            'person',
+          )}
+          tagOptions={visibleFilterValues(uniqueDocumentTags(allDocuments), hiddenValues, 'tag')}
+          documentTypes={selectableDocumentTypes(documentTypes, values.docType)}
           pending={updateDocument.isPending}
           {...(updateDocument.error === null
             ? {}

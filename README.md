@@ -69,13 +69,19 @@ Inside this repository the CLI defaults to
 `http://default.localhost:47100`, matching the tenant host created by the dev
 seed. Use `--api-url` or `APP_CLI_API_URL` to target another origin.
 
-Full command set (<!--count:cli-command-groups-->14<!--/count--> top-level groups):
+Full command set (<!--count:cli-command-groups-->15<!--/count--> top-level groups):
 `health`, `register`, `login`, `login-link`, `logout`, `whoami`,
 `origin list|use`, `account change-password|request-password-reset`,
 `tenant-settings show|set`,
-`document-type list|add|rename|remove`,
+`document-type list|add|rename|remove|hide|unhide`,
+`filter-value list|hide|unhide`,
 `document list|trash-list|search|show|comment|approve-comment|add|propose-update|proposal list|approve-proposal|approve-proposals|reject-proposal|link|unlink|approve-link|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
 `token create|list|revoke`, `invitation create|list|revoke`, `public profile`.
+
+`document-type hide|unhide <slug>` and `filter-value hide|unhide --kind
+person|tag <value>` control which types, parties and tags the web filter
+dropdowns and document-form suggestions offer; hiding never touches the
+documents themselves.
 
 `document link <targetId> <id...> [--label <text>]` links every listed document
 to one target and reports an outcome for each pair in `--json` mode. `document
@@ -138,7 +144,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`,
   server ↔ Vercel CSP sync, dead links), and vitest with coverage across
-  **<!--count:test-files-->115<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->118<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → document archive →
@@ -150,7 +156,7 @@ Dependency lifecycle scripts are blocked unless explicitly named in
 configuration applies a three-day (`4320` minute) minimum-release-age cooldown.
 
 Two more levels, their own CI jobs (browser + Postgres, kept out of `check`) —
-<!--count:integration-tests-->31<!--/count--> integration tests against a real
+<!--count:integration-tests-->32<!--/count--> integration tests against a real
 Postgres and <!--count:e2e-tests-->32<!--/count--> Playwright test executions
 across <!--count:e2e-specs-->6<!--/count--> spec files: Chromium covers all
 six, and WebKit reruns `documents.spec.ts` to pin the Safari/pdf.js legacy
