@@ -324,6 +324,16 @@ describe('DocumentsPage', () => {
 
     const dots = await screen.findAllByLabelText(label);
     expect(dots).toHaveLength(2);
+    for (const rendered of dots) {
+      const title = rendered.parentElement;
+      if (!title) throw new Error('Pending-drafts dot was not rendered inside a title');
+      expect(title.firstChild).toBe(rendered);
+      expect(title).toHaveTextContent('Umowa z Anną');
+      expect(title).toHaveStyle({ alignItems: 'center' });
+      expect(rendered).toHaveStyle({
+        animation: 'pendingDraftPulse 2s ease-in-out infinite',
+      });
+    }
     const dot = dots[0];
     if (!dot) throw new Error('Pending-drafts dot was not rendered');
     await user.hover(dot);
@@ -817,16 +827,25 @@ describe('DocumentsPage', () => {
       ...draftDocument,
       pendingDrafts: { comments: 0, links: 0, metadataProposals: 0 },
     };
+    let approved = false;
     server.use(
       http.get('/api/documents', () => {
         listRequests();
         return HttpResponse.json({
           ok: true,
-          data: { documents: [pendingDocument, emptyDocument] },
+          data: {
+            documents: [
+              approved
+                ? { ...pendingDocument, pendingDrafts: emptyDocument.pendingDrafts }
+                : pendingDocument,
+              emptyDocument,
+            ],
+          },
         });
       }),
       http.post('/api/document-metadata-proposals/bulk-approve', async ({ request }) => {
         approve(await request.json());
+        approved = true;
         return HttpResponse.json({ ok: true, data: { approved: 1, skipped: 1 } });
       }),
     );
@@ -885,6 +904,13 @@ describe('DocumentsPage', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/Zaznaczono:/u)).not.toBeInTheDocument();
     await waitFor(() => expect(listRequests.mock.calls.length).toBeGreaterThan(2));
+    await waitFor(() =>
+      expect(
+        screen.queryAllByLabelText(
+          '2 propozycje zmian, 1 komentarz-szkic, 1 powiązanie-szkic',
+        ),
+      ).toHaveLength(0),
+    );
   });
 
   it('bulk links selected documents to one target and skips the target in the selection', async () => {

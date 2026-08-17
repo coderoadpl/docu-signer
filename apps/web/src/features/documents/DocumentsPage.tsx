@@ -1259,9 +1259,12 @@ export const DocumentsPage = () => {
                               search={currentDocumentsSearch}
                             >
                               <CardContent>
-                                <Typography variant="h2">
-                                  {document.title}
+                                <Typography
+                                  variant="h2"
+                                  sx={{ display: 'flex', alignItems: 'center' }}
+                                >
                                   <PendingDraftsDot counts={document.pendingDrafts} />
+                                  {document.title}
                                 </Typography>
                                 {document.draft ? (
                                   <Chip
@@ -1410,8 +1413,8 @@ export const DocumentsPage = () => {
                           style={{ color: 'inherit', textDecoration: 'none' }}
                         >
                           <DocumentTitleText component="span">
-                            {document.title}
                             <PendingDraftsDot counts={document.pendingDrafts} />
+                            {document.title}
                           </DocumentTitleText>
                         </Link>
                       </DocumentRecordTitleCell>
