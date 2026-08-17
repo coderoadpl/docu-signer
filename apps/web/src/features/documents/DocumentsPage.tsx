@@ -94,6 +94,7 @@ import {
   emptyDocumentFilters,
   formatCanonicalDocumentInterval,
   groupDocumentsCanonically,
+  hasPendingDrafts,
   hasSignedDocumentFile,
   hasDocumentFilter,
   massReviewQueueDocumentIds,
@@ -275,8 +276,8 @@ interface BulkSummary {
   kind:
     | 'approved'
     | 'changed'
+    | 'drafts-approved'
     | 'linked'
-    | 'proposals-approved'
     | 'required'
     | 'unapproved'
     | 'waived';
@@ -286,9 +287,9 @@ const bulkSummaryMessage = (summary: BulkSummary): string => {
   if (summary.kind === 'approved') {
     return `Zatwierdzono ${summary.changed}, błędów ${summary.errors}.`;
   }
-  if (summary.kind === 'proposals-approved') {
+  if (summary.kind === 'drafts-approved') {
     const documents = summary.changed === 1 ? 'w 1 dokumencie' : `w ${summary.changed} dokumentach`;
-    return `Zatwierdzono propozycje ${documents}, pominięto ${summary.skipped}.`;
+    return `Zatwierdzono propozycje i adnotacje ${documents}, pominięto ${summary.skipped}.`;
   }
   if (summary.kind === 'unapproved') {
     return `Cofnięto do szkicu ${summary.changed}, błędów ${summary.errors}.`;
@@ -352,7 +353,7 @@ export const DocumentsPage = () => {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [bulkSummary, setBulkSummary] = useState<BulkSummary | null>(null);
   const [bulkMenuAnchor, setBulkMenuAnchor] = useState<HTMLElement | null>(null);
-  const [approveProposalsOpen, setApproveProposalsOpen] = useState(false);
+  const [approvePendingDraftsOpen, setApprovePendingDraftsOpen] = useState(false);
   const [rowMenuAnchor, setRowMenuAnchor] = useState<HTMLElement | null>(null);
   const [rowMenuDocument, setRowMenuDocument] = useState<DocumentListItem | null>(null);
   const [columnSettings, setColumnSettings] = useState<DocumentColumnSettings>(
@@ -385,7 +386,7 @@ export const DocumentsPage = () => {
     onSuccess: saveDownload,
   });
   const bulkApproveDocument = useMutation(actions.approveDocument);
-  const bulkApproveProposals = useMutation(actions.bulkApproveDocumentMetadataProposals);
+  const bulkApprovePendingDrafts = useMutation(actions.bulkApprovePendingDrafts);
   const bulkUnapproveDocument = useMutation(actions.unapproveDocument);
   const bulkWaiveDocumentSignature = useMutation(actions.waiveDocumentSignature);
   const bulkRequireDocumentSignature = useMutation(actions.requireDocumentSignature);
@@ -463,8 +464,8 @@ export const DocumentsPage = () => {
   const selectedSignatureWaivedDocuments = selectedDocuments.filter(
     (document) => document.signatureNotRequired,
   );
-  const selectedProposalDocuments = selectedDocuments.filter(
-    (document) => (document.pendingDrafts?.metadataProposals ?? 0) > 0,
+  const selectedPendingDraftDocuments = selectedDocuments.filter((document) =>
+    hasPendingDrafts(document.pendingDrafts),
   );
   const massReviewDocumentIds = massReviewQueueDocumentIds(selectedDocuments);
   const massSigningTargets = massSigningQueueTargets(selectedDocuments);
@@ -476,7 +477,7 @@ export const DocumentsPage = () => {
   const visibleColumnIds = columnSettings.order.filter((column) =>
     columnSettings.visible.includes(column),
   );
-  const bulkBusy = bulkProgress !== null || bulkApproveProposals.isPending;
+  const bulkBusy = bulkProgress !== null || bulkApprovePendingDrafts.isPending;
 
   useEffect(() => {
     setTextFilter(filters.text);
@@ -581,30 +582,32 @@ export const DocumentsPage = () => {
     }
   };
 
-  const approveSelectedProposals = async () => {
+  const approveSelectedPendingDrafts = async () => {
     if (selectedIds.length === 0 || bulkBusy) return;
     const documentIds = [...selectedIds];
     let result: { approved: number; skipped: number };
     try {
-      result = await bulkApproveProposals.mutateAsync({ documentIds });
+      result = await bulkApprovePendingDrafts.mutateAsync({ documentIds });
     } catch {
       return;
     }
-    setApproveProposalsOpen(false);
+    setApprovePendingDraftsOpen(false);
     setBulkSummary({
       changed: result.approved,
       errors: 0,
       skipped: result.skipped,
-      kind: 'proposals-approved',
+      kind: 'drafts-approved',
     });
     setSelectedIds([]);
     await Promise.all([
       queryClient.invalidateQueries(actions.documentsInvalidates()),
-      ...documentIds.map((documentId) =>
+      queryClient.invalidateQueries(actions.documentLinksInvalidates()),
+      ...documentIds.flatMap((documentId) => [
         queryClient.invalidateQueries(
           actions.documentMetadataProposalsInvalidates(documentId),
         ),
-      ),
+        queryClient.invalidateQueries(actions.documentCommentsInvalidates(documentId)),
+      ]),
     ]);
   };
 
@@ -979,15 +982,21 @@ export const DocumentsPage = () => {
           ) : null}
         </Stack>
       ) : null}
-      {bulkProgress ? (
+      {bulkProgress || bulkApprovePendingDrafts.isPending ? (
         <Box sx={{ mt: 2 }}>
-          <LinearProgress
-            variant="determinate"
-            value={(bulkProgress.done / bulkProgress.total) * 100}
-            aria-label="Postęp operacji zbiorczej"
-          />
+          {bulkProgress ? (
+            <LinearProgress
+              variant="determinate"
+              value={(bulkProgress.done / bulkProgress.total) * 100}
+              aria-label="Postęp operacji zbiorczej"
+            />
+          ) : (
+            <LinearProgress variant="indeterminate" aria-label="Postęp operacji zbiorczej" />
+          )}
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-            Przetworzono {bulkProgress.done} z {bulkProgress.total}.
+            {bulkProgress
+              ? `Przetworzono ${bulkProgress.done} z ${bulkProgress.total}.`
+              : 'Zatwierdzanie zmian…'}
           </Typography>
         </Box>
       ) : null}
@@ -1067,13 +1076,13 @@ export const DocumentsPage = () => {
         onClose={() => setBulkMenuAnchor(null)}
       >
         <MenuItem
-          disabled={selectedProposalDocuments.length === 0 || bulkBusy}
+          disabled={selectedPendingDraftDocuments.length === 0 || bulkBusy}
           onClick={() => {
             setBulkMenuAnchor(null);
-            setApproveProposalsOpen(true);
+            setApprovePendingDraftsOpen(true);
           }}
         >
-          Zatwierdź propozycje ({selectedProposalDocuments.length})
+          Zatwierdź propozycje i adnotacje ({selectedPendingDraftDocuments.length})
         </MenuItem>
         <MenuItem
           disabled={selectedSignatureRequiredDocuments.length === 0 || bulkBusy}
@@ -1514,35 +1523,35 @@ export const DocumentsPage = () => {
       </Menu>
 
       <Dialog
-        open={approveProposalsOpen}
-        onClose={bulkBusy ? undefined : () => setApproveProposalsOpen(false)}
+        open={approvePendingDraftsOpen}
+        onClose={bulkBusy ? undefined : () => setApprovePendingDraftsOpen(false)}
         fullWidth
         maxWidth="xs"
       >
-        <DialogTitle>Zatwierdź propozycje</DialogTitle>
+        <DialogTitle>Zatwierdź propozycje i adnotacje</DialogTitle>
         <DialogContent>
           <Typography>
-            Propozycje zmian zostaną zastosowane{' '}
-            {selectedProposalDocuments.length === 1
+            Propozycje zmian, komentarze-szkice i powiązania-szkice zostaną zatwierdzone{' '}
+            {selectedPendingDraftDocuments.length === 1
               ? 'w 1 zaznaczonym dokumencie.'
-              : `w ${selectedProposalDocuments.length} zaznaczonych dokumentach.`}
+              : `w ${selectedPendingDraftDocuments.length} zaznaczonych dokumentach.`}
           </Typography>
-          {bulkApproveProposals.isError ? (
+          {bulkApprovePendingDrafts.isError ? (
             <Alert severity="error" sx={{ mt: 2 }}>
-              {bulkApproveProposals.error.message}
+              {bulkApprovePendingDrafts.error.message}
             </Alert>
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button disabled={bulkBusy} onClick={() => setApproveProposalsOpen(false)}>
+          <Button disabled={bulkBusy} onClick={() => setApprovePendingDraftsOpen(false)}>
             Anuluj
           </Button>
           <Button
             variant="contained"
-            disabled={selectedProposalDocuments.length === 0 || bulkBusy}
-            onClick={() => void approveSelectedProposals()}
+            disabled={selectedPendingDraftDocuments.length === 0 || bulkBusy}
+            onClick={() => void approveSelectedPendingDrafts()}
           >
-            Zatwierdź propozycje
+            Zatwierdź
           </Button>
         </DialogActions>
       </Dialog>

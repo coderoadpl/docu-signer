@@ -122,6 +122,7 @@ const baseDeps = (): AppDeps => ({
     unhide: async () => false,
   },
   documentComments: {
+    listPendingByDocuments: async () => [],
     listByDocument: async () => [],
     create: async (input) => ({
       id: input.id,
@@ -137,6 +138,7 @@ const baseDeps = (): AppDeps => ({
     delete: async () => false,
   },
   documentLinks: {
+    listPendingByDocuments: async () => [],
     create: async () => null,
     findBetween: async () => null,
     listForDocument: async () => [],
@@ -380,6 +382,7 @@ describe('buildApp', () => {
     deps.documents.findById = async () => row;
     deps.documents.findAnyById = async () => row;
     deps.documentComments = {
+      listPendingByDocuments: async () => [],
       listByDocument: async () =>
         comment
           ? [
@@ -812,7 +815,7 @@ describe('buildApp', () => {
     expect(await deleted.json()).toEqual({ ok: true, data: { deleted: true } });
   });
 
-  it('bulk-approves document metadata proposals through the contract route', async () => {
+  it('bulk-approves pending document drafts through the contract route', async () => {
     const deps = authorizedDeps();
     const documentId = '11111111-1111-4111-8111-111111111111';
     const proposalId = '22222222-2222-4222-8222-222222222222';
@@ -847,10 +850,31 @@ describe('buildApp', () => {
       ...row,
       title: 'Nowa umowa',
     });
+    const commentId = '33333333-3333-4333-8333-333333333333';
+    deps.documentComments.listPendingByDocuments = async () => [
+      {
+        id: commentId,
+        tenantId: tenant.id,
+        documentId,
+        authorAccountId: user.userId,
+        body: 'Do sprawdzenia',
+        draft: true,
+        createdAt: '2026-08-16T11:00:00.000Z',
+      },
+    ];
+    deps.documentComments.approve = async () => ({
+      id: commentId,
+      tenantId: tenant.id,
+      documentId,
+      author: { accountId: user.userId, name: 'Demo' },
+      body: 'Do sprawdzenia',
+      draft: false,
+      createdAt: '2026-08-16T11:00:00.000Z',
+    });
     const app = buildApp(deps);
 
-    const response = await app.request(API_ROUTES.bulkDocumentMetadataProposalApprove.path, {
-      method: API_ROUTES.bulkDocumentMetadataProposalApprove.method,
+    const response = await app.request(API_ROUTES.bulkPendingDraftApprove.path, {
+      method: API_ROUTES.bulkPendingDraftApprove.method,
       headers: { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' },
       body: JSON.stringify({ documentIds: [documentId] }),
     });
@@ -858,7 +882,7 @@ describe('buildApp', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       ok: true,
-      data: { approved: 1, skipped: 0 },
+      data: { approved: 1, skipped: 0, metadataProposals: 1, comments: 1, links: 0 },
     });
   });
 

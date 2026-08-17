@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   apiTokenSchema,
   acceptInvitationSchema,
-  bulkApproveDocumentMetadataProposalsSchema,
+  bulkApprovePendingDraftsSchema,
   createInvitationSchema,
   createApiTokenSchema,
   createDocumentSchema,
@@ -217,12 +217,14 @@ export const documentMetadataProposalApproveOutputSchema = z.object({
   document: documentSchema,
 });
 
-export const bulkDocumentMetadataProposalApproveInputSchema =
-  bulkApproveDocumentMetadataProposalsSchema;
+export const bulkPendingDraftApproveInputSchema = bulkApprovePendingDraftsSchema;
 
-export const bulkDocumentMetadataProposalApproveOutputSchema = z.object({
+export const bulkPendingDraftApproveOutputSchema = z.object({
   approved: z.number().int().nonnegative(),
   skipped: z.number().int().nonnegative(),
+  metadataProposals: z.number().int().nonnegative(),
+  comments: z.number().int().nonnegative(),
+  links: z.number().int().nonnegative(),
 });
 
 export const documentMetadataProposalRejectOutputSchema = z.object({
@@ -549,9 +551,9 @@ export const API_ROUTES = {
     method: 'POST',
     path: '/api/document-metadata-proposals/:proposalId/approve',
   },
-  bulkDocumentMetadataProposalApprove: {
+  bulkPendingDraftApprove: {
     method: 'POST',
-    path: '/api/document-metadata-proposals/bulk-approve',
+    path: '/api/documents/bulk-approve-pending-drafts',
   },
   documentMetadataProposalReject: {
     method: 'POST',

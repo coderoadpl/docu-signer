@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, or } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, or } from 'drizzle-orm';
 
 import {
   documentCommentListItemSchema,
@@ -52,6 +52,21 @@ const findListItemById = async (
 export const createDocumentCommentRepository = (
   db: Db,
 ): DocumentCommentRepository => ({
+  listPendingByDocuments: async (tenantId, documentIds) => {
+    if (documentIds.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(documentComments)
+      .where(
+        and(
+          eq(documentComments.tenantId, tenantId),
+          eq(documentComments.draft, true),
+          inArray(documentComments.documentId, documentIds),
+        ),
+      )
+      .orderBy(asc(documentComments.createdAt), asc(documentComments.id));
+    return rows.map(toDocumentComment);
+  },
   listByDocument: async (tenantId, documentId, cursor, limit) => {
     const cursorCondition = cursor
       ? or(

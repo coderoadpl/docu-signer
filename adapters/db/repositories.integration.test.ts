@@ -935,6 +935,18 @@ describe('DocumentMetadataProposalRepository', () => {
       expect.objectContaining({ id: proposalDocument.id, pendingDrafts: { comments: 0, links: 0, metadataProposals: 1 } }),
     ]));
     await expect(
+      comments.listPendingByDocuments('tenant-b', [commentDocument.id]),
+    ).resolves.toEqual([]);
+    await expect(
+      comments.listPendingByDocuments('tenant-a', [commentDocument.id, proposalDocument.id]),
+    ).resolves.toEqual([
+      expect.objectContaining({ documentId: commentDocument.id, draft: true }),
+    ]);
+    await expect(links.listPendingByDocuments('tenant-b', [linkTo.id])).resolves.toEqual([]);
+    await expect(links.listPendingByDocuments('tenant-a', [linkTo.id])).resolves.toEqual([
+      expect.objectContaining({ fromDocumentId: linkFrom.id, toDocumentId: linkTo.id }),
+    ]);
+    await expect(
       proposals.apply('tenant-a', created.id, created.changes),
     ).resolves.toMatchObject({
       id: proposalDocument.id,

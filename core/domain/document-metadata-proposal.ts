@@ -64,13 +64,3 @@ export type DocumentMetadataProposalCursor = z.infer<
   typeof documentMetadataProposalCursorSchema
 >;
 
-export const bulkApproveDocumentMetadataProposalsSchema = z.object({
-  documentIds: z
-    .array(z.uuid())
-    .min(1)
-    .refine((ids) => new Set(ids).size === ids.length, 'Document ids must be unique'),
-});
-
-export type BulkApproveDocumentMetadataProposals = z.infer<
-  typeof bulkApproveDocumentMetadataProposalsSchema
->;

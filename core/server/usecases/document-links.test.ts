@@ -81,6 +81,14 @@ const deps = (rows: Document[], initialLinks: DocumentLink[] = []): DocumentLink
   const links = [...initialLinks];
   const documents = documentRepository(rows);
   const documentLinks: DocumentLinkRepository = {
+    listPendingByDocuments: async (tenantId, documentIds) =>
+      links.filter(
+        (link) =>
+          link.tenantId === tenantId &&
+          link.draft &&
+          (documentIds.includes(link.fromDocumentId) ||
+            documentIds.includes(link.toDocumentId)),
+      ),
     create: async (tenantId, input) => {
       const duplicate = links.some(
         (link) =>

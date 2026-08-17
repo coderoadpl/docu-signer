@@ -1,4 +1,4 @@
-import { and, asc, eq, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import {
@@ -54,6 +54,24 @@ const pairCondition = (
   );
 
 export const createDocumentLinkRepository = (db: Db): DocumentLinkRepository => ({
+  listPendingByDocuments: async (tenantId, documentIds) => {
+    if (documentIds.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(documentLinks)
+      .where(
+        and(
+          eq(documentLinks.tenantId, tenantId),
+          eq(documentLinks.draft, true),
+          or(
+            inArray(documentLinks.fromDocumentId, documentIds),
+            inArray(documentLinks.toDocumentId, documentIds),
+          ),
+        ),
+      )
+      .orderBy(asc(documentLinks.id));
+    return rows.map(toDocumentLink);
+  },
   create: async (tenantId, input) => {
     const rows = await db
       .insert(documentLinks)

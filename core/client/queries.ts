@@ -14,7 +14,7 @@ import {
   ok,
   type CompleteSourceUpdateRequest,
   type AcceptInvitation,
-  type BulkApproveDocumentMetadataProposals,
+  type BulkApprovePendingDrafts,
   type CreateApiToken,
   type CreateDocument,
   type CreateDocumentType,
@@ -397,11 +397,10 @@ export const approveDocumentMetadataProposalMutation = (api: ApiClient) =>
     call: (proposalId: string) => api.approveDocumentMetadataProposal(proposalId),
   });
 
-export const bulkApproveDocumentMetadataProposalsMutation = (api: ApiClient) =>
+export const bulkApprovePendingDraftsMutation = (api: ApiClient) =>
   defineMutation({
-    mutationKey: [...documentMetadataProposalScopes.all(), 'bulk-approve'],
-    call: (input: BulkApproveDocumentMetadataProposals) =>
-      api.bulkApproveDocumentMetadataProposals(input),
+    mutationKey: [...documentMetadataProposalScopes.all(), 'bulk-approve-pending-drafts'],
+    call: (input: BulkApprovePendingDrafts) => api.bulkApprovePendingDrafts(input),
   });
 
 export const rejectDocumentMetadataProposalMutation = (api: ApiClient) =>
