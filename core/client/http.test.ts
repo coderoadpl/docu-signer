@@ -208,6 +208,9 @@ describe('API client', () => {
           data: { outcome: 'proposed', document, proposal },
         });
       }
+      if (String(input).endsWith('/bulk-approve')) {
+        return json({ ok: true, data: { approved: 1, skipped: 1 } });
+      }
       if (String(input).endsWith('/approve')) {
         return json({ ok: true, data: { document: { ...document, title: 'Nowa umowa' } } });
       }
@@ -235,6 +238,9 @@ describe('API client', () => {
       ok: true,
       value: { deleted: true },
     });
+    await expect(
+      api.bulkApproveDocumentMetadataProposals({ documentIds: [documentId, proposalId] }),
+    ).resolves.toEqual({ ok: true, value: { approved: 1, skipped: 1 } });
     expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(`/api/documents/${documentId}`);
     expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({
       method: 'PATCH',
@@ -248,6 +254,9 @@ describe('API client', () => {
     );
     expect(String(fetchImpl.mock.calls[3]?.[0])).toBe(
       `/api/document-metadata-proposals/${proposalId}/reject`,
+    );
+    expect(String(fetchImpl.mock.calls[4]?.[0])).toBe(
+      '/api/document-metadata-proposals/bulk-approve',
     );
   });
 

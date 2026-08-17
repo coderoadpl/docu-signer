@@ -6,6 +6,7 @@ import {
   apiTokenListOutputSchema,
   apiTokenRevokeOutputSchema,
   authConfigOutputSchema,
+  bulkDocumentMetadataProposalApproveOutputSchema,
   invitationAcceptOutputSchema,
   invitationCreateOutputSchema,
   invitationListOutputSchema,
@@ -90,6 +91,7 @@ import {
   internal,
   ok,
   type AppError,
+  type BulkApproveDocumentMetadataProposals,
   type CreateApiToken,
   type AcceptInvitation,
   type CreateInvitation,
@@ -523,6 +525,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       pathWith(API_ROUTES.documentMetadataProposalApprove.path, { proposalId }),
       documentMetadataProposalApproveOutputSchema,
       {},
+      signal,
+    ),
+  bulkApproveDocumentMetadataProposals: (
+    input: BulkApproveDocumentMetadataProposals,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.bulkDocumentMetadataProposalApprove.method,
+      API_ROUTES.bulkDocumentMetadataProposalApprove.path,
+      bulkDocumentMetadataProposalApproveOutputSchema,
+      input,
       signal,
     ),
   rejectDocumentMetadataProposal: (proposalId: string, signal?: AbortSignal) =>

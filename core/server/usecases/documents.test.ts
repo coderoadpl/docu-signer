@@ -365,6 +365,11 @@ const fake = (
   };
 
   const documentMetadataProposals: DocumentMetadataProposalRepository = {
+    listPendingByDocuments: async (tenantId, documentIds) =>
+      proposals.filter(
+        (proposal) =>
+          proposal.tenantId === tenantId && documentIds.includes(proposal.documentId),
+      ),
     listByDocument: async (tenantId, id) =>
       proposals
         .filter((proposal) => proposal.tenantId === tenantId && proposal.documentId === id)

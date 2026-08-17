@@ -137,6 +137,7 @@ const baseDeps = (): AppDeps => ({
     deleteBetween: async () => false,
   },
   documentMetadataProposals: {
+    listPendingByDocuments: async () => [],
     listByDocument: async () => [],
     create: async () => { throw new Error('not implemented'); },
     findById: async () => null,
@@ -802,6 +803,56 @@ describe('buildApp', () => {
     );
     expect(deleted.status).toBe(200);
     expect(await deleted.json()).toEqual({ ok: true, data: { deleted: true } });
+  });
+
+  it('bulk-approves document metadata proposals through the contract route', async () => {
+    const deps = authorizedDeps();
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const proposalId = '22222222-2222-4222-8222-222222222222';
+    const row: Document = {
+      id: documentId,
+      tenantId: tenant.id,
+      title: 'Umowa',
+      docType: 'umowa-uod',
+      documentDate: '2026-08-16',
+      periodStart: null,
+      periodEnd: null,
+      person: null,
+      tags: [],
+      draft: false,
+      signatureNotRequired: false,
+      createdAt: '2026-08-16T10:00:00.000Z',
+      updatedAt: '2026-08-16T10:00:00.000Z',
+      deletedAt: null,
+    };
+    deps.documents.findById = async () => row;
+    deps.documentMetadataProposals.listPendingByDocuments = async () => [
+      {
+        id: proposalId,
+        tenantId: tenant.id,
+        documentId,
+        creatorAccountId: user.userId,
+        changes: { title: 'Nowa umowa' },
+        createdAt: '2026-08-16T11:00:00.000Z',
+      },
+    ];
+    deps.documentMetadataProposals.apply = async () => ({
+      ...row,
+      title: 'Nowa umowa',
+    });
+    const app = buildApp(deps);
+
+    const response = await app.request(API_ROUTES.bulkDocumentMetadataProposalApprove.path, {
+      method: API_ROUTES.bulkDocumentMetadataProposalApprove.method,
+      headers: { [TENANT_HEADER]: tenant.slug, 'content-type': 'application/json' },
+      body: JSON.stringify({ documentIds: [documentId] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { approved: 1, skipped: 0 },
+    });
   });
 
   it('lists trash, restores and purges documents through the contract routes', async () => {

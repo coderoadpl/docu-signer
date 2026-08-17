@@ -74,7 +74,7 @@ Full command set (<!--count:cli-command-groups-->14<!--/count--> top-level group
 `origin list|use`, `account change-password|request-password-reset`,
 `tenant-settings show|set`,
 `document-type list|add|rename|remove`,
-`document list|trash-list|search|show|comment|approve-comment|add|propose-update|proposal list|approve-proposal|reject-proposal|link|unlink|approve-link|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
+`document list|trash-list|search|show|comment|approve-comment|add|propose-update|proposal list|approve-proposal|approve-proposals|reject-proposal|link|unlink|approve-link|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
 `token create|list|revoke`, `invitation create|list|revoke`, `public profile`.
 
 `document link <targetId> <id...> [--label <text>]` links every listed document
@@ -83,7 +83,8 @@ approve-link <id>` and `document approve-comment <id>` approve draft
 annotations. Draft-token creation results include the annotation's `draft`
 state in JSON output. `document propose-update <id>` submits metadata changes
 through a `write:draft` token; `document proposal list <id>`, `document
-approve-proposal <proposalId>` and `document reject-proposal <proposalId>`
+approve-proposal <proposalId>`, `document approve-proposals <ids...>` and
+`document reject-proposal <proposalId>`
 review them. `document list --pending-drafts` selects documents with any draft
 comment, draft link or pending metadata proposal. `document verify-seal --json` returns the certificate
 `subject`, signature dictionary `name` and `reason`, signer-declared

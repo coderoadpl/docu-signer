@@ -13,6 +13,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControl,
   FormControlLabel,
   FormGroup,
@@ -38,6 +39,7 @@ import {
   Tooltip,
   ToggleButton,
   ToggleButtonGroup,
+  Toolbar,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -162,6 +164,12 @@ const MoreVertIcon = () => (
   </SvgIcon>
 );
 
+const CloseIcon = () => (
+  <SvgIcon fontSize="small">
+    <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4l-6.3 6.31-1.42-1.42L9.17 12l-6.3-6.29 1.42-1.42 6.3 6.31 6.3-6.31 1.41 1.42Z" />
+  </SvgIcon>
+);
+
 const RouterCardActionArea = createLink(CardActionArea);
 const RouterMenuItem = createLink(MenuItem);
 
@@ -262,8 +270,38 @@ interface BulkSummary {
   changed: number;
   errors: number;
   skipped: number;
-  kind: 'approved' | 'changed' | 'linked' | 'required' | 'unapproved' | 'waived';
+  kind:
+    | 'approved'
+    | 'changed'
+    | 'linked'
+    | 'proposals-approved'
+    | 'required'
+    | 'unapproved'
+    | 'waived';
 }
+
+const bulkSummaryMessage = (summary: BulkSummary): string => {
+  if (summary.kind === 'approved') {
+    return `Zatwierdzono ${summary.changed}, błędów ${summary.errors}.`;
+  }
+  if (summary.kind === 'proposals-approved') {
+    const documents = summary.changed === 1 ? 'w 1 dokumencie' : `w ${summary.changed} dokumentach`;
+    return `Zatwierdzono propozycje ${documents}, pominięto ${summary.skipped}.`;
+  }
+  if (summary.kind === 'unapproved') {
+    return `Cofnięto do szkicu ${summary.changed}, błędów ${summary.errors}.`;
+  }
+  if (summary.kind === 'waived') {
+    return `Oznaczono jako niewymagające podpisu ${summary.changed}, błędów ${summary.errors}.`;
+  }
+  if (summary.kind === 'required') {
+    return `Przywrócono wymaganie podpisu ${summary.changed}, błędów ${summary.errors}.`;
+  }
+  if (summary.kind === 'linked') {
+    return `Powiązano ${summary.changed}, pominięto ${summary.skipped}, błędów ${summary.errors}.`;
+  }
+  return `Operacje zbiorcze: ${summary.changed} zmieniono, ${summary.errors} błędów.`;
+};
 
 const toUpdateDocumentInput = (
   document: DocumentWithFiles,
@@ -311,6 +349,8 @@ export const DocumentsPage = () => {
   const [bulkLinkLabel, setBulkLinkLabel] = useState('');
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [bulkSummary, setBulkSummary] = useState<BulkSummary | null>(null);
+  const [bulkMenuAnchor, setBulkMenuAnchor] = useState<HTMLElement | null>(null);
+  const [approveProposalsOpen, setApproveProposalsOpen] = useState(false);
   const [rowMenuAnchor, setRowMenuAnchor] = useState<HTMLElement | null>(null);
   const [rowMenuDocument, setRowMenuDocument] = useState<DocumentListItem | null>(null);
   const [columnSettings, setColumnSettings] = useState<DocumentColumnSettings>(
@@ -342,6 +382,7 @@ export const DocumentsPage = () => {
     onSuccess: saveDownload,
   });
   const bulkApproveDocument = useMutation(actions.approveDocument);
+  const bulkApproveProposals = useMutation(actions.bulkApproveDocumentMetadataProposals);
   const bulkUnapproveDocument = useMutation(actions.unapproveDocument);
   const bulkWaiveDocumentSignature = useMutation(actions.waiveDocumentSignature);
   const bulkRequireDocumentSignature = useMutation(actions.requireDocumentSignature);
@@ -413,6 +454,9 @@ export const DocumentsPage = () => {
   const selectedSignatureWaivedDocuments = selectedDocuments.filter(
     (document) => document.signatureNotRequired,
   );
+  const selectedProposalDocuments = selectedDocuments.filter(
+    (document) => (document.pendingDrafts?.metadataProposals ?? 0) > 0,
+  );
   const massReviewDocumentIds = massReviewQueueDocumentIds(selectedDocuments);
   const massSigningTargets = massSigningQueueTargets(selectedDocuments);
   const selectedTagOptions = uniqueDocumentTags(selectedDocuments);
@@ -423,7 +467,7 @@ export const DocumentsPage = () => {
   const visibleColumnIds = columnSettings.order.filter((column) =>
     columnSettings.visible.includes(column),
   );
-  const bulkBusy = bulkProgress !== null;
+  const bulkBusy = bulkProgress !== null || bulkApproveProposals.isPending;
 
   useEffect(() => {
     setTextFilter(filters.text);
@@ -512,6 +556,7 @@ export const DocumentsPage = () => {
   };
 
   const openBulkDialog = (dialog: BulkDialog) => {
+    setBulkMenuAnchor(null);
     setBulkSummary(null);
     setBulkDialog(dialog);
     if (dialog === 'add-tags') setBulkTags([]);
@@ -525,6 +570,33 @@ export const DocumentsPage = () => {
       setBulkLinkTargetId('');
       setBulkLinkLabel('');
     }
+  };
+
+  const approveSelectedProposals = async () => {
+    if (selectedIds.length === 0 || bulkBusy) return;
+    const documentIds = [...selectedIds];
+    let result: { approved: number; skipped: number };
+    try {
+      result = await bulkApproveProposals.mutateAsync({ documentIds });
+    } catch {
+      return;
+    }
+    setApproveProposalsOpen(false);
+    setBulkSummary({
+      changed: result.approved,
+      errors: 0,
+      skipped: result.skipped,
+      kind: 'proposals-approved',
+    });
+    setSelectedIds([]);
+    await Promise.all([
+      queryClient.invalidateQueries(actions.documentsInvalidates()),
+      ...documentIds.map((documentId) =>
+        queryClient.invalidateQueries(
+          actions.documentMetadataProposalsInvalidates(documentId),
+        ),
+      ),
+    ]);
   };
 
   const runBulk = async (
@@ -811,178 +883,90 @@ export const DocumentsPage = () => {
       </Paper> : null}
 
       {hasDocuments ? (
-        <Stack
-          direction="row"
-          sx={{ mt: 3, alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}
-        >
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            value={view}
-            aria-label="Widok dokumentów"
-            onChange={(_event, value: DocumentsView | null) => {
-              if (!value) return;
-              if (value === 'timeline') setSelectedIds([]);
-              void navigateToDocumentsSearch(value, filters, false);
-            }}
+        <Stack sx={{ mt: 3, gap: 1 }}>
+          <Stack
+            direction="row"
+            sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
           >
-            <ToggleButton value="list">Lista</ToggleButton>
-            <ToggleButton value="timeline">Oś czasu</ToggleButton>
-          </ToggleButtonGroup>
-          {view === 'list' ? (
-            <Stack
-              direction="row"
-              sx={{
-                flex: '1 1 0',
-                alignItems: 'center',
-                justifyContent: 'flex-end',
-                gap: 1,
-                flexWrap: 'wrap',
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={view}
+              aria-label="Widok dokumentów"
+              onChange={(_event, value: DocumentsView | null) => {
+                if (!value) return;
+                if (value === 'timeline') setSelectedIds([]);
+                void navigateToDocumentsSearch(value, filters, false);
               }}
             >
-              <Button
-                variant="contained"
-                disabled={massSigningTargets.length === 0 || bulkBusy}
-                onClick={startMassSigning}
-              >
-                Masowe podpisywanie ({massSigningTargets.length})
-              </Button>
-              <Button
-                variant="contained"
-                disabled={selectedDocuments.length === 0 || bulkBusy}
-                onClick={startMassReview}
-              >
-                Masowe przeglądanie ({selectedDocuments.length})
-              </Button>
+              <ToggleButton value="list">Lista</ToggleButton>
+              <ToggleButton value="timeline">Oś czasu</ToggleButton>
+            </ToggleButtonGroup>
+            {view === 'list' ? (
               <Button
                 variant="outlined"
                 onClick={(event) => setColumnsAnchor(event.currentTarget)}
               >
                 Kolumny
               </Button>
-              <Button
-                variant="contained"
-                disabled={selectedDraftDocuments.length === 0 || bulkBusy}
-                onClick={() =>
-                  void runBulk(
-                    async (document) => {
-                      await bulkApproveDocument.mutateAsync(document.id);
-                    },
-                    { documents: selectedDraftDocuments, summaryKind: 'approved' },
-                  )
-                }
+            ) : null}
+          </Stack>
+          {view === 'list' && selectedIds.length > 0 ? (
+            <Paper variant="outlined">
+              <Toolbar
+                role="toolbar"
+                aria-label="Akcje zaznaczonych dokumentów"
+                variant="dense"
+                sx={{ minHeight: 56, gap: 1, flexWrap: 'wrap', py: 1 }}
               >
-                Zatwierdź ({selectedDraftDocuments.length})
-              </Button>
-              {selectedApprovedDocuments.length > 0 ? (
+                <Typography sx={{ mr: 1 }}>Zaznaczono: {selectedIds.length}</Typography>
                 <Button
-                  variant="outlined"
-                  disabled={bulkBusy}
+                  variant="contained"
+                  disabled={massSigningTargets.length === 0 || bulkBusy}
+                  onClick={startMassSigning}
+                >
+                  Masowe podpisywanie ({massSigningTargets.length})
+                </Button>
+                <Button
+                  variant="contained"
+                  disabled={selectedDocuments.length === 0 || bulkBusy}
+                  onClick={startMassReview}
+                >
+                  Masowe przeglądanie ({selectedDocuments.length})
+                </Button>
+                <Button
+                  variant="contained"
+                  disabled={selectedDraftDocuments.length === 0 || bulkBusy}
                   onClick={() =>
                     void runBulk(
                       async (document) => {
-                        await bulkUnapproveDocument.mutateAsync(document.id);
+                        await bulkApproveDocument.mutateAsync(document.id);
                       },
-                      { documents: selectedApprovedDocuments, summaryKind: 'unapproved' },
+                      { documents: selectedDraftDocuments, summaryKind: 'approved' },
                     )
                   }
                 >
-                  Cofnij do szkicu ({selectedApprovedDocuments.length})
+                  Zatwierdź ({selectedDraftDocuments.length})
                 </Button>
-              ) : null}
-              <Button
-                variant="outlined"
-                disabled={selectedSignatureRequiredDocuments.length === 0 || bulkBusy}
-                onClick={() =>
-                  void runBulk(
-                    async (document) => {
-                      await bulkWaiveDocumentSignature.mutateAsync(document.id);
-                    },
-                    {
-                      documents: selectedSignatureRequiredDocuments,
-                      summaryKind: 'waived',
-                    },
-                  )
-                }
-              >
-                Nie wymaga podpisu ({selectedSignatureRequiredDocuments.length})
-              </Button>
-              {selectedSignatureWaivedDocuments.length > 0 ? (
                 <Button
                   variant="outlined"
+                  aria-haspopup="menu"
+                  aria-expanded={Boolean(bulkMenuAnchor)}
                   disabled={bulkBusy}
-                  onClick={() =>
-                    void runBulk(
-                      async (document) => {
-                        await bulkRequireDocumentSignature.mutateAsync(document.id);
-                      },
-                      {
-                        documents: selectedSignatureWaivedDocuments,
-                        summaryKind: 'required',
-                      },
-                    )
-                  }
+                  onClick={(event) => setBulkMenuAnchor(event.currentTarget)}
                 >
-                  Wymaga podpisu ({selectedSignatureWaivedDocuments.length})
+                  Więcej
                 </Button>
-              ) : null}
-              <Button
-                variant="outlined"
-                color="error"
-                disabled={selectedIds.length === 0 || bulkBusy}
-                onClick={() =>
-                  void runBulk(async (document) => {
-                    await bulkDeleteDocument.mutateAsync(document.id);
-                  })
-                }
-              >
-                Do kosza ({selectedIds.length})
-              </Button>
-              <Button
-                variant="outlined"
-                disabled={selectedIds.length === 0 || bulkBusy}
-                onClick={() => openBulkDialog('add-tags')}
-              >
-                Dodaj tagi
-              </Button>
-              <Button
-                variant="outlined"
-                disabled={
-                  selectedIds.length === 0 || selectedTagOptions.length === 0 || bulkBusy
-                }
-                onClick={() => openBulkDialog('remove-tag')}
-              >
-                Usuń tag
-              </Button>
-              <Button
-                variant="outlined"
-                disabled={selectedIds.length === 0 || bulkBusy}
-                onClick={() => openBulkDialog('person')}
-              >
-                Ustaw stronę
-              </Button>
-              <Button
-                variant="outlined"
-                disabled={selectedIds.length === 0 || bulkBusy}
-                onClick={() => openBulkDialog('type')}
-              >
-                Ustaw typ
-              </Button>
-              <Button
-                variant="outlined"
-                disabled={selectedIds.length === 0 || bulkBusy}
-                onClick={() => openBulkDialog('link')}
-              >
-                Powiąż z dokumentem… ({selectedIds.length})
-              </Button>
-              <Button
-                variant="outlined"
-                disabled={selectedIds.length === 0 || exportDocuments.isPending || bulkBusy}
-                onClick={() => exportDocuments.mutate({ documentIds: selectedIds })}
-              >
-                Eksportuj zaznaczone ({selectedIds.length})
-              </Button>
-            </Stack>
+                <Box sx={{ flexGrow: 1 }} />
+                <IconButton
+                  aria-label="Wyczyść zaznaczenie"
+                  disabled={bulkBusy}
+                  onClick={() => setSelectedIds([])}
+                >
+                  <CloseIcon />
+                </IconButton>
+              </Toolbar>
+            </Paper>
           ) : null}
         </Stack>
       ) : null}
@@ -1000,17 +984,7 @@ export const DocumentsPage = () => {
       ) : null}
       {bulkSummary ? (
         <Alert severity={bulkSummary.errors > 0 ? 'warning' : 'success'} sx={{ mt: 2 }}>
-          {bulkSummary.kind === 'approved'
-            ? `Zatwierdzono ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
-            : bulkSummary.kind === 'unapproved'
-              ? `Cofnięto do szkicu ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
-            : bulkSummary.kind === 'waived'
-              ? `Oznaczono jako niewymagające podpisu ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
-            : bulkSummary.kind === 'required'
-              ? `Przywrócono wymaganie podpisu ${bulkSummary.changed}, błędów ${bulkSummary.errors}.`
-            : bulkSummary.kind === 'linked'
-              ? `Powiązano ${bulkSummary.changed}, pominięto ${bulkSummary.skipped}, błędów ${bulkSummary.errors}.`
-            : `Operacje zbiorcze: ${bulkSummary.changed} zmieniono, ${bulkSummary.errors} błędów.`}
+          {bulkSummaryMessage(bulkSummary)}
         </Alert>
       ) : null}
       <Popover
@@ -1078,6 +1052,113 @@ export const DocumentsPage = () => {
           ) : null}
         </Box>
       </Popover>
+      <Menu
+        anchorEl={bulkMenuAnchor}
+        open={Boolean(bulkMenuAnchor)}
+        onClose={() => setBulkMenuAnchor(null)}
+      >
+        <MenuItem
+          disabled={selectedProposalDocuments.length === 0 || bulkBusy}
+          onClick={() => {
+            setBulkMenuAnchor(null);
+            setApproveProposalsOpen(true);
+          }}
+        >
+          Zatwierdź propozycje ({selectedProposalDocuments.length})
+        </MenuItem>
+        <MenuItem
+          disabled={selectedSignatureRequiredDocuments.length === 0 || bulkBusy}
+          onClick={() => {
+            setBulkMenuAnchor(null);
+            void runBulk(
+              async (document) => {
+                await bulkWaiveDocumentSignature.mutateAsync(document.id);
+              },
+              {
+                documents: selectedSignatureRequiredDocuments,
+                summaryKind: 'waived',
+              },
+            );
+          }}
+        >
+          Nie wymaga podpisu ({selectedSignatureRequiredDocuments.length})
+        </MenuItem>
+        {selectedSignatureWaivedDocuments.length > 0 ? (
+          <MenuItem
+            disabled={bulkBusy}
+            onClick={() => {
+              setBulkMenuAnchor(null);
+              void runBulk(
+                async (document) => {
+                  await bulkRequireDocumentSignature.mutateAsync(document.id);
+                },
+                {
+                  documents: selectedSignatureWaivedDocuments,
+                  summaryKind: 'required',
+                },
+              );
+            }}
+          >
+            Wymaga podpisu ({selectedSignatureWaivedDocuments.length})
+          </MenuItem>
+        ) : null}
+        {selectedApprovedDocuments.length > 0 ? (
+          <MenuItem
+            disabled={bulkBusy}
+            onClick={() => {
+              setBulkMenuAnchor(null);
+              void runBulk(
+                async (document) => {
+                  await bulkUnapproveDocument.mutateAsync(document.id);
+                },
+                { documents: selectedApprovedDocuments, summaryKind: 'unapproved' },
+              );
+            }}
+          >
+            Cofnij do szkicu ({selectedApprovedDocuments.length})
+          </MenuItem>
+        ) : null}
+        <Divider />
+        <MenuItem disabled={bulkBusy} onClick={() => openBulkDialog('add-tags')}>
+          Dodaj tagi
+        </MenuItem>
+        <MenuItem
+          disabled={selectedTagOptions.length === 0 || bulkBusy}
+          onClick={() => openBulkDialog('remove-tag')}
+        >
+          Usuń tag
+        </MenuItem>
+        <MenuItem disabled={bulkBusy} onClick={() => openBulkDialog('person')}>
+          Ustaw stronę
+        </MenuItem>
+        <MenuItem disabled={bulkBusy} onClick={() => openBulkDialog('type')}>
+          Ustaw typ
+        </MenuItem>
+        <MenuItem disabled={bulkBusy} onClick={() => openBulkDialog('link')}>
+          Powiąż z dokumentem… ({selectedIds.length})
+        </MenuItem>
+        <MenuItem
+          disabled={exportDocuments.isPending || bulkBusy}
+          onClick={() => {
+            setBulkMenuAnchor(null);
+            exportDocuments.mutate({ documentIds: selectedIds });
+          }}
+        >
+          Eksportuj zaznaczone ({selectedIds.length})
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          disabled={bulkBusy}
+          onClick={() => {
+            setBulkMenuAnchor(null);
+            void runBulk(async (document) => {
+              await bulkDeleteDocument.mutateAsync(document.id);
+            });
+          }}
+        >
+          <Typography color="error">Do kosza ({selectedIds.length})</Typography>
+        </MenuItem>
+      </Menu>
       {exportDocuments.isError ? (
         <Alert severity="error" sx={{ mt: 2 }}>{exportDocuments.error.message}</Alert>
       ) : null}
@@ -1419,6 +1500,40 @@ export const DocumentsPage = () => {
           <Typography color="error">Do kosza</Typography>
         </MenuItem>
       </Menu>
+
+      <Dialog
+        open={approveProposalsOpen}
+        onClose={bulkBusy ? undefined : () => setApproveProposalsOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Zatwierdź propozycje</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Propozycje zmian zostaną zastosowane{' '}
+            {selectedProposalDocuments.length === 1
+              ? 'w 1 zaznaczonym dokumencie.'
+              : `w ${selectedProposalDocuments.length} zaznaczonych dokumentach.`}
+          </Typography>
+          {bulkApproveProposals.isError ? (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {bulkApproveProposals.error.message}
+            </Alert>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={bulkBusy} onClick={() => setApproveProposalsOpen(false)}>
+            Anuluj
+          </Button>
+          <Button
+            variant="contained"
+            disabled={selectedProposalDocuments.length === 0 || bulkBusy}
+            onClick={() => void approveSelectedProposals()}
+          >
+            Zatwierdź propozycje
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={bulkDialog !== null}
