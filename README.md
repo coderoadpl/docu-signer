@@ -75,7 +75,7 @@ Full command set (<!--count:cli-command-groups-->15<!--/count--> top-level group
 `tenant-settings show|set`,
 `document-type list|add|rename|remove|hide|unhide`,
 `filter-value list|hide|unhide`,
-`document list|trash-list|search|show|comment|approve-comment|add|propose-update|proposal list|approve-proposal|approve-proposals|reject-proposal|link|unlink|approve-link|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
+`document list|trash-list|search|show|comment|approve-comment|add|propose-update|proposal list|approve-proposal|approve-pending-drafts|reject-proposal|link|unlink|approve-link|approve|unapprove|waive-signature|require-signature|upload|verify-seal|export|remove|restore|purge`,
 `token create|list|revoke`, `invitation create|list|revoke`, `public profile`.
 
 `document-type hide|unhide <slug>` and `filter-value hide|unhide --kind
@@ -91,9 +91,11 @@ approve-link <id>` and `document approve-comment <id>` approve draft
 annotations. Draft-token creation results include the annotation's `draft`
 state in JSON output. `document propose-update <id>` submits metadata changes
 through a `write:draft` token; `document proposal list <id>`, `document
-approve-proposal <proposalId>`, `document approve-proposals <ids...>` and
-`document reject-proposal <proposalId>`
-review them. `document list --pending-drafts` selects documents with any draft
+approve-proposal <proposalId>` and `document reject-proposal <proposalId>`
+review them; `document approve-pending-drafts <ids...>` approves every pending
+metadata proposal, draft comment and draft link of the listed documents in one
+call and reports how many documents changed, how many were skipped and the
+per-kind counts. `document list --pending-drafts` selects documents with any draft
 comment, draft link or pending metadata proposal. `document verify-seal --json` returns the certificate
 `subject`, signature dictionary `name` and `reason`, signer-declared
 `declaredAt`, and each integrity check alongside the overall verdict.
@@ -146,7 +148,7 @@ pnpm run smoke   # runtime gate: real server boots, CLI drives the full flow (~5
   (dead files + dependency hygiene), `doc-lint`
   (docs ↔ enforcer-config, injected counts, env-schema ↔ `.env.example`,
   server ↔ Vercel CSP sync, dead links), and vitest with coverage across
-  **<!--count:test-files-->118<!--/count--> test files**; coverage thresholds are
+  **<!--count:test-files-->119<!--/count--> test files**; coverage thresholds are
   a ratchet floor, so a regression fails the gate.
 - **`smoke`** recreates an isolated `agentproofarch_smoke` database, boots the
   real server (`entry.node.ts`) and drives health → sign-in → document archive →

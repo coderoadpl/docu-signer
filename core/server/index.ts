@@ -8,6 +8,7 @@ export * from './usecases/hidden-filter-values.js';
 export * from './usecases/document-comments.js';
 export * from './usecases/document-links.js';
 export * from './usecases/document-metadata-proposals.js';
+export * from './usecases/document-pending-drafts.js';
 export * from './usecases/api-tokens.js';
 export * from './usecases/saved-searches.js';
 export * from './usecases/user-preferences.js';

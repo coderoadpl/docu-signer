@@ -148,6 +148,10 @@ export interface HiddenFilterValueRepository {
 }
 
 export interface DocumentCommentRepository {
+  listPendingByDocuments(
+    tenantId: string,
+    documentIds: string[],
+  ): Promise<DocumentComment[]>;
   listByDocument(
     tenantId: string,
     documentId: string,
@@ -165,6 +169,10 @@ export interface DocumentCommentRepository {
 }
 
 export interface DocumentLinkRepository {
+  listPendingByDocuments(
+    tenantId: string,
+    documentIds: string[],
+  ): Promise<DocumentLink[]>;
   create(
     tenantId: string,
     input: Omit<DocumentLink, 'tenantId'>,

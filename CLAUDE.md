@@ -116,9 +116,10 @@ before ai-review may accept them; the rulings are archived verbatim in
   The document counterparty field is presented as „Strona” (the wire field remains `person`).
   The list keeps only view controls visible until documents are selected; selection opens a
   contextual toolbar with signing, review and approval primaries plus the remaining bulk
-  actions under „Więcej”. „Zatwierdź propozycje” applies every pending metadata proposal for
-  the selected documents in chronological, field-wise order without changing draft links,
-  comments or the document's Szkic status.
+  actions under „Więcej”. „Zatwierdź propozycje i adnotacje” applies every pending metadata
+  proposal for the selected documents in chronological, field-wise order and approves their
+  draft comments and draft links in the same call, without changing the document's Szkic
+  status; the CLI verb is `document approve-pending-drafts <ids...>`.
   A full-screen mass-review queue shows each selected source or newest digital
   signature and supports lightweight metadata editing without signing controls.
   The mass-review reader falls back signed-digital → scan → source, so

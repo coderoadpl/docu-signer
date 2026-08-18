@@ -10,6 +10,7 @@ import {
   type DocumentType,
   type DocumentTypeSlug,
   type DocumentWithFiles,
+  type PendingDraftCounts,
   type UpdateDocument,
   documentSignatureStatusSchema,
   documentTypeSchema,
@@ -276,6 +277,10 @@ export const toDocumentFilterValues = (filter: SavedSearchFilter): DocumentFilte
 
 export const hasDocumentFilter = (filter: DocumentListFilter): boolean =>
   Object.values(filter).some((value) => value !== undefined && value.length > 0);
+
+export const hasPendingDrafts = (counts: PendingDraftCounts | undefined): boolean =>
+  counts !== undefined &&
+  counts.metadataProposals + counts.comments + counts.links > 0;
 
 export const hasSignedDocumentFile = (
   document: Pick<DocumentWithFiles, 'files'>,

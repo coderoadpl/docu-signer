@@ -39,6 +39,15 @@ export const pendingDraftCountsSchema = z.object({
 
 export type PendingDraftCounts = z.infer<typeof pendingDraftCountsSchema>;
 
+export const bulkApprovePendingDraftsSchema = z.object({
+  documentIds: z
+    .array(z.uuid())
+    .min(1)
+    .refine((ids) => new Set(ids).size === ids.length, 'Document ids must be unique'),
+});
+
+export type BulkApprovePendingDrafts = z.infer<typeof bulkApprovePendingDraftsSchema>;
+
 const noPendingDrafts = { comments: 0, links: 0, metadataProposals: 0 };
 
 const periodIsOrdered = (value: {

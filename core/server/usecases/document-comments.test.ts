@@ -109,6 +109,7 @@ const listItem = (authorAccountId = 'user-owner'): DocumentCommentListItem => ({
 const commentRepository = (
   authorAccountId = 'user-owner',
 ): DocumentCommentRepository => ({
+  listPendingByDocuments: async () => [],
   listByDocument: async () => [listItem(authorAccountId)],
   create: async (input) => ({
     id: input.id,

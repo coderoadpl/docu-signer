@@ -26,7 +26,7 @@ import {
 } from '#core/contract/index.js';
 import {
   appError,
-  bulkApproveDocumentMetadataProposalsSchema,
+  bulkApprovePendingDraftsSchema,
   canonicalSlugSchema,
   documentMetadataChangesSchema,
   documentTypeSchema,
@@ -950,18 +950,17 @@ document
   });
 
 document
-  .command('approve-proposals <ids...>')
-  .description('Approve all pending metadata proposals for selected documents')
+  .command('approve-pending-drafts <ids...>')
+  .description(
+    'Approve pending metadata proposals, draft comments and draft links for selected documents',
+  )
   .action(async (ids: string[]) => {
     const ctx = cliCtx();
-    const input = parseArgs(
-      bulkApproveDocumentMetadataProposalsSchema,
-      { documentIds: ids },
-      ctx.json,
-    );
+    const input = parseArgs(bulkApprovePendingDraftsSchema, { documentIds: ids }, ctx.json);
     if (input === undefined) return;
-    emit(await ctx.api.bulkApproveDocumentMetadataProposals(input), ctx.json, (data) =>
-      `approved proposals: ${data.approved}, skipped: ${data.skipped}`,
+    emit(await ctx.api.bulkApprovePendingDrafts(input), ctx.json, (data) =>
+      `approved documents: ${data.approved}, skipped: ${data.skipped} ` +
+      `(proposals: ${data.metadataProposals}, comments: ${data.comments}, links: ${data.links})`,
     );
   });
 
