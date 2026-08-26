@@ -238,22 +238,9 @@ export const createSourceUpdateRequestRepository = (
         JOIN eligible ON eligible.document_id = file.document_id
         WHERE file.role IN ('source', 'signed-digital')
       ),
-      repointed_records AS (
-        UPDATE signature_records record
-        SET file_id = ${input.signedFileId}::uuid,
-            replayed_from_id = COALESCE(record.replayed_from_id, record.id)
-        WHERE ${input.signedFileId}::uuid IS NOT NULL
-          AND record.tenant_id = ${input.tenantId}
-          AND record.document_id = (SELECT document_id FROM eligible)
-        RETURNING record.id
-      ),
       deleted_files AS (
         DELETE FROM document_files file
         WHERE file.id IN (SELECT id FROM previous_files)
-          AND (
-            ${input.signedFileId}::uuid IS NULL
-            OR (SELECT count(*) FROM repointed_records) >= 0
-          )
         RETURNING file.id
       ),
       promoted_source AS (
