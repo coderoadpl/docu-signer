@@ -688,7 +688,15 @@ const dumpDatabase = async (databaseUrl: string, target: string): Promise<void> 
   });
   await runCommand(
     'pg_dump',
-    ['--format=plain', '--no-owner', '--no-acl', `--file=${target}`],
+    [
+      '--format=plain',
+      '--no-owner',
+      '--no-acl',
+      // neon_auth is a platform-provisioned schema the app never writes; the
+      // read-only backup role cannot lock its tables, so the dump skips it.
+      '--exclude-schema=neon_auth',
+      `--file=${target}`,
+    ],
     pgCommandOptions(databaseUrl),
   );
 };
