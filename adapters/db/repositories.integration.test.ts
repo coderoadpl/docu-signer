@@ -377,6 +377,23 @@ describe('DocumentRepository', () => {
         expect.objectContaining({ id: signedFileId, sealed: true }),
       ]),
     );
+
+    await expect(
+      documents.findFile(
+        'tenant-a',
+        '11111111-1111-4111-8111-111111111111',
+        signedFileId,
+      ),
+    ).resolves.toEqual(expect.objectContaining({ id: signedFileId, sealed: true }));
+    await expect(
+      documents.findFile(
+        'tenant-a',
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ id: '22222222-2222-4222-8222-222222222222', sealed: false }),
+    );
   });
 
   it('filters signature status through document file roles', async () => {
