@@ -24,8 +24,11 @@ metadata. Do not edit or delete the ledger during a month.
 
 ## Archive contents
 
-- `database.sql`: plain `pg_dump --format=plain --no-owner --no-acl` output from
-  the direct, unpooled Neon connection.
+- `database.sql`: plain
+  `pg_dump --format=plain --no-owner --no-acl --exclude-schema=neon_auth`
+  output from the direct, unpooled Neon connection. The platform-provisioned
+  `neon_auth` schema is deliberately absent from every dump: the application
+  never writes it, and the read-only backup role cannot lock its tables.
 - `blobs/<pathname>`: every private Vercel Blob at its exact logical pathname.
 - `blobs-manifest.json`: pathname, ETag, size, content type, and SHA-256 for each
   Blob.

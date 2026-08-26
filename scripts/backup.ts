@@ -859,6 +859,7 @@ const restoreText = `Docu Signer backup format ${FORMAT_VERSION}
 1. Stop application writes. Verify every entry in SHA256SUMS and every blob size/hash in blobs-manifest.json.
 2. Create an empty Neon database on the same or a newer PostgreSQL major version. Restore with:
    psql "$TARGET_DATABASE_URL_UNPOOLED" -v ON_ERROR_STOP=1 -f database.sql
+   The dump deliberately omits the platform-provisioned neon_auth schema (the app never writes it); a platform-managed target recreates it on its own.
 3. Create an empty private Vercel Blob store. For every manifest entry upload blobs/<pathname> with put(pathname, stream, { access: 'private', addRandomSuffix: false, contentType }).
 4. Use INDEX.txt to identify document files during triage. Verify every restored document_files.storage_key exists and matches the manifest size, content type, and SHA-256.
 5. Configure the new database URLs and Blob token, deploy, and smoke-test sign-in, document listing, preview, and download before allowing writes.
