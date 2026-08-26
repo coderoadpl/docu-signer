@@ -508,7 +508,22 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
   },
   findFile: async (tenantId, documentId, fileId) => {
     const rows = await db
-      .select({ file: documentFiles })
+      .select({
+        file: documentFiles,
+        sealed: exists(
+          db
+            .select({ id: signatureRecords.id })
+            .from(signatureRecords)
+            .where(
+              and(
+                eq(signatureRecords.tenantId, documents.tenantId),
+                eq(signatureRecords.documentId, documents.id),
+                eq(signatureRecords.fileId, documentFiles.id),
+                isNotNull(signatureRecords.sealSubject),
+              ),
+            ),
+        ),
+      })
       .from(documentFiles)
       .innerJoin(documents, eq(documentFiles.documentId, documents.id))
       .where(
@@ -520,7 +535,7 @@ export const createDocumentRepository = (db: Db): DocumentRepository => ({
         ),
       )
       .limit(1);
-    return rows[0] ? toDocumentFile(rows[0].file) : null;
+    return rows[0] ? toDocumentFile(rows[0].file, rows[0].sealed) : null;
   },
   moveFileToDocument: async (tenantId, sourceDocumentId, fileId, targetDocumentId) => {
     const rows = await db
