@@ -35,6 +35,7 @@ const requestId = '66666666-6666-4666-8666-666666666666';
 const approvalId = '77777777-7777-4777-8777-777777777777';
 const secondApprovalId = '88888888-8888-4888-8888-888888888888';
 const recordId = '99999999-9999-4999-8999-999999999999';
+const nextStagedSourceFileId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 const identity = (
   userId = 'user-requester',
@@ -145,11 +146,28 @@ const documentRepository = (files: DocumentFile[]): DocumentRepository => ({
 
 const signatureRepository = (
   records: SignatureRecord[],
-): SignatureRecordRepository => ({
-  listByDocument: async () => records,
-  create: async () => null,
-  recordSeal: async () => {},
-});
+) => {
+  const storedRecords = [...records];
+  const repository: SignatureRecordRepository = {
+    listByDocument: async () => storedRecords,
+    create: async (input) => {
+      const existing = storedRecords.find((candidate) => candidate.fileId === input.fileId);
+      if (existing) return null;
+      const created: SignatureRecord = {
+        ...input,
+        createdAt: '2026-08-08T11:00:00.000Z',
+      };
+      storedRecords.push(created);
+      return created;
+    },
+    recordSeal: async (input) => {
+      const index = storedRecords.findIndex((candidate) => candidate.fileId === input.fileId);
+      const current = storedRecords[index];
+      if (current) storedRecords[index] = { ...current, seal: input.seal };
+    },
+  };
+  return { repository, storedRecords };
+};
 
 const requestRepository = () => {
   const requests: SourceUpdateRequest[] = [];
@@ -262,6 +280,7 @@ const dependencies = ({
   records?: SignatureRecord[];
 } = {}) => {
   const sourceUpdates = requestRepository();
+  const signatures = signatureRepository(records);
   const deletedKeys: string[] = [];
   const storage: StoragePort = {
     put: async () => ok(undefined),
@@ -274,16 +293,18 @@ const dependencies = ({
     createUploadUrl: async () => ok(null),
   };
   const ids = [requestId, approvalId, secondApprovalId];
+  const deps: SourceUpdateRequestDeps = {
+    documents: documentRepository(files),
+    signatureRecords: signatures.repository,
+    sourceUpdateRequests: sourceUpdates.repository,
+    storage,
+    ids: { nextId: () => ids.shift() ?? secondApprovalId },
+  };
   return {
-    deps: {
-      documents: documentRepository(files),
-      signatureRecords: signatureRepository(records),
-      sourceUpdateRequests: sourceUpdates.repository,
-      storage,
-      ids: { nextId: () => ids.shift() ?? secondApprovalId },
-    } satisfies SourceUpdateRequestDeps,
+    deps,
     deletedKeys,
     requests: sourceUpdates.requests,
+    signatureRecords: signatures.storedRecords,
   };
 };
 
@@ -506,8 +527,9 @@ describe('source update request use-cases', () => {
     ).resolves.toMatchObject({ ok: false, error: { code: 'conflict' } });
   });
 
-  it('completes delete and transfer modes only after approvals and removes prior blobs', async () => {
+  it('intentionally leaves delete-signed without records and completes transfer after approval', async () => {
     const deletion = dependencies();
+    const createDeletionRecord = vi.spyOn(deletion.deps.signatureRecords, 'create');
     await createSourceUpdateRequest(
       { identity: identity() },
       documentId,
@@ -526,6 +548,7 @@ describe('source update request use-cases', () => {
       file(sourceFileId, 'source').storageKey,
       file(oldSignedFileId, 'signed-digital').storageKey,
     ]);
+    expect(createDeletionRecord).not.toHaveBeenCalled();
 
     const transfer = dependencies({ records: [record('user-signer')] });
     await createSourceUpdateRequest(
@@ -556,8 +579,115 @@ describe('source update request use-cases', () => {
         transfer.deps,
       ),
     ).resolves.toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(transfer.signatureRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fileId: stagedSignedFileId,
+        signedBy: 'user-signer',
+        payload: [expect.objectContaining({ contributedBy: 'user-signer' })],
+      }),
+    ]));
   });
 
+  it('preserves transferred ink without sealing and makes it available to the next update', async () => {
+    const transferredPayload = [signatureStamp('user-requester')];
+    const transfer = dependencies({
+      records: [record('user-desktop', transferredPayload)],
+    });
+    await createSourceUpdateRequest(
+      { identity: identity() },
+      documentId,
+      { newSourceFileId: stagedSourceFileId, mode: 'transfer' },
+      transfer.deps,
+    );
+    await expect(
+      completeSourceUpdateRequest(
+        { identity: identity() },
+        requestId,
+        { signedFileId: stagedSignedFileId },
+        transfer.deps,
+      ),
+    ).resolves.toMatchObject({ ok: true, value: { status: 'completed' } });
+    const transferredRecord = transfer.signatureRecords.find(
+      (candidate) => candidate.fileId === stagedSignedFileId,
+    );
+    expect(transferredRecord).toMatchObject({
+      fileId: stagedSignedFileId,
+      signedBy: 'user-desktop',
+      payload: transferredPayload,
+    });
+    if (!transferredRecord) throw new Error('Transferred signature record was not created');
+
+    const nextUpdate = dependencies({
+      files: [
+        file(stagedSourceFileId, 'source'),
+        file(stagedSignedFileId, 'signed-digital'),
+        file(nextStagedSourceFileId, 'other'),
+      ],
+      records: [transferredRecord],
+    });
+    await expect(
+      createSourceUpdateRequest(
+        { identity: identity() },
+        documentId,
+        { newSourceFileId: nextStagedSourceFileId, mode: 'transfer' },
+        nextUpdate.deps,
+      ),
+    ).resolves.toMatchObject({ ok: true, value: { approvals: [] } });
+  });
+
+  it('adds seal metadata to the transferred ink record when sealing is enabled', async () => {
+    const transfer = dependencies({
+      records: [record('user-requester', [signatureStamp('user-requester')])],
+    });
+    transfer.deps.storage.get = async () => ok(new Uint8Array([1, 2, 3]));
+    transfer.deps.pdfSealing = {
+      ids: transfer.deps.ids,
+      pdfSeal: {
+        configured: true,
+        seal: async (input) => ({
+          kind: 'sealed',
+          bytes: new Uint8Array([...input.bytes, 4]),
+          subject: 'Acme Inc',
+        }),
+      },
+      signatureRecords: transfer.deps.signatureRecords,
+      tenantAccounts: {
+        listByTenant: async () => [{ accountId: 'user-requester', name: 'Requester' }],
+      },
+      tenantSettings: {
+        get: async () => ({
+          tenantId: 'tenant-1',
+          storeSignatureRecords: true,
+          pdfSealEnabled: true,
+          signatureBoxEnabled: false,
+          dateMode: 'declared',
+        }),
+        set: async (tenantId, settings) => ({ tenantId, ...settings }),
+      },
+      warnings: { warn: vi.fn() },
+    };
+    await createSourceUpdateRequest(
+      { identity: identity() },
+      documentId,
+      { newSourceFileId: stagedSourceFileId, mode: 'transfer' },
+      transfer.deps,
+    );
+    await expect(
+      completeSourceUpdateRequest(
+        { identity: identity() },
+        requestId,
+        { signedFileId: stagedSignedFileId },
+        transfer.deps,
+      ),
+    ).resolves.toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(transfer.signatureRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fileId: stagedSignedFileId,
+        payload: [expect.objectContaining({ contributedBy: 'user-requester' })],
+        seal: expect.objectContaining({ subject: 'Acme Inc' }),
+      }),
+    ]));
+  });
 
   it('validates identifiers and missing document resources before repository writes', async () => {
     const invalid = dependencies();

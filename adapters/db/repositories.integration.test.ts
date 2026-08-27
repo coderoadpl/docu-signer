@@ -377,6 +377,23 @@ describe('DocumentRepository', () => {
         expect.objectContaining({ id: signedFileId, sealed: true }),
       ]),
     );
+
+    await expect(
+      documents.findFile(
+        'tenant-a',
+        '11111111-1111-4111-8111-111111111111',
+        signedFileId,
+      ),
+    ).resolves.toEqual(expect.objectContaining({ id: signedFileId, sealed: true }));
+    await expect(
+      documents.findFile(
+        'tenant-a',
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ id: '22222222-2222-4222-8222-222222222222', sealed: false }),
+    );
   });
 
   it('filters signature status through document file roles', async () => {
@@ -1154,7 +1171,7 @@ describe('SignatureRecordRepository', () => {
 });
 
 describe('SourceUpdateRequestRepository', () => {
-  it('enforces one pending request and atomically promotes files and re-points records', async () => {
+  it('enforces one pending request and atomically promotes files around a prepared replay record', async () => {
     const documents = createDocumentRepository(db);
     const signatures = createSignatureRecordRepository(db);
     const requests = createSourceUpdateRequestRepository(db);
@@ -1258,6 +1275,23 @@ describe('SourceUpdateRequestRepository', () => {
     await expect(
       requests.decide('tenant-a', requestId, 'user-admin', 'accepted'),
     ).resolves.toMatchObject({ approvals: [{ decision: 'accepted' }] });
+    await signatures.create({
+      id: '90909090-9090-4090-8090-909090909091',
+      tenantId: 'tenant-a',
+      documentId,
+      fileId: stagedSignedFileId,
+      signedBy: 'user-admin',
+      payload: [
+        {
+          strokes: [{ points: [{ x: 0.1, y: 0.2, pressure: 0.5 }] }],
+          pageIndex: 0,
+          placement: { offsetX: 0, offsetY: 0, scale: 1 },
+          inkColor: 'black',
+          inkSize: 2,
+          contributedBy: 'user-admin',
+        },
+      ],
+    });
     await expect(
       requests.complete({
         tenantId: 'tenant-a',

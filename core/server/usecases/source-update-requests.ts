@@ -64,6 +64,41 @@ const signatureContributorAccountIds = (
     record.payload.map((stamp) => stamp.contributedBy ?? record.signedBy),
   );
 
+const orderedSignatureRecords = (
+  records: SignatureRecord[],
+): SignatureRecord[] => [...records].sort(
+  (left, right) =>
+    left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+);
+
+const createTransferredSignatureRecord = async (
+  input: {
+    tenantId: string;
+    documentId: string;
+    fileId: string;
+    records: SignatureRecord[];
+  },
+  deps: Pick<SourceUpdateRequestDeps, 'ids' | 'signatureRecords'>,
+): Promise<void> => {
+  const records = orderedSignatureRecords(input.records);
+  const latestRecord = records.at(-1);
+  if (!latestRecord) return;
+  await deps.signatureRecords.create({
+    id: deps.ids.nextId(),
+    tenantId: input.tenantId,
+    documentId: input.documentId,
+    fileId: input.fileId,
+    signedBy: latestRecord.signedBy,
+    payload: records.flatMap((record) =>
+      record.payload.map((stamp) =>
+        stamp.contributedBy
+          ? stamp
+          : { ...stamp, contributedBy: record.signedBy },
+      ),
+    ),
+  });
+};
+
 export const createSourceUpdateRequest = async (
   ctx: Ctx,
   documentId: string,
@@ -306,6 +341,17 @@ export const completeSourceUpdateRequest = async (
   }
   const priorSourceFiles = files.filter((file) => file.role === 'source');
   const priorSignedFiles = files.filter((file) => file.role === 'signed-digital');
+  if (signedFile && records.length > 0) {
+    await createTransferredSignatureRecord(
+      {
+        tenantId: scope.value,
+        documentId: request.documentId,
+        fileId: signedFile.id,
+        records,
+      },
+      deps,
+    );
+  }
   const completed = await deps.sourceUpdateRequests.complete({
     tenantId: scope.value,
     requestId: request.id,
