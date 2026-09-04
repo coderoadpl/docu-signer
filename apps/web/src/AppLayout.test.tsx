@@ -334,6 +334,19 @@ describe('AppLayout', () => {
 
     expect(await screen.findByText('login page')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/login');
+    expect(router.state.location.search).toEqual({});
+  });
+
+  it('hands the deep link to login so it survives the sign-in', async () => {
+    const { router } = await renderLayout({
+      tenant: null,
+      error: unauthorized(),
+      initialEntry: '/app/documents?q=faktura',
+    });
+
+    expect(await screen.findByText('login page')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/login');
+    expect(router.state.location.search).toEqual({ redirect: '/app/documents?q=faktura' });
   });
 
   it('stays in the app after signing in with a cached unauthorized session', async () => {
