@@ -1,3 +1,5 @@
 import { LoginPage } from '../features/auth/LoginPage.js';
 
+export { loginSearchSchema } from '../features/auth/LoginPage.js';
+
 export const LoginRoute = () => <LoginPage />;
