@@ -127,6 +127,22 @@ export const LoginPage = () => {
               <Alert severity="info">
                 Hasło jest poprawne. Wpisz kod z aplikacji uwierzytelniającej.
               </Alert>
+              <input
+                type="email"
+                name="email"
+                autoComplete="username"
+                value={email}
+                readOnly
+                tabIndex={-1}
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  width: 1,
+                  height: 1,
+                  opacity: 0,
+                  pointerEvents: 'none',
+                }}
+              />
               <FormControl fullWidth>
                 <FormLabel htmlFor="login-totp">Kod jednorazowy</FormLabel>
                 <OutlinedInput
