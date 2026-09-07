@@ -9,6 +9,7 @@ const integrationEnabled = process.env['VITEST_INTEGRATION'] === '1';
 
 export default defineConfig({
   test: {
+    maxWorkers: 2,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json-summary'],

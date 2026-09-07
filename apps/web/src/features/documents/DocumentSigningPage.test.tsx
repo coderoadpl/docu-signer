@@ -524,7 +524,7 @@ describe('DocumentSigningPage', () => {
         name: 'Automatycznie proś pad o podpis',
       }),
     ).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Pad QR' }));
+    fireEvent.click(await enabledButton('Pad QR'));
 
     expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
     expect(await screen.findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
@@ -535,6 +535,10 @@ describe('DocumentSigningPage', () => {
   });
 
   it('upgrades a private active session before showing its QR code', async () => {
+    let releaseDiscovery = () => {};
+    const discoveryGate = new Promise<void>((resolve) => {
+      releaseDiscovery = resolve;
+    });
     let releaseShare = () => {};
     const shareGate = new Promise<void>((resolve) => {
       releaseShare = resolve;
@@ -543,8 +547,9 @@ describe('DocumentSigningPage', () => {
     let sessionMode: 'private' | 'shared' = 'private';
     installEmptySharedPadHandlers();
     server.use(
-      http.get('/api/pad-sessions/active', () =>
-        HttpResponse.json({
+      http.get('/api/pad-sessions/active', async () => {
+        await discoveryGate;
+        return HttpResponse.json({
           ok: true,
           data: {
             session: {
@@ -560,8 +565,8 @@ describe('DocumentSigningPage', () => {
               currentDocument: null,
             },
           },
-        }),
-      ),
+        });
+      }),
       http.post('/api/pad-sessions/:sessionId/share', async () => {
         shareCalls += 1;
         await shareGate;
@@ -587,11 +592,14 @@ describe('DocumentSigningPage', () => {
     );
 
     await renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Pad QR' }));
+    const button = await screen.findByRole('button', { name: 'Pad QR' });
+    expect(button).toBeDisabled();
+    releaseDiscovery();
+    fireEvent.click(await enabledButton('Pad QR'));
 
     expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
     await waitFor(() => expect(shareCalls).toBe(1));
-    expect(screen.getByLabelText('Tworzenie sesji pada')).toBeVisible();
+    expect(await screen.findByLabelText('Tworzenie sesji pada')).toBeVisible();
     expect(screen.queryByRole('img', { name: 'Kod QR pada podpisu' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Zeskanuj kod/u)).not.toBeInTheDocument();
 
@@ -874,7 +882,7 @@ describe('DocumentSigningPage', () => {
     );
 
     const { unmount } = await renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Pad QR' }));
+    fireEvent.click(await enabledButton('Pad QR'));
     expect(await screen.findByRole('dialog', { name: 'Pad QR' })).toBeVisible();
     expect(await screen.findByRole('img', { name: 'Kod QR pada podpisu' })).toBeVisible();
     unmount();

@@ -42,26 +42,33 @@ const drawOnCanvas = async (
   await page.mouse.up();
 };
 
-const canvasInkState = async (canvas: Locator) =>
-  canvas.evaluate((element) => {
+const canvasInkState = async (canvas: Locator, maxDimension?: number) =>
+  canvas.evaluate((element, limit) => {
     if (!(element instanceof HTMLCanvasElement)) {
       throw new Error('Expected a canvas');
     }
-    const context = element.getContext('2d');
+    const surface = limit ? document.createElement('canvas') : element;
+    if (limit) {
+      const scale = Math.min(1, limit / Math.max(element.width, element.height));
+      surface.width = Math.max(1, Math.floor(element.width * scale));
+      surface.height = Math.max(1, Math.floor(element.height * scale));
+    }
+    const context = surface.getContext('2d');
     if (!context) throw new Error('Missing canvas context');
-    const data = context.getImageData(0, 0, element.width, element.height).data;
+    if (limit) context.drawImage(element, 0, 0, surface.width, surface.height);
+    const data = context.getImageData(0, 0, surface.width, surface.height).data;
     let pixels = 0;
-    let left = element.width;
+    let left = surface.width;
     let right = 0;
-    let top = element.height;
+    let top = surface.height;
     let bottom = 0;
     for (let index = 3; index < data.length; index += 4) {
       const alpha = data[index];
       if (alpha !== undefined && alpha > 0) {
         pixels += 1;
         const pixel = (index - 3) / 4;
-        const x = pixel % element.width;
-        const y = Math.floor(pixel / element.width);
+        const x = pixel % surface.width;
+        const y = Math.floor(pixel / surface.width);
         left = Math.min(left, x);
         right = Math.max(right, x);
         top = Math.min(top, y);
@@ -70,8 +77,8 @@ const canvasInkState = async (canvas: Locator) =>
     }
     return {
       pixels,
-      width: element.width,
-      height: element.height,
+      width: surface.width,
+      height: surface.height,
       bounds: element.getBoundingClientRect().toJSON(),
       inkBounds:
         pixels > 0
@@ -83,7 +90,7 @@ const canvasInkState = async (canvas: Locator) =>
             }
           : undefined,
     };
-  });
+  }, maxDimension);
 
 const expectCanvasInkGrew = async (
   canvas: Locator,
@@ -370,7 +377,7 @@ const dragSelectedStampLong = async (page: Page) => {
   const canvas = page.getByRole('application', {
     name: 'Powierzchnia do rysowania podpisu',
   });
-  const before = await canvasInkState(canvas);
+  const before = await canvasInkState(canvas, 256);
   if (!before.inkBounds) throw new Error('Missing stamp ink before drag');
   const start = {
     x:
@@ -429,7 +436,7 @@ const dragSelectedStampLong = async (page: Page) => {
     height: 12,
   });
   await expect
-    .poll(async () => (await canvasInkState(canvas)).inkBounds?.left ?? before.width)
+    .poll(async () => (await canvasInkState(canvas, 256)).inkBounds?.left ?? before.width)
     .toBeLessThan(before.inkBounds.left - before.width * 0.2);
 };
 
@@ -870,18 +877,40 @@ test('mass signing can receive a signature from a QR pad browser context', async
   await page.getByRole('button', { name: 'Schowaj kod QR' }).click();
   await expect(page.getByRole('dialog', { name: 'Pad QR' })).toBeHidden();
 
+  const submitFromPad = async (padPage: Page, offset: number) => {
+    const padCanvas = padPage.getByRole('application', {
+      name: 'Powierzchnia pada do podpisu',
+    });
+    await dispatchPointerStroke({
+      canvas: padCanvas,
+      pointerType: 'mouse',
+      points: [
+        { x: 0.18, y: 0.5 + offset },
+        { x: 0.34, y: 0.36 + offset },
+        { x: 0.52, y: 0.56 + offset },
+        { x: 0.74, y: 0.4 + offset },
+      ],
+    });
+    await expect(padPage.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
+    await padPage.getByRole('button', { name: 'Zatwierdź' }).click();
+  };
+
   const hostPadPage = await page.context().newPage();
   const padContext = await browser.newContext({ viewport: { width: 834, height: 720 } });
   try {
+    await hostPadPage.setViewportSize({ width: 834, height: 720 });
     await hostPadPage.goto('/app');
     await hostPadPage.getByRole('button', { name: 'Tryb pada' }).click();
-    const guestPadPage = await padContext.newPage();
-    await signInWithMagicLink(guestPadPage);
-    await guestPadPage.getByRole('button', { name: 'Tryb pada' }).click();
-
     await expect(
       hostPadPage.getByRole('heading', { name: 'Możesz złożyć podpis' }),
     ).toBeVisible();
+    await submitFromPad(hostPadPage, 0);
+    await expect(page.getByRole('button', { name: 'Podpisy: Demo User (1)' })).toBeVisible();
+    await hostPadPage.close();
+
+    const guestPadPage = await padContext.newPage();
+    await signInWithMagicLink(guestPadPage);
+    await guestPadPage.getByRole('button', { name: 'Tryb pada' }).click();
     await expect(
       guestPadPage.getByRole('heading', { name: 'Możesz złożyć podpis' }),
     ).toBeVisible();
@@ -889,26 +918,6 @@ test('mass signing can receive a signature from a QR pad browser context', async
     await productPassScreenshot(guestPadPage, 'd-pad-shared-live-canvas-834.png');
     await page.bringToFront();
     await expect(page.getByText('Pad połączony')).toBeVisible();
-
-    const submitFromPad = async (padPage: Page, offset: number) => {
-      const padCanvas = padPage.getByRole('application', {
-        name: 'Powierzchnia pada do podpisu',
-      });
-      await dispatchPointerStroke({
-        canvas: padCanvas,
-        pointerType: 'mouse',
-        points: [
-          { x: 0.18, y: 0.5 + offset },
-          { x: 0.34, y: 0.36 + offset },
-          { x: 0.52, y: 0.56 + offset },
-          { x: 0.74, y: 0.4 + offset },
-        ],
-      });
-      await expect(padPage.getByRole('button', { name: 'Zatwierdź' })).toBeEnabled();
-      await padPage.getByRole('button', { name: 'Zatwierdź' }).click();
-    };
-
-    await submitFromPad(hostPadPage, 0);
     await submitFromPad(guestPadPage, 0.02);
     await page.bringToFront();
     await page.getByRole('button', { name: 'Poproś pad o podpis' }).click();
@@ -921,6 +930,7 @@ test('mass signing can receive a signature from a QR pad browser context', async
       name: 'Podpisy: Demo User (1) · Magic Link User (2)',
     });
     await expect(tray).toBeVisible();
+    await padContext.close();
     await productPassScreenshot(page, 'a-desktop-toolbar-two-account-tray-1440.png');
     await tray.click();
     await expect(page.getByText('Podpisy do umieszczenia')).toBeVisible();
