@@ -138,6 +138,9 @@ const Shell = ({ tenant = null, displayName, state }: ShellProps) => {
   const pendingSourceUpdates = useQuery({
     ...actions.pendingSourceUpdateRequests,
     enabled: Boolean(tenant),
+    staleTime: 0,
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
   });
   const createSavedSearch = useMutation(savedSearchActions.createSavedSearch);
   const deleteSavedSearch = useMutation({

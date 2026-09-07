@@ -9,7 +9,12 @@ import { StatusView } from '../../components/layout/StatusView.js';
 const RouterButton = createLink(Button);
 
 export const SourceUpdatesPage = () => {
-  const requests = useQuery(actions.pendingSourceUpdateRequests);
+  const requests = useQuery({
+    ...actions.pendingSourceUpdateRequests,
+    staleTime: 0,
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
+  });
   const documents = useQuery(actions.documents({ draft: 'all' }));
   if (requests.isPending || documents.isPending) {
     return (
