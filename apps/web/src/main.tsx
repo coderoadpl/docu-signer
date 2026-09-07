@@ -31,7 +31,7 @@ import {
   legacyDocumentsRedirect,
 } from './routes/documents.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
-import { LoginRoute } from './routes/login.js';
+import { LoginRoute, loginSearchSchema } from './routes/login.js';
 import { InvitationRoute } from './routes/invitation.js';
 import { shouldReloadAfterPreloadError } from './lib/preload-reload.js';
 import { NotFoundRoute } from './routes/not-found.js';
@@ -103,6 +103,7 @@ const indexRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
+  validateSearch: loginSearchSchema,
   component: LoginRoute,
 });
 const registerRoute = createRoute({

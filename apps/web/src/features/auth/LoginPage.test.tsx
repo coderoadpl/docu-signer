@@ -8,11 +8,11 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LoginPage } from './LoginPage.js';
 
-const renderLoginPage = async () => {
+const renderLoginPage = async (entry = '/login') => {
   const rootRoute = createRootRoute({ component: LoginPage });
   const router = createRouter({
     routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: ['/login'] }),
+    history: createMemoryHistory({ initialEntries: [entry] }),
   });
   await router.load();
   return { router, ...renderWithProviders(<RouterProvider router={router} />) };
@@ -21,6 +21,10 @@ const renderLoginPage = async () => {
 const fillCredentials = async () => {
   await userEvent.type(screen.getByLabelText('Adres e-mail'), 'demo@agentproofarch.dev');
   await userEvent.type(screen.getByLabelText('Hasło'), 'wrong-password');
+};
+
+const acceptSignIn = () => {
+  server.use(http.post('*/sign-in/email', () => HttpResponse.json({ token: 'session' })));
 };
 
 describe('LoginPage', () => {
@@ -82,6 +86,33 @@ describe('LoginPage', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/app'));
   });
+
+  it('returns to the deep link recorded in the redirect search param', async () => {
+    acceptSignIn();
+
+    const { router } = await renderLoginPage('/login?redirect=%2Fapp%2Fdocuments%2Fabc');
+    await fillCredentials();
+    await userEvent.click(screen.getByRole('button', { name: 'Zaloguj się' }));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/app/documents/abc'),
+    );
+  });
+
+  it.each(['//evil.com', 'https://evil.com', '/\\evil.com'])(
+    'ignores the off-site redirect target %s',
+    async (redirect) => {
+      acceptSignIn();
+
+      const { router } = await renderLoginPage(
+        `/login?redirect=${encodeURIComponent(redirect)}`,
+      );
+      await fillCredentials();
+      await userEvent.click(screen.getByRole('button', { name: 'Zaloguj się' }));
+
+      await waitFor(() => expect(router.state.location.pathname).toBe('/app'));
+    },
+  );
 
   it('requests a passwordless magic link and confirms delivery (US-026)', async () => {
     server.use(http.post('*/sign-in/magic-link', () => HttpResponse.json({ status: true })));

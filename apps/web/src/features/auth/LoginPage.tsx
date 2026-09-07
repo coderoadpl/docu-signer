@@ -11,12 +11,25 @@ import {
   Stack,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { z } from 'zod';
 
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
+
+export const loginSearchSchema = z.object({
+  redirect: z.string().optional(),
+});
+
+const APP_HOME = '/app';
+
+const isSameOriginPath = (target: string): boolean =>
+  target.startsWith('/') && !target.startsWith('//') && !target.startsWith('/\\');
+
+const loginRedirectTarget = (redirect: string | undefined): string =>
+  redirect !== undefined && isSameOriginPath(redirect) ? redirect : APP_HOME;
 
 const authErrorMessage = (error: Error): string => {
   const message = error instanceof ApiError ? error.appError.message : error.message;
@@ -32,10 +45,21 @@ export const LoginPage = () => {
   const [code, setCode] = useState('');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const search = useSearch({ strict: false });
+  const parsedSearch = loginSearchSchema.safeParse(search);
+  const redirectTarget = loginRedirectTarget(
+    parsedSearch.success ? parsedSearch.data.redirect : undefined,
+  );
+  const callbackURL = `${window.location.origin}${redirectTarget}`;
   const magicLinkEnabled =
     import.meta.env.DEV || import.meta.env.VITE_MAGIC_LINK === 'on';
 
   const config = useQuery(actions.config);
+
+  const goToRedirectTarget = async () => {
+    await queryClient.resetQueries();
+    await navigate({ href: redirectTarget });
+  };
 
   const signIn = useMutation({
     ...actions.signIn,
@@ -44,27 +68,20 @@ export const LoginPage = () => {
         setTwoFactorRequired(true);
         return;
       }
-      await queryClient.resetQueries();
-      await navigate({ to: '/app' });
+      await goToRedirectTarget();
     },
   });
 
   const verifyTotp = useMutation({
     ...actions.verifyTotp,
-    onSuccess: async () => {
-      await queryClient.resetQueries();
-      await navigate({ to: '/app' });
-    },
+    onSuccess: goToRedirectTarget,
   });
 
   const magicLink = useMutation(actions.requestMagicLink);
 
   const passkey = useMutation({
     ...actions.signInPasskey,
-    onSuccess: async () => {
-      await queryClient.resetQueries();
-      await navigate({ to: '/app' });
-    },
+    onSuccess: goToRedirectTarget,
   });
 
   const google = useMutation({
@@ -114,10 +131,11 @@ export const LoginPage = () => {
                 <FormLabel htmlFor="login-totp">Kod jednorazowy</FormLabel>
                 <OutlinedInput
                   id="login-totp"
+                  name="one-time-code"
                   value={code}
                   onChange={(event) => setCode(event.target.value)}
                   autoComplete="one-time-code"
-                  inputProps={{ inputMode: 'numeric' }}
+                  inputProps={{ inputMode: 'numeric', maxLength: 6, pattern: '[0-9]*' }}
                   required
                 />
               </FormControl>
@@ -182,7 +200,7 @@ export const LoginPage = () => {
                   variant="outlined"
                   fullWidth
                   disabled={magicLink.isPending || email.length === 0}
-                  onClick={() => magicLink.mutate({ email, callbackURL: `${window.location.origin}/app` })}
+                  onClick={() => magicLink.mutate({ email, callbackURL })}
                 >
                   {magicLink.isPending
                     ? 'Wysyłanie linku…'
@@ -211,7 +229,7 @@ export const LoginPage = () => {
                   variant="outlined"
                   fullWidth
                   disabled={google.isPending}
-                  onClick={() => google.mutate({ provider: 'google', callbackURL: `${window.location.origin}/app` })}
+                  onClick={() => google.mutate({ provider: 'google', callbackURL })}
                 >
                   Zaloguj się przez Google
                 </Button>

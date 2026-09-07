@@ -20,7 +20,13 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createLink, Link as RouterLink, Outlet, useNavigate } from '@tanstack/react-router';
+import {
+  createLink,
+  Link as RouterLink,
+  Outlet,
+  useNavigate,
+  useRouter,
+} from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { SavedSearch } from '#core/domain/index.js';
@@ -36,6 +42,8 @@ import { useAppTheme, Wordmark } from './theme.js';
 
 const errorCodeOf = (error: Error | null): string | null =>
   error instanceof ApiError ? error.appError.code : null;
+
+const APP_HOME = '/app';
 
 const noArchiveAccessState: PageState = {
   kind: 'empty',
@@ -65,6 +73,7 @@ const useSignOut = () => {
 
 export const AppLayout = () => {
   const navigate = useNavigate();
+  const router = useRouter();
   const me = useQuery(actions.me);
   const code = errorCodeOf(me.error);
   const unauthorized = code === 'unauthorized';
@@ -72,8 +81,13 @@ export const AppLayout = () => {
   const forbidden = code === 'forbidden';
 
   useEffect(() => {
-    if (settledUnauthorized) void navigate({ to: '/login' });
-  }, [settledUnauthorized, navigate]);
+    if (!settledUnauthorized) return;
+    const deepLink = router.state.location.href;
+    void navigate({
+      to: '/login',
+      search: deepLink === APP_HOME ? {} : { redirect: deepLink },
+    });
+  }, [settledUnauthorized, navigate, router]);
 
   if (me.isPending || (unauthorized && me.isFetching)) {
     return <Shell state={{ kind: 'loading', label: 'Ładowanie aplikacji…' }} />;

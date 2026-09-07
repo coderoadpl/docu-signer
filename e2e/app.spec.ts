@@ -3,11 +3,15 @@ import { expect, test, type Page } from '@playwright/test';
 const DEMO_EMAIL = 'demo@agentproofarch.dev';
 const DEMO_PASSWORD = 'demo1234';
 
-const signIn = async (page: Page, password = DEMO_PASSWORD): Promise<void> => {
-  await page.goto('/login');
+const submitCredentials = async (page: Page, password = DEMO_PASSWORD): Promise<void> => {
   await page.locator('#login-email').fill(DEMO_EMAIL);
   await page.locator('#login-password').fill(password);
   await page.getByRole('button', { name: 'Zaloguj się', exact: true }).click();
+};
+
+const signIn = async (page: Page, password = DEMO_PASSWORD): Promise<void> => {
+  await page.goto('/login');
+  await submitCredentials(page, password);
 };
 
 test('login lands on the document archive with product-only navigation', async ({ page }) => {
@@ -47,5 +51,11 @@ test('anonymous visitors are redirected from archive routes to login', async ({ 
   for (const path of ['/app/documents', '/app/settings']) {
     await page.goto(path);
     await expect(page.getByLabel('Adres e-mail')).toBeVisible();
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/login');
+    await expect.poll(() => new URL(page.url()).searchParams.get('redirect')).toBe(path);
   }
+
+  await submitCredentials(page);
+  await expect(page.getByRole('heading', { name: 'Konto', level: 1 })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/app/settings');
 });
