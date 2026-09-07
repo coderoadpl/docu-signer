@@ -79,6 +79,10 @@ describe('LoginPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zaloguj się' }));
 
     expect(await screen.findByLabelText('Kod jednorazowy')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('demo@agentproofarch.dev')).toHaveAttribute(
+      'autocomplete',
+      'username',
+    );
     expect(router.state.location.pathname).toBe('/login');
 
     await userEvent.type(screen.getByLabelText('Kod jednorazowy'), '123456');
