@@ -1081,6 +1081,63 @@ describe('buildApp', () => {
     });
   });
 
+  it('does not apply the 100KB JSON limit to server file uploads', async () => {
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const body = 'x'.repeat(200 * 1024);
+    const response = await buildApp(authorizedDeps()).request(
+      `${API_ROUTES.documentFileServerUpload.path.replace(
+        ':documentId',
+        documentId,
+      )}?fileName=source.pdf&role=source`,
+      {
+        method: API_ROUTES.documentFileServerUpload.method,
+        headers: {
+          [TENANT_HEADER]: tenant.slug,
+          'content-length': String(body.length),
+          'content-type': 'application/pdf',
+        },
+        body,
+      },
+    );
+    const responseBody: unknown = await response.json();
+
+    expect({ status: response.status, body: responseBody }).not.toMatchObject({
+      status: 400,
+      body: {
+        ok: false,
+        error: {
+          code: 'validation',
+          message: 'Request body exceeds the 100KB limit',
+        },
+      },
+    });
+  });
+
+  it('keeps JSON routes capped at 100KB', async () => {
+    const body = JSON.stringify({
+      storeSignatureRecords: false,
+      padding: 'x'.repeat(101 * 1024),
+    });
+    const response = await buildApp(authorizedDeps()).request(API_ROUTES.tenantSettingsUpdate.path, {
+      method: API_ROUTES.tenantSettingsUpdate.method,
+      headers: {
+        [TENANT_HEADER]: tenant.slug,
+        'content-length': String(body.length),
+        'content-type': 'application/json',
+      },
+      body,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: {
+        code: 'validation',
+        message: 'Request body exceeds the 100KB limit',
+      },
+    });
+  });
+
   it('serves seal verification details through the document file route', async () => {
     const deps = authorizedDeps();
     const documentId = '11111111-1111-4111-8111-111111111111';
