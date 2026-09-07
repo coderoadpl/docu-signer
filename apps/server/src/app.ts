@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { secureHeaders } from 'hono/secure-headers';
 
@@ -238,6 +238,10 @@ export const buildApp = (deps: AppDeps) => {
     maxSize: 4 * 1024 * 1024,
     onError: () => respond(err(validation('Signature record exceeds the 4MB limit'))),
   });
+  const forMethod =
+    (method: string, middleware: MiddlewareHandler<Vars>): MiddlewareHandler<Vars> =>
+    (c, next) =>
+      c.req.method === method ? middleware(c, next) : next();
   const jsonBodyRoutes = Object.values(API_ROUTES).filter(
     (route) =>
       route.method !== 'GET' &&
@@ -245,11 +249,20 @@ export const buildApp = (deps: AppDeps) => {
       route.path !== API_ROUTES.padSessionSubmit.path &&
       route.path !== API_ROUTES.signatureRecordsCreate.path,
   );
-  for (const route of jsonBodyRoutes) app.use(route.path, jsonBodyLimit);
-  app.use(API_ROUTES.padSessionSubmit.path, padSubmitBodyLimit);
-  app.use(API_ROUTES.signatureRecordsCreate.path, signatureRecordBodyLimit);
+  for (const route of jsonBodyRoutes) app.use(route.path, forMethod(route.method, jsonBodyLimit));
+  app.use(
+    API_ROUTES.padSessionSubmit.path,
+    forMethod(API_ROUTES.padSessionSubmit.method, padSubmitBodyLimit),
+  );
+  app.use(
+    API_ROUTES.signatureRecordsCreate.path,
+    forMethod(API_ROUTES.signatureRecordsCreate.method, signatureRecordBodyLimit),
+  );
   app.use(BETTER_AUTH_API_PATH_PATTERN, jsonBodyLimit);
-  app.use(API_ROUTES.documentFileServerUpload.path, serverUploadBodyLimit);
+  app.use(
+    API_ROUTES.documentFileServerUpload.path,
+    forMethod(API_ROUTES.documentFileServerUpload.method, serverUploadBodyLimit),
+  );
 
   app.use('*', telemetryMiddleware);
 
