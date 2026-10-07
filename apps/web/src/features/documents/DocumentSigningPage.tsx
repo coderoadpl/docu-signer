@@ -2103,7 +2103,7 @@ export const DocumentSigningPage = ({
         );
       }
     };
-    void persistSignatureRecord();
+    await persistSignatureRecord();
     await queryClient.invalidateQueries(actions.documentsInvalidates());
   };
 
