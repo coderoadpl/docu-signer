@@ -12,9 +12,12 @@ import {
   listAllDocumentComments,
   loginCredentialSelectionIsValid,
   normalizeStdinPassword,
+  readHiddenPassword,
   runLoginAction,
   signatureRecordsProbeResult,
   verifySealBytes,
+  type PasswordPromptInput,
+  type PasswordPromptOutput,
 } from './main.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
@@ -535,11 +538,11 @@ describe('login action', () => {
 });
 
 describe('stdin password normalization', () => {
-  it('accepts exactly one password source', () => {
+  it('rejects only conflicting password sources', () => {
     expect(loginCredentialSelectionIsValid('secret', false)).toBe(true);
     expect(loginCredentialSelectionIsValid(undefined, true)).toBe(true);
+    expect(loginCredentialSelectionIsValid(undefined, false)).toBe(true);
     expect(loginCredentialSelectionIsValid('secret', true)).toBe(false);
-    expect(loginCredentialSelectionIsValid(undefined, false)).toBe(false);
   });
 
   it('removes a Unix or Windows trailing newline without trimming password whitespace', () => {
@@ -547,4 +550,104 @@ describe('stdin password normalization', () => {
     expect(normalizeStdinPassword('secret\r\n')).toBe('secret');
     expect(normalizeStdinPassword('secret')).toBe('secret');
   });
+
+  it('strips exactly one trailing newline', () => {
+    expect(normalizeStdinPassword('secret\n\n')).toBe('secret\n');
+    expect(normalizeStdinPassword('secret\r\n\r\n')).toBe('secret\r\n');
+    expect(normalizeStdinPassword('line1\nline2\n')).toBe('line1\nline2');
+  });
+});
+
+describe('hidden password prompt', () => {
+  const fakeTty = () => {
+    const listeners: Array<(chunk: Buffer) => void> = [];
+    const rawModes: boolean[] = [];
+    const written: string[] = [];
+    const input: PasswordPromptInput = {
+      setRawMode: (mode) => {
+        rawModes.push(mode);
+      },
+      resume: () => undefined,
+      pause: () => undefined,
+      on: (_event, listener) => {
+        listeners.push(listener);
+      },
+      off: (_event, listener) => {
+        const index = listeners.indexOf(listener);
+        if (index >= 0) listeners.splice(index, 1);
+      },
+    };
+    const output: PasswordPromptOutput = {
+      write: (text) => {
+        written.push(text);
+      },
+    };
+    const type = (chunk: string | Buffer) => {
+      const bytes = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+      for (const listener of [...listeners]) listener(bytes);
+    };
+    return { input, output, rawModes, written, type };
+  };
+
+  it('resolves the typed password on Enter without echoing it and restores raw mode', async () => {
+    const tty = fakeTty();
+    const pending = readHiddenPassword(tty.input, tty.output);
+    tty.type('s3cr');
+    tty.type('\u007f');
+    tty.type('ret\r');
+
+    await expect(pending).resolves.toBe('s3cret');
+    expect(tty.written).toEqual(['Password: ', '\n']);
+    expect(tty.rawModes).toEqual([true, false]);
+  });
+
+  it('treats Ctrl-D as submit so the terminal habit still works', async () => {
+    const tty = fakeTty();
+    const pending = readHiddenPassword(tty.input, tty.output);
+    tty.type('secret\u0004');
+
+    await expect(pending).resolves.toBe('secret');
+    expect(tty.rawModes).toEqual([true, false]);
+  });
+
+  it('rejects on Ctrl-C and still restores the terminal mode', async () => {
+    const tty = fakeTty();
+    const pending = readHiddenPassword(tty.input, tty.output);
+    tty.type('ab\u0003');
+
+    await expect(pending).rejects.toThrow('password prompt aborted');
+    expect(tty.written).toEqual(['Password: ', '\n']);
+    expect(tty.rawModes).toEqual([true, false]);
+  });
+
+  it('reassembles multi-byte characters split across chunks', async () => {
+    const tty = fakeTty();
+    const pending = readHiddenPassword(tty.input, tty.output);
+    const bytes = Buffer.from('zażółć\r', 'utf8');
+    for (const byte of bytes) tty.type(Buffer.from([byte]));
+
+    await expect(pending).resolves.toBe('zażółć');
+  });
+
+  it('ignores escape sequences and other control characters', async () => {
+    const tty = fakeTty();
+    const pending = readHiddenPassword(tty.input, tty.output);
+    tty.type('ab\u001b[D\tc\r');
+
+    await expect(pending).resolves.toBe('abc');
+  });
+});
+
+describe('login without password flags', () => {
+  it('fails with a clear error when stdin is not a TTY', () => {
+    const result = run('--json', 'login', '--email', 'demo@example.com');
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: {
+        code: 'validation',
+        message: expect.stringContaining('--password-stdin'),
+      },
+    });
+  }, CLI_TEST_TIMEOUT_MS);
 });
