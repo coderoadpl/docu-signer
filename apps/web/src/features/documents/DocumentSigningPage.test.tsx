@@ -10,6 +10,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { appNoticeStore } from '../../lib/app-notice.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DocumentSigningPage } from './DocumentSigningPage.js';
@@ -1745,12 +1746,15 @@ describe('DocumentSigningPage', () => {
     expect(pdfMocks.flatten.mock.calls[0]).toHaveLength(2);
   });
 
-  it('navigates after upload without waiting for signature-record storage', async () => {
+  it('stores the signature record before leaving the signing page', async () => {
     let recordStarted = false;
+    let pathnameWhenRecordStored = '';
+    let readPathname = () => '';
     let releaseRecord: (() => void) | undefined;
     const recordGate = new Promise<void>((resolve) => {
       releaseRecord = resolve;
     });
+    const signingPath = `/app/documents/${DOCUMENT_ID}/sign/${SOURCE_ID}`;
     installUploadHandlers();
     server.use(
       http.post(
@@ -1758,6 +1762,7 @@ describe('DocumentSigningPage', () => {
         async () => {
           recordStarted = true;
           await recordGate;
+          pathnameWhenRecordStored = readPathname();
           return HttpResponse.json({
             ok: true,
             data: {
@@ -1790,17 +1795,52 @@ describe('DocumentSigningPage', () => {
 
     try {
       const { router } = await renderPage();
+      readPathname = () => router.state.location.pathname;
       await drawStroke();
       fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
 
       await waitFor(() => expect(recordStarted).toBe(true));
+      expect(router.state.location.pathname).toBe(signingPath);
+
+      releaseRecord?.();
+
       await waitFor(() =>
         expect(router.state.location.pathname).toBe(
           `/app/documents/${DOCUMENT_ID}`,
         ),
       );
+      expect(pathnameWhenRecordStored).toBe(signingPath);
     } finally {
       releaseRecord?.();
+    }
+  });
+
+  it('still leaves the signing page when signature-record storage fails', async () => {
+    installUploadHandlers();
+    server.use(
+      http.post(`/api/documents/${DOCUMENT_ID}/signature-records`, () =>
+        HttpResponse.json(
+          { ok: false, error: { code: 'internal', message: 'offline' } },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    try {
+      const { router } = await renderPage();
+      await drawStroke();
+      fireEvent.click(await enabledButton('Zapisz podpisany PDF'));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(
+          `/app/documents/${DOCUMENT_ID}`,
+        ),
+      );
+      expect(appNoticeStore.snapshot()?.message).toMatch(
+        /nie udało się zachować zapisu podpisu/i,
+      );
+    } finally {
+      appNoticeStore.dismiss();
     }
   });
 
