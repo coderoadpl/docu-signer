@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, extname, resolve } from 'node:path';
 import { text as consumeText } from 'node:stream/consumers';
+import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 
 import { Command, CommanderError } from 'commander';
@@ -101,7 +102,7 @@ const loginArgsSchema = z.object({
 export const loginCredentialSelectionIsValid = (
   password: string | undefined,
   passwordStdin: boolean,
-): boolean => (password !== undefined) !== passwordStdin;
+): boolean => !(password !== undefined && passwordStdin);
 const loginOptionsSchema = z
   .object({
     email: z.string().trim().min(1),
@@ -110,7 +111,7 @@ const loginOptionsSchema = z
     code: z.string().trim().min(1).optional(),
   })
   .refine(({ password, passwordStdin }) => loginCredentialSelectionIsValid(password, passwordStdin), {
-    message: 'Use exactly one of --password or --password-stdin',
+    message: 'Use either --password or --password-stdin, not both',
   });
 const changePasswordArgsSchema = z.object({
   currentPassword: z.string().min(1),
@@ -124,6 +125,93 @@ interface LoginActionCtx {
   saveToken: (token: string) => void;
 }
 export const normalizeStdinPassword = (value: string): string => value.replace(/\r?\n$/, '');
+
+export interface PasswordPromptInput {
+  setRawMode: (mode: boolean) => void;
+  resume: () => void;
+  pause: () => void;
+  on: (event: 'data', listener: (chunk: Buffer) => void) => void;
+  off: (event: 'data', listener: (chunk: Buffer) => void) => void;
+}
+export interface PasswordPromptOutput {
+  write: (text: string) => void;
+}
+
+export const readHiddenPassword = (
+  input: PasswordPromptInput,
+  output: PasswordPromptOutput,
+): Promise<string> =>
+  new Promise((resolvePassword, reject) => {
+    const decoder = new StringDecoder('utf8');
+    let value = '';
+    let escapeState: 'none' | 'esc' | 'csi' = 'none';
+    const finish = (error?: Error) => {
+      input.off('data', onData);
+      input.setRawMode(false);
+      input.pause();
+      output.write('\n');
+      if (error === undefined) resolvePassword(value);
+      else reject(error);
+    };
+    const onData = (chunk: Buffer) => {
+      for (const char of decoder.write(chunk)) {
+        if (escapeState === 'csi') {
+          if (char >= '\u0040' && char <= '\u007e') escapeState = 'none';
+          continue;
+        }
+        if (escapeState === 'esc') {
+          escapeState = char === '[' ? 'csi' : 'none';
+          continue;
+        }
+        if (char === '\u001b') {
+          escapeState = 'esc';
+          continue;
+        }
+        if (char === '\u0003') {
+          finish(new Error('password prompt aborted'));
+          return;
+        }
+        if (char === '\r' || char === '\n' || char === '\u0004') {
+          finish();
+          return;
+        }
+        if (char === '\u007f' || char === '\b') {
+          value = value.slice(0, -1);
+          continue;
+        }
+        if (char < '\u0020') continue;
+        value += char;
+      }
+    };
+    output.write('Password: ');
+    input.setRawMode(true);
+    input.resume();
+    input.on('data', onData);
+  });
+
+const promptForLoginPassword = async (json: boolean): Promise<string | undefined> => {
+  if (!process.stdin.isTTY) {
+    emit(
+      err(validation('No password supplied and stdin is not a terminal — pipe it with --password-stdin or pass --password')),
+      json,
+      () => '',
+    );
+    return undefined;
+  }
+  try {
+    return await readHiddenPassword(process.stdin, process.stderr);
+  } catch {
+    emit(err(validation('Sign-in aborted')), json, () => '');
+    return undefined;
+  }
+};
+
+const readStdinPassword = async (): Promise<string> => {
+  if (process.stdin.isTTY) {
+    process.stderr.write('Reading password from stdin — press Enter, then Ctrl-D to finish\n');
+  }
+  return normalizeStdinPassword(await consumeText(process.stdin));
+};
 const magicLinkArgsSchema = z.object({ email: z.string().trim().min(1) });
 const passwordResetArgsSchema = z.object({ email: z.string().trim().min(1) });
 
@@ -424,7 +512,7 @@ program
   .description('Sign in and store the session token')
   .requiredOption('--email <email>')
   .option('--password <password>', 'password supplied as an argument')
-  .option('--password-stdin', 'read password from stdin', false)
+  .option('--password-stdin', 'read password from stdin until EOF (for pipes and scripts); with neither option and an interactive terminal, a hidden prompt asks for it', false)
   .option('--code <totp>', 'current TOTP code from your authenticator app')
   .action(async (options: { email: string; password?: string; passwordStdin: boolean; code?: string }) => {
     const ctx = cliCtx();
@@ -438,7 +526,12 @@ program
     }
     const parsedOptions = parseArgs(loginOptionsSchema, options, ctx.json);
     if (parsedOptions === undefined) return;
-    const password = parsedOptions.password ?? normalizeStdinPassword(await consumeText(process.stdin));
+    const password =
+      parsedOptions.password ??
+      (parsedOptions.passwordStdin
+        ? await readStdinPassword()
+        : await promptForLoginPassword(ctx.json));
+    if (password === undefined) return;
     const input = parseArgs(loginArgsSchema, { ...parsedOptions, password }, ctx.json);
     if (input === undefined) return;
     await runLoginAction({
