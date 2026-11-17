@@ -1,4 +1,4 @@
-# agentproofarch — rules for agents
+# docu-signer — rules for agents
 
 Architecture spec: `docs/prd-agentproofarch-foundation.md` (see also `docs/architecture.md`) (§3 is normative).
 
